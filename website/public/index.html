@@ -527,6 +527,20 @@ footer .legal + .legal { margin-top: 12px; }
   <span><b>OpenH1</b> is now <b class="lit">GOAT H1</b>. Same game, new name.</span>
   <button type="button" id="renamed-close" aria-label="Close">×</button>
 </div>
+<script>
+// renamed: openh1.com sends its pages here with ?renamed; say so once, then
+// take it off the address so a reload or a shared link doesn't show it again
+(() => {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('renamed')) return;
+  params.delete('renamed');
+  const q = params.toString();
+  history.replaceState(history.state, '', location.pathname + (q ? '?' + q : '') + location.hash);
+  const note = document.getElementById('renamed');
+  note.hidden = false;
+  document.getElementById('renamed-close').addEventListener('click', () => { note.hidden = true; });
+})();
+</script>
 <a class="skip" href="#main">Skip to content</a>
 
 <header class="top" id="top">
@@ -1551,20 +1565,6 @@ footer .legal + .legal { margin-top: 12px; }
   const os = /Android/.test(ua) ? "android" : /iPhone|iPad/.test(ua) ? "" : /Windows/.test(ua) ? "windows" : /Mac/.test(ua) ? (touch ? "" : "mac") : /Linux|CrOS/.test(ua) ? "linux" : "";
   const mine = os && document.querySelector(`#downloads [data-os="${os}"]:not(.later)`);
   if (mine) { mine.classList.add("mine"); mine.parentElement.prepend(mine); }
-})();
-
-// renamed: openh1.com sends its pages here with ?renamed; say so once, then
-// take it off the address so a reload or a shared link doesn't show it again
-(() => {
-  const params = new URLSearchParams(location.search);
-  if (!params.has('renamed')) return;
-  params.delete('renamed');
-  const q = params.toString();
-  history.replaceState(history.state, '', location.pathname + (q ? '?' + q : '') + location.hash);
-  const note = document.getElementById('renamed');
-  if (!note) return;
-  note.hidden = false;
-  document.getElementById('renamed-close').addEventListener('click', () => { note.hidden = true; });
 })();
 </script>
 </body>
