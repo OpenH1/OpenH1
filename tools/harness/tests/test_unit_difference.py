@@ -16,6 +16,9 @@ pytestmark = needs_32_bit_abi("a unit state's longs go on the wire as the game's
 
 SOURCE = "port/linux/game/network_distributed.c"
 HEADER = "port/linux/game/network_distributed.h"
+# (the unit state's bytes, the Legacy encoding OpenH1's messages carry whole)
+LEGACY = "port/linux/game/network_legacy.c"
+LEGACY_HEADER = "port/linux/game/network_legacy.h"
 CASES = ["chain", "not-predicted", "whole", "unknown", "short"]
 
 # a fault in the encoding and the case that must catch it
@@ -41,7 +44,8 @@ NEGATIVE_CONTROLS = {
     "position-overflow": (("difference < -32767 || difference > 32767 ||", ""), "whole"),
 }
 
-FUNCTIONS = ("distributed_put", "distributed_take", "distributed_real_valid", "distributed_unit_state_write",
+FUNCTIONS = ("distributed_put", "distributed_take", "distributed_real_valid", "legacy_put", "legacy_take",
+             "distributed_unit_state_write",
              "distributed_unit_state_read", "distributed_vector_difference", "distributed_grid_steps",
              "distributed_unit_state_snap", "distributed_unit_state_as_written", "distributed_unit_difference_write",
              "distributed_unit_difference_read")
@@ -50,19 +54,20 @@ FUNCTIONS = ("distributed_put", "distributed_take", "distributed_real_valid", "d
 def generated(fault=None):
     source = read(SOURCE)
     header = read(HEADER)
-    code = "\n".join(function(source, name) for name in FUNCTIONS)
+    legacy_header = read(LEGACY_HEADER)
+    code = "\n".join(function(source + read(LEGACY), name) for name in FUNCTIONS)
     if fault:
         code = mutated(code, *fault)
     config = "enum { NUMBER_OF_PLAYER_POWERUPS = 2, NO_PLAYER = 0xFF };\n"
     config += "#define DISTRIBUTED_UNIT_SCALE " + re.search(r"#define DISTRIBUTED_UNIT_SCALE\s+(\S+)", header)[1] + "\n"
     config += "#define SUBSTEP_POSITION_SCALE " + re.search(r"#define SUBSTEP_POSITION_SCALE\s+(\S+)", source)[1] + "\n"
     for member in ("_distributed_unit_alive_bit", "_distributed_unit_camouflaged_bit",
-                   "_distributed_unit_part_riding_bit", "UNIT_BASE_TICKS", "_unit_difference_flags_bit"):
+                   "_distributed_unit_part_riding_bit"):
+        config += enum_with(legacy_header, member) + "\n"
+    for member in ("UNIT_BASE_TICKS", "_unit_difference_flags_bit"):
         config += enum_with(source, member) + "\n"
-    sizes = re.search(r"DISTRIBUTED_UNIT_STATE_MINIMUM_SIZE = 3,\n\tDISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE = (.*?),\n\t/\*",
-                      source, re.S)[1]
-    config += f"enum {{ DISTRIBUTED_UNIT_STATE_MINIMUM_SIZE = 3, DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE = {sizes} }};\n"
-    config += structure(source, "distributed_unit_state") + "\n"
+    config += enum_with(legacy_header, "DISTRIBUTED_UNIT_STATE_MINIMUM_SIZE") + "\n"
+    config += structure(legacy_header, "distributed_unit_state") + "\n"
     return (("config.inc", config), ("under_test.inc", code))
 
 
