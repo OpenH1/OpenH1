@@ -248,6 +248,8 @@ static void model_geometry(struct model_reader *reader, XML_Char const **attribu
 		{ "section_gap", NULL, &geometry->section_gap }, { "tab_top", NULL, &geometry->tab_top },
 		{ "page_top", NULL, &geometry->page_top }, { "rows_bottom", NULL, &geometry->rows_bottom },
 		{ "spinner_x", NULL, &geometry->spinner_x }, { "spinner_width", NULL, &geometry->spinner_width },
+		{ "search_word_extra", NULL, &geometry->search_word_extra },
+		{ "search_results", NULL, &geometry->search_results }, { "search_crumbs", NULL, &geometry->search_crumbs },
 	};
 
 	model_attributes(reader, "geometry", attributes, table, sizeof(table) / sizeof(*table));
@@ -286,6 +288,7 @@ static void model_row(struct model_reader *reader, char const *element, XML_Char
 		{ "kind", &row.kind }, { "key", &row.key }, { "setting", &row.setting }, { "label", &row.label },
 		{ "title", &row.title }, { "when", &row.when }, { "open", &row.open }, { "run", &row.run },
 		{ "help", &row.help }, { "enabled", &row.enabled },
+		{ "crumb", &row.crumb }, { "search", &row.search }, { "search_choices", &row.search_choices },
 		{ "same_place", NULL, NULL, NULL, &row.same_place }, { "not_in_vr", NULL, NULL, NULL, &row.not_in_vr },
 		{ "named", NULL, NULL, NULL, &row.named }, { "status", NULL, NULL, NULL, &row.status },
 		{ "least", NULL, NULL, &row.least }, { "most", NULL, NULL, &row.most }, { "step", NULL, NULL, &row.step },

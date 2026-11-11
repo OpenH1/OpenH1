@@ -1497,14 +1497,15 @@ def tab_name_width(name: str) -> float:
     return sum(SMALL_UI_CAPITALS[letter] for letter in name)
 
 
-def settings_tab_places() -> list:
+def settings_tab_places(left: int = SETTINGS_TABS_X) -> list:
     """each of Settings' tabs' left and width at 4:3: as wide as its name and
     the same room either side of it, SETTINGS_TAB_GAP apart, filling the row
-    from SETTINGS_TABS_X to SETTINGS_TABS_RIGHT"""
+    from left (SETTINGS_TABS_X; the search's tabs', SETTINGS_SEARCH_TABS_X)
+    to SETTINGS_TABS_RIGHT"""
     names = [PAGES[folder]["tab"] for folder in SETTINGS_TAB_PAGES]
-    room = (SETTINGS_TABS_RIGHT - SETTINGS_TABS_X - SETTINGS_TAB_GAP * (len(names) - 1) -
+    room = (SETTINGS_TABS_RIGHT - left - SETTINGS_TAB_GAP * (len(names) - 1) -
             sum(map(tab_name_width, names))) / (2 * len(names))
-    places, x = [], float(SETTINGS_TABS_X)
+    places, x = [], float(left)
     for name in names:
         right = x + tab_name_width(name) + 2 * room
         places.append((round(x), round(right) - round(x)))
@@ -1524,6 +1525,167 @@ SETTINGS_TITLES = {SETTINGS_TITLE: "SETTINGS"}
 SETTINGS_TITLES.update({f"{PE}/{folder}/header_{page['screen'][:-len('_screen')]}": page["title"]
                         for folder, page in PAGES.items() if "title" in page})
 SETTINGS_TITLES[f"{PE}/controls_setup/header_key_bindings"] = "KEY BINDINGS"
+
+
+# ---------- Settings' search, the menu engine's alone (docs/menu_engine.md,
+# "Deliberate differences"; port/linux/game/menu_search.c ranks the rows,
+# menu_engine.c makes and lays out the rows found, menu_functions.c's
+# settings_search_* takes what is typed). A field at the left end of the
+# tabs (its magnifying glass alone at 4:3, its word too from 16:10; a
+# controller's Y in the glass's place), the tabs after it (each tab's
+# tabs_search, which the new engine shows in the place of its tabs); typing on
+# any Settings screen (or Y, Ctrl+F, /) opens a screen of the rows that match,
+# from every tab and page, each group under the way to it (its crumb), real
+# rows that change their settings there. Esc (B) clears it and goes back to
+# the row it was opened from.
+SETTINGS_SEARCH = f"{PE}/settings_search"
+SETTINGS_SEARCH_SCREEN = f"{SETTINGS_SEARCH}/settings_search_screen"
+# the field in the tabs' row: SEARCH_FIELD_WIDTH wide at 4:3, its magnifying
+# glass in it; SEARCH_FIELD_GROWTH wider at 16:9 (the tabs after it spread
+# over the rest), its word shown where it fits (SEARCH_WORD_EXTRA, the least
+# extra width that has room for it: 16:10's and wider)
+SEARCH_FIELD_WIDTH, SEARCH_FIELD_GROWTH = 20, 110
+SEARCH_ICON_X, SEARCH_WORD_X = 2, 20
+SETTINGS_SEARCH_TABS_X = SETTINGS_TABS_X + SEARCH_FIELD_WIDTH + SETTINGS_TAB_GAP
+SEARCH_WORD_EXTRA = math.ceil((SEARCH_WORD_X + tab_name_width("SEARCH") + 6 - SEARCH_FIELD_WIDTH) * WIDE_EXTRA /
+                              SEARCH_FIELD_GROWTH)
+# the most rows found that are made (those past the list's bottom are not
+# shown: the words under the last say how many more), and the most groups
+SEARCH_RESULTS, SEARCH_CRUMBS = 14, 8
+SEARCH_ABOUT = ("Finds a setting on any tab or page by its name, the words that explain it or one of its choices: "
+                "VSYNC, FOV, BORDERLESS. Change it right there. Esc, or B, goes back to where you were.|Start typing "
+                "on any Settings screen, or press Ctrl+F, / or a controller's Y.")
+SEARCH_BUTTON_HELP = ["Saves your changes, on every tab, and applies them.",
+                      "Clears the search and goes back to where you were. Your changes stay until OK."]
+# other words for rows (a search for one finds them as for their names): each
+# word's rows, by their keys ("<folder>:<key>" where two pages have the key)
+SETTINGS_SEARCH_WORDS = {
+    "fov": ["video_settings:fov", "vehicle_fov", "scale_scoped_fov", "viewmodel_fov"],
+    "sens": ["mouse_sensitivity", "mouse_vertical_sensitivity", "zoom_sensitivity", "look_sensitivity",
+             "gyro_sensitivity", "gyro_vertical_sensitivity"],
+    "dpi": ["mouse_sensitivity"],
+    "fps": ["max_fps", "show_frame_rate", "frame_rate_sync"],
+    "framerate": ["frame_rate_sync", "max_fps", "show_frame_rate"],
+    "gsync": ["vrr", "vrr_cap_margin"], "freesync": ["vrr", "vrr_cap_margin"], "vrr": ["vrr"],
+    "aa": ["anti_aliasing", "anti_aliasing_android"],
+    "shadows": ["shadow_resolution"],
+    "ao": ["ambient_occlusion"], "ssao": ["ambient_occlusion"],
+    "anisotropic": ["anisotropic_filtering"], "af": ["anisotropic_filtering"],
+    "lod": ["model_detail"],
+    "interpolation": ["interpolation"],
+    "hz": ["refresh_rate", "sim_rate"], "tickrate": ["sim_rate"],
+    "crosshair": ["lowered_reticle", "lowered_reticle_amount"],
+    "viewmodel": ["viewmodel_visible", "viewmodel_fov", "weapon_position"],
+    "gun": ["viewmodel_visible", "viewmodel_fov", "weapon_position"],
+    "deadzone": ["stick_dead_zones", "left_stick_dead_zone", "right_stick_dead_zone"],
+    "rumble": ["vibration"],
+    "keybinds": ["key_bindings"], "keys": ["key_bindings"],
+    "mic": ["input_device", "voice_chat"], "microphone": ["input_device", "voice_chat"],
+    "upnp": ["allow_upnp"],
+    "censor": ["streamer_mode", "slurs", "swearing", "insults"],
+    "profanity": ["streamer_mode", "swearing"],
+    "colour": ["color", "shield_color", "overshield_layer_color"],
+    "gamertag": ["name"], "nickname": ["name"],
+    "cache": ["map_cache_megabytes", "clear_caches"], "disk": ["map_cache_megabytes"],
+    "bug": ["report"], "crash": ["report"],
+    "intro": ["movies"],
+    "lag": ["low_latency"],
+    "monitor": ["mode", "resolution", "refresh_rate"],
+    "preset": ["graphics"],
+}
+# words that find no row but a place in the game that is not Settings': the
+# words, and what the search says for them under "No settings match"
+SETTINGS_SEARCH_ELSEWHERE = [
+    ("radar tracker motion", "The motion tracker is set for each game you host: Server Setup's INDICATOR OPTIONS."),
+]
+# a choice's words too common to find a row by (ON, OFF, a number)
+SEARCH_COMMON_CHOICES = {"on", "off", "yes", "no", "auto", "show", "hide", "default", "none", "system", "classic",
+                         "enhanced", "x", "nits", "ms", "kb", "s", "mb", "and", "worse", "to"}
+
+
+def _search_words(text: str) -> list:
+    """the words a search compares of a text, lower case: letters and digits"""
+    return [word for word in re.split(r"[^a-z0-9]+", text.lower()) if word]
+
+
+def settings_search_rows() -> dict:
+    """each Settings row's key, by "<folder>:<key>" (SETTINGS_SEARCH_WORDS' references)"""
+    rows = {}
+    for folder, page in PAGES.items():
+        for entry in page["rows"]:
+            if entry[0] == SECTION:
+                continue
+            label, setting, choices, _, _, *named = entry
+            key = named[0] if named else setting.split(".", 1)[1] if setting else \
+                re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+            rows[f"{folder}:{key}"] = key
+    return rows
+
+
+def settings_search_synonyms() -> dict:
+    """SETTINGS_SEARCH_WORDS by row: {"<folder>:<key>": [words]}, each reference found once (a key two pages
+    have needs its folder)"""
+    rows = settings_search_rows()
+    found = {}
+    for word, references in SETTINGS_SEARCH_WORDS.items():
+        for reference in references:
+            matches = [place for place in rows if place == reference or place.split(":", 1)[1] == reference]
+            if len(matches) != 1:
+                raise ValueError(f"SETTINGS_SEARCH_WORDS: {word}'s {reference} is {len(matches)} rows, not one")
+            found.setdefault(matches[0], []).append(word)
+    return found
+
+
+def settings_search_choices(choices) -> str:
+    """a row's choices' words a search finds it by (not the common ones, nor numbers), or None"""
+    if isinstance(choices, Slider):
+        shown = [stop for stop, _ in choices.stops]
+    elif isinstance(choices, list):
+        shown = [stop for stop, _ in choices]
+    else:
+        return None
+    words = []
+    for text in shown:
+        for word in _search_words(text):
+            if word not in SEARCH_COMMON_CHOICES and not word.isdigit() and word not in words and \
+                    not re.fullmatch(r"\d+(x|ms|kb|mb|s)?", word):
+                words.append(word)
+    return " ".join(words) or None
+
+
+def settings_crumbs() -> dict:
+    """the way to each Settings page, by its folder: its tab's name, then each page's link's name ("VIDEO › FRAME
+    RATE & SYNC"), as a row that opens it names it"""
+    opener = {}
+    for folder, page in PAGES.items():
+        for entry in page["rows"]:
+            if entry[0] != SECTION and entry[1] is None and isinstance(entry[2], str):
+                for other, other_page in PAGES.items():
+                    if entry[2] == _page_screen(other, other_page["screen"]) and other not in opener:
+                        opener[other] = (folder, entry[0].replace("›", "").strip())
+    crumbs = {}
+
+    def crumb(folder):
+        if folder not in crumbs:
+            page = PAGES[folder]
+            if "tab" in page:
+                crumbs[folder] = page["tab"]
+            elif folder in opener:
+                parent, name = opener[folder]
+                crumbs[folder] = f"{crumb(parent)} › {name}"
+            else:
+                raise ValueError(f"no row opens the Settings page {folder}")
+        return crumbs[folder]
+
+    for folder in PAGES:
+        crumb(folder)
+    # (no more than three names: the tab's, then the page's own, the way
+    # between them elided, so that it fits over a row at 4:3)
+    for folder, way in crumbs.items():
+        parts = way.split(" › ")
+        if len(parts) > 3:
+            crumbs[folder] = " › ".join([parts[0], "…", parts[-1]])
+    return crumbs
 
 
 # the settings whose rows have the wider spinner (a device's name)
@@ -2177,6 +2339,8 @@ def _settings_page(folder: str, page: dict) -> list:
                       f'<on event="back" run="{cancel}" back="true"/>',
                       *(['<on event="white" run="port settings tab previous"/>',
                          '<on event="black" run="port settings tab next"/>'] if tab else []),
+                      # (the search, the menu engine's: SETTINGS_SEARCH)
+                      '<on event="y" run="port settings search"/>',
                       f'<child widget="{header}"/>',
                       *([f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" '
                          f'y="{SETTINGS_TABS_TOP}"/>',
@@ -2195,7 +2359,8 @@ def _settings_page(folder: str, page: dict) -> list:
                       ("description", f"{SETTINGS}/{kind}_panel")],
                      [f'<data input="{SETTINGS_FUNCTIONS}"/>', *children,
                       f'<child widget="{base}/button_bar" y="414"/>',
-                      *([f'<child widget="{base}/tabs" y="{SETTINGS_TABS_TOP}"/>'] if tab else [])])
+                      *([f'<child widget="{base}/tabs" y="{SETTINGS_TABS_TOP}"/>',
+                         f'<child widget="{base}/tabs_search" y="{SETTINGS_TABS_TOP}"/>'] if tab else [])])
     lines += _widget(f"{base}/button_bar",
                      [("type", "column_list"), ("width", 640), ("height", 28),
                       ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
@@ -2221,6 +2386,30 @@ def _settings_page(folder: str, page: dict) -> list:
                                      '<on event="left_mouse" run="mouse emit accept event"/>'])
         lines += _widget(f"{base}/tabs", [("type", "column_list"), ("width", 640), ("height", SETTINGS_TAB_HEIGHT),
                                           ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")], items)
+        # (the same tabs after the search's field, which the menu engine shows
+        # in their place: SETTINGS_SEARCH; the field first, at the tabs' left,
+        # SEARCH_FIELD_GROWTH wider at 16:9 and the tabs spread over the rest)
+        items = [f'<child widget="{SETTINGS}/search_field" x="{SETTINGS_TABS_X}"/>']
+        spread = (WIDE_EXTRA - SEARCH_FIELD_GROWTH) / (len(SETTINGS_TAB_PAGES) - 1)
+        for index, (other, (tab_x, tab_width)) in enumerate(zip(SETTINGS_TAB_PAGES,
+                                                                settings_tab_places(SETTINGS_SEARCH_TABS_X))):
+            current = other == folder
+            name = f"{base}/search_tab_{PAGES[other]['screen'][:-len('_screen')]}"
+            items.append(f'<child widget="{name}" x="{tab_x}"/>')
+            lines += _settings_text(name, [("width", tab_width), ("height", SETTINGS_TAB_HEIGHT),
+                                           ("flags", "keep_ends"),
+                                           ("wide", wide(SEARCH_FIELD_GROWTH - WIDE_HALF + index * spread)),
+                                           ("bitmap", f"{SETTINGS}/{'tab_current' if current else 'tab'}"),
+                                           ("string_list", f"{SETTINGS}/tab_names"), ("string_index", index or None),
+                                           ("color", "#FFFFFFFF" if current else SETTINGS_BLUE),
+                                           ("align", "center"), ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))],
+                                    ['<on event="a" run="port settings tab"/>',
+                                     '<on event="start" run="port settings tab"/>',
+                                     '<on event="left_mouse" run="mouse emit accept event"/>'])
+        lines += _widget(f"{base}/tabs_search", [("type", "column_list"), ("width", 640),
+                                                 ("height", SETTINGS_TAB_HEIGHT),
+                                                 ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                         items)
     lines += _button(f"{base}/button_defaults", 3, ['<on event="a" run="port settings defaults"/>',
                                                      '<on event="start" run="port settings defaults"/>'], WIDE_LEFT)
     ok = "port settings ok" if tab else "port settings keep"
@@ -2326,6 +2515,32 @@ def _settings_shared() -> list:
     lines += _strings(f"{SETTINGS}/tab_about", [PAGES[folder]["about"] for folder in SETTINGS_TAB_PAGES])
     lines += _strings(f"{SETTINGS}/button_help", SETTINGS_BUTTON_HELP["tab"] + SETTINGS_BUTTON_HELP["page"])
     lines += _strings(f"{SETTINGS}/still_captions", ["CLASSIC", "ENHANCED"])
+    # (the search's field at the left end of the tabs, the menu engine's
+    # (SETTINGS_SEARCH): its magnifying glass, or a controller's Y in its place,
+    # and its word where the field is wide enough for it, shown by
+    # menu_functions.c's settings_search_field_show; A, or a click, searches)
+    search = ['<on event="a" run="port settings search"/>', '<on event="start" run="port settings search"/>',
+              '<on event="left_mouse" run="mouse emit accept event"/>']
+    lines += _widget(f"{SETTINGS}/search_field",
+                     [("controller", 1), ("width", SEARCH_FIELD_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
+                      ("flags", "keep_ends"), ("bitmap", f"{SETTINGS}/search_field"),
+                      ("wide", wide(-WIDE_HALF, SEARCH_FIELD_GROWTH))],
+                     search + [f'<child widget="{SETTINGS}/search_icon" x="{SEARCH_ICON_X}" '
+                               f'y="{(SETTINGS_TAB_HEIGHT - 16) // 2}"/>',
+                               f'<child widget="{SETTINGS}/search_prompt"/>',
+                               f'<child widget="{SETTINGS}/search_word"/>'])
+    lines += _widget(f"{SETTINGS}/search_icon", [("controller", 1), ("width", 16), ("height", 16),
+                                                 ("bitmap", BROWSER_SEARCH_ICON)], [])
+    lines += _settings_text(f"{SETTINGS}/search_prompt", [("width", SEARCH_FIELD_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
+                                                         ("text", "%y-button"), ("color", SETTINGS_BLUE),
+                                                         ("text_x", 3), ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT)),
+                                                         ("text_flags", "no_focus_test")])
+    lines += _settings_text(f"{SETTINGS}/search_word", [("width", SEARCH_FIELD_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
+                                                       ("text", "SEARCH"), ("color", SETTINGS_BLUE),
+                                                       ("text_x", SEARCH_WORD_X),
+                                                       ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT)),
+                                                       ("text_flags", "no_focus_test"),
+                                                       ("wide", wide(0, SEARCH_FIELD_GROWTH))])
     # (a stepped row's arrows: SETTINGS_STEPPED_ROWS; their pictures' frames
     # are 16 units square, the arrow at the top left, as a spinner draws them)
     for side in ("left", "right"):
@@ -2337,6 +2552,72 @@ def _settings_shared() -> list:
     return lines
 
 
+def _settings_search() -> list:
+    """Settings' search's screen (SETTINGS_SEARCH): the title, the field typed
+    into across the tabs' row, the rows found (made by the menu engine, from
+    their own pages' widgets: none here), the groups' crumbs over them, the
+    words for none or for more, the panel, and OK and BACK"""
+    base = SETTINGS_SEARCH
+    back = "port settings search back"
+    lines = _widget(SETTINGS_SEARCH_SCREEN,
+                    [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child pause_game"),
+                     ("bitmap", "bitmaps/gradient")],
+                    [f'<on event="b" run="{back}" back="true"/>', f'<on event="back" run="{back}" back="true"/>',
+                     '<on event="y" run="port settings search"/>',
+                     f'<child widget="{SETTINGS_TITLE}"/>', f'<child widget="{base}/options_menu"/>'])
+    # (the crumbs and the words placed by the engine, menu_engine.c's
+    # engine_search_layout; the rows found go before the buttons)
+    children = [f'<child widget="{base}/search_field" x="{WIDE_MARGIN}" y="{SETTINGS_TABS_TOP}"/>',
+                *(f'<child widget="{base}/crumb_{number}" x="{SETTINGS_ROW_X}" y="{SETTINGS_TOP}"/>'
+                  for number in range(1, SEARCH_CRUMBS + 1)),
+                f'<child widget="{base}/search_note" x="{SETTINGS_ROW_X}" y="{SETTINGS_TOP}"/>',
+                f'<child widget="{base}/button_bar" y="414"/>']
+    lines += _widget(f"{base}/options_menu",
+                     [("type", "column_list"), ("width", 640), ("height", 480),
+                      ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                      ("description", f"{SETTINGS}/tab_panel")],
+                     [f'<data input="{SETTINGS_FUNCTIONS}"/>', *children])
+    # (what is typed, after the magnifying glass, across the tabs' row; A, or
+    # a click, types into it again)
+    edit = ['<on event="a" run="port settings search edit"/>', '<on event="start" run="port settings search edit"/>',
+            '<on event="left_mouse" run="mouse emit accept event"/>']
+    lines += _settings_text(f"{base}/search_field",
+                            [("width", 640 - 2 * WIDE_MARGIN), ("height", SETTINGS_TAB_HEIGHT), ("flags", "keep_ends"),
+                             ("bitmap", f"{SETTINGS}/search_field"), ("color", "#FFFFFFFF"),
+                             ("text_x", SEARCH_WORD_X), ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT)),
+                             ("text_flags", "no_focus_test"), ("wide", wide(-WIDE_HALF, WIDE_EXTRA))],
+                            edit + [f'<child widget="{SETTINGS}/search_icon" x="{SEARCH_ICON_X}" '
+                                    f'y="{(SETTINGS_TAB_HEIGHT - 16) // 2}"/>'])
+    for number in range(1, SEARCH_CRUMBS + 1):
+        lines += _widget(f"{base}/crumb_{number}",
+                         [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
+                          ("bitmap", f"{SETTINGS}/section"), ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS))],
+                         [f'<child widget="{base}/crumb_title"/>'])
+    lines += _settings_text(f"{base}/crumb_title", [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
+                                                   ("color", SETTINGS_DIM), ("text_x", 2), ("text_y", 1),
+                                                   ("text_flags", "no_focus_test"),
+                                                   ("wide", wide(0, SETTINGS_WIDE_ROWS))])
+    lines += _settings_text(f"{base}/search_note", [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
+                                                   ("color", SETTINGS_DIM), ("text_x", 10),
+                                                   ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT)),
+                                                   ("text_flags", "no_focus_test"),
+                                                   ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS))])
+    lines += _widget(f"{base}/button_bar",
+                     [("type", "column_list"), ("width", 640), ("height", 28),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     [f'<child widget="{base}/button_ok" x="{640 - WIDE_MARGIN - 2 * 128 - 2}" y="1"/>',
+                      f'<child widget="{base}/button_back" x="{640 - WIDE_MARGIN - 128}" y="1"/>'])
+    lines += _button(f"{base}/button_ok", 1, ['<on event="a" run="port settings keep" back="true"/>',
+                                               '<on event="start" run="port settings keep" back="true"/>'], WIDE_RIGHT)
+    lines += _widget(f"{base}/button_back",
+                     [("type", "text"), ("width", 128), ("height", 24), ("bitmap", "bitmaps/text_button_background"),
+                      ("text", "BACK"), ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
+                      ("text_y", 2), ("wide", WIDE_RIGHT)],
+                     [f'<on event="a" run="{back}" back="true"/>', f'<on event="start" run="{back}" back="true"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    return lines
+
+
 def settings_files() -> dict:
     """the files of the port's screens, by their names in ce/"""
     files = {}
@@ -2345,6 +2626,7 @@ def settings_files() -> dict:
     for folder, page in PAGES.items():
         files[f"{PE}/{folder}".replace("/", ".") + ".xml"] = _settings_page(folder, page)
     files[SETTINGS.replace("/", ".") + ".xml"] = _settings_shared()
+    files[SETTINGS_SEARCH.replace("/", ".") + ".xml"] = _settings_search()
     files[f"{PE}/vr_controls".replace("/", ".") + ".xml"] += _vr_item()
     return {name: ['<?xml version="1.0" encoding="UTF-8"?>',
                    "<!-- The port's settings screen, in the PC version's style (tools/port_settings.py) -->",
@@ -2403,6 +2685,13 @@ def settings_pictures() -> list:
           (_svg(SEGMENT_LEAST, SEGMENT_HEIGHT, [_rounded(SEGMENT_LEAST, SEGMENT_HEIGHT, 1, 8, "#0a2a5a", 0.75,
                                                          "#2299ff", 2)]), SEGMENT_LEAST, SEGMENT_HEIGHT)]),
     ]
+    # (the search's field: a navy field in a blue rim, as the slider's number's
+    # and the browsers' searches' are; lit while it has the focus. Its ends
+    # kept as it is drawn wider: keep_ends)
+    search_w = SEARCH_FIELD_WIDTH
+    pictures.append((f"{SETTINGS}/search_field", [
+        (_svg(search_w, tab_h, [_rounded(search_w, tab_h, 1, 8, "#000e23", 0.9, "#2995ff", 1.5)]), search_w, tab_h),
+        (_svg(search_w, tab_h, [_rounded(search_w, tab_h, 1, 8, "#0d3a7a", 0.95, "#8cc8ff", 2)]), search_w, tab_h)]))
     # (a slider's track, a groove in the redraws' navy and blue rim, and its
     # thumb, a blue tab)
     track_w, track_h, thumb_w = SLIDER_TRACK_WIDTH, SLIDER_TRACK_HEIGHT, SLIDER_THUMB_WIDTH
@@ -3615,7 +3904,18 @@ def settings_look_roles() -> dict:
     for folder, page in [*PAGES.items(), *SCREENS.items()]:
         if "tab" in page:
             roles[f"{PE}/{folder}/tabs"] = "tabs"
+            roles[f"{PE}/{folder}/tabs_search"] = "search tabs"
         roles[f"{PE}/{folder}/button_bar"] = "buttons"
+    # (the search's: SETTINGS_SEARCH)
+    roles[f"{SETTINGS}/search_field"] = "search field"
+    roles[f"{SETTINGS}/search_icon"] = "search icon"
+    roles[f"{SETTINGS}/search_prompt"] = "search prompt"
+    roles[f"{SETTINGS}/search_word"] = "search word"
+    roles[f"{SETTINGS_SEARCH}/search_field"] = "search field"
+    roles[f"{SETTINGS_SEARCH}/search_note"] = "search note"
+    roles[f"{SETTINGS_SEARCH}/button_bar"] = "buttons"
+    for number in range(1, SEARCH_CRUMBS + 1):
+        roles[f"{SETTINGS_SEARCH}/crumb_{number}"] = "search crumb"
     return roles
 
 
@@ -7909,21 +8209,28 @@ def _model_slider(choices) -> list:
 
 
 def _model_page(folder: str, page: dict) -> list:
-    """a tab's or a page's screen: its rows under their sections, its buttons"""
+    """a tab's or a page's screen: its rows under their sections, its buttons;
+    each row with the way to it (its crumb: a tab's section's, a page's own)
+    and the other words a search finds it by (SETTINGS_SEARCH)"""
     base = f"{PE}/{folder}"
     tab = "tab" in page
     kind = "tab" if tab else "page"
     inner = [f"\t\t<about>{escape(page['about'])}</about>"] if page.get("about") else []
+    crumbs, synonyms = settings_crumbs(), settings_search_synonyms()
+    crumb = crumbs[folder]
     for index, entry in enumerate(page["rows"]):
         if entry[0] == SECTION:
             inner += _model_element("section", [("key", f"section_{index}"), ("title", entry[1]),
                                                 ("when", _settings_platform(page["rows"], index))])
+            crumb = f"{crumbs[folder]} › {entry[1]}" if tab else crumbs[folder]
             continue
         label, setting, choices, help_text, platform, *named = entry
         key = named[0] if named else setting.split(".", 1)[1] if setting else \
             re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
         row_kind = _model_row_kind(key, setting, choices)
         pairs = [("key", key), ("kind", row_kind), ("setting", setting), ("label", label),
+                 ("crumb", crumb), ("search", " ".join(synonyms.get(f"{folder}:{key}", [])) or None),
+                 ("search_choices", settings_search_choices(choices)),
                  ("when", _settings_row_when(key, setting, platform)), ("enabled", SETTINGS_ROW_ENABLED.get(key)),
                  ("open", choices if isinstance(choices, str) else None),
                  ("run", named[1] if len(named) > 1 else None),
@@ -7968,13 +8275,32 @@ def _model_option_screen(folder: str, spec: dict) -> list:
                                      ("platform_places", "true" if spec.get("platform_places") else None)], inner, 1)
 
 
+def _model_search() -> list:
+    """the search's screen (SETTINGS_SEARCH): its words for the panel, the
+    places that are not Settings' that words find (each a hint row: its words,
+    and what the search says for them), and its buttons"""
+    inner = [f"\t\t<about>{escape(SEARCH_ABOUT)}</about>"]
+    for index, (words, text) in enumerate(SETTINGS_SEARCH_ELSEWHERE):
+        inner += _model_element("row", [("key", f"hint_{index}"), ("kind", "hint"), ("label", words)],
+                                [f"\t\t\t<help>{escape(text)}</help>"])
+    for index, button in enumerate(("ok", "back")):
+        inner += _model_element("button", [("key", f"button_{button}"), ("kind", button),
+                                           ("run", "port settings keep" if button == "ok" else
+                                            "port settings search back"),
+                                           ("help", SEARCH_BUTTON_HELP[index])])
+    return _model_element("screen", [("name", SETTINGS_SEARCH_SCREEN), ("kind", "settings"), ("layout", "search"),
+                                     ("title", "SEARCH")], inner, 1)
+
+
 def model_files() -> dict:
     """the model's files, by their paths in port/assets/menus"""
     geometry = [("row_x", SETTINGS_ROW_X), ("row_width", SETTINGS_ROW_WIDTH), ("row_height", SETTINGS_ROW_HEIGHT),
                 ("row_step", SETTINGS_ROW_STEP), ("section_height", SETTINGS_SECTION_HEIGHT),
                 ("section_step", SETTINGS_SECTION_STEP), ("section_gap", SETTINGS_SECTION_GAP),
                 ("tab_top", SETTINGS_TOP), ("page_top", PAGE_TOP), ("rows_bottom", SETTINGS_ROWS_BOTTOM),
-                ("spinner_x", SETTINGS_SPINNER_X), ("spinner_width", SETTINGS_SPINNER_WIDTH)]
+                ("spinner_x", SETTINGS_SPINNER_X), ("spinner_width", SETTINGS_SPINNER_WIDTH),
+                ("search_word_extra", SEARCH_WORD_EXTRA), ("search_results", SEARCH_RESULTS),
+                ("search_crumbs", SEARCH_CRUMBS)]
     lines = ['<?xml version="1.0" encoding="UTF-8"?>',
              "<!-- The settings screens' model, for the menu engine (docs/menu_engine.md; tools/port_settings.py) -->",
              "<model>", f"\t<geometry{attributes(geometry)}/>"]
@@ -7982,6 +8308,7 @@ def model_files() -> dict:
         lines += _model_page(folder, page)
     for folder, spec in SCREENS.items():
         lines += _model_option_screen(folder, spec)
+    lines += _model_search()
     return {MODEL_FILE: lines + ["</model>", ""]}
 
 

@@ -6,6 +6,7 @@ and what each draws compared.
     python tools/menu_parity.py --layout              # every screen's debug.menu_layout, both engines, diffed
     python tools/menu_parity.py --layout --screens settings --variants 16x9-keyboard
     python tools/menu_parity.py --behaviour --sweep   # the scripts of presses, and every screen's navigation
+    python tools/menu_parity.py --search              # Settings' search's scripts, on the new engine alone
 
 --layout runs tools/menu_gallery.py's tour (debug.menu_tour: each screen opened alone, hidden, muted, no renderer,
 from the player profile the behaviour scripts start from, the game's functions that open it run first:
@@ -85,12 +86,39 @@ def tall_items(items: list) -> list:
     return kept
 
 
-def is_deliberate_frame(screen: str, classic: dict, new: dict) -> bool:
+# Settings' search, the new engine's alone (docs/menu_engine.md, "Deliberate differences"): its screen,
+# which only the new engine opens, is not compared; on each Settings tab the new engine shows its tabs after the
+# search's field (tabs_search) in the place of the tabs the classic engine shows, so each side's tabs' row is left
+# out of its tab's layout, and the frames may differ in that row alone (SEARCH_TABS_BAND, the menus' units)
+SEARCH_SCREEN = re.compile(r"/settings_search/settings_search_screen$")
+SEARCH_TABS = re.compile(r"[\\/](tabs|tabs_search)(/|$)")
+SEARCH_TABS_BAND = (76, 98)
+
+
+def _settings_tab(screen: str) -> bool:
+    return bool(re.search(r"/player_profile_edit/[a-z_]+_settings/[a-z_]+_screen$|/network_setup/"
+                          r"network_settings_screen$", screen))
+
+
+def search_tabs_left_out(screen: str, items: list) -> list:
+    """a Settings tab's layout items without its tabs' row (either engine's), for the search's field"""
+    if not _settings_tab(screen):
+        return items
+    return [item for item in items if not SEARCH_TABS.search(item.get("path", "") or item.get("of", ""))]
+
+
+def is_deliberate_frame(screen: str, classic: dict, new: dict, box=None, size=None) -> bool:
     """whether two frames' difference is a deliberate one: their layouts differ only so (the frames of a
-    screen whose layouts are the same must be the same)"""
+    screen whose layouts are the same must be the same); a Settings tab's, in its tabs' row alone (box: the
+    pixels' bounds that differ, in a frame of size)"""
     if classic is None or new is None:
         return False
     a, b = layout_items(classic), layout_items(new)
+    if _settings_tab(screen) and a != b and search_tabs_left_out(screen, a) == search_tabs_left_out(screen, b):
+        if box is None or size is None:
+            return True
+        top, bottom = (round(edge * size[1] / 480) for edge in SEARCH_TABS_BAND)
+        return box[1] >= top - 2 and box[3] <= bottom + 2
     if TALL_SCREENS.search(screen):
         return a != b and tall_items(a) == tall_items(b)
     return len(a) == len(b) and a != b and all(
@@ -171,7 +199,7 @@ def compare_layouts(screen: str, classic: dict, new: dict, opened: bool = False)
     for key in ("screen_name", "screen", "prompts", "touch_menus"):
         if classic.get(key) != new.get(key):
             lines.append(f"{key}: {classic.get(key)!r} | {new.get(key)!r}")
-    a, b = layout_items(classic), layout_items(new)
+    a, b = search_tabs_left_out(screen, layout_items(classic)), search_tabs_left_out(screen, layout_items(new))
     if TALL_SCREENS.search(screen):
         a, b = tall_items(a), tall_items(b)
     for index in range(max(len(a), len(b))):
@@ -277,8 +305,10 @@ SCRIPTS = [
     ("key-binding", f"{PE}/controls_setup/controls_settings_screen",
      ["down", "down", "a", "wait", "mouse:2", "wait", "down", "right", "a", "wait", "wheel:1", "wait", "up", "up",
       OK_CLICK]),
+    # (the 3 typed into SENSITIVITY's number, A having opened it: typed on a spinner's row, it would open the new
+    # engine's search, Settings' search, a deliberate difference)
     ("mouse-and-cancel-button", f"{PE}/mouse_settings/mouse_settings_screen",
-     ["down", "right", "right", "down", "right", "a", "type:3", "enter", CANCEL_CLICK]),
+     ["down", "right", "right", "down", "right", "up", "up", "a", "type:3", "enter", CANCEL_CLICK]),
     ("profile-tab", f"{PE}/profile_settings/profile_settings_screen",
      ["down", "right", "right", "down", "down", "right", "up", OK_CLICK]),
     # (the 4:3 window's fractions of FIELD OF VIEW's track, MOVIES' spinner and the AUDIO tab)
@@ -333,6 +363,70 @@ MAKE_PROFILE = ("profile-create", f"{PE}/profile_settings/profile_settings_scree
 # (and the setup screens', whose settings' writes the log does not name: config.toml is compared)
 WRITE_NOTHING = ("toggle-and-cancel", "mouse-and-cancel-button", "sub-page-cancel", "setup-loadout", "setup-opence",
                  "setup-coop", "setup-voice")
+# Settings' search's scripts, the new engine's alone (SEARCH_SCREEN): each run on the new engine, with what it must
+# leave: where the focus is after some of its presses ({press: the end of the focus's path}) and config.toml's lines
+# (written by an OK): typed on a tab, a row found changed, Esc back to the row it was opened from; a controller's Y and
+# the on-screen keyboard; a row found that opens a page, back from it to the row found, and back to the tab
+SEARCH_FIELD = "settings_search_screen/options_menu/search_field"
+SEARCH_SCRIPTS = [
+    ("search-keys", f"{PE}/video_settings/video_settings_screen",
+     ["down", "type:vsync", "wait", "enter", "wait", "right", "b", "wait", OK_CLICK], "4x3-keyboard",
+     {2: SEARCH_FIELD, 4: "settings_search_screen/options_menu/op_vsync/vsync_spinner/vsync_spinner",
+      7: "video_settings_screen/options_menu/op_window_size/window_size_spinner/window_size_spinner"},
+     ["vsync = true"]),
+    # (the on-screen keyboard from DONE, at its top left: down to Shift, along to F, A types it; down and left to
+    # O; down and left to V; Start is DONE)
+    ("search-controller", f"{PE}/audio_settings/audio_settings_screen",
+     ["down", "y", "wait", "down", "right", "right", "right", "right", "right", "right", "a", "down", "left", "a",
+      "down", "left", "left", "left", "a", "start", "wait", "right", "b", "wait", OK_CLICK], "4x3-controller",
+     {20: "settings_search_screen/options_menu/op_fov",
+      23: "audio_settings_screen/options_menu/op_spatial/spatial_spinner/spatial_spinner"},
+     [r"fov = 80(\.0)?"]),
+    ("search-link", f"{PE}/video_settings/video_settings_screen",
+     ["type:frame", "wait", "down", "a", "wait", "b", "wait", "b", "wait"], "4x3-keyboard",
+     {4: "frame_rate_screen/options_menu/op_vsync/vsync_spinner/vsync_spinner",
+      6: "settings_search_screen/options_menu/op_frame_rate_sync",
+      8: "video_settings_screen/options_menu/op_mode/mode_spinner/mode_spinner"}, []),
+]
+
+
+def search_behaviour(arguments, template: Path) -> dict:
+    """{script: lines} of Settings' search's scripts (SEARCH_SCRIPTS) that do not leave what they must, on the new
+    engine"""
+    import shutil
+    scripts = [script for script in SEARCH_SCRIPTS if re.search(arguments.scripts, script[0])]
+    profile, _ = make_profile(arguments, template)
+    failures = {}
+
+    def one(script):
+        result = behaviour_run(arguments.build, script[:4], "new", arguments.data, template, arguments.timeout,
+                               profile)
+        if not result["done"]:
+            result = behaviour_run(arguments.build, script[:4], "new", arguments.data, template, arguments.timeout,
+                                   profile)
+        return script, result
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(arguments.jobs, len(scripts)))) as pool:
+            for script, result in pool.map(one, scripts):
+                lines = [] if result["done"] else ["the script did not finish\n" + result["log"][-800:]]
+                for press, end in script[4].items():
+                    at = result["focus"][press] if press < len(result["focus"]) else "(none)"
+                    if not at.rstrip().endswith(end):
+                        lines.append(f"after press {press} ({script[2][press]}): the focus on {at}, not {end}")
+                for wanted in script[5]:
+                    if not any(re.fullmatch(wanted, line.strip()) for line in result["config"]):
+                        lines.append(f"config.toml has no line {wanted}")
+                if lines:
+                    lines.append("focus: " + " | ".join(result["focus"])[-1500:])
+                    failures[script[0]] = lines
+                print(f"menu_parity: search {script[0]}: {'FAILS' if lines else 'as it must'}", file=sys.stderr,
+                      flush=True)
+    finally:
+        shutil.rmtree(profile, ignore_errors=True)
+    return failures, len(scripts)
+
+
 # the navigation sweep: every generated screen opened, the focus moved about it with no press that leaves it
 SWEEP = ["down", "down", "down", "down", "up", "up", "right", "down", "left", "hold:down", "hold:down", "up",
          "hold:up", "hold:up", "down", "right", "right", "left"]
@@ -340,8 +434,8 @@ BEHAVIOUR_VARIANT = "4x3-keyboard"
 
 
 # (screens the sweep leaves out: a name's, which debug.menu_open does not bring up alone, its run never reaching
-# the menus on either engine; profile-create types into a name's field)
-SWEEP_SKIP = re.compile(r"/name_edit/")
+# the menus on either engine; profile-create types into a name's field; Settings' search's, the new engine's alone)
+SWEEP_SKIP = re.compile(r"/name_edit/|/settings_search/")
 
 
 def sweep_scripts(vr: bool = False) -> list:
@@ -495,6 +589,8 @@ def behaviour(arguments, template: Path) -> dict:
                 script[0] not in WRITE_NOTHING:
             lines.append("nothing written by the classic engine: the script did not reach its rows\n" +
                          "\n".join(a["focus"])[-1500:])
+        # (Settings' search's tabs, the new engine's, in the place of the tabs: SEARCH_TABS)
+        b = dict(b, focus=[line.replace("/tabs_search/search_tab_", "/tabs/tab_") for line in b["focus"]])
         for key in ("focus", "config", "profile", "writes"):
             if a[key] != b[key]:
                 lines.append(f"{key}: {json.dumps(a[key])[:1500]}\n      | {json.dumps(b[key])[:1500]}")
@@ -514,13 +610,21 @@ def compare_results(results: dict, screens: list, variant_names: list, arguments
         classic, new = results.get((name, "classic"), {}), results.get((name, "new"), {})
         for screen in screens:
             a, b = classic.get(screen.name), new.get(screen.name)
+            if SEARCH_SCREEN.search(screen.name):
+                # (Settings' search's screen: the new engine's alone, not compared)
+                continue
             if isinstance(a, dict) or isinstance(b, dict):
                 lines = [f"run failed: {(a if isinstance(a, dict) else b)['error'][:300]}"]
             else:
                 lines = compare_layouts(screen.name, a[1], b[1], opened=True) if arguments.layout else []
                 if arguments.pixels and not lines:
                     lines = compare_pictures(a[0], b[0])
-                    if lines and is_deliberate_frame(screen.name, a[1], b[1]):
+                    box = None
+                    if lines and a[0] is not None and b[0] is not None and a[0].size == b[0].size:
+                        from PIL import ImageChops
+                        box = ImageChops.difference(a[0], b[0]).getbbox()
+                    if lines and is_deliberate_frame(screen.name, a[1], b[1], box,
+                                                     a[0].size if a[0] is not None else None):
                         lines = []
                     if lines and arguments.show:
                         # (the pair, to look at: in a folder of the caller's, deleted by them)
@@ -578,6 +682,8 @@ def main(argv=None) -> int:
     parser.add_argument("--scripts", default="", help="only the scripts whose name has this in it (a regex)")
     parser.add_argument("--sweep", action="store_true",
                         help="with --behaviour, the navigation sweep of every generated screen too")
+    parser.add_argument("--search", action="store_true",
+                        help="Settings' search's scripts, on the new engine alone, each checked for what it leaves")
     parser.add_argument("--build", type=Path, default=ROOT / "build" / ("macos" if sys.platform == "darwin" else
                                                                          "linux_x86_64"))
     parser.add_argument("--data", type=Path, default=Path.home() / "dev" / "halo-macos-data" / "maps",
@@ -603,10 +709,20 @@ def main(argv=None) -> int:
         arguments.layout = True
     if arguments.baseline:
         ENGINES["new"] = "classic"
-    if not arguments.layout and not arguments.pixels and not arguments.behaviour:
-        parser.error("say what to compare: --layout, --pixels, --behaviour")
+    if not arguments.layout and not arguments.pixels and not arguments.behaviour and not arguments.search:
+        parser.error("say what to compare: --layout, --pixels, --behaviour, --search")
     template = arguments.saves if arguments.saves.is_dir() else None
     failed = 0
+    if arguments.search:
+        failures, count = search_behaviour(arguments, template)
+        for key, lines in sorted(failures.items()):
+            print(f"FAILS search {key}")
+            for line in lines:
+                print(f"    {line}")
+        print(f"menu_parity: search: {count - len(failures)} scripts as they must be, {len(failures)} not")
+        failed = 1 if failures else 0
+        if not arguments.layout and not arguments.pixels and not arguments.behaviour:
+            return failed
     if arguments.behaviour:
         differences, count = behaviour(arguments, template)
         for key, lines in sorted(differences.items()):
@@ -626,7 +742,7 @@ def main(argv=None) -> int:
         if name not in VARIANTS:
             parser.error(f"no variant {name} ({', '.join(VARIANTS)})")
     screens = [screen for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS, arguments.vr)
-               if re.search(arguments.screens, screen.name)]
+               if re.search(arguments.screens, screen.name) and not SEARCH_SCREEN.search(screen.name)]
     if arguments.look_control:
         return look_control(arguments.build, screens, arguments.data, template, arguments.timeout)
     logs = {}

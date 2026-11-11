@@ -91,6 +91,13 @@ delete) as well as RB. Whether they are, for the keys and their prompts
 (source/interface/ui_widget.c) */
 void halo_keyboard_browser_keys(void);
 int halo_keyboard_browser_keys_active(void);
+/* a Settings screen's keys, the menu engine's (menu_functions.c says, each
+frame one is shown, that one is; search: the search's own screen): W, A, S,
+D, F, R and L type into its search (settings_search_keys), not the left
+stick, Y and the triggers, and on the search's screen Backspace takes a
+letter off, not Esc. Whether they are (for the keys) */
+void halo_keyboard_settings_keys(int search);
+int halo_keyboard_settings_keys_active(void);
 
 /* the first controller's buttons (with the touch controls'), as the text
 chat's on-screen keyboard reads them: a bit for each (port/linux/game/

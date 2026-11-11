@@ -99,4 +99,25 @@ char const *menu_engine_look_role(struct widget_instance const *widget);
 page's rows) from the model */
 boolean menu_engine_lays_out(struct widget_instance *widget);
 
+/* ---------- Settings' search, the engine's alone (menu_search.c; the menus'
+functions' settings_search_*) */
+
+/* whether the widget's screen is the search's */
+boolean menu_engine_search_screen(struct widget_instance const *widget);
+/* the rows of every tab and page that match what is typed (shown: whether
+one may be found, its conditions), made in the search's list (a widget of
+its screen) from their own pages' widgets, as many as fit, again only if what
+is typed has changed: their count */
+typedef int (*menu_engine_search_shown)(void *context, struct halo_menu_model_screen const *screen,
+	struct halo_menu_model_row const *row);
+long menu_engine_search_find(struct widget_instance *list, char const *typed, menu_engine_search_shown shown,
+	void *context);
+/* how many rows match in all (more than are made: the words under them say
+so), the index'th row made (NULL past the last), and the group'th group's
+crumb (the way to its rows, NULL past the last) */
+long menu_engine_search_matched(void);
+struct widget_instance *menu_engine_search_found(long index);
+struct halo_menu_model_screen const *menu_engine_search_found_screen(long index);
+char const *menu_engine_search_crumb(long group);
+
 #endif

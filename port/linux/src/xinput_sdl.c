@@ -912,10 +912,32 @@ int halo_keyboard_browser_keys_active(void)
 	return browser_keys_time && SDL_GetTicks() + 1 - browser_keys_time < BROWSER_KEYS_MILLISECONDS;
 }
 
+/* when a Settings screen of the menu engine's was shown last
+(halo_keyboard_settings_keys): its letters and digits type into its search
+while it was, within a quarter of a second */
+static Uint64 settings_keys_time;
+/* (and it was the search's own screen: Backspace takes a letter off what is
+typed there, not Esc) */
+static BOOL settings_keys_search;
+
+void halo_keyboard_settings_keys(int search)
+{
+	settings_keys_time = SDL_GetTicks() + 1;
+	settings_keys_search = search != 0;
+}
+
+int halo_keyboard_settings_keys_active(void)
+{
+	return settings_keys_time && SDL_GetTicks() + 1 - settings_keys_time < BROWSER_KEYS_MILLISECONDS;
+}
+
 static void keyboard_gamepad(const struct platform_input_state *input, XINPUT_GAMEPAD *pad)
 {
 	const unsigned char *k = input->keys;
 	BOOL browser = halo_keyboard_browser_keys_active();
+	/* (on Settings, the menu engine's, W, A, S, D, F, R and L are letters that
+	start its search, not the stick and buttons: the arrows move the focus) */
+	BOOL settings = halo_keyboard_settings_keys_active();
 	BOOL mouse = !input->mouse_released;
 	const unsigned char *m = input->mouse_buttons;
 	int x = 0, y = 0;
@@ -926,10 +948,13 @@ static void keyboard_gamepad(const struct platform_input_state *input, XINPUT_GA
 		return;
 	}
 
-	if (k[SDL_SCANCODE_D]) x++;
-	if (k[SDL_SCANCODE_A]) x--;
-	if (k[SDL_SCANCODE_W]) y++;
-	if (k[SDL_SCANCODE_S]) y--;
+	if (!settings)
+	{
+		if (k[SDL_SCANCODE_D]) x++;
+		if (k[SDL_SCANCODE_A]) x--;
+		if (k[SDL_SCANCODE_W]) y++;
+		if (k[SDL_SCANCODE_S]) y--;
+	}
 	if (x || y)
 	{
 		/* full deflection, diagonals on the unit circle */
@@ -952,8 +977,9 @@ static void keyboard_gamepad(const struct platform_input_state *input, XINPUT_GA
 	as X1) */
 	pad->bAnalogButtons[XINPUT_GAMEPAD_A] |= analog(k[SDL_SCANCODE_SPACE] || k[SDL_SCANCODE_RETURN] ||
 		k[SDL_SCANCODE_KP_ENTER]);
-	pad->bAnalogButtons[XINPUT_GAMEPAD_B] |= analog(k[SDL_SCANCODE_ESCAPE] || k[SDL_SCANCODE_BACKSPACE] ||
-		input->menu_back || (mouse && m[SDL_BUTTON_X1]));
+	pad->bAnalogButtons[XINPUT_GAMEPAD_B] |= analog(k[SDL_SCANCODE_ESCAPE] ||
+		(!(settings && settings_keys_search) && k[SDL_SCANCODE_BACKSPACE]) || input->menu_back ||
+		(mouse && m[SDL_BUTTON_X1]));
 #ifdef HALO_ANDROID
 	/* the system back key (gesture or button) backs out of menus */
 	pad->bAnalogButtons[XINPUT_GAMEPAD_B] |= analog(k[SDL_SCANCODE_AC_BACK]);
@@ -969,12 +995,13 @@ static void keyboard_gamepad(const struct platform_input_state *input, XINPUT_GA
 	pad->bAnalogButtons[XINPUT_GAMEPAD_BLACK] |= analog(k[SDL_SCANCODE_E]);
 	/* (F as Y: the server browsers' favorite, drawn as F; Tab too but in a
 	server browser: the Profiles screen's new profile) */
-	pad->bAnalogButtons[XINPUT_GAMEPAD_Y] |= analog(k[SDL_SCANCODE_F] || (!browser && k[SDL_SCANCODE_TAB]));
+	pad->bAnalogButtons[XINPUT_GAMEPAD_Y] |= analog((!settings && k[SDL_SCANCODE_F]) ||
+		(!browser && k[SDL_SCANCODE_TAB]));
 	/* (R as the right trigger: Multiplayer's and the server browser's
 	refresh, drawn as R) */
-	pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] |= analog(k[SDL_SCANCODE_R]);
+	pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] |= analog(!settings && k[SDL_SCANCODE_R]);
 	/* (L as the left trigger: the server browsers' Filters, drawn as L) */
-	pad->bAnalogButtons[XINPUT_GAMEPAD_LEFT_TRIGGER] |= analog(k[SDL_SCANCODE_L]);
+	pad->bAnalogButtons[XINPUT_GAMEPAD_LEFT_TRIGGER] |= analog(!settings && k[SDL_SCANCODE_L]);
 	/* (/ as R3 in a server browser: its SEARCH, drawn as /) */
 	if (browser && k[SDL_SCANCODE_SLASH])
 		pad->wButtons |= XINPUT_GAMEPAD_RIGHT_THUMB;
@@ -3807,8 +3834,10 @@ DWORD WINAPI XInputDebugGetKeystroke(PXINPUT_DEBUG_KEYSTROKE keystroke)
 		{
 			continue;
 		}
+		/* (and on a Settings screen of the menu engine's, whose letters start
+		its search: halo_keyboard_settings_keys) */
 		if (key_up || next.virtual_key == VK_OEM_3_BACKQUOTE || console_is_active() || network_chat_typing() ||
-			(text_typing && next.virtual_key != 0x1B /* escape */))
+			((text_typing || halo_keyboard_settings_keys_active()) && next.virtual_key != 0x1B /* escape */))
 		{
 			keystroke->VirtualKey = next.virtual_key;
 			keystroke->Ascii = next.ascii;

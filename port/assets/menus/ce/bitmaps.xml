@@ -514,6 +514,10 @@
 		<frame png="ce/port/main_menu/settings/segment__0.png" width="48" height="18"/>
 		<frame png="ce/port/main_menu/settings/segment__1.png" width="48" height="18"/>
 	</bitmap>
+	<bitmap name="main_menu/settings/search_field">
+		<frame png="ce/port/main_menu/settings/search_field__0.png" width="20" height="22"/>
+		<frame png="ce/port/main_menu/settings/search_field__1.png" width="20" height="22"/>
+	</bitmap>
 	<bitmap name="main_menu/settings/slider_track">
 		<frame png="ce/port/main_menu/settings/slider_track__0.png" width="62" height="14"/>
 	</bitmap>

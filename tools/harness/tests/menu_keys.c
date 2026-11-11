@@ -46,6 +46,16 @@ static int halo_keyboard_browser_keys_active(void)
 	return browser_shown;
 }
 
+/* whether a Settings screen of the menu engine's is shown, and it is the
+search's (xinput_sdl.c's halo_keyboard_settings_keys) */
+static int settings_shown;
+static BOOL settings_keys_search;
+
+static int halo_keyboard_settings_keys_active(void)
+{
+	return settings_shown;
+}
+
 /* (keys_held_over_switch's other contexts: none open) */
 static unsigned char console_is_active(void)
 {
@@ -181,6 +191,57 @@ int main(int argc, char **argv)
 			CHECK(!ui_widget_port_menu_key(_icon_right_thumb) == !shown, "R3 drawn as %s",
 				ui_widget_port_menu_key(_icon_right_thumb) ? ui_widget_port_menu_key(_icon_right_thumb) : "R3");
 		}
+		return 0;
+	}
+	CASE("settings")
+	{
+		/* on Settings, the menu engine's, the letters type into its search:
+		W, A, S, D, F, R and L press nothing (the arrows move the focus), Q and
+		E are still the tabs' LB and RB, Escape B; on the search's own screen
+		Backspace takes a letter off, not B, which it is on a tab */
+		static int const letters[] = { SDL_SCANCODE_W, SDL_SCANCODE_A, SDL_SCANCODE_S, SDL_SCANCODE_D,
+			SDL_SCANCODE_F, SDL_SCANCODE_R, SDL_SCANCODE_L };
+		struct platform_input_state input;
+		XINPUT_GAMEPAD pad, none;
+		size_t index;
+
+		memset(&none, 0, sizeof(none));
+		for (settings_shown = 0; settings_shown < 2; settings_shown++)
+		{
+			for (index = 0; index < sizeof(letters) / sizeof(letters[0]); index++)
+			{
+				memset(&input, 0, sizeof(input));
+				memset(&pad, 0, sizeof(pad));
+				input.menus = TRUE;
+				input.keys[letters[index]] = 1;
+				keyboard_gamepad(&input, &pad);
+				CHECK((memcmp(&pad, &none, sizeof(pad)) == 0) == (settings_shown != 0), "letter %d on %s presses %s",
+					letters[index], settings_shown ? "Settings" : "another screen",
+					settings_shown ? "something" : "nothing");
+			}
+			memset(&input, 0, sizeof(input));
+			memset(&pad, 0, sizeof(pad));
+			input.menus = TRUE;
+			input.keys[SDL_SCANCODE_Q] = 1;
+			input.keys[SDL_SCANCODE_E] = 1;
+			input.keys[SDL_SCANCODE_ESCAPE] = 1;
+			keyboard_gamepad(&input, &pad);
+			CHECK(pressed(&pad, _icon_white_button) && pressed(&pad, _icon_black_button) &&
+				pressed(&pad, _icon_b_button), "Q, E or Escape not LB, RB and B");
+		}
+		for (settings_keys_search = 0; settings_keys_search < 2; settings_keys_search++)
+		{
+			settings_shown = 1;
+			memset(&input, 0, sizeof(input));
+			memset(&pad, 0, sizeof(pad));
+			input.menus = TRUE;
+			input.keys[SDL_SCANCODE_BACKSPACE] = 1;
+			keyboard_gamepad(&input, &pad);
+			CHECK(pressed(&pad, _icon_b_button) == !settings_keys_search, "Backspace on %s presses B %d",
+				settings_keys_search ? "the search" : "a tab", pressed(&pad, _icon_b_button));
+		}
+		settings_shown = 0;
+		settings_keys_search = 0;
 		return 0;
 	}
 	CASE("scores")

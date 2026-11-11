@@ -126,6 +126,20 @@
 		<string text="CLASSIC"/>
 		<string text="ENHANCED"/>
 	</strings>
+	<widget name="main_menu/settings/search_field" controller="1" width="20" height="22" flags="keep_ends" bitmap="main_menu/settings/search_field" wide="-106 110" source="tools/port_settings.py settings_files/_settings_shared">
+		<on event="a" run="port settings search"/>
+		<on event="start" run="port settings search"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/settings/search_icon" x="2" y="3"/>
+		<child widget="main_menu/settings/search_prompt"/>
+		<child widget="main_menu/settings/search_word"/>
+	</widget>
+	<widget name="main_menu/settings/search_icon" controller="1" width="16" height="16" bitmap="main_menu/multiplayer_type_select/join_game/search_icon" source="tools/port_settings.py settings_files/_settings_shared">
+	</widget>
+	<widget name="main_menu/settings/search_prompt" type="text" controller="1" width="20" height="22" text="%y-button" color="#FF2896FF" text_x="3" text_y="2" text_flags="no_focus_test" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_shared/_settings_text">
+	</widget>
+	<widget name="main_menu/settings/search_word" type="text" controller="1" width="20" height="22" text="SEARCH" color="#FF2896FF" text_x="20" text_y="2" text_flags="no_focus_test" wide="0 110" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_shared/_settings_text">
+	</widget>
 	<widget name="main_menu/settings/stepped_left" controller="1" width="16" height="16" bitmap="bitmaps/arrow_sm_left" wide="20 0" source="tools/port_settings.py settings_files/_settings_shared">
 	</widget>
 	<widget name="main_menu/settings/stepped_right" controller="1" width="16" height="16" bitmap="bitmaps/arrow_sm_right" wide="140 0" source="tools/port_settings.py settings_files/_settings_shared">

@@ -89,6 +89,18 @@
 	<look name="main_menu/settings/tab_prompt_next" type="text" box="0 0 30 22" wide="106 0">
 		<text font="ui\small_ui" color="#FF2896FF" at="2 2" text="%black-button"/>
 	</look>
+	<look name="main_menu/settings/search_field" role="search field" box="0 0 20 22" wide="-106 110" place="keep_ends" picture="main_menu/settings/search_field">
+		<at widget="main_menu/settings/search_icon" x="2" y="3"/>
+		<at widget="main_menu/settings/search_prompt" x="0" y="0"/>
+		<at widget="main_menu/settings/search_word" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings/search_icon" role="search icon" box="0 0 16 16" picture="main_menu/multiplayer_type_select/join_game/search_icon"/>
+	<look name="main_menu/settings/search_prompt" role="search prompt" type="text" box="0 0 20 22">
+		<text font="ui\small_ui" color="#FF2896FF" at="3 2" flags="no_focus_test" text="%y-button"/>
+	</look>
+	<look name="main_menu/settings/search_word" role="search word" type="text" box="0 0 20 22" wide="0 110">
+		<text font="ui\small_ui" color="#FF2896FF" at="20 2" flags="no_focus_test" text="SEARCH"/>
+	</look>
 	<look name="main_menu/settings/stepped_left" box="0 0 16 16" wide="20 0" picture="bitmaps/arrow_sm_left"/>
 	<look name="main_menu/settings/stepped_right" box="0 0 16 16" wide="140 0" picture="bitmaps/arrow_sm_right"/>
 </model>

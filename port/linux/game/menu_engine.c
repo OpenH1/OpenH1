@@ -41,6 +41,7 @@ the game's), in place of its definition's.
 
 #include "halo_menus.h"
 #include "menu_engine.h"
+#include "menu_search.h"
 #include "menu_widget.h"
 
 #include <stdio.h>
@@ -59,6 +60,9 @@ void const *menu_tags_behaviour_handlers(struct halo_menu_model const *model,
 	struct halo_menu_model_behaviour const *behaviour, long *count);
 short menu_tags_handler_event(void const *handlers, long index);
 void *menu_tags_handler(void const *handlers, long index);
+/* ui_widget.c's: a widget of a tag made a child of a widget, before another */
+struct widget_instance *ui_widget_port_add_child(struct widget_instance *parent, long tag_index,
+	struct widget_instance *before);
 
 /* ui_widget.c's widget types (its enum) */
 #define ENGINE_WIDGET_SPINNER 2
@@ -107,6 +111,11 @@ struct engine_screen
 	struct halo_menu_model_screen const *model;
 };
 
+/* Settings' search's rows found the most, and the most groups of them (the
+model's geometry's search_results and search_crumbs no more than these) */
+#define ENGINE_SEARCH_ROWS 24
+#define ENGINE_SEARCH_GROUPS 12
+
 static struct
 {
 	struct engine_screen screens[ENGINE_MAXIMUM_SCREENS];
@@ -114,6 +123,25 @@ static struct
 	stand-in's own drawing and events are ui_widget.c's) */
 	struct widget_instance *drawing, *processing;
 	struct halo_menu_model const *model;
+	/* Settings' search (below): the screen whose list has the rows found,
+	what was typed for them, the rows made (from their own pages' widgets),
+	each its model's row and its group (its crumb's), in the order shown; the
+	row being made (its spinners' functions ask for its model's row as it is
+	made); how many rows match in all, and the groups' crumbs */
+	struct
+	{
+		struct widget_instance *screen;
+		char typed[64];
+		unsigned long reads;
+		struct widget_instance *rows[ENGINE_SEARCH_ROWS];
+		struct halo_menu_model_row const *model_rows[ENGINE_SEARCH_ROWS];
+		struct halo_menu_model_screen const *model_screens[ENGINE_SEARCH_ROWS];
+		short groups[ENGINE_SEARCH_ROWS];
+		long count, matched;
+		struct halo_menu_model_row const *making;
+		char const *crumbs[ENGINE_SEARCH_GROUPS];
+		long group_count;
+	} search;
 } engine;
 
 /* ---------- the model */
@@ -284,7 +312,264 @@ page's list of rows */
 static boolean engine_lays_out(struct engine_screen const *screen, struct widget_instance const *widget)
 {
 	return screen && screen->model && !strcmp(screen->model->kind, "settings") && screen->model->layout &&
-		strcmp(screen->model->layout, "options") && widget->name && !strcmp(widget->name, "options_menu");
+		strcmp(screen->model->layout, "options") && strcmp(screen->model->layout, "search") && widget->name &&
+		!strcmp(widget->name, "options_menu");
+}
+
+/* ---------- Settings' search (docs/menu_engine.md, "Deliberate
+differences"; tools/port_settings.py's SETTINGS_SEARCH): the rows of every
+tab and page that match what is typed (menu_search.c), made in the search
+screen's list from their own pages' widgets, so that each is the real row
+(its spinner, slider or link, which menu_functions.c's functions run as on
+its page: menu_engine_model_row_of gives them its model's row), and laid out
+from the top under their groups' crumbs (the way to them: "VIDEO › FRAME RATE
+& SYNC"), as many as fit, the words under them saying how many more */
+
+/* whether the screen is the search's (its model's layout "search") */
+static boolean engine_search_screen(struct engine_screen const *screen)
+{
+	return screen && screen->model && screen->model->layout && !strcmp(screen->model->layout, "search");
+}
+
+/* the rows made let go of (their screen gone), or deleted from its list */
+static void engine_search_clear(boolean delete_rows)
+{
+	long index;
+
+	for (index = 0; delete_rows && index < engine.search.count; index++)
+	{
+		struct widget_instance *row = engine.search.rows[index];
+
+		if (row && row->parent && row->parent->focused_child == row)
+		{
+			row->parent->focused_child = NULL;
+			row->parent->parameters.list.selected_index = NONE;
+		}
+		if (row)
+			ui_widget_delete(row);
+	}
+	engine.search.count = 0;
+	engine.search.matched = 0;
+	engine.search.group_count = 0;
+	engine.search.typed[0] = 0;
+	if (!delete_rows)
+		engine.search.screen = NULL;
+}
+
+/* a row's widget's tag: its page's op_<key> ("pc\\" and the page's folder,
+the model's screen's name without its own) */
+static long engine_search_row_tag(struct halo_menu_model_screen const *screen, struct halo_menu_model_row const *row)
+{
+	char name[256];
+	char const *last = strrchr(screen->name, '/');
+	size_t index;
+
+	if (!last || (size_t)(last - screen->name) + strlen(row->key) + 9 >= sizeof(name))
+		return NONE;
+	snprintf(name, sizeof(name), "pc\\%.*s\\op_%s", (int)(last - screen->name), screen->name, row->key);
+	for (index = 0; name[index]; index++)
+	{
+		if (name[index] == '/')
+			name[index] = '\\';
+	}
+	return tag_loaded(UI_WIDGET_DEFINITION_TAG, name);
+}
+
+/* the list's child of the role (its button bar's: the rows go before it) */
+static struct widget_instance *engine_child_of_role(struct widget_instance *list, char const *role)
+{
+	struct widget_instance *child;
+
+	for (child = list->child; child; child = child->next)
+	{
+		char const *found = menu_engine_look_role(child);
+
+		if (found && !strcmp(found, role))
+			return child;
+	}
+	return NULL;
+}
+
+long menu_engine_search_find(struct widget_instance *list, char const *typed, menu_engine_search_shown shown,
+	void *context)
+{
+	struct widget_instance *screen = list;
+	struct engine_screen *owned;
+	struct halo_menu_model_geometry const *geometry;
+	struct menu_search_found found[ENGINE_SEARCH_ROWS];
+	struct menu_search_found ordered[ENGINE_SEARCH_ROWS];
+	struct widget_instance *buttons;
+	long count, index, kept = 0, maximum, y, groups = 0;
+	boolean rows_above = FALSE;
+
+	while (screen && screen->parent)
+		screen = screen->parent;
+	owned = engine_screen_of(screen);
+	if (!engine_search_screen(owned) || !typed)
+		return 0;
+	if (engine.search.screen == screen && engine.search.reads == halo_menus_model_reads() &&
+		!strcmp(engine.search.typed, typed))
+	{
+		return engine.search.count;
+	}
+	if (engine.search.screen != screen)
+	{
+		engine.search.count = 0;
+		engine.search.screen = screen;
+	}
+	engine_search_clear(TRUE);
+	engine.search.screen = screen;
+	engine.search.reads = halo_menus_model_reads();
+	snprintf(engine.search.typed, sizeof(engine.search.typed), "%s", typed);
+	if (!typed[0])
+		return 0;
+	geometry = &engine.model->geometry;
+	maximum = geometry->search_results > 0 && geometry->search_results < ENGINE_SEARCH_ROWS ?
+		geometry->search_results : ENGINE_SEARCH_ROWS;
+	count = menu_search_rank(engine.model, typed, shown, context, found, maximum);
+	engine.search.matched = count;
+	if (count > maximum)
+		count = maximum;
+	/* (each group's rows together, the groups in the order of their best) */
+	for (index = 0; index < count; index++)
+	{
+		char const *crumb = engine.model->rows[found[index].row].crumb;
+		long other;
+
+		if (found[index].score < 0)
+			continue;
+		for (other = index; other < count; other++)
+		{
+			char const *its = engine.model->rows[found[other].row].crumb;
+
+			if (found[other].score >= 0 && (its == crumb || (its && crumb && !strcmp(its, crumb))))
+			{
+				ordered[kept++] = found[other];
+				found[other].score = -1;
+			}
+		}
+	}
+	/* (as many as fit above the list's bottom, a row left under them for the
+	words that say how many more) */
+	buttons = engine_child_of_role(list, "buttons");
+	y = geometry->tab_top;
+	for (index = 0; index < kept; index++)
+	{
+		struct halo_menu_model_row const *row = &engine.model->rows[ordered[index].row];
+		struct halo_menu_model_screen const *page = &engine.model->screens[ordered[index].screen];
+		boolean group = !index || !row->crumb || !engine.model->rows[ordered[index - 1].row].crumb ||
+			strcmp(row->crumb, engine.model->rows[ordered[index - 1].row].crumb);
+		long top = y + (group ? (rows_above ? geometry->section_gap : 0) + geometry->section_step : 0);
+		long room = geometry->rows_bottom - (index + 1 < engine.search.matched ? geometry->row_step : 0);
+		long tag;
+		struct widget_instance *made;
+
+		if (top + geometry->row_height > room || (group && groups >= ENGINE_SEARCH_GROUPS) ||
+			(group && geometry->search_crumbs > 0 && groups >= geometry->search_crumbs))
+		{
+			break;
+		}
+		tag = engine_search_row_tag(page, row);
+		if (tag == NONE)
+			continue;
+		engine.search.making = row;
+		made = ui_widget_port_add_child(list, tag, buttons);
+		engine.search.making = NULL;
+		if (!made)
+			break;
+		if (group)
+			engine.search.crumbs[groups++] = row->crumb;
+		engine.search.rows[engine.search.count] = made;
+		engine.search.model_rows[engine.search.count] = row;
+		engine.search.model_screens[engine.search.count] = page;
+		engine.search.groups[engine.search.count] = (short)(groups - 1);
+		engine.search.count++;
+		y = top + geometry->row_step;
+		rows_above = TRUE;
+	}
+	engine.search.group_count = groups;
+	return engine.search.count;
+}
+
+long menu_engine_search_matched(void)
+{
+	return engine.search.matched;
+}
+
+struct widget_instance *menu_engine_search_found(long index)
+{
+	return index >= 0 && index < engine.search.count ? engine.search.rows[index] : NULL;
+}
+
+struct halo_menu_model_screen const *menu_engine_search_found_screen(long index)
+{
+	return index >= 0 && index < engine.search.count ? engine.search.model_screens[index] : NULL;
+}
+
+char const *menu_engine_search_crumb(long group)
+{
+	return group >= 0 && group < engine.search.group_count ? engine.search.crumbs[group] : NULL;
+}
+
+boolean menu_engine_search_screen(struct widget_instance const *widget)
+{
+	while (widget && widget->parent)
+		widget = widget->parent;
+	return engine_search_screen(engine_screen_of(widget));
+}
+
+/* the search's list laid out: each group's crumb (crumb_<n>, its role
+"search crumb"), its rows a step apart under it, the hidden ones taking no
+room, and the words (its "search note") under the last, or at the top for
+none */
+static void engine_search_layout(struct widget_instance *list)
+{
+	struct halo_menu_model_geometry const *geometry = &engine.model->geometry;
+	struct widget_instance *crumbs[ENGINE_SEARCH_GROUPS];
+	struct widget_instance *note = engine_child_of_role(list, "search note");
+	struct widget_instance *child;
+	long crumb_count = 0, index;
+	short y = (short)geometry->tab_top;
+	short group = NONE;
+	boolean rows_above = FALSE;
+
+	for (child = list->child; child && crumb_count < ENGINE_SEARCH_GROUPS; child = child->next)
+	{
+		char const *role = menu_engine_look_role(child);
+
+		if (role && !strcmp(role, "search crumb"))
+		{
+			crumbs[crumb_count++] = child;
+			child->disabled = TRUE;
+			child->visible = FALSE;
+		}
+	}
+	for (index = 0; engine.search.screen && index < engine.search.count; index++)
+	{
+		struct widget_instance *row = engine.search.rows[index];
+
+		if (!row->visible)
+			continue;
+		if (engine.search.groups[index] != group)
+		{
+			group = engine.search.groups[index];
+			if (group < crumb_count)
+			{
+				struct widget_instance *crumb = crumbs[group];
+
+				y = (short)(y + (rows_above ? geometry->section_gap : 0));
+				crumb->visible = TRUE;
+				crumb->vertical_offset = (short)(list->vertical_offset + y);
+				y = (short)(y + geometry->section_step);
+			}
+		}
+		row->horizontal_offset = (short)(list->horizontal_offset + geometry->row_x);
+		row->vertical_offset = (short)(list->vertical_offset + y);
+		y = (short)(y + geometry->row_step);
+		rows_above = TRUE;
+	}
+	if (note)
+		note->vertical_offset = (short)(list->vertical_offset + y);
 }
 
 /* after a widget's own drawing (its game data inputs run): what the model
@@ -293,6 +578,8 @@ static void engine_layout(struct engine_screen const *screen, struct widget_inst
 {
 	if (engine_lays_out(screen, widget))
 		engine_settings_layout(screen, widget);
+	else if (engine_search_screen(screen) && widget->name && !strcmp(widget->name, "options_menu"))
+		engine_search_layout(widget);
 }
 
 /* ---------- drawing */
@@ -399,6 +686,16 @@ events, with nothing in it that does), or hidden or disabled
 (ui_widget.c's widget_instance_port_is_label) */
 static boolean engine_is_label(struct widget_instance const *widget)
 {
+	char const *role;
+
+	/* (and Settings' search's field in the tabs' row, which Y, typing and the
+	pointer reach, not the tabs' steps: the row steps as the classic
+	engine's tabs do) */
+	if ((role = menu_engine_look_role(widget)) != NULL && !strcmp(role, "search field") && widget->parent &&
+		(role = menu_engine_look_role(widget->parent)) != NULL && !strcmp(role, "search tabs"))
+	{
+		return TRUE;
+	}
 	return (!engine_takes_events(widget) && !widget->child) || !widget->visible || widget->disabled;
 }
 
@@ -766,6 +1063,9 @@ void menu_engine_screen_closed(struct widget_instance *screen)
 
 	if (owned)
 		memset(owned, 0, sizeof(*owned));
+	/* (the search's rows found go with their screen) */
+	if (screen && screen == engine.search.screen)
+		engine_search_clear(FALSE);
 }
 
 boolean menu_engine_screen_draw(struct widget_instance *screen, rectangle2d *clip, point2d offset, boolean focus,
@@ -816,7 +1116,8 @@ wchar_t const *menu_engine_row_help(struct widget_instance *row, boolean *found)
 	owned = engine_screen_of(screen);
 	if (!owned || !owned->model || !row->name || strncmp(row->name, "op_", 3))
 		return NULL;
-	model_row = engine_model_row(owned->model, row->name + 3);
+	model_row = engine_search_screen(owned) ? menu_engine_model_row_of(row) : engine_model_row(owned->model,
+		row->name + 3);
 	if (!model_row)
 		return NULL;
 	*found = TRUE;
@@ -857,8 +1158,21 @@ char const *menu_engine_look_role(struct widget_instance const *widget)
 
 struct halo_menu_model_row const *menu_engine_model_row_of(struct widget_instance const *row)
 {
+	long index;
+
 	if (!row || !row->name || strncmp(row->name, "op_", 3))
 		return NULL;
+	/* (a row the search found: its own page's, or the one being made) */
+	for (index = 0; index < engine.search.count; index++)
+	{
+		if (engine.search.rows[index] == row)
+			return engine.search.model_rows[index];
+	}
+	if (engine.search.making && !strcmp(row->name + 3, engine.search.making->key) &&
+		menu_engine_search_screen(row))
+	{
+		return engine.search.making;
+	}
 	return engine_model_row(menu_engine_model_screen_of(row), row->name + 3);
 }
 

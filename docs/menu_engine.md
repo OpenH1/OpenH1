@@ -307,6 +307,37 @@ Each one is listed here with its reason, and in `tools/menu_parity.py`'s
   (`tall_items`). Another screen
   laid out tall (Settings') takes the same way: its widgets' tall looks
   added to `tall_widgets`.
+- **Settings' search** (the new engine's alone). The first feature that
+  needs the model: it reads every tab's and page's rows, their labels, help
+  and choices, which the classic engine has only as widgets of one screen at a
+  time, so it is the new engine's and the classic engine is unchanged. A field
+  at the left end of Settings' tabs (`tools/port_settings.py`'s
+  `SETTINGS_SEARCH`: each tab's `tabs_search`, the tabs after the field, which
+  the new engine shows in the place of its `tabs`; at 4:3 the field is its
+  magnifying glass, or a controller's Y, from 16:10 its word too), and its own
+  screen (`settings_search/settings_search_screen`, in the history: back is
+  where it was opened). Typing on any Settings screen, Ctrl+F, `/`, Y (the
+  on-screen keyboard) or the field opens it. `port/linux/game/menu_search.c`
+  ranks the rows against what is typed (a label's whole word, then the start
+  of one, then a part of one; the other words of
+  `SETTINGS_SEARCH_WORDS`; the choices' words but the common ones; the
+  help's; every word typed must find something); `menu_engine.c` makes the
+  rows found in the screen's list from their own pages' widgets (each the
+  real row, which `menu_functions.c` runs as on its page, its model's row
+  given by `menu_engine_model_row_of`), as many as fit, grouped under the way
+  to them (each row's `crumb` in the model) and laid out from the top;
+  `settings_search_menu.inc` takes what is typed, the rows' conditions (a
+  term naming a row of its page that was not found: that row's setting's
+  value) and the panel. Esc (B) clears it and goes back to the row it was
+  opened from, the changes kept for OK, as a tab's. A word for a place that is
+  not Settings' (`SETTINGS_SEARCH_ELSEWHERE`: the motion tracker, a game's)
+  says where it is. `menu_parity.py` leaves the search's screen out, and each
+  tab's row of tabs from its layout (its frames may differ in that row
+  alone); `--search` runs the search's own scripts on the new engine
+  (`SEARCH_SCRIPTS`: typed and Esc back to the row, a controller's Y and the
+  on-screen keyboard, a row found that opens a page and back), and
+  `tools/harness/tests/test_settings_search.py` its ranking on the real model.
+  Not yet: Host Controls' and the server browser's lists.
 
 ## Where it ends, and the steps there
 
@@ -402,4 +433,5 @@ The steps, in order:
    retired.
 
 Features that need the model (scrolling long strings, #899; one dialog
-style, #901; search; live values) come after step 2, on the engine alone.
+style, #901; search, Settings' the first: "Deliberate differences"; live
+values) come after step 2, on the engine alone.

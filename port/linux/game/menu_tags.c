@@ -543,6 +543,8 @@ static char const *const port_function_names[] =
 	"port settings ok", "port settings cancel", "port settings keep", "port settings page cancel",
 	"port settings new profile", "port settings profiles", "port settings report", "port settings weapon reset",
 	"port settings gyro calibrate", "port settings clear caches",
+	/* (Settings' search, the menu engine's: settings_search_menu.inc) */
+	"port settings search", "port settings search edit", "port settings search back",
 	/* (Online's Discord account: menu_functions.c's discord_link and
 	discord_unlink) */
 	"port discord link", "port discord unlink",

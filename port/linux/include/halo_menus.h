@@ -173,6 +173,11 @@ struct halo_menu_model_row
 	char const *kind, *key, *setting, *label, *title, *when, *open, *run, *help, *note;
 	/* (when it is enabled, else dimmed: a condition as when's) */
 	char const *enabled;
+	/* (Settings' search, the menu engine's: the way to the row, "VIDEO ›
+	DISPLAY"; the other words it is found by, as its label is; its choices'
+	words it is found by, the common ones left out: tools/port_settings.py's
+	SETTINGS_SEARCH) */
+	char const *crumb, *search, *search_choices;
 	/* (a node's, kind "node": its key its widget's name, its parent's name,
 	whether the focus may take it, and whether it takes it first) */
 	char const *parent;
@@ -209,6 +214,9 @@ struct halo_menu_model_geometry
 {
 	long row_x, row_width, row_height, row_step, section_height, section_step, section_gap, tab_top, page_top,
 		rows_bottom, spinner_x, spinner_width;
+	/* (Settings' search: the least extra width of a wide screen that shows
+	the field's word, the most rows found made, the most groups of them) */
+	long search_word_extra, search_results, search_crumbs;
 };
 
 /* where a widget's child is in it (a look's <at>) */

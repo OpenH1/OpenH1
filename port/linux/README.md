@@ -1280,6 +1280,18 @@ needs its quotes (`menus = "pc"`, not `menus = pc`). The Settings menu (Video, M
 changes the useful settings, writes them into the file (only their lines
 change) and applies them at once, but `display.menus`, from the next main menu.
 
+The Settings menu finds a setting on any tab or page (`display.menu_engine =
+"new"`, the default): start typing on any Settings screen (the letters and
+digits, but Q and E, the tabs' keys; W, A, S, D, F, R and L are letters
+there, and the arrows move the focus), or press Ctrl+F, `/`, a controller's
+Y (the on-screen keyboard comes up) or the SEARCH field at the tabs' left.
+The rows whose names, help or choices have the words typed are listed
+under the way to each (VIDEO › FRAME RATE & SYNC), the names' first, and
+change their settings there, kept for OK as a tab's are; a few other words
+find rows too (FOV, SENS, FPS, AA: `tools/port_settings.py`'s
+`SETTINGS_SEARCH_WORDS`). Esc (B) clears it and goes back to the row it was
+opened from. Refer to `docs/menu_engine.md`, "Deliberate differences".
+
 Each setting has an environment variable. The environment variable changes
 the setting for one start of the game. It has priority over the file.
 

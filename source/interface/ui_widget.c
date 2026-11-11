@@ -4212,6 +4212,40 @@ void ui_widget_port_go_back(
 	widget_instance_go_back_to_previous(widget);
 }
 
+/* port: a widget of a tag made a child of the parent, before the child
+before (NULL: last), its offsets the parent's (the menu engine's rows of
+Settings' search, from their own pages' widgets: port/linux/game/menu_engine.c);
+NULL if it could not be made */
+struct widget_instance *ui_widget_port_add_child(
+	struct widget_instance *parent,
+	long tag_index,
+	struct widget_instance *before)
+{
+	struct widget_instance *child = ui_widget_load_by_name_or_tag(NULL, tag_index, parent, parent->local_player_index,
+		NONE, NONE, NONE);
+
+	if (!child)
+		return NULL;
+	child->horizontal_offset = parent->horizontal_offset;
+	child->vertical_offset = parent->vertical_offset;
+	if (before && before->parent == parent)
+	{
+		child->next = before;
+		child->previous = before->previous;
+		if (before->previous)
+			before->previous->next = child;
+		else
+			parent->child = child;
+		before->previous = child;
+	}
+	else
+	{
+		ui_widget_add_child(parent, child);
+	}
+
+	return child;
+}
+
 void pc_menu_screen_shown(long tag_index); /* port: port/linux/game/menu_tags.c */
 
 struct widget_instance *ui_widget_load_by_name_or_tag(
