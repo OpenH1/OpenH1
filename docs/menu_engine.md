@@ -302,7 +302,9 @@ Each one is listed here with its reason, and in `tools/menu_parity.py`'s
   give each widget with a wide layout but the tabs and the footer, so that
   they reach a wider screen's edges; the menus are drawn out to them
   (`ui_widget_port_past_extra`). The parity tool lets each item of those two
-  screens differ in its place (`PLACE_KEYS`), nothing else. Another screen
+  screens differ in its place (`PLACE_KEYS`) and a text in its line breaks,
+  and their titles be words in place of pictures, nothing else
+  (`tall_items`). Another screen
   laid out tall (Settings') takes the same way: its widgets' tall looks
   added to `tall_widgets`.
 

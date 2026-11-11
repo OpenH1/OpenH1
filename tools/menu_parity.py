@@ -63,19 +63,26 @@ def _shows_menu_engine(left, right) -> bool:
 PLACE_KEYS = {"box", "clip", "extent", "whole", "wide", "scale"}
 
 
-def _browser_tall(left, right) -> bool:
-    """the server browser's and PRO 2V2's browser's tall layout (tools/port_settings.py's BROWSER_TALL, the menu
-    engine's own looks): the same items, each where the tall layout puts it (a text wrapped where its wider box
-    breaks its lines)"""
-    def kept(item):
-        return {key: " ".join(value.split()) if key == "text" and isinstance(value, str) else value
-                for key, value in item.items() if key not in PLACE_KEYS}
+DELIBERATE = [("profile_settings", _shows_menu_engine)]
 
-    return bool(left and right) and kept(left) == kept(right)
+# the screens the new engine lays out tall (the server browser's and PRO 2V2's browser's: tools/port_settings.py's
+# BROWSER_TALL), whose items may differ in their places, their titles words in place of pictures
+TALL_SCREENS = re.compile(r"join_game/join_game_screen$|doubles/browser/doubles_browser_screen$")
+# (their titles' widgets: tools/port_settings.py's BROWSER_TITLE_NAMES)
+TALL_TITLES = re.compile(r"\\(header_lan|header_direct_link|header_server_browser|header_doubles_browser)$")
 
 
-DELIBERATE = [("profile_settings", _shows_menu_engine),
-              (r"join_game/join_game_screen|doubles/browser/doubles_browser_screen", _browser_tall)]
+def tall_items(items: list) -> list:
+    """a tall screen's items as the tall layout may not change them: without their places (PLACE_KEYS), their
+    titles (a picture's widget on one side, words on the other) and a text's line breaks (a wider box wraps it
+    elsewhere)"""
+    kept = []
+    for item in items:
+        if TALL_TITLES.search(str(item.get("path", item.get("of", "")))):
+            continue
+        kept.append({key: " ".join(value.split()) if key == "text" and isinstance(value, str) else value
+                     for key, value in item.items() if key not in PLACE_KEYS})
+    return kept
 
 
 def is_deliberate_frame(screen: str, classic: dict, new: dict) -> bool:
@@ -84,6 +91,8 @@ def is_deliberate_frame(screen: str, classic: dict, new: dict) -> bool:
     if classic is None or new is None:
         return False
     a, b = layout_items(classic), layout_items(new)
+    if TALL_SCREENS.search(screen):
+        return a != b and tall_items(a) == tall_items(b)
     return len(a) == len(b) and a != b and all(
         left == right or any(re.search(pattern, screen) and meant(left, right) for pattern, meant in DELIBERATE)
         for left, right in zip(a, b))
@@ -163,6 +172,8 @@ def compare_layouts(screen: str, classic: dict, new: dict, opened: bool = False)
         if classic.get(key) != new.get(key):
             lines.append(f"{key}: {classic.get(key)!r} | {new.get(key)!r}")
     a, b = layout_items(classic), layout_items(new)
+    if TALL_SCREENS.search(screen):
+        a, b = tall_items(a), tall_items(b)
     for index in range(max(len(a), len(b))):
         left = a[index] if index < len(a) else None
         right = b[index] if index < len(b) else None
