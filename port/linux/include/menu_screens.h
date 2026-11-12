@@ -36,7 +36,9 @@ enum menu_screen_block_kind
 	MENU_SCREEN_BUTTON,
 	/* (cards side by side: each its picture, title and subtitle) */
 	MENU_SCREEN_CARDS,
-	MENU_SCREEN_CARD
+	MENU_SCREEN_CARD,
+	/* (an inner screen's header: its lettered picture, its title the words) */
+	MENU_SCREEN_HEADER
 };
 
 /* a building block: its kind, the block it is in (-1: the screen), and what

@@ -86,6 +86,8 @@ as a picture: the PC version's items' box (256 by 33) */
 #define CARDS_ROOM 264
 /* a card's title drawn larger than its font (large_ui's) */
 #define CARD_TITLE_SCALE 1.4f
+/* an inner screen's header's room (its picture where the campaign menu's is) */
+#define HEADER_ROOM 80
 #define BUTTONS_ROOM 30
 #define BUTTONS_TOP 4
 /* an item's label drawn larger than its font (large_ui's): at 4:3, and
@@ -238,6 +240,10 @@ struct screen_open
 	browser's; and the child its focus goes back to from the button) */
 	boolean extra;
 	struct widget_instance *kept_focus;
+	/* (its header, and the picture its file names for it, NONE for the
+	block's own) */
+	struct widget_instance *header;
+	long header_picture;
 };
 
 static struct
@@ -249,7 +255,7 @@ static struct
 	the screen its item opened) */
 	char focused[NUMBEROF(screen_places)][SCREEN_ID_LENGTH];
 	/* the blocks' tags, as the menus' tags were last built */
-	long title_art_tag, list_tag, item_tag, hint_tag, buttons_tag, button_tag, cards_tag, card_tag, card_title_tag, card_art_tag;
+	long title_art_tag, list_tag, item_tag, hint_tag, buttons_tag, button_tag, cards_tag, card_tag, card_title_tag, card_art_tag, header_tag;
 } screens = { FALSE };
 
 static void screens_names_give(void)
@@ -306,10 +312,11 @@ static boolean screen_blocks_found(void)
 	screens.card_tag = screen_block_tag("pc\\screens\\card");
 	screens.card_title_tag = screen_block_tag("pc\\screens\\card_title");
 	screens.card_art_tag = screen_block_tag("pc\\screens\\card_art");
+	screens.header_tag = screen_block_tag("pc\\screens\\header");
 	if (screens.title_art_tag == NONE || screens.list_tag == NONE || screens.item_tag == NONE ||
 		screens.hint_tag == NONE || screens.buttons_tag == NONE || screens.button_tag == NONE ||
 		screens.cards_tag == NONE || screens.card_tag == NONE || screens.card_title_tag == NONE ||
-		screens.card_art_tag == NONE)
+		screens.card_art_tag == NONE || screens.header_tag == NONE)
 	{
 		platform_log("menus: the screens' blocks (screens/blocks.xml) are not all there");
 		screens.blocks_found = FALSE;
@@ -428,6 +435,9 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		case MENU_SCREEN_CARDS:
 			heights[index] = CARDS_ROOM;
 			break;
+		case MENU_SCREEN_HEADER:
+			heights[index] = HEADER_ROOM;
+			break;
 		case MENU_SCREEN_CARD:
 		case MENU_SCREEN_ITEM:
 			shown[index] = screen_item_shown(block, &values, label, sizeof(label));
@@ -481,6 +491,14 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		case MENU_SCREEN_SPACE:
 			height = spaces ? (short)(extra / spaces) : 0;
 			break;
+		case MENU_SCREEN_HEADER:
+		{
+			struct widget_instance *header = screen_widget_add(widget, screens.header_tag, 0, top);
+
+			open->header_picture = block->picture ? screen_picture_tag(block->picture) : NONE;
+			open->header = header;
+			break;
+		}
 		case MENU_SCREEN_CARDS:
 		{
 			long card_index, count = 0;
@@ -905,6 +923,21 @@ boolean menu_screen_item_picture(struct widget_instance const *widget, long *bit
 {
 	long open_index, index;
 
+	/* (a header: the picture its file names) */
+	if (screens.blocks_found && widget->definition_tag_index == screens.header_tag)
+	{
+		for (open_index = 0; open_index < SCREEN_MAXIMUM_OPEN; open_index++)
+		{
+			struct screen_open const *open = &screens.open[open_index];
+
+			if (open->widget && open->header == widget && open->header_picture != NONE)
+			{
+				*bitmap_tag = open->header_picture;
+				return TRUE;
+			}
+		}
+		return FALSE;
+	}
 	/* (a card's picture part: its card's picture, where its file names one) */
 	if (screens.blocks_found && widget->definition_tag_index == screens.card_art_tag && widget->parent)
 	{

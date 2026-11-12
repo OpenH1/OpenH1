@@ -54,7 +54,8 @@ enum reader_element
 	_element_buttons,
 	_element_button,
 	_element_cards,
-	_element_card
+	_element_card,
+	_element_header
 };
 
 struct reader
@@ -334,6 +335,23 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 		reader->text_length = 0;
 		reader->text_overflow = 0;
 		reader->text[0] = 0;
+	}
+	else if (parent_element == _element_screen && !strcmp(name, "header"))
+	{
+		static char const *const names[] = { "title", "picture", NULL };
+
+		element = _element_header;
+		attributes_read(reader, name, attributes, names, values);
+		if (!reader->failed && kind_count(screen, MENU_SCREEN_HEADER))
+			reader_problem(reader, "a screen has one <header>", NULL);
+		if (!reader->failed && (!values[0] || !values[0][0]))
+			reader_problem(reader, "<header> has no title", NULL);
+		block = block_add(reader, MENU_SCREEN_HEADER, -1);
+		if (block >= 0)
+		{
+			screen->blocks[block].label = values[0];
+			screen->blocks[block].picture = values[1];
+		}
 	}
 	else if (parent_element == _element_screen && !strcmp(name, "cards"))
 	{
