@@ -154,14 +154,14 @@
 		<at widget="main_menu/campaign/card_number_big" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_title_big" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_objective_big" x="0" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_big" x="10" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_big" x="10" y="0"/>
-		<at widget="main_menu/campaign/card_badge_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_big" x="120" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_big" x="18" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_big" x="49" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_big" x="80" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_big" x="111" y="0"/>
+		<at widget="main_menu/campaign/card_badge_big" x="18" y="0"/>
+		<at widget="main_menu/campaign/card_badge_big" x="49" y="0"/>
+		<at widget="main_menu/campaign/card_badge_big" x="80" y="0"/>
+		<at widget="main_menu/campaign/card_badge_big" x="111" y="0"/>
 		<at widget="main_menu/campaign/card_unbeaten_big" x="0" y="0"/>
 	</look>
 	<look name="main_menu/campaign/card_art_back_big" box="6 6 152 125" picture="main_menu/campaign/art_back_146x119"/>
@@ -187,8 +187,8 @@
 	</look>
 	<look name="main_menu/campaign/card_badge_shape_big" box="0 294 28 322" picture="main_menu/campaign/badge_shape_28"/>
 	<look name="main_menu/campaign/card_badge_big" box="0 294 28 322" picture="main_menu/campaign/badges_28"/>
-	<look name="main_menu/campaign/card_unbeaten_big" type="text" box="44 299 114 317">
-		<text font="ui\small_ui" color="#FF2890F8" flags="no_focus_test"/>
+	<look name="main_menu/campaign/card_unbeaten_big" type="text" box="10 274 148 292">
+		<text font="ui\small_ui" color="#FF6F9CD0" align="center" flags="no_focus_test"/>
 	</look>
 	<look name="main_menu/campaign/card_small_0" box="0 0 158 330" picture="main_menu/campaign/card_158x330">
 		<at widget="main_menu/campaign/card_art_back_small" x="0" y="0"/>
@@ -200,14 +200,14 @@
 		<at widget="main_menu/campaign/card_number_small" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_title_small" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_objective_small" x="0" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_small" x="10" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_small" x="10" y="0"/>
-		<at widget="main_menu/campaign/card_badge_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_small" x="120" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_small" x="18" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_small" x="49" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_small" x="80" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_small" x="111" y="0"/>
+		<at widget="main_menu/campaign/card_badge_small" x="18" y="0"/>
+		<at widget="main_menu/campaign/card_badge_small" x="49" y="0"/>
+		<at widget="main_menu/campaign/card_badge_small" x="80" y="0"/>
+		<at widget="main_menu/campaign/card_badge_small" x="111" y="0"/>
 		<at widget="main_menu/campaign/card_unbeaten_small" x="0" y="0"/>
 	</look>
 	<look name="main_menu/campaign/card_art_back_small" box="6 6 152 125" picture="main_menu/campaign/art_back_146x119"/>
@@ -233,8 +233,8 @@
 	</look>
 	<look name="main_menu/campaign/card_badge_shape_small" box="0 294 28 322" picture="main_menu/campaign/badge_shape_28"/>
 	<look name="main_menu/campaign/card_badge_small" box="0 294 28 322" picture="main_menu/campaign/badges_28"/>
-	<look name="main_menu/campaign/card_unbeaten_small" type="text" box="44 299 114 317">
-		<text font="ui\small_ui" color="#FF2890F8" flags="no_focus_test"/>
+	<look name="main_menu/campaign/card_unbeaten_small" type="text" box="10 274 148 292">
+		<text font="ui\small_ui" color="#FF6F9CD0" align="center" flags="no_focus_test"/>
 	</look>
 	<look name="main_menu/campaign/card_big_1" box="0 0 158 330" picture="main_menu/campaign/card_158x330">
 		<at widget="main_menu/campaign/card_art_back_big" x="0" y="0"/>
@@ -246,14 +246,14 @@
 		<at widget="main_menu/campaign/card_number_big" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_title_big" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_objective_big" x="0" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_big" x="10" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_big" x="10" y="0"/>
-		<at widget="main_menu/campaign/card_badge_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_big" x="120" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_big" x="18" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_big" x="49" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_big" x="80" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_big" x="111" y="0"/>
+		<at widget="main_menu/campaign/card_badge_big" x="18" y="0"/>
+		<at widget="main_menu/campaign/card_badge_big" x="49" y="0"/>
+		<at widget="main_menu/campaign/card_badge_big" x="80" y="0"/>
+		<at widget="main_menu/campaign/card_badge_big" x="111" y="0"/>
 		<at widget="main_menu/campaign/card_unbeaten_big" x="0" y="0"/>
 	</look>
 	<look name="main_menu/campaign/card_small_1" box="0 0 158 330" picture="main_menu/campaign/card_158x330">
@@ -266,14 +266,14 @@
 		<at widget="main_menu/campaign/card_number_small" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_title_small" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_objective_small" x="0" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_small" x="10" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_small" x="10" y="0"/>
-		<at widget="main_menu/campaign/card_badge_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_small" x="120" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_small" x="18" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_small" x="49" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_small" x="80" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_small" x="111" y="0"/>
+		<at widget="main_menu/campaign/card_badge_small" x="18" y="0"/>
+		<at widget="main_menu/campaign/card_badge_small" x="49" y="0"/>
+		<at widget="main_menu/campaign/card_badge_small" x="80" y="0"/>
+		<at widget="main_menu/campaign/card_badge_small" x="111" y="0"/>
 		<at widget="main_menu/campaign/card_unbeaten_small" x="0" y="0"/>
 	</look>
 	<look name="main_menu/campaign/card_big_2" box="0 0 158 330" picture="main_menu/campaign/card_158x330">
@@ -286,14 +286,14 @@
 		<at widget="main_menu/campaign/card_number_big" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_title_big" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_objective_big" x="0" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_big" x="10" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_big" x="10" y="0"/>
-		<at widget="main_menu/campaign/card_badge_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_big" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_big" x="120" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_big" x="18" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_big" x="49" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_big" x="80" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_big" x="111" y="0"/>
+		<at widget="main_menu/campaign/card_badge_big" x="18" y="0"/>
+		<at widget="main_menu/campaign/card_badge_big" x="49" y="0"/>
+		<at widget="main_menu/campaign/card_badge_big" x="80" y="0"/>
+		<at widget="main_menu/campaign/card_badge_big" x="111" y="0"/>
 		<at widget="main_menu/campaign/card_unbeaten_big" x="0" y="0"/>
 	</look>
 	<look name="main_menu/campaign/card_small_2" box="0 0 158 330" picture="main_menu/campaign/card_158x330">
@@ -306,14 +306,14 @@
 		<at widget="main_menu/campaign/card_number_small" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_title_small" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_objective_small" x="0" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_small" x="10" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_shape_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_small" x="10" y="0"/>
-		<at widget="main_menu/campaign/card_badge_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_small" x="120" y="0"/>
-		<at widget="main_menu/campaign/card_badge_small" x="120" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_small" x="18" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_small" x="49" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_small" x="80" y="0"/>
+		<at widget="main_menu/campaign/card_badge_shape_small" x="111" y="0"/>
+		<at widget="main_menu/campaign/card_badge_small" x="18" y="0"/>
+		<at widget="main_menu/campaign/card_badge_small" x="49" y="0"/>
+		<at widget="main_menu/campaign/card_badge_small" x="80" y="0"/>
+		<at widget="main_menu/campaign/card_badge_small" x="111" y="0"/>
 		<at widget="main_menu/campaign/card_unbeaten_small" x="0" y="0"/>
 	</look>
 	<look name="main_menu/campaign/mission_dot_0" box="160 328 176 336" picture="main_menu/campaign/dot"/>
@@ -381,20 +381,20 @@
 	<look name="main_menu/campaign/prompt_restart" type="text" box="0 0 124 24" wide="106 0" picture="main_menu/parts/item_124x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%y-button RESTART"/>
 	</look>
-	<look name="main_menu/campaign/difficulty_screen" picture="bitmaps/gradient">
+	<look name="main_menu/campaign/difficulty_screen" picture="main_menu/parts/background_tall">
 		<at widget="main_menu/campaign/difficulty_list" x="0" y="0"/>
 		<at widget="main_menu/difficulty_select/header_choose_difficulty" x="0" y="0"/>
 		<at widget="main_menu/campaign/difficulty_mission" x="0" y="0"/>
 	</look>
-	<look name="main_menu/campaign/difficulty_mission" type="text" box="44 74 604 92" wide="-106 0">
-		<text font="ui\small_ui" color="#FF8FB3D3" flags="no_focus_test"/>
+	<look name="main_menu/campaign/difficulty_mission" type="text" box="24 52 584 70" wide="-106 0">
+		<text font="ui\small_ui" color="#FF6F9CD0" flags="no_focus_test"/>
 	</look>
 	<look name="main_menu/campaign/difficulty_list" type="column_list">
 		<at widget="main_menu/campaign/difficulty_0" x="28" y="96"/>
 		<at widget="main_menu/campaign/difficulty_1" x="176" y="96"/>
 		<at widget="main_menu/campaign/difficulty_2" x="324" y="96"/>
 		<at widget="main_menu/campaign/difficulty_3" x="472" y="96"/>
-		<at widget="main_menu/campaign/difficulty_prompts" x="0" y="414"/>
+		<at widget="main_menu/campaign/difficulty_prompts" x="0" y="448"/>
 	</look>
 	<look name="main_menu/campaign/difficulty_0" box="0 0 138 300" wide="-106 53" picture="main_menu/campaign/difficulty_card">
 		<at widget="main_menu/campaign/difficulty_badge_box" x="0" y="0"/>
@@ -432,7 +432,7 @@
 	<look name="main_menu/campaign/difficulty_badge_shape" box="19 11 119 111" wide="26 0" picture="main_menu/campaign/badge_shape_100"/>
 	<look name="main_menu/campaign/difficulty_badge" box="19 11 119 111" wide="26 0" picture="main_menu/campaign/difficulty_badges"/>
 	<look name="main_menu/campaign/difficulty_name" type="text" box="10 140 128 164" wide="0 53">
-		<text font="ui\large_ui" color="#FFFFFFFF" flags="no_focus_test" string_list="main_menu/difficulty_select/difficulty_options"/>
+		<text font="ui\large_ui" color="#FF2890F8" flags="no_focus_test" string_list="main_menu/difficulty_select/difficulty_options"/>
 	</look>
 	<look name="main_menu/campaign/difficulty_blurb" type="text" box="10 166 134 292" wide="0 53">
 		<text font="ui\small_ui" color="#FF2896FF" flags="no_focus_test"/>
@@ -441,8 +441,8 @@
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 -2" flags="no_focus_test" text="BEATEN"/>
 	</look>
 	<look name="main_menu/campaign/difficulty_prompts" type="column_list" box="0 0 640 28">
-		<at widget="main_menu/campaign/prompt_play" x="388" y="1"/>
-		<at widget="main_menu/campaign/prompt_back" x="516" y="1"/>
+		<at widget="main_menu/campaign/prompt_play" x="492" y="1"/>
+		<at widget="main_menu/campaign/prompt_back" x="24" y="1"/>
 	</look>
 	<look name="main_menu/campaign/prompt_play" type="text" box="0 0 124 24" wide="106 0" picture="main_menu/parts/item_124x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%a-button PLAY"/>

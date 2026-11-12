@@ -8077,8 +8077,8 @@ def _mission_card(size: tuple, slot: int, kind: str = None) -> list:
     base = f"{CAMPAIGN}/card_{kind}_{slot}"
     art_w, art_h = campaign_art_size(width - 2 * MISSION_ART_INSET)
     inset = MISSION_ART_INSET
-    # (the tall layout's at the card's foot, smaller: the chosen card's difficulty at the left, the hardest it is
-    # beaten on at the right, campaign_menu.inc's mission_card_foot_show)
+    # (the tall layout's in a row at the card's foot, smaller: each lit where the mission is beaten on it,
+    # campaign_menu.inc's mission_card_foot_show)
     badge, step = MISSION_BADGE[MISSION_SMALL if tall else size]
     text_top = inset + art_h + 6
     # (the missions' names in the menus' heading font: OpenCE, the titles' face; the tall layout's every card's)
@@ -8087,10 +8087,9 @@ def _mission_card(size: tuple, slot: int, kind: str = None) -> list:
                 ("card_art_back", "card_art", "card_custom_art", "card_card_tag",
                  "card_card_title", "card_resume",
                  "card_number", "card_title", "card_objective")]
-    # (the badges in a row under the name, across the card; the tall layout's two at its foot's ends)
+    # (the badges in a row under the name, across the card; the tall layout's at its foot)
     badges_x = (width - 3 * step - badge) // 2
-    places = [10, width - 10 - badge, width - 10 - badge, width - 10 - badge] if tall else \
-        [badges_x + step * index for index in range(4)]
+    places = [badges_x + step * index for index in range(4)]
     children += [f'<child widget="{CAMPAIGN}/card_badge_shape_{kind}" x="{x}"/>' for x in places]
     children += [f'<child widget="{CAMPAIGN}/card_badge_{kind}" x="{x}"/>' for x in places]
     children.append(f'<child widget="{CAMPAIGN}/card_unbeaten_{kind}"/>')
@@ -8147,9 +8146,9 @@ def _mission_card(size: tuple, slot: int, kind: str = None) -> list:
     # the hardest difficulty it is beaten on, at the card's foot, and nothing
     # where it is beaten on none)
     if tall:
-        # (the chosen card's difficulty's name, beside its badge; without the map's badges, the words alone)
-        lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", 10 + badge + 6, height - 8 - badge // 2 - 9,
-                                width - 20 - 2 * (badge + 6), 18, "ui\\small_ui", MISSION_TALL_BLUE)
+        # (without the map's badges: the hardest it is beaten on in words, over the badges' outlines)
+        lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", 10, height - 8 - badge - 20, width - 20, 18,
+                                "ui\\small_ui", MISSION_TALL_DIM, align="center")
     else:
         lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", MISSION_UNBEATEN_INSET,
                                 text_top + 62 + (badge - 16) // 2, width - 2 * MISSION_UNBEATEN_INSET, 18,
@@ -8176,11 +8175,11 @@ def _missions_tall_widgets() -> list:
         root = ElementTree.fromstring("<menus>" + "\n".join(lines) + "</menus>")
         return {element.get("name"): element for element in root.iter("widget")}
 
-    classic = parsed(_missions() + _prompts(CAMPAIGN, "campaign_prompts", [CAMPAIGN_PROMPT_BACK]))
+    classic = parsed(_missions() + _difficulties() + _prompts(CAMPAIGN, "campaign_prompts", [CAMPAIGN_PROMPT_BACK]))
     _MISSIONS_TALL = True
     try:
         # (BACK at the left: its wide layout the left's; the Campaign menu's footer, whose BACK it is too, kept)
-        tall = parsed(_missions() + _prompts(CAMPAIGN, "campaign_prompts",
+        tall = parsed(_missions() + _difficulties() + _prompts(CAMPAIGN, "campaign_prompts",
                                              [(CAMPAIGN_PROMPT_BACK[0], CAMPAIGN_PROMPT_BACK[1], WIDE_MARGIN,
                                                *CAMPAIGN_PROMPT_BACK[3:])]))
     finally:
@@ -8233,7 +8232,7 @@ def _missions() -> list:
         lines += _widget(f"{base}/header_missions", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
                                                      ("height", 59), ("bitmap", f"{base}/header_missions"),
                                                      ("wide", WIDE_LEFT)], [])
-        lines += _strings(MISSIONS_TALL_TITLES, [TITLES[f"{base}/header_missions"]])
+        lines += _strings(MISSIONS_TALL_TITLES, [TITLES[f"{base}/header_missions"], "CHOOSE DIFFICULTY"])
     tabs_x = 640 - 28 - 2 * SETTINGS_TAB_STEP - 26
     for name, icon, x in (("previous", "white", tabs_x - SETTINGS_TAB_PROMPT_WIDTH),
                           ("next", "black", tabs_x + SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4)):
@@ -8362,24 +8361,30 @@ def _difficulties() -> list:
     plays the mission on it (the old saved game, if it had another
     difficulty, gone as the Xbox's warned)"""
     base = CAMPAIGN
+    tall = _MISSIONS_TALL
     x0, top, step = DIFFICULTY_CARDS
     width, height = DIFFICULTY_CARD
     box, badge = DIFFICULTY_BADGE_BOX, DIFFICULTY_BADGE
+    # (the tall layout's, as Choose Mission's: its title's words in the band, the mission's under it, the names in
+    # the Xbox's blue, BACK at the left and PLAY at the right on the bottom line)
+    prompts_y = 480 - TALL_FOOTER + (TALL_FOOTER - PART_PROMPT_HEIGHT) // 2 - 1 if tall else 414
     lines = _widget(f"{base}/difficulty_screen", [("width", 640), ("height", 480),
                                                   ("flags", "pass_unhandled_to_focused_child"),
-                                                  ("bitmap", "bitmaps/gradient")],
+                                                  ("bitmap", TALL_BACKGROUND if tall else "bitmaps/gradient")],
                     ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
                      f'<child widget="{base}/difficulty_list"/>',
                      '<child widget="main_menu/difficulty_select/header_choose_difficulty"/>',
                      f'<child widget="{base}/difficulty_mission"/>'])
-    lines += _campaign_text(f"{base}/difficulty_mission", 44, 74, 560, 18, "ui\\small_ui", CAMPAIGN_DIM,
-                            wide_layout=WIDE_LEFT)
+    lines += _campaign_text(f"{base}/difficulty_mission", WIDE_MARGIN if tall else 44, 52 if tall else 74, 560, 18,
+                            "ui\\small_ui", MISSION_TALL_DIM if tall else CAMPAIGN_DIM, wide_layout=WIDE_LEFT)
+    if tall:
+        lines += tall_title("main_menu/difficulty_select/header_choose_difficulty", MISSIONS_TALL_TITLES, 1)
     cards = [f'<child widget="{base}/difficulty_{index}" x="{x0 + step * index}" y="{top}"/>' for index in range(4)]
     lines += _widget(f"{base}/difficulty_list", [("type", "column_list"), ("width", 640), ("height", 480),
                                                  ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
                      ['<data input="port campaign difficulty update"/>',
                       '<on event="created" run="port campaign difficulty init"/>', *cards,
-                      f'<child widget="{base}/difficulty_prompts" y="414"/>'])
+                      f'<child widget="{base}/difficulty_prompts" y="{prompts_y}"/>'])
     grown = (WIDE_EXTRA // 4)
     for index in range(4):
         lines += _widget(f"{base}/difficulty_{index}", [("width", width), ("height", height),
@@ -8411,7 +8416,8 @@ def _difficulties() -> list:
     lines += _widget(f"{base}/difficulty_name", [("type", "text"), ("controller", 1), ("left", 10),
                                                  ("top", inset + box + 10), ("width", width - 20), ("height", 24),
                                                  ("string_list", "main_menu/difficulty_select/difficulty_options"),
-                                                 ("font", "ui\\large_ui"), ("color", "#FFFFFFFF"),
+                                                 ("font", "ui\\large_ui"),
+                                                 ("color", MISSION_TALL_BLUE if tall else "#FFFFFFFF"),
                                                  ("wide", wide(0, grown)), ("text_flags", "no_focus_test")], [])
     lines += _campaign_text(f"{base}/difficulty_blurb", 10, inset + box + 36, width - 14, height - inset - box - 44,
                             "ui\\small_ui", SETTINGS_BLUE, wide_layout=wide(0, grown))
@@ -8425,8 +8431,10 @@ def _difficulties() -> list:
     lines += _badge_frames(f"{base}/difficulty_badges", CAMPAIGN_BADGES, badge, DIFFICULTY_BADGE_SPAN)
     lines += _strings(f"{base}/difficulty_blurbs", DIFFICULTY_BLURBS)
     lines += _prompts(base, "difficulty_prompts",
-                      [("prompt_play", "%a-button PLAY", 388, 124, '<on event="a" run="port campaign play"/>'),
-                       CAMPAIGN_PROMPT_BACK], defined=("prompt_back",))
+                      [("prompt_play", "%a-button PLAY", 640 - WIDE_MARGIN - 124 if tall else 388, 124,
+                        '<on event="a" run="port campaign play"/>'),
+                       (CAMPAIGN_PROMPT_BACK[0], CAMPAIGN_PROMPT_BACK[1], WIDE_MARGIN if tall else CAMPAIGN_PROMPT_BACK[2],
+                        *CAMPAIGN_PROMPT_BACK[3:])], defined=("prompt_back",))
     return lines
 
 
