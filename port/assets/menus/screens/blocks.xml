@@ -26,6 +26,21 @@ screen file's, set on each widget as the screen is made. -->
 		<on event="start" run="port screen do"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
+	<!-- cards side by side: the d-pad, the stick and the wheel step them -->
+	<widget name="screens/cards" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
+	<!-- a card, as the campaign's mission cards: its frame lit while focused;
+	its picture, title and subtitle (in this order: menu_screen.c sets them) -->
+	<widget name="screens/card" width="158" height="240" bitmap="main_menu/campaign/card_158x240">
+		<on event="a" run="port screen do"/>
+		<on event="start" run="port screen do"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="screens/card_art"/>
+		<child widget="screens/card_title"/>
+		<child widget="screens/card_subtitle"/>
+	</widget>
+	<widget name="screens/card_art" left="6" top="6" width="146" height="119" bitmap="main_menu/campaign/art_146x119" radius="5"/>
+	<widget name="screens/card_title" type="text" left="6" top="132" width="146" height="34" font="ui\large_ui" color="#FF8DB6E6" align="center"/>
+	<widget name="screens/card_subtitle" type="text" left="10" top="172" width="138" height="60" font="ui\small_ui" color="#FF6F9CD0" align="center" text_flags="no_focus_test wrap"/>
 	<!-- the focused item's hint, under it -->
 	<widget name="screens/hint" type="text" width="440" height="16" font="ui\small_ui" color="#FF6F9CD0" align="center" text_flags="no_focus_test"/>
 	<!-- the button-hint bar: each button's key and what it does, at the foot of the screen -->

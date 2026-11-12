@@ -52,7 +52,9 @@ enum reader_element
 	_element_hint,
 	_element_space,
 	_element_buttons,
-	_element_button
+	_element_button,
+	_element_cards,
+	_element_card
 };
 
 struct reader
@@ -220,6 +222,7 @@ static int block_add(struct reader *reader, int kind, int parent)
 	}
 	block = &screen->blocks[screen->block_count];
 	memset(block, 0, sizeof(*block));
+	block->frame = -1;
 	block->kind = kind;
 	block->parent = parent;
 	block->line = (long)XML_GetCurrentLineNumber(reader->parser);
@@ -281,8 +284,8 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 
 		element = _element_list;
 		attributes_read(reader, name, attributes, names, values);
-		if (kind_count(screen, MENU_SCREEN_LIST))
-			reader_problem(reader, "a screen has one <list>", NULL);
+		if (kind_count(screen, MENU_SCREEN_LIST) || kind_count(screen, MENU_SCREEN_CARDS))
+			reader_problem(reader, "a screen has one <list> or <cards>", NULL);
 		block = block_add(reader, MENU_SCREEN_LIST, -1);
 		if (block >= 0)
 		{
@@ -331,6 +334,60 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 		reader->text_length = 0;
 		reader->text_overflow = 0;
 		reader->text[0] = 0;
+	}
+	else if (parent_element == _element_screen && !strcmp(name, "cards"))
+	{
+		static char const *const names[] = { "id", "focus", NULL };
+
+		element = _element_cards;
+		attributes_read(reader, name, attributes, names, values);
+		if (kind_count(screen, MENU_SCREEN_CARDS) || kind_count(screen, MENU_SCREEN_LIST))
+			reader_problem(reader, "a screen has one <list> or <cards>", NULL);
+		block = block_add(reader, MENU_SCREEN_CARDS, -1);
+		if (block >= 0)
+		{
+			screen->blocks[block].id = values[0];
+			screen->blocks[block].focus = values[1];
+		}
+	}
+	else if (parent_element == _element_cards && !strcmp(name, "card"))
+	{
+		static char const *const names[] = { "id", "title", "subtitle", "picture", "frame", "do", "when", NULL };
+
+		element = _element_card;
+		attributes_read(reader, name, attributes, names, values);
+		block = block_add(reader, MENU_SCREEN_CARD, parent_block);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *card = &screen->blocks[block];
+			char *end = NULL;
+
+			card->id = values[0];
+			card->label = values[1];
+			if (values[2])
+				card->hints[card->hint_count++] = values[2];
+			card->picture = values[3];
+			card->action = values[5];
+			card->when = values[6];
+			if (values[4])
+			{
+				card->frame = strtol(values[4], &end, 10);
+				if (!end || *end || card->frame < 0 || card->frame > 255)
+					reader_problem(reader, "a <card>'s frame is a number, 0 to 255: \"%s\"", values[4]);
+			}
+			if (!reader->failed && (!card->label || !card->label[0]))
+				reader_problem(reader, "<card> has no title", NULL);
+			else if (!reader->failed && !card->action)
+				reader_problem(reader, "<card> has no do", NULL);
+			if (!reader->failed)
+				text_check(reader, card->label);
+			if (!reader->failed && values[2])
+				text_check(reader, values[2]);
+			if (!reader->failed)
+				action_check(reader, card->action);
+			if (!reader->failed && card->when)
+				when_check(reader, card->when);
+		}
 	}
 	else if (parent_element == _element_screen && !strcmp(name, "buttons"))
 	{
@@ -411,7 +468,7 @@ static void XMLCALL element_end(void *data, XML_Char const *name)
 			item->hints[item->hint_count++] = hint;
 		}
 	}
-	else if (element == _element_list)
+	else if (element == _element_list || element == _element_cards)
 	{
 		struct menu_screen *screen = reader->screen;
 		struct menu_screen_block const *list = &screen->blocks[reader->blocks[reader->depth]];
@@ -422,7 +479,8 @@ static void XMLCALL element_end(void *data, XML_Char const *name)
 			struct menu_screen_block const *item = &screen->blocks[index];
 			int other;
 
-			if (item->kind != MENU_SCREEN_ITEM || item->parent != reader->blocks[reader->depth])
+			if ((item->kind != MENU_SCREEN_ITEM && item->kind != MENU_SCREEN_CARD) ||
+				item->parent != reader->blocks[reader->depth])
 				continue;
 			items++;
 			if (list->focus && item->id && !strcmp(item->id, list->focus))
@@ -434,7 +492,7 @@ static void XMLCALL element_end(void *data, XML_Char const *name)
 			}
 		}
 		if (!reader->failed && !items)
-			reader_problem(reader, "a <list> has no <item>", NULL);
+			reader_problem(reader, "a <list> has no <item>, or <cards> no <card>", NULL);
 		if (!reader->failed && !focus_found)
 			reader_problem(reader, "the <list>'s focus names no item's id: \"%s\"", list->focus);
 	}

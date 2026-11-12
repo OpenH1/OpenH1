@@ -79,6 +79,13 @@ as a picture: the PC version's items' box (256 by 33) */
 #define ITEM_STEP_PLAIN 36
 #define PICTURE_HEIGHT 33
 #define BITMAP_GROUP_TAG 'bitm'
+/* cards (blocks.xml's screens/card: the campaign's mission card, 158 by
+240): their gap, and their row's room, below them too */
+#define CARD_WIDTH 158
+#define CARD_GAP 24
+#define CARDS_ROOM 264
+/* a card's title drawn larger than its font (large_ui's) */
+#define CARD_TITLE_SCALE 1.4f
 #define BUTTONS_ROOM 30
 #define BUTTONS_TOP 4
 /* an item's label drawn larger than its font (large_ui's): at 4:3, and
@@ -213,8 +220,10 @@ struct screen_open
 	struct widget_instance *list;
 	struct widget_instance *items[SCREEN_MAXIMUM_ITEMS];
 	struct widget_instance *hints[SCREEN_MAXIMUM_ITEMS];
-	/* (each item's picture's bitmap tag, NONE for its label) */
+	/* (each item's picture's bitmap tag, NONE for its label; a card's, its
+	picture part's) */
 	long pictures[SCREEN_MAXIMUM_ITEMS];
+	long card_pictures[SCREEN_MAXIMUM_ITEMS];
 	char ids[SCREEN_MAXIMUM_ITEMS][SCREEN_ID_LENGTH];
 	char actions[SCREEN_MAXIMUM_ITEMS][SCREEN_ACTION_LENGTH];
 	long item_count;
@@ -234,7 +243,7 @@ static struct
 	the screen its item opened) */
 	char focused[NUMBEROF(screen_places)][SCREEN_ID_LENGTH];
 	/* the blocks' tags, as the menus' tags were last built */
-	long title_art_tag, list_tag, item_tag, hint_tag, buttons_tag, button_tag;
+	long title_art_tag, list_tag, item_tag, hint_tag, buttons_tag, button_tag, cards_tag, card_tag, card_title_tag, card_art_tag;
 } screens = { FALSE };
 
 static void screens_names_give(void)
@@ -287,8 +296,14 @@ static boolean screen_blocks_found(void)
 	screens.hint_tag = screen_block_tag("pc\\screens\\hint");
 	screens.buttons_tag = screen_block_tag("pc\\screens\\buttons");
 	screens.button_tag = screen_block_tag("pc\\screens\\button");
+	screens.cards_tag = screen_block_tag("pc\\screens\\cards");
+	screens.card_tag = screen_block_tag("pc\\screens\\card");
+	screens.card_title_tag = screen_block_tag("pc\\screens\\card_title");
+	screens.card_art_tag = screen_block_tag("pc\\screens\\card_art");
 	if (screens.title_art_tag == NONE || screens.list_tag == NONE || screens.item_tag == NONE ||
-		screens.hint_tag == NONE || screens.buttons_tag == NONE || screens.button_tag == NONE)
+		screens.hint_tag == NONE || screens.buttons_tag == NONE || screens.button_tag == NONE ||
+		screens.cards_tag == NONE || screens.card_tag == NONE || screens.card_title_tag == NONE ||
+		screens.card_art_tag == NONE)
 	{
 		platform_log("menus: the screens' blocks (screens/blocks.xml) are not all there");
 		screens.blocks_found = FALSE;
@@ -404,8 +419,14 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		case MENU_SCREEN_TITLE_ART:
 			heights[index] = TITLE_ART_ROOM;
 			break;
+		case MENU_SCREEN_CARDS:
+			heights[index] = CARDS_ROOM;
+			break;
+		case MENU_SCREEN_CARD:
 		case MENU_SCREEN_ITEM:
 			shown[index] = screen_item_shown(block, &values, label, sizeof(label));
+			if (block->kind == MENU_SCREEN_CARD)
+				break;
 			if (shown[index])
 				heights[block->parent] = (short)(heights[block->parent] +
 					(block->hint_count ? ITEM_STEP : ITEM_STEP_PLAIN));
@@ -454,6 +475,76 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		case MENU_SCREEN_SPACE:
 			height = spaces ? (short)(extra / spaces) : 0;
 			break;
+		case MENU_SCREEN_CARDS:
+		{
+			long card_index, count = 0;
+			short x;
+
+			for (card_index = 0; card_index < screen->block_count; card_index++)
+				count += screen->blocks[card_index].kind == MENU_SCREEN_CARD &&
+					screen->blocks[card_index].parent == index && shown[card_index];
+			open->list = screen_widget_add(widget, screens.cards_tag, 0, 0);
+			if (!open->list)
+				break;
+			if (!focus_id)
+				focus_id = block->focus;
+			x = (short)((SCREEN_WIDTH - count * CARD_WIDTH - (count - 1) * CARD_GAP) / 2);
+			for (card_index = 0; card_index < screen->block_count; card_index++)
+			{
+				struct menu_screen_block const *card = &screen->blocks[card_index];
+				struct widget_instance *made, *part;
+
+				if (card->kind != MENU_SCREEN_CARD || card->parent != index || !shown[card_index] ||
+					open->item_count >= SCREEN_MAXIMUM_ITEMS)
+				{
+					continue;
+				}
+				made = ui_widget_port_add_child(open->list, screens.card_tag, NULL);
+				if (!made)
+					break;
+				open->card_pictures[open->item_count] = NONE;
+				/* (its place: its parts' are in it) */
+				made->horizontal_offset = (short)(open->list->horizontal_offset + x);
+				made->vertical_offset = (short)(open->list->vertical_offset + top - shrink);
+				/* (its parts: the picture, the title, the subtitle) */
+				part = made->child;
+				if (part)
+				{
+					long picture = card->picture ? screen_picture_tag(card->picture) : NONE;
+
+					part->animation.current_frame_index = (short)(card->frame >= 0 ? card->frame : 0);
+					if (picture != NONE)
+						open->card_pictures[open->item_count] = picture;
+					part = part->next;
+				}
+				menu_screen_text(card->label, screen_value, &values, label, sizeof(label));
+				if (part)
+				{
+					screen_text_set(part, label);
+					part = part->next;
+				}
+				if (part)
+				{
+					text[0] = 0;
+					if (card->hint_count)
+						menu_screen_text(card->hints[0], screen_value, &values, text, sizeof(text));
+					screen_text_set(part, text);
+				}
+				open->items[open->item_count] = made;
+				open->hints[open->item_count] = NULL;
+				open->pictures[open->item_count] = NONE;
+				snprintf(open->ids[open->item_count], SCREEN_ID_LENGTH, "%s", card->id ? card->id : "");
+				snprintf(open->actions[open->item_count], SCREEN_ACTION_LENGTH, "%s", card->action);
+				if (!focus || (focus_id && card->id && !strcmp(card->id, focus_id)))
+				{
+					focus = made;
+					focus_index = open->item_count;
+				}
+				open->item_count++;
+				x = (short)(x + CARD_WIDTH + CARD_GAP);
+			}
+			break;
+		}
 		case MENU_SCREEN_LIST:
 		{
 			long item_index;
@@ -771,6 +862,11 @@ boolean menu_screen_back(struct widget_instance *widget, struct event_record *ev
 the larger, from 4:3 to 16:9 */
 boolean menu_screen_text_scale(long definition_index, short wide_extra, real *scale)
 {
+	if (screens.blocks_found && definition_index == screens.card_title_tag)
+	{
+		*scale = CARD_TITLE_SCALE;
+		return TRUE;
+	}
 	if (!screens.blocks_found || definition_index != screens.item_tag)
 		return FALSE;
 	*scale = ITEM_SCALE_LEAST + (ITEM_SCALE_MOST - ITEM_SCALE_LEAST) * (real)MIN(wide_extra, WIDE_LAYOUT_EXTRA) /
@@ -795,6 +891,24 @@ boolean menu_screen_item_picture(struct widget_instance const *widget, long *bit
 {
 	long open_index, index;
 
+	/* (a card's picture part: its card's picture, where its file names one) */
+	if (screens.blocks_found && widget->definition_tag_index == screens.card_art_tag && widget->parent)
+	{
+		for (open_index = 0; open_index < SCREEN_MAXIMUM_OPEN; open_index++)
+		{
+			struct screen_open const *open = &screens.open[open_index];
+
+			for (index = 0; open->widget && index < open->item_count; index++)
+			{
+				if (open->items[index] == widget->parent && open->card_pictures[index] != NONE)
+				{
+					*bitmap_tag = open->card_pictures[index];
+					return TRUE;
+				}
+			}
+		}
+		return FALSE;
+	}
 	if (!screens.blocks_found || widget->definition_tag_index != screens.item_tag)
 		return FALSE;
 	for (open_index = 0; open_index < SCREEN_MAXIMUM_OPEN; open_index++)

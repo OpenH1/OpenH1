@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- The campaign: alone, or co-op (docs/menu_screens.md). Opened by the main
-menu's CAMPAIGN; B goes back to it. Laid out as the main menu. -->
+menu's CAMPAIGN; B goes back to it. Two cards under the title art, each a
+level's still (the campaign's pictures, by level). -->
 <screen name="campaign">
 	<title-art/>
-	<list focus="solo">
-		<item id="solo" label="SOLO" picture="main_menu/menu_solo" do="open solo"/>
-		<item id="coop" label="CO-OP" picture="main_menu/menu_coop" do="open coop"/>
-	</list>
+	<cards focus="solo">
+		<card id="solo" title="SOLO" subtitle="Play the story on your own" picture="main_menu/campaign/art_146x119" frame="0" do="open solo"/>
+		<card id="coop" title="CO-OP" subtitle="Join a game or host one for friends" picture="main_menu/campaign/art_146x119" frame="3" do="open coop"/>
+	</cards>
 </screen>

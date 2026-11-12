@@ -33,7 +33,10 @@ enum menu_screen_block_kind
 	MENU_SCREEN_ITEM,
 	MENU_SCREEN_SPACE,
 	MENU_SCREEN_BUTTONS,
-	MENU_SCREEN_BUTTON
+	MENU_SCREEN_BUTTON,
+	/* (cards side by side: each its picture, title and subtitle) */
+	MENU_SCREEN_CARDS,
+	MENU_SCREEN_CARD
 };
 
 /* a building block: its kind, the block it is in (-1: the screen), and what
@@ -51,6 +54,8 @@ struct menu_screen_block
 	/* (an item drawn as a picture of the menus' files: its bitmap's name,
 	"main_menu/menu_versus"; its label then the words it stands for) */
 	char const *picture;
+	/* (a card's picture's frame: the campaign's stills by level; -1, none) */
+	long frame;
 	/* (a list's item focused first, by its id) */
 	char const *focus;
 	char const *hints[MENU_SCREEN_MAXIMUM_HINTS];
