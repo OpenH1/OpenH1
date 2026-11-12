@@ -5585,6 +5585,13 @@ static void update_question_note(struct widget_instance *widget)
 	party_screen_noted(screen);
 }
 
+/* the main menu drawn: a hand-written one's, as the PC version's QUIT
+item's "port update question" notes it (menu_screen.c) */
+void pc_menu_main_menu_shown(struct widget_instance *screen)
+{
+	update_question_note(screen);
+}
+
 /* between frames (not while the widgets are drawn, which opening a screen
 would free): a question's screen opened over the main menu, B going back to
 it, if the main menu was drawn last; 1 when it was opened, or cannot be */
@@ -7656,6 +7663,9 @@ boolean pc_menu_text_color(struct widget_instance *widget, real_argb_color *colo
 	unsigned long rgba;
 
 	if (host_controls_text_color(widget, color))
+		return TRUE;
+	/* (a hand-written screen's: menu_screen.c) */
+	if (menu_screen_text_color(widget, color))
 		return TRUE;
 	if ((menu_tab_strip(widget->parent) && widget->animation.current_frame_index >= 2) ||
 		browser_sort_header_current(widget))
@@ -13225,6 +13235,62 @@ static void gametype_engine_name(struct widget_instance *text_box)
 /* (the campaign's screens: the Campaign menu, Choose Mission, Choose Difficulty) */
 #include "campaign_menu.inc"
 
+/* ---------- the hand-written screens' (menu_screen.c) */
+
+/* text in UTF-8 (the fonts' 16-bit characters) */
+static void text_utf8(wchar_t const *text, char *out, long size)
+{
+	long used = 0;
+
+	for (; text && *text && used < size - 1; text++)
+	{
+		unsigned long code = (unsigned short)*text;
+
+		if (code < 0x80)
+		{
+			out[used++] = (char)code;
+		}
+		else if (code < 0x800)
+		{
+			if (used + 2 >= size)
+				break;
+			out[used++] = (char)(0xC0 | (code >> 6));
+			out[used++] = (char)(0x80 | (code & 0x3F));
+		}
+		else
+		{
+			if (used + 3 >= size)
+				break;
+			out[used++] = (char)(0xE0 | (code >> 12));
+			out[used++] = (char)(0x80 | ((code >> 6) & 0x3F));
+			out[used++] = (char)(0x80 | (code & 0x3F));
+		}
+	}
+	out[used] = 0;
+}
+
+/* the saved game player 1's profile goes on with (the main menu's CAMPAIGN,
+"Continue · Halo · Heroic"): its mission's name and its difficulty's, in
+UTF-8; FALSE if there is none (no profile chosen, none saved, or co-op's
+two players, which go on with none) */
+boolean pc_menu_campaign_saved(char *level, char *difficulty, long size)
+{
+	char const *map_name;
+	short saved_level, saved_difficulty;
+	wchar_t text[ROW_TEXT_LENGTH];
+
+	if (player_spawn_count >= 2 || player_ui_get_active_player_profile_index(0) == NONE ||
+		!ui_widget_port_saved_game(&map_name, &saved_level, &saved_difficulty))
+	{
+		return FALSE;
+	}
+	campaign_level_title(saved_level, TRUE, text, ROW_TEXT_LENGTH);
+	text_utf8(text, level, size);
+	campaign_difficulty_name(saved_difficulty, text, ROW_TEXT_LENGTH);
+	text_utf8(text, difficulty, size);
+	return level[0] != 0;
+}
+
 /* ---------- Host Controls: the pause menu's HOST CONTROLS, the host's */
 
 #include "host_controls_menu.inc"
@@ -13273,6 +13339,11 @@ boolean pc_menu_event_function_invoke(
 		if (!strcmp(name, "main menu quit game"))
 		{
 			platform_request_quit();
+		}
+		/* (a hand-written screen's item: menu_screen.c) */
+		else if (!strcmp(name, "port screen do"))
+		{
+			return menu_screen_do(widget, event, widget_deleted);
 		}
 		else if (!strcmp(name, "profile set edit begin"))
 		{

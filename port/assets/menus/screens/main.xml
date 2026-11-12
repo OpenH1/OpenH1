@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The main menu: four doors (docs/menu_screens.md). The new menu engine's;
+display.menu_engine = "classic" keeps the PC version's. -->
+<screen name="main" back="quit">
+	<title-art/>
+	<list focus="campaign">
+		<item id="training" label="VR TUTORIAL" when="vr" hint="Learn to move, aim and fight in the headset" do="open training"/>
+		<item id="campaign" label="CAMPAIGN" do="open campaign">
+			<hint>Continue · {campaign.level} · {campaign.difficulty}</hint>
+			<hint>The story · solo, or with friends online</hint>
+		</item>
+		<item id="versus" label="VERSUS" hint="Slayer, CTF, 2v2, Infection · find or host a game" do="open versus"/>
+		<item id="settings" label="SETTINGS" hint="Video, sound, controls and your profile" do="open settings"/>
+		<item id="quit" label="QUIT" do="quit"/>
+	</list>
+	<space/>
+	<buttons>
+		<button key="accept" label="SELECT"/>
+		<button key="back" label="QUIT"/>
+	</buttons>
+</screen>

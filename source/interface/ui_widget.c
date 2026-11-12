@@ -9472,6 +9472,18 @@ void ui_widget_port_focus_restore(
 	return;
 }
 
+/* port: the screens closed for one opened alone (debug.menu_open, the menu
+tour's): as if the pointer had moved nothing yet, so that a pointer resting
+over the screen before (the main menu's) does not make the next one's focus
+the pointer's (port/linux/game/menu_tour.c) */
+void ui_widget_port_pointer_forget(
+	void)
+{
+	ui_mouse_focused_last = FALSE;
+	ui_mouse_hovered_last = FALSE;
+	ui_mouse_hover_pending = FALSE;
+}
+
 /* port: the screen of a tag's name opened alone (the others closed, a
 profile being edited, as debug.menu_open opens one); NULL closes them all.
 The menu studio's (port/linux/game/menu_studio.c); FALSE where there is no
@@ -9484,6 +9496,7 @@ boolean ui_widget_port_open_screen(
 	if (virtual_keyboard_active())
 		virtual_keyboard_close();
 	ui_widgets_close_all();
+	ui_widget_port_pointer_forget();
 	if (!tag_name)
 		return TRUE;
 	pc_menu_profile_edit_begin();
@@ -10546,7 +10559,10 @@ void ui_widget_port_give_focus(
 	struct widget_instance *widget,
 	struct widget_instance *focus)
 {
-	widget_instance_give_focus_by_tag(widget, focus->definition_tag_index, widget->local_player_index);
+	/* (that widget, not the first of its tag: a hand-written screen's items
+	share theirs, port/linux/game/menu_screen.c; where a tag is the widget's
+	alone, as widget_instance_give_focus_by_tag gives it) */
+	widget_instance_give_focus_directly(widget_instance_get_topmost_parent(widget), focus);
 }
 
 void ui_widget_port_lists_update(

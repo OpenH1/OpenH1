@@ -96,6 +96,13 @@ boolean pc_menu_map_frame_at(unsigned long address, long width, long height, lon
 short pc_menu_widget_radius(long definition_index);
 short pc_menu_legend_room(long definition_index);
 void *pc_menu_look_definition(long tag_index);
+/* (port/linux/game/menu_screen.c: a hand-written screen's building block's
+text scale, at the wide layout's extra width) */
+boolean menu_screen_text_scale(long definition_index, short wide_extra, real *scale);
+struct widget_instance;
+struct event_record;
+void ui_widget_port_handler_run(struct widget_instance *widget, struct event_record *event, void *handler,
+	boolean *deleted);
 /* ui_widget.c: how much wider a legends' row is drawn while the keyboard
 plays than the Xbox's pictures and words were */
 short ui_widget_port_key_legend_growth(long definition_index);
@@ -597,6 +604,8 @@ static char const *const port_function_names[] =
 	/* (the main menu's 2V2 browser: doubles_browser.inc) */
 	"port doubles init", "port doubles dispose", "port doubles host", "port doubles find", "port doubles friend",
 	"port doubles join", "port doubles invite", "port doubles x",
+	/* (a hand-written screen's item: its action, menu_screen.c) */
+	"port screen do",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -914,7 +923,11 @@ real pc_menu_text_scale(long definition_index)
 {
 	long index;
 	struct menu_look const *look;
+	real block_scale;
 
+	/* (a hand-written screen's building block's: menu_screen.c) */
+	if (definition_index != NONE && menu_screen_text_scale(definition_index, menu_tags.wide_extra, &block_scale))
+		return block_scale;
 	if (!menu_tags.looks || definition_index == NONE || !menu_engine_looks())
 		return 1.0f;
 	index = DATUM_INDEX_TO_ABSOLUTE_INDEX(definition_index) - menu_tags.original_count;
@@ -2748,6 +2761,39 @@ void const *menu_tags_behaviour_handlers(
 	return menu_tags.behaviour_handlers[index];
 }
 
+/* the screen of the name (the menus' files', "main_menu/campaign/campaign_screen")
+opened from the widget, as a handler's open opens it (its history, its sound):
+the hand-written screens' actions (menu_screen.c); FALSE if there is no such
+screen */
+boolean menu_tags_open(
+	struct widget_instance *widget,
+	struct event_record *event,
+	char const *screen,
+	boolean *deleted)
+{
+	struct ui_widget_event_handler_reference handler;
+	char name[256];
+	long tag_index;
+	size_t index;
+
+	*deleted = FALSE;
+	snprintf(name, sizeof(name), PC_MENU_TAG_PREFIX "%s", screen);
+	for (index = 0; name[index]; index++)
+	{
+		if (name[index] == '/')
+			name[index] = '\\';
+	}
+	tag_index = tag_loaded(UI_WIDGET_DEFINITION_TAG, name);
+	if (tag_index == NONE)
+		return FALSE;
+	memset(&handler, 0, sizeof(handler));
+	reference_clear(&handler.sound_effect, SOUND_TAG);
+	reference_set(&handler.widget_tag, UI_WIDGET_DEFINITION_TAG, tag_index);
+	SET_FLAG(handler.flags, _event_handler_open_widget_bit, TRUE);
+	ui_widget_port_handler_run(widget, event, &handler, deleted);
+	return TRUE;
+}
+
 short menu_tags_handler_event(
 	void const *handlers,
 	long index)
@@ -3757,8 +3803,10 @@ void menu_tags_loaded(
 			if (source_index >= 0 && source_index < menu_tags.source_count)
 				menu_tags.sources[source_index] = widget->source;
 			/* (its look in the model found by its name: the menus' files' are
-			kept until they are read again) */
-			if (source_index >= 0 && source_index < menu_tags.look_count)
+			kept until they are read again; but the hand-written screens'
+			building blocks, screens/..., which are drawn from their own
+			definitions: menu_screen.c) */
+			if (source_index >= 0 && source_index < menu_tags.look_count && strncmp(widget->name, "screens/", 8))
 				menu_tags.looks[source_index].name = widget->name;
 		}
 		if (widget->radius > 0)

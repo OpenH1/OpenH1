@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The hand-written screens' building blocks (docs/menu_screens.md): the
+widgets the menu engine makes a screen of (port/linux/game/menu_screen.c),
+written by hand, in the menus' own format (port/assets/menus/README.md).
+Each is drawn and takes its events as the game's widgets do, from its
+definition here, not the model. A block's words, place and action are the
+screen file's, set on each widget as the screen is made. -->
+<menus>
+	<!-- Halo's title art, as the main menu has it -->
+	<widget name="screens/title_art" width="640" height="256" bitmap="ui\shell\main_menu\halo_logo"/>
+	<!-- a list: the d-pad, the stick and the wheel step its items -->
+	<widget name="screens/list" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_items"/>
+	<!-- an item: its label, white while focused (menu_screen.c); A, Start and a click do its action -->
+	<widget name="screens/item" type="text" width="256" height="38" font="ui\large_ui" color="#FF4584C8" align="center">
+		<on event="a" run="port screen do"/>
+		<on event="start" run="port screen do"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<!-- the focused item's hint, under it -->
+	<widget name="screens/hint" type="text" width="440" height="16" font="ui\small_ui" color="#FF6F9CD0" align="center" text_flags="no_focus_test"/>
+	<!-- the button-hint bar: each button's key and what it does, at the foot of the screen -->
+	<widget name="screens/buttons" type="text" left="24" width="592" height="20" font="ui\small_ui" color="#FFCCCCCC" wide="-106 212" text_flags="no_focus_test"/>
+</menus>

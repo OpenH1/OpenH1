@@ -125,4 +125,23 @@ struct widget_instance *menu_engine_search_found(long index);
 struct halo_menu_model_screen const *menu_engine_search_found_screen(long index);
 char const *menu_engine_search_crumb(long group);
 
+/* ---------- the hand-written screens (menu_screen.c, docs/menu_screens.md) */
+
+/* a screen opened: its widgets made from the hand-written screen that takes
+its place, if one does (TRUE), in place of its own */
+boolean menu_screen_opened(struct widget_instance *screen);
+/* the screen let go of (closed) */
+void menu_screen_closed(struct widget_instance *screen);
+/* before the screen is drawn: made again if its file was read again, its
+focused item's hint shown */
+void menu_screen_frame(struct widget_instance *screen);
+/* B or Back on the screen: its back action run (TRUE), else FALSE for the
+engine to take the event */
+boolean menu_screen_back(struct widget_instance *screen, struct event_record *event, boolean *deleted);
+/* a building block's text colour, where it is not its definition's (a
+focused item's): TRUE if it is */
+boolean menu_screen_text_color(struct widget_instance const *widget, real_argb_color *color);
+/* "port screen do", an item's A: its action run */
+boolean menu_screen_do(struct widget_instance *item, struct event_record *event, boolean *deleted);
+
 #endif
