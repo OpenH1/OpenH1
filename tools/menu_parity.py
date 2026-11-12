@@ -92,7 +92,8 @@ def is_hand_written(screen: str, classic: dict, new: dict) -> bool:
 def _tall_screens() -> list:
     """the screens the new engine lays out tall, by the names the layouts give them"""
     import port_settings
-    return ["multiplayer_type_select/join_game/join_game_screen", "doubles/browser/doubles_browser_screen"] + \
+    return ["multiplayer_type_select/join_game/join_game_screen", "doubles/browser/doubles_browser_screen",
+            "campaign/mission_screen"] + \
         [f"{port_settings.PE}/{folder}/{page['screen']}" for folder, page in port_settings.PAGES.items()]
 
 

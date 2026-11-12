@@ -64,7 +64,7 @@
 	<look name="main_menu/campaign/campaign_prompts" type="column_list" box="0 0 640 28">
 		<at widget="main_menu/campaign/prompt_back" x="516" y="1"/>
 	</look>
-	<look name="main_menu/campaign/prompt_back" type="text" box="0 0 96 24" wide="106 0" picture="main_menu/parts/item_96x24">
+	<look name="main_menu/campaign/prompt_back" type="text" box="0 0 96 24" wide="-106 0" picture="main_menu/parts/item_96x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%b-button BACK"/>
 	</look>
 	<look name="main_menu/campaign/restart_screen" box="180 160 460 320" picture="bitmaps/alert_bkd">
@@ -88,12 +88,12 @@
 	<look name="main_menu/campaign/restart_button_cancel" type="text" box="0 0 128 24" picture="bitmaps/text_button_background">
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" text="CANCEL"/>
 	</look>
-	<look name="main_menu/campaign/mission_screen" picture="bitmaps/gradient">
+	<look name="main_menu/campaign/mission_screen" picture="main_menu/parts/background_tall">
 		<at widget="main_menu/campaign/mission_cards" x="0" y="0"/>
 		<at widget="main_menu/campaign/header_missions" x="0" y="0"/>
 		<at widget="main_menu/campaign/source_prompt_previous" x="0" y="0"/>
 		<at widget="main_menu/campaign/source_prompt_next" x="0" y="0"/>
-		<at widget="main_menu/campaign/source_tabs" x="410" y="44"/>
+		<at widget="main_menu/campaign/source_tabs" x="410" y="9"/>
 		<at widget="main_menu/campaign/mission_dot_0" x="0" y="0"/>
 		<at widget="main_menu/campaign/mission_dot_1" x="0" y="0"/>
 		<at widget="main_menu/campaign/mission_dot_2" x="0" y="0"/>
@@ -111,13 +111,15 @@
 		<at widget="main_menu/campaign/mission_dot_14" x="0" y="0"/>
 		<at widget="main_menu/campaign/mission_dot_15" x="0" y="0"/>
 		<at widget="main_menu/campaign/mission_empty" x="0" y="0"/>
-		<at widget="main_menu/campaign/mission_prompts" x="0" y="414"/>
+		<at widget="main_menu/campaign/mission_prompts" x="0" y="448"/>
 	</look>
-	<look name="main_menu/campaign/header_missions" box="35 11 398 70" wide="-106 0" picture="main_menu/campaign/header_missions"/>
-	<look name="main_menu/campaign/source_prompt_previous" type="text" box="380 44 410 66" wide="106 0">
+	<look name="main_menu/campaign/header_missions" type="text" box="24 0 616 40" wide="-106 0" past="-143 0">
+		<text font="heading" color="#FF2995FD" at="0 9" string_list="main_menu/campaign/tall_titles" scale="1.4 1.4"/>
+	</look>
+	<look name="main_menu/campaign/source_prompt_previous" type="text" box="380 9 410 31" wide="106 0">
 		<text font="ui\small_ui" color="#FF2896FF" at="0 2" flags="no_focus_test" text="%white-button"/>
 	</look>
-	<look name="main_menu/campaign/source_prompt_next" type="text" box="588 44 618 66" wide="106 0">
+	<look name="main_menu/campaign/source_prompt_next" type="text" box="588 9 618 31" wide="106 0">
 		<text font="ui\small_ui" color="#FF2896FF" at="0 2" flags="no_focus_test" text="%black-button"/>
 	</look>
 	<look name="main_menu/campaign/source_tabs" type="column_list" box="0 0 176 22">
@@ -357,9 +359,9 @@
 		<text font="ui\large_ui" color="#FF2896FF" align="center" flags="no_focus_test"/>
 	</look>
 	<look name="main_menu/campaign/mission_prompts" type="column_list" box="0 0 640 28">
-		<at widget="main_menu/campaign/prompt_select" x="388" y="1"/>
-		<at widget="main_menu/campaign/prompt_back" x="516" y="1"/>
-		<at widget="main_menu/campaign/prompt_restart" x="260" y="1"/>
+		<at widget="main_menu/campaign/prompt_select" x="492" y="1"/>
+		<at widget="main_menu/campaign/prompt_back" x="24" y="1"/>
+		<at widget="main_menu/campaign/prompt_restart" x="360" y="1"/>
 	</look>
 	<look name="main_menu/campaign/prompt_select" type="text" box="0 0 124 24" wide="106 0" picture="main_menu/parts/item_124x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3"/>

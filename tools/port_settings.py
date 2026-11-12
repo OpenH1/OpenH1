@@ -2823,7 +2823,8 @@ def tall_widgets() -> list:
     lines = []
     for folder, page in PAGES.items():
         lines += _settings_page(folder, page, SETTINGS_TALL)
-    return lines + _settings_shared(SETTINGS_TALL) + _settings_search(SETTINGS_TALL) + _browser_tall_widgets()
+    return lines + _settings_shared(SETTINGS_TALL) + _settings_search(SETTINGS_TALL) + _browser_tall_widgets() + \
+        _missions_tall_widgets()
 
 
 def settings_files() -> dict:
@@ -8133,6 +8134,42 @@ def _mission_card(size: tuple, slot: int) -> list:
     return lines
 
 
+# Choose Mission in the tall layout (docs/menu_engine.md, "The tall layout"): the new engine's alone, written by
+# _missions_tall_widgets with _MISSIONS_TALL set; its title's words, a <strings> of their own
+MISSIONS_TALL_TITLES = f"{CAMPAIGN}/tall_titles"
+_MISSIONS_TALL = False
+
+
+def _missions_tall_widgets() -> list:
+    """Choose Mission's widgets in the tall layout, each that it has otherwise, as <widget> elements' lines
+    (tall_widgets): the tall background (its band and footer line edge to edge), its title as words in the band,
+    the HALO and CUSTOM tabs in the band at the right, and the footer's prompts on the bottom line, BACK at the
+    left and SELECT (and RESTART beside it) at the right"""
+    global _MISSIONS_TALL
+
+    def parsed(lines):
+        root = ElementTree.fromstring("<menus>" + "\n".join(lines) + "</menus>")
+        return {element.get("name"): element for element in root.iter("widget")}
+
+    classic = parsed(_missions() + _prompts(CAMPAIGN, "campaign_prompts", [CAMPAIGN_PROMPT_BACK]))
+    _MISSIONS_TALL = True
+    try:
+        # (BACK at the left: its wide layout the left's; the Campaign menu's footer, whose BACK it is too, kept)
+        tall = parsed(_missions() + _prompts(CAMPAIGN, "campaign_prompts",
+                                             [(CAMPAIGN_PROMPT_BACK[0], CAMPAIGN_PROMPT_BACK[1], WIDE_MARGIN,
+                                               *CAMPAIGN_PROMPT_BACK[3:])]))
+    finally:
+        _MISSIONS_TALL = False
+    lines = []
+    for name, element in tall.items():
+        if name == f"{CAMPAIGN}/campaign_prompts":
+            continue
+        if name not in classic or ElementTree.tostring(element) != ElementTree.tostring(classic[name]):
+            element.tail = None
+            lines.append(ElementTree.tostring(element, encoding="unicode"))
+    return lines
+
+
 def _missions() -> list:
     """Choose Mission: HALO's or CUSTOM's missions (LB and RB, Q and E, or a
     click on its chip), three cards of them in a row between their arrows
@@ -8143,9 +8180,16 @@ def _missions() -> list:
     finished on), and the footer's key prompts; A on a card (or SELECT)
     opens the difficulties, or goes on with the saved game in it (RESUME)"""
     base = CAMPAIGN
+    tall = _MISSIONS_TALL
+    tabs_y = (TALL_BAND - SETTINGS_TAB_HEIGHT) // 2 if tall else 44
+    prompts_y = 480 - TALL_FOOTER + (TALL_FOOTER - PART_PROMPT_HEIGHT) // 2 - 1 if tall else 414
+    # (the tall layout's footer: BACK at the left margin, SELECT at the right, RESTART beside it)
+    select_x = 640 - WIDE_MARGIN - 124 if tall else 388
+    back_x = WIDE_MARGIN if tall else 516
+    restart_x = select_x - 8 - CAMPAIGN_PROMPT_RESTART[3] if tall else CAMPAIGN_PROMPT_RESTART[2]
     lines = _widget(f"{base}/mission_screen", [("width", 640), ("height", 480),
                                                ("flags", "pass_unhandled_to_focused_child"),
-                                               ("bitmap", "bitmaps/gradient")],
+                                               ("bitmap", TALL_BACKGROUND if tall else "bitmaps/gradient")],
                     ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
                      '<on event="white" run="port campaign tab previous"/>',
                      '<on event="black" run="port campaign tab next"/>',
@@ -8154,17 +8198,21 @@ def _missions() -> list:
                      f'<child widget="{base}/header_missions"/>',
                      f'<child widget="{base}/source_prompt_previous"/>',
                      f'<child widget="{base}/source_prompt_next"/>',
-                     f'<child widget="{base}/source_tabs" x="{640 - 28 - 2 * SETTINGS_TAB_STEP - 26}" y="44"/>',
+                     f'<child widget="{base}/source_tabs" x="{640 - 28 - 2 * SETTINGS_TAB_STEP - 26}" y="{tabs_y}"/>',
                      *(f'<child widget="{base}/mission_dot_{index}"/>' for index in range(MISSION_DOTS)),
                      f'<child widget="{base}/mission_empty"/>',
-                     f'<child widget="{base}/mission_prompts" y="414"/>'])
-    lines += _widget(f"{base}/header_missions", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
-                                                 ("height", 59), ("bitmap", f"{base}/header_missions"),
-                                                 ("wide", WIDE_LEFT)], [])
+                     f'<child widget="{base}/mission_prompts" y="{prompts_y}"/>'])
+    if tall:
+        lines += tall_title(f"{base}/header_missions", MISSIONS_TALL_TITLES, 0)
+    else:
+        lines += _widget(f"{base}/header_missions", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
+                                                     ("height", 59), ("bitmap", f"{base}/header_missions"),
+                                                     ("wide", WIDE_LEFT)], [])
+        lines += _strings(MISSIONS_TALL_TITLES, [TITLES[f"{base}/header_missions"]])
     tabs_x = 640 - 28 - 2 * SETTINGS_TAB_STEP - 26
     for name, icon, x in (("previous", "white", tabs_x - SETTINGS_TAB_PROMPT_WIDTH),
                           ("next", "black", tabs_x + SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4)):
-        lines += _campaign_text(f"{base}/source_prompt_{name}", x, 44, SETTINGS_TAB_PROMPT_WIDTH, SETTINGS_TAB_HEIGHT,
+        lines += _campaign_text(f"{base}/source_prompt_{name}", x, tabs_y, SETTINGS_TAB_PROMPT_WIDTH, SETTINGS_TAB_HEIGHT,
                                 "ui\\small_ui", SETTINGS_BLUE, words=f"%{icon}-button", wide_layout=WIDE_RIGHT,
                                 text_y=caps_text_y(SETTINGS_TAB_HEIGHT))
     lines += _widget(f"{base}/source_tabs", [("type", "column_list"), ("width", 2 * SETTINGS_TAB_STEP),
@@ -8256,11 +8304,11 @@ def _missions() -> list:
     lines += _widget(f"{base}/mission_prompts", [("type", "column_list"), ("width", 640),
                                                  ("height", PART_PROMPT_HEIGHT + 4),
                                                  ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
-                     [f'<child widget="{base}/prompt_select" x="388" y="1"/>',
-                      f'<child widget="{base}/prompt_back" x="516" y="1"/>',
-                      f'<child widget="{base}/{CAMPAIGN_PROMPT_RESTART[0]}" x="{CAMPAIGN_PROMPT_RESTART[2]}" y="1"/>'])
+                     [f'<child widget="{base}/prompt_select" x="{select_x}" y="1"/>',
+                      f'<child widget="{base}/prompt_back" x="{back_x}" y="1"/>',
+                      f'<child widget="{base}/{CAMPAIGN_PROMPT_RESTART[0]}" x="{restart_x}" y="1"/>'])
     lines += _widget(f"{base}/prompt_select", [("type", "text"), ("width", 124), ("height", PART_PROMPT_HEIGHT),
-                                               ("wide", prompt_wide(388, 124)),
+                                               ("wide", prompt_wide(select_x, 124)),
                                                ("bitmap", part_highlight(124, PART_PROMPT_HEIGHT)),
                                                ("font", "ui\\small_ui"), ("color", PART_TEXT), ("text_x", 8),
                                                ("text_y", caps_text_y(PART_PROMPT_HEIGHT))],
@@ -8271,7 +8319,7 @@ def _missions() -> list:
     # _prompts makes one)
     name, words, x, width, handler = _prompt_fitted(CAMPAIGN_PROMPT_RESTART, 8, False)
     lines += _widget(f"{base}/{name}", [("type", "text"), ("width", width), ("height", PART_PROMPT_HEIGHT),
-                                        ("wide", prompt_wide(x, width)),
+                                        ("wide", prompt_wide(restart_x if tall else x, width)),
                                         ("bitmap", part_highlight(width, PART_PROMPT_HEIGHT)), ("text", words),
                                         ("font", "ui\\small_ui"), ("color", PART_TEXT), ("text_x", 8),
                                         ("text_y", caps_text_y(PART_PROMPT_HEIGHT))],

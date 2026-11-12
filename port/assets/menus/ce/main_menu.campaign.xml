@@ -172,6 +172,9 @@
 	</widget>
 	<widget name="main_menu/campaign/header_missions" controller="1" left="35" top="11" width="363" height="59" bitmap="main_menu/campaign/header_missions" wide="-106 0" source="tools/port_settings.py campaign_files/_missions">
 	</widget>
+	<strings name="main_menu/campaign/tall_titles">
+		<string text="CHOOSE MISSION"/>
+	</strings>
 	<widget name="main_menu/campaign/source_prompt_previous" type="text" controller="1" left="380" top="44" width="30" height="22" font="ui\small_ui" color="#FF2896FF" wide="106 0" text_y="2" text="%white-button" text_flags="no_focus_test" source="tools/port_settings.py campaign_files/_missions/_campaign_text">
 	</widget>
 	<widget name="main_menu/campaign/source_prompt_next" type="text" controller="1" left="588" top="44" width="30" height="22" font="ui\small_ui" color="#FF2896FF" wide="106 0" text_y="2" text="%black-button" text_flags="no_focus_test" source="tools/port_settings.py campaign_files/_missions/_campaign_text">
