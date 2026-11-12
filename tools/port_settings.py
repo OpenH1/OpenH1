@@ -7743,6 +7743,12 @@ MISSION_ART_INSET = 6
 ART_CORNER_RADIUS = 5
 MISSION_BADGE = {MISSION_BIG: (36, 38), MISSION_SMALL: (28, 31)}
 MISSION_CARDS_TOP = 84
+# the tall layout's cards (the new engine's: _MISSIONS_TALL): three of one size, the chosen one outlined, as tall as
+# the room between the band and the footer lets them, the mission's objective in each and, at its foot, the hardest
+# difficulty it has been beaten on (campaign_menu.inc's MISSION_TALL_*)
+MISSION_TALL, MISSION_TALL_TOP = (158, 330), 68
+MISSION_TALL_BLUE = "#FF2890F8"
+MISSION_TALL_DIM = "#FF6F9CD0"
 MISSION_CARD_GAP = 10
 MISSION_ARROW = (24, 64)
 # the arrows: as far from the row's cards beside the chosen one at any width
@@ -7760,11 +7766,11 @@ MISSION_OBJECTIVE_LINES = 2
 SMALL_UI_LINE, SMALL_UI_DESCENT = 20, 3
 
 
-def mission_arrow_place(side: str) -> tuple:
+def mission_arrow_place(side: str, tall: bool = False) -> tuple:
     """an arrow's place at 4:3 and its move on a wide screen (x, dx):
     MISSION_ARROW_GAP from the row of three cards, as mission_cards_place
-    lays it out"""
-    row = MISSION_BIG[0] + 2 * MISSION_SMALL[0] + 2 * MISSION_CARD_GAP
+    lays it out (tall: the tall layout's three cards of one size)"""
+    row = (3 * MISSION_TALL[0] if tall else MISSION_BIG[0] + 2 * MISSION_SMALL[0]) + 2 * MISSION_CARD_GAP
     left = 320 - row // 2
     if side == "left":
         return left - MISSION_ARROW_GAP - MISSION_ARROW[0], -(WIDE_EXTRA // 8)
@@ -7827,10 +7833,12 @@ def campaign_pictures() -> list:
     pictures.append((f"{CAMPAIGN}/continue_{width}x{height}", [
         framed(width, height, "#0a1b2e", 0.9, "#1e3f5e", 8),
         framed(width, height, "#0f2a44", 0.95, "#4fb3ff", 8)]))
-    for size in (MISSION_BIG, MISSION_SMALL):
+    for size in (MISSION_BIG, MISSION_SMALL, MISSION_TALL):
         pictures.append((mission_card(size), [framed(*size, "#0a1b2e", 0.85, "#1e3f5e"),
                                               framed(*size, "#0f2a44", 0.95, "#4fb3ff", 10, 2.5),
                                               framed(*size, "#08131f", 0.7, "#16324d")]))
+        if size == MISSION_TALL:
+            continue
         art = campaign_art_size(size[0] - 2 * MISSION_ART_INSET)
         pictures.append((f"{CAMPAIGN}/art_back_{art[0]}x{art[1]}",
                          [framed(*art, "#12304a", 1.0, "none", ART_CORNER_RADIUS, 0)]))
@@ -8058,24 +8066,25 @@ def _restart_question() -> list:
     return lines
 
 
-def _mission_card(size: tuple, slot: int) -> list:
+def _mission_card(size: tuple, slot: int, kind: str = None) -> list:
     """a mission card in a slot of the row, at its size: its picture (a
     level's, a Custom Edition map's, or a title card drawn for a map with
     none), MISSION 0N, its name, the four difficulties' badges (lit: finished
     on it), RESUME on the picture of the saved game's mission"""
     width, height = size
-    kind = "big" if size == MISSION_BIG else "small"
+    tall = size == MISSION_TALL
+    kind = kind or ("big" if size == MISSION_BIG else "small")
     base = f"{CAMPAIGN}/card_{kind}_{slot}"
     art_w, art_h = campaign_art_size(width - 2 * MISSION_ART_INSET)
     inset = MISSION_ART_INSET
-    badge, step = MISSION_BADGE[size]
+    badge, step = MISSION_BADGE[MISSION_BIG if tall else size]
     text_top = inset + art_h + 6
-    # (the missions' names in the menus' heading font: OpenCE, the titles' face)
-    font = CAMPAIGN_TITLE_FONT if size == MISSION_BIG else "ui\\small_ui"
+    # (the missions' names in the menus' heading font: OpenCE, the titles' face; the tall layout's every card's)
+    font = CAMPAIGN_TITLE_FONT if size == MISSION_BIG or tall else "ui\\small_ui"
     children = [f'<child widget="{CAMPAIGN}/{name}_{kind}"/>' for name in
                 ("card_art_back", "card_art", "card_custom_art", "card_card_tag",
                  "card_card_title", "card_resume",
-                 "card_number", "card_title")]
+                 "card_number", "card_title", "card_objective")]
     # (the badges in a row under the name, across the card)
     badges_x = (width - 3 * step - badge) // 2
     children += [f'<child widget="{CAMPAIGN}/card_badge_shape_{kind}" x="{badges_x + step * index}"/>'
@@ -8118,17 +8127,28 @@ def _mission_card(size: tuple, slot: int) -> list:
                                                         ("color", "#FFFFFFFF"), ("align", "center"),
                                                         ("text_flags", "no_focus_test")], [])
     lines += _campaign_text(f"{CAMPAIGN}/card_number_{kind}", 10, text_top, width - 20, 16, "ui\\small_ui",
-                            CAMPAIGN_DIM)
-    lines += _campaign_text(f"{CAMPAIGN}/card_title_{kind}", 10, text_top + 16, width - 20, 46, font, "#FFFFFFFF")
+                            MISSION_TALL_DIM if tall else CAMPAIGN_DIM)
+    lines += _campaign_text(f"{CAMPAIGN}/card_title_{kind}", 10, text_top + 16, width - 20, 46, font,
+                            MISSION_TALL_BLUE if tall else "#FFFFFFFF")
+    # (the tall layout's: the objective under the name, as the Xbox's level cards have it; elsewhere none)
+    objective_top = text_top + 64
+    lines += _campaign_text(f"{CAMPAIGN}/card_objective_{kind}", 10, objective_top, width - 20,
+                            max(height - objective_top - 30, 16), "ui\\small_ui", MISSION_TALL_BLUE)
     for name, bitmap in (("card_badge_shape", f"{CAMPAIGN}/badge_shape_{badge}"),
                          ("card_badge", f"{CAMPAIGN}/badges_{badge}")):
         lines += _widget(f"{CAMPAIGN}/{name}_{kind}", [("controller", 1), ("top", text_top + 62),
                                                         ("width", badge), ("height", badge), ("bitmap", bitmap)], [])
     # (a mission not beaten on any difficulty says so, in the badges' place,
-    # across the card, in the middle as the badges are)
-    lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", MISSION_UNBEATEN_INSET,
-                            text_top + 62 + (badge - 16) // 2, width - 2 * MISSION_UNBEATEN_INSET, 18,
-                            "ui\\small_ui", CAMPAIGN_NEW, align="center")
+    # across the card, in the middle as the badges are; in the tall layout,
+    # the hardest difficulty it is beaten on, at the card's foot, and nothing
+    # where it is beaten on none)
+    if tall:
+        lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", 10, height - 26, width - 20, 18,
+                                "ui\\small_ui", MISSION_TALL_DIM)
+    else:
+        lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", MISSION_UNBEATEN_INSET,
+                                text_top + 62 + (badge - 16) // 2, width - 2 * MISSION_UNBEATEN_INSET, 18,
+                                "ui\\small_ui", CAMPAIGN_NEW, align="center")
     lines += _level_pictures(f"{CAMPAIGN}/art_{art_w}x{art_h}", art_w, art_h)
     lines += _badge_frames(f"{CAMPAIGN}/badges_{badge}", CAMPAIGN_BADGES_SMALL, badge)
     return lines
@@ -8231,8 +8251,9 @@ def _missions() -> list:
     # (the row: the arrows, then a card of each size in each of its three
     # slots, menu_functions.c showing one of each slot's and placing them)
     arrow_w, arrow_h = MISSION_ARROW
-    arrow_y = MISSION_CARDS_TOP + MISSION_BIG[1] // 2 - arrow_h // 2
-    cards = [f'<child widget="{base}/card_{kind}_{slot}" y="{MISSION_CARDS_TOP}"/>'
+    cards_top = MISSION_TALL_TOP if tall else MISSION_CARDS_TOP
+    arrow_y = cards_top + (MISSION_TALL if tall else MISSION_BIG)[1] // 2 - arrow_h // 2
+    cards = [f'<child widget="{base}/card_{kind}_{slot}" y="{cards_top}"/>'
              for slot in range(3) for kind in ("big", "small")]
     # (the mouse's wheel steps the row as left and right do, a card a notch:
     # wheel_sideways, ui_widget.c's ui_mouse_wheel_widget)
@@ -8244,17 +8265,18 @@ def _missions() -> list:
                       *(f'<on event="{event}" run="port campaign previous"/>' for event in ("left", "stick_left")),
                       *(f'<on event="{event}" run="port campaign next"/>' for event in ("right", "stick_right")),
                       *cards,
-                      f'<child widget="{base}/arrow_previous" x="{mission_arrow_place("left")[0]}" y="{arrow_y}"/>',
-                      f'<child widget="{base}/arrow_next" x="{mission_arrow_place("right")[0]}" y="{arrow_y}"/>'])
+                      f'<child widget="{base}/arrow_previous" x="{mission_arrow_place("left", tall)[0]}" '
+                      f'y="{arrow_y}"/>',
+                      f'<child widget="{base}/arrow_next" x="{mission_arrow_place("right", tall)[0]}" y="{arrow_y}"/>'])
     for name, side in (("arrow_previous", "left"), ("arrow_next", "right")):
         lines += _widget(f"{base}/{name}", [("width", arrow_w), ("height", arrow_h),
                                             ("bitmap", f"{base}/arrow_{side}"),
-                                            ("wide", wide(mission_arrow_place(side)[1]))],
+                                            ("wide", wide(mission_arrow_place(side, tall)[1]))],
                          [f'<on event="{event}" run="port campaign {name[6:]}"/>' for event in ("a", "start")] +
                          ['<on event="left_mouse" run="mouse emit accept event"/>'])
     for slot in range(3):
-        for size in (MISSION_BIG, MISSION_SMALL):
-            lines += _mission_card(size, slot)
+        for size, kind in ((MISSION_BIG, "big"), (MISSION_SMALL, "small")):
+            lines += _mission_card(MISSION_TALL if tall else size, slot, kind)
     dots_x = 320 - (MISSION_DOTS * MISSION_DOT_STEP) // 2
     for index in range(MISSION_DOTS):
         lines += _widget(f"{base}/mission_dot_{index}", [("controller", 1), ("left", dots_x + MISSION_DOT_STEP * index),

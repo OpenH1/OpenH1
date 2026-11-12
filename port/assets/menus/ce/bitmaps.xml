@@ -972,6 +972,11 @@
 	<bitmap name="main_menu/campaign/art_back_120x98">
 		<frame png="ce/port/main_menu/campaign/art_back_120x98__0.png" width="120" height="98"/>
 	</bitmap>
+	<bitmap name="main_menu/campaign/card_158x330">
+		<frame png="ce/port/main_menu/campaign/card_158x330__0.png" width="158" height="330"/>
+		<frame png="ce/port/main_menu/campaign/card_158x330__1.png" width="158" height="330"/>
+		<frame png="ce/port/main_menu/campaign/card_158x330__2.png" width="158" height="330"/>
+	</bitmap>
 	<bitmap name="main_menu/campaign/art_back_176x143">
 		<frame png="ce/port/main_menu/campaign/art_back_176x143__0.png" width="176" height="143"/>
 	</bitmap>

@@ -61,6 +61,13 @@ MISSION_CARDS_TOP, MISSION_DOTS, MISSION_DOT_STEP) */
 #define MISSION_SMALL_HEIGHT 211
 #define MISSION_CARD_GAP 10
 #define MISSION_CARDS_TOP 84
+/* the tall layout's cards (the new engine's: port_settings.py's MISSION_TALL,
+MISSION_TALL_TOP): three of one size, the chosen one outlined, each with its
+mission's objective and, at its foot, the hardest difficulty it is beaten on;
+no dots and no panel under them */
+#define MISSION_TALL_WIDTH 158
+#define MISSION_TALL_TOP 68
+#define MISSION_TALL_OBJECTIVE_LINES 5
 #define MISSION_DOTS 16
 #define MISSION_DOT_STEP 20
 /* the chosen mission's objective, under its name in the panel: wrapped to
@@ -644,6 +651,40 @@ static struct widget_instance *mission_card(struct widget_instance *list, short 
 	return named(list, name, 0);
 }
 
+/* the tall layout's card's foot: "BEATEN ON LEGENDARY", the hardest
+difficulty the mission is beaten on, or nothing; no badges */
+static void mission_card_beaten_show(struct widget_instance *card, char const *kind, byte beaten)
+{
+	wchar_t text[MISSION_TEXT_LENGTH], name_text[ROW_TEXT_LENGTH];
+	char name[48];
+	short difficulty, hardest = NONE, index;
+
+	snprintf(name, sizeof(name), "card_badge_%s", kind);
+	for (index = 0; index < NUMBER_OF_DIFFICULTIES; index++)
+		visible_set(named(card, name, index), FALSE);
+	snprintf(name, sizeof(name), "card_badge_shape_%s", kind);
+	for (index = 0; index < NUMBER_OF_DIFFICULTIES; index++)
+		visible_set(named(card, name, index), FALSE);
+	for (difficulty = 0; difficulty < NUMBER_OF_DIFFICULTIES; difficulty++)
+	{
+		if (beaten & (1 << difficulty))
+			hardest = difficulty;
+	}
+	snprintf(name, sizeof(name), "card_unbeaten_%s", kind);
+	visible_set(named(card, name, 0), hardest != NONE);
+	if (hardest == NONE)
+		return;
+	campaign_difficulty_name(hardest, name_text, ROW_TEXT_LENGTH);
+	for (index = 0; name_text[index]; index++)
+	{
+		if (name_text[index] >= L'a' && name_text[index] <= L'z')
+			name_text[index] = (wchar_t)(name_text[index] - L'a' + L'A');
+	}
+	usnprintf(text, MISSION_TEXT_LENGTH - 1, L"BEATEN ON %s", name_text);
+	text[MISSION_TEXT_LENGTH - 1] = 0;
+	menu_text_box_fit(named(card, name, 0), text, 0);
+}
+
 /* a card's parts for a mission: its picture (a title card for a Custom
 Edition map without one), number, name, badges and RESUME */
 static void mission_card_show(struct widget_instance *card, short mission, boolean chosen)
@@ -693,6 +734,16 @@ static void mission_card_show(struct widget_instance *card, short mission, boole
 		}
 		snprintf(name, sizeof(name), "card_unbeaten_%s", kind);
 		visible_set(named(card, name, 0), FALSE);
+		/* (the tall layout's: the map's description under its name, no badges) */
+		snprintf(name, sizeof(name), "card_objective_%s", kind);
+		visible_set(named(card, name, 0), menu_engine_looks());
+		if (menu_engine_looks())
+		{
+			wchar_t const *words = custom_edition_maps_description(display_index);
+
+			menu_text_box_wrap(named(card, name, 0), words ? words : L"", MISSION_TALL_OBJECTIVE_LINES);
+			mission_card_beaten_show(card, kind, 0);
+		}
 		card->animation.current_frame_index = chosen ? MISSION_CARD_CHOSEN : MISSION_CARD_RESTING;
 		return;
 	}
@@ -718,6 +769,15 @@ static void mission_card_show(struct widget_instance *card, short mission, boole
 	snprintf(name, sizeof(name), "card_title_%s", kind);
 	campaign_level_title(mission, reached, text, MISSION_TEXT_LENGTH);
 	menu_text_box_wrap(named(card, name, 0), text, 2);
+	/* (the tall layout's: its objective under its name) */
+	snprintf(name, sizeof(name), "card_objective_%s", kind);
+	visible_set(named(card, name, 0), menu_engine_looks());
+	if (menu_engine_looks())
+	{
+		campaign_string("pc\\main_menu\\solo_level_select\\map_data", reached ? mission : LEVEL_UNAVAILABLE, text,
+			MISSION_TEXT_LENGTH);
+		menu_text_box_wrap(named(card, name, 0), text, MISSION_TALL_OBJECTIVE_LINES);
+	}
 	snprintf(name, sizeof(name), "card_resume_%s", kind);
 	visible_set(named(card, name, 0), mission == campaign.saved_level);
 	{
@@ -734,6 +794,10 @@ static void mission_card_show(struct widget_instance *card, short mission, boole
 		beside it: their box across the card, which they fit in small_ui) */
 		if (beaten == 0)
 			menu_text_box_fit(named(card, name, 0), L"NOT YET BEATEN", 0);
+		/* (the tall layout: no badges; nothing where it is beaten on none,
+		else the hardest it is beaten on at the card's foot) */
+		if (menu_engine_looks())
+			mission_card_beaten_show(card, kind, beaten);
 	}
 	card->animation.current_frame_index = chosen ? MISSION_CARD_CHOSEN : MISSION_CARD_RESTING;
 }
@@ -797,6 +861,8 @@ static void campaign_missions_update(struct widget_instance *list)
 	short count = campaign_mission_count();
 	short slot_x[MISSION_SLOTS];
 	short focused_slot = mission_card_slot(list->focused_child);
+	/* (the new engine's tall layout: port_settings.py's _missions_tall_widgets) */
+	boolean tall = menu_engine_looks();
 	/* (a card the pointer passes over: lit, and kept the focus, but not
 	chosen) */
 	boolean hovered = focused_slot != NONE && ui_widget_port_hover_focused();
@@ -816,11 +882,21 @@ static void campaign_missions_update(struct widget_instance *list)
 	shown = (short)MIN(count, MISSION_SLOTS);
 	mission_cards_place(shown, (short)(campaign_cards.chosen - campaign_cards.first), ui_widget_port_wide_extra(),
 		slot_x);
+	/* (the tall layout's cards, all of one size) */
+	if (tall)
+	{
+		short gap = (short)(MISSION_CARD_GAP + ui_widget_port_wide_extra() / 8);
+		short left = (short)(320 - (shown * MISSION_TALL_WIDTH + (shown - 1) * gap) / 2);
+
+		for (slot = 0; slot < shown; slot++)
+			slot_x[slot] = (short)(left + slot * (MISSION_TALL_WIDTH + gap));
+	}
 	/* (a row moved slides there, from where it is drawn now: a press
 	during a slide carries it on) */
 	{
 		unsigned long now = system_milliseconds();
-		real pitch = (real)(MISSION_SMALL_WIDTH + MISSION_CARD_GAP + ui_widget_port_wide_extra() / 8);
+		real pitch = (real)((tall ? MISSION_TALL_WIDTH : MISSION_SMALL_WIDTH) + MISSION_CARD_GAP +
+			ui_widget_port_wide_extra() / 8);
 		real shift = mission_cards_slide(campaign_cards.slide_from, now - campaign_cards.slide_start);
 
 		if (campaign_cards.shown_first != NONE && campaign_cards.first != campaign_cards.shown_first)
@@ -847,12 +923,13 @@ static void campaign_missions_update(struct widget_instance *list)
 		if (big)
 		{
 			big->horizontal_offset = slot_x[slot];
-			big->vertical_offset = MISSION_CARDS_TOP;
+			big->vertical_offset = tall ? MISSION_TALL_TOP : MISSION_CARDS_TOP;
 		}
 		if (small)
 		{
 			small->horizontal_offset = slot_x[slot];
-			small->vertical_offset = (short)(MISSION_CARDS_TOP + (MISSION_BIG_HEIGHT - MISSION_SMALL_HEIGHT) / 2);
+			small->vertical_offset = tall ? MISSION_TALL_TOP :
+				(short)(MISSION_CARDS_TOP + (MISSION_BIG_HEIGHT - MISSION_SMALL_HEIGHT) / 2);
 		}
 		mission_card_show(chosen ? big : small, mission, chosen);
 		/* (fainter beside the chosen one, but the one the pointer lights) */
@@ -871,7 +948,7 @@ static void campaign_missions_update(struct widget_instance *list)
 
 		snprintf(name, sizeof(name), "mission_dot_%d", index);
 		dot = named(screen, name, 0);
-		visible_set(dot, count > 1 && count <= MISSION_DOTS && index < count);
+		visible_set(dot, !tall && count > 1 && count <= MISSION_DOTS && index < count);
 		if (dot)
 		{
 			dot->animation.current_frame_index = index == campaign_cards.chosen ? 1 : 0;
@@ -879,6 +956,9 @@ static void campaign_missions_update(struct widget_instance *list)
 		}
 	}
 	mission_panel_show(list->parameters.list.extended_description, campaign_cards.chosen, count);
+	/* (the tall layout's cards have their details: no panel) */
+	if (tall)
+		visible_set(list->parameters.list.extended_description, FALSE);
 	if (count <= 0)
 	{
 		campaign_widen("Put Custom Edition campaign maps in your custom_maps folder to play them here.", text,

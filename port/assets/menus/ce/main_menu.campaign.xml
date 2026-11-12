@@ -231,6 +231,7 @@
 		<child widget="main_menu/campaign/card_resume_big"/>
 		<child widget="main_menu/campaign/card_number_big"/>
 		<child widget="main_menu/campaign/card_title_big"/>
+		<child widget="main_menu/campaign/card_objective_big"/>
 		<child widget="main_menu/campaign/card_badge_shape_big" x="4"/>
 		<child widget="main_menu/campaign/card_badge_shape_big" x="42"/>
 		<child widget="main_menu/campaign/card_badge_shape_big" x="80"/>
@@ -256,6 +257,8 @@
 	<widget name="main_menu/campaign/card_number_big" type="text" controller="1" left="10" top="131" width="138" height="16" font="ui\small_ui" color="#FF8FB3D3" text_flags="no_focus_test" source="tools/port_settings.py _mission_card/_campaign_text/_part_text">
 	</widget>
 	<widget name="main_menu/campaign/card_title_big" type="text" controller="1" left="10" top="147" width="138" height="46" font="ui\large_ui" color="#FFFFFFFF" text_flags="no_focus_test" source="tools/port_settings.py _mission_card/_campaign_text/_part_text">
+	</widget>
+	<widget name="main_menu/campaign/card_objective_big" type="text" controller="1" left="10" top="195" width="138" height="16" font="ui\small_ui" color="#FF2890F8" text_flags="no_focus_test" source="tools/port_settings.py _mission_card/_campaign_text/_part_text">
 	</widget>
 	<widget name="main_menu/campaign/card_badge_shape_big" controller="1" top="193" width="36" height="36" bitmap="main_menu/campaign/badge_shape_36" source="tools/port_settings.py campaign_files/_missions/_mission_card">
 	</widget>
@@ -294,6 +297,7 @@
 		<child widget="main_menu/campaign/card_resume_small"/>
 		<child widget="main_menu/campaign/card_number_small"/>
 		<child widget="main_menu/campaign/card_title_small"/>
+		<child widget="main_menu/campaign/card_objective_small"/>
 		<child widget="main_menu/campaign/card_badge_shape_small" x="5"/>
 		<child widget="main_menu/campaign/card_badge_shape_small" x="36"/>
 		<child widget="main_menu/campaign/card_badge_shape_small" x="67"/>
@@ -319,6 +323,8 @@
 	<widget name="main_menu/campaign/card_number_small" type="text" controller="1" left="10" top="110" width="112" height="16" font="ui\small_ui" color="#FF8FB3D3" text_flags="no_focus_test" source="tools/port_settings.py _mission_card/_campaign_text/_part_text">
 	</widget>
 	<widget name="main_menu/campaign/card_title_small" type="text" controller="1" left="10" top="126" width="112" height="46" font="ui\small_ui" color="#FFFFFFFF" text_flags="no_focus_test" source="tools/port_settings.py _mission_card/_campaign_text/_part_text">
+	</widget>
+	<widget name="main_menu/campaign/card_objective_small" type="text" controller="1" left="10" top="174" width="112" height="16" font="ui\small_ui" color="#FF2890F8" text_flags="no_focus_test" source="tools/port_settings.py _mission_card/_campaign_text/_part_text">
 	</widget>
 	<widget name="main_menu/campaign/card_badge_shape_small" controller="1" top="172" width="28" height="28" bitmap="main_menu/campaign/badge_shape_28" source="tools/port_settings.py campaign_files/_missions/_mission_card">
 	</widget>
@@ -357,6 +363,7 @@
 		<child widget="main_menu/campaign/card_resume_big"/>
 		<child widget="main_menu/campaign/card_number_big"/>
 		<child widget="main_menu/campaign/card_title_big"/>
+		<child widget="main_menu/campaign/card_objective_big"/>
 		<child widget="main_menu/campaign/card_badge_shape_big" x="4"/>
 		<child widget="main_menu/campaign/card_badge_shape_big" x="42"/>
 		<child widget="main_menu/campaign/card_badge_shape_big" x="80"/>
@@ -379,6 +386,7 @@
 		<child widget="main_menu/campaign/card_resume_small"/>
 		<child widget="main_menu/campaign/card_number_small"/>
 		<child widget="main_menu/campaign/card_title_small"/>
+		<child widget="main_menu/campaign/card_objective_small"/>
 		<child widget="main_menu/campaign/card_badge_shape_small" x="5"/>
 		<child widget="main_menu/campaign/card_badge_shape_small" x="36"/>
 		<child widget="main_menu/campaign/card_badge_shape_small" x="67"/>
@@ -401,6 +409,7 @@
 		<child widget="main_menu/campaign/card_resume_big"/>
 		<child widget="main_menu/campaign/card_number_big"/>
 		<child widget="main_menu/campaign/card_title_big"/>
+		<child widget="main_menu/campaign/card_objective_big"/>
 		<child widget="main_menu/campaign/card_badge_shape_big" x="4"/>
 		<child widget="main_menu/campaign/card_badge_shape_big" x="42"/>
 		<child widget="main_menu/campaign/card_badge_shape_big" x="80"/>
@@ -423,6 +432,7 @@
 		<child widget="main_menu/campaign/card_resume_small"/>
 		<child widget="main_menu/campaign/card_number_small"/>
 		<child widget="main_menu/campaign/card_title_small"/>
+		<child widget="main_menu/campaign/card_objective_small"/>
 		<child widget="main_menu/campaign/card_badge_shape_small" x="5"/>
 		<child widget="main_menu/campaign/card_badge_shape_small" x="36"/>
 		<child widget="main_menu/campaign/card_badge_shape_small" x="67"/>
