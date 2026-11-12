@@ -111,6 +111,9 @@ struct screen_action
 	char const *browser_tab;
 	char const *before;
 	char const *run;
+	/* (run once run has succeeded, before the screen opens: the campaign's
+	state read, as its menu's opening read it) */
+	char const *then;
 	char const *open;
 	char const *otherwise;
 };
@@ -118,27 +121,30 @@ struct screen_action
 static struct screen_action const screen_actions[] =
 {
 	/* (the Campaign screen, screens/campaign.xml) */
-	{ "open campaign", NULL, NULL, NULL, "screens/campaign", NULL },
-	/* (the PC version's CAMPAIGN: a profile made first if there is none) */
-	{ "open solo", NULL, NULL, "new game if no plyr profiles", "main_menu/campaign/campaign_screen",
+	{ "open campaign", NULL, NULL, NULL, NULL, "screens/campaign", NULL },
+	/* (Choose Mission, the campaign's missions as cards, as the campaign
+	menu's CHOOSE MISSION opens it once the menu has read the profile's
+	campaign: a profile made first if there is none, as the PC version's
+	CAMPAIGN) */
+	{ "open solo", NULL, NULL, "new game if no plyr profiles", "port campaign init", "main_menu/campaign/mission_screen",
 		"main_menu/new_campaign_creating_profile" },
 	/* (the server browser, as Multiplayer's SERVER BROWSER opens it: its mode
 	the browser's; every game, or the co-op games, this visit) */
-	{ "open multiplayer", "all", "mp type set mode", "new game if no plyr profiles",
+	{ "open multiplayer", "all", "mp type set mode", "new game if no plyr profiles", NULL,
 		"main_menu/multiplayer_type_select/join_game/join_game_screen",
 		"main_menu/profile_manager/multiplayer_creating_profile" },
-	{ "open coop", "coop", "mp type set mode", "new game if no plyr profiles",
+	{ "open coop", "coop", "mp type set mode", "new game if no plyr profiles", NULL,
 		"main_menu/multiplayer_type_select/join_game/join_game_screen",
 		"main_menu/profile_manager/multiplayer_creating_profile" },
 	/* (the browser's HOST & MORE: the PC version's Multiplayer screen, the
 	hub; its HOST CO-OP: the hub's co-op page, online or split screen) */
-	{ "open host", NULL, NULL, NULL, "main_menu/multiplayer_type_select/multiplayer_type_select_screen", NULL },
-	{ "open host coop", NULL, NULL, NULL, "main_menu/multiplayer_type_select/hub/coop_screen", NULL },
-	{ "open settings", NULL, NULL, "port settings begin",
+	{ "open host", NULL, NULL, NULL, NULL, "main_menu/multiplayer_type_select/multiplayer_type_select_screen", NULL },
+	{ "open host coop", NULL, NULL, NULL, NULL, "main_menu/multiplayer_type_select/hub/coop_screen", NULL },
+	{ "open settings", NULL, NULL, "port settings begin", NULL,
 		"main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen", NULL },
-	{ "open training", NULL, NULL, NULL, "main_menu/training/training_screen", NULL },
+	{ "open training", NULL, NULL, NULL, NULL, "main_menu/training/training_screen", NULL },
 	/* (the quit question, as QUIT and B on the main menu open it) */
-	{ "quit", NULL, NULL, NULL, "main_menu/quit_select/quit_screen", NULL },
+	{ "quit", NULL, NULL, NULL, NULL, "main_menu/quit_select/quit_screen", NULL },
 };
 
 static char const *const screen_action_names[] =
@@ -806,6 +812,14 @@ static boolean screen_action_run(struct widget_instance *widget, struct event_re
 		ui_widget_function_failure_expected = action->otherwise != NULL;
 		succeeded = index != NONE && ui_widget_event_handler_function_invoke(widget, event, (word)index, deleted);
 		ui_widget_function_failure_expected = FALSE;
+		if (*deleted)
+			return TRUE;
+	}
+	if (succeeded && action->then)
+	{
+		index = pc_menu_event_function_index(action->then);
+		if (index != NONE)
+			ui_widget_event_handler_function_invoke(widget, event, (word)index, deleted);
 		if (*deleted)
 			return TRUE;
 	}
