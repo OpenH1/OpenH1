@@ -12,7 +12,7 @@ place. The engine (menu_engine.c) then draws them and takes their events as
 any screen's widgets, so focus, the controller, the mouse, touch and the
 menus' sounds are the game's own.
 
-What the screens name is C's, here: an item's action (do="open versus") is a
+What the screens name is C's, here: an item's action (do="open multiplayer") is a
 name in screen_actions, and a binding in its words ({campaign.level}) a name
 in screen_bindings; the files never name the game's widgets. A file read
 again (hot reload: menu_screens_poll) makes its open screen again, the focus
@@ -43,7 +43,10 @@ struct widget_instance *ui_widget_port_add_child(struct widget_instance *parent,
 	struct widget_instance *before);
 /* (menu_functions.c) */
 boolean pc_menu_campaign_saved(char *level, char *difficulty, long size);
+void pc_menu_browser_visit(char const *tab);
+int pc_menu_browser_visit_kind(void);
 void pc_menu_main_menu_shown(struct widget_instance *screen);
+boolean ui_widget_port_pointer_focused(void);
 
 /* ---------- constants */
 
@@ -96,6 +99,9 @@ NULL, none) */
 struct screen_action
 {
 	char const *name;
+	/* (the server browser's tab for this visit: "all", "coop"; NULL, the
+	player's own) */
+	char const *browser_tab;
 	char const *before;
 	char const *run;
 	char const *open;
@@ -104,24 +110,34 @@ struct screen_action
 
 static struct screen_action const screen_actions[] =
 {
+	/* (the Campaign screen, screens/campaign.xml) */
+	{ "open campaign", NULL, NULL, NULL, "screens/campaign", NULL },
 	/* (the PC version's CAMPAIGN: a profile made first if there is none) */
-	{ "open campaign", NULL, "new game if no plyr profiles", "main_menu/campaign/campaign_screen",
+	{ "open solo", NULL, NULL, "new game if no plyr profiles", "main_menu/campaign/campaign_screen",
 		"main_menu/new_campaign_creating_profile" },
 	/* (the server browser, as Multiplayer's SERVER BROWSER opens it: its mode
-	the browser's) */
-	{ "open versus", "mp type set mode", "new game if no plyr profiles",
+	the browser's; every game, or the co-op games, this visit) */
+	{ "open multiplayer", "all", "mp type set mode", "new game if no plyr profiles",
 		"main_menu/multiplayer_type_select/join_game/join_game_screen",
 		"main_menu/profile_manager/multiplayer_creating_profile" },
-	{ "open settings", NULL, "port settings begin",
+	{ "open coop", "coop", "mp type set mode", "new game if no plyr profiles",
+		"main_menu/multiplayer_type_select/join_game/join_game_screen",
+		"main_menu/profile_manager/multiplayer_creating_profile" },
+	/* (the browser's HOST & MORE: the PC version's Multiplayer screen, the
+	hub; its HOST CO-OP: the hub's co-op page, online or split screen) */
+	{ "open host", NULL, NULL, NULL, "main_menu/multiplayer_type_select/multiplayer_type_select_screen", NULL },
+	{ "open host coop", NULL, NULL, NULL, "main_menu/multiplayer_type_select/hub/coop_screen", NULL },
+	{ "open settings", NULL, NULL, "port settings begin",
 		"main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen", NULL },
-	{ "open training", NULL, NULL, "main_menu/training/training_screen", NULL },
+	{ "open training", NULL, NULL, NULL, "main_menu/training/training_screen", NULL },
 	/* (the quit question, as QUIT and B on the main menu open it) */
-	{ "quit", NULL, NULL, "main_menu/quit_select/quit_screen", NULL },
+	{ "quit", NULL, NULL, NULL, "main_menu/quit_select/quit_screen", NULL },
 };
 
 static char const *const screen_action_names[] =
 {
-	"open campaign", "open versus", "open settings", "open training", "quit",
+	"open campaign", "open solo", "open multiplayer", "open coop", "open host", "open host coop", "open settings",
+	"open training", "quit",
 };
 
 /* a binding's value: the saved game's mission and difficulty (player 1's
@@ -176,7 +192,16 @@ struct screen_place
 static struct screen_place const screen_places[] =
 {
 	{ "main", "main_menu\\main_menu", pc_menu_main_menu_shown },
+	{ "campaign", "screens\\campaign", NULL },
 };
+
+/* the server browser, whose screen gets a button of the hand-written
+screens' (screens/button) over it: HOST & MORE, or HOST CO-OP when the
+browser was opened on co-op; its key the controller's Back (F1) */
+#define SCREEN_BROWSER "main_menu\\multiplayer_type_select\\join_game\\join_game_screen"
+#define SCREEN_BROWSER_BUTTON_X 276
+#define SCREEN_BROWSER_BUTTON_Y 8
+static struct screen_place const screen_browser_place = { "browser", SCREEN_BROWSER, NULL };
 
 /* ---------- the screens open */
 
@@ -194,6 +219,10 @@ struct screen_open
 	char actions[SCREEN_MAXIMUM_ITEMS][SCREEN_ACTION_LENGTH];
 	long item_count;
 	char back[SCREEN_ACTION_LENGTH];
+	/* (a button over a generated screen, its own widgets kept: the
+	browser's; and the child its focus goes back to from the button) */
+	boolean extra;
+	struct widget_instance *kept_focus;
 };
 
 static struct
@@ -205,7 +234,7 @@ static struct
 	the screen its item opened) */
 	char focused[NUMBEROF(screen_places)][SCREEN_ID_LENGTH];
 	/* the blocks' tags, as the menus' tags were last built */
-	long title_art_tag, list_tag, item_tag, hint_tag, buttons_tag;
+	long title_art_tag, list_tag, item_tag, hint_tag, buttons_tag, button_tag;
 } screens = { FALSE };
 
 static void screens_names_give(void)
@@ -257,8 +286,9 @@ static boolean screen_blocks_found(void)
 	screens.item_tag = screen_block_tag("pc\\screens\\item");
 	screens.hint_tag = screen_block_tag("pc\\screens\\hint");
 	screens.buttons_tag = screen_block_tag("pc\\screens\\buttons");
+	screens.button_tag = screen_block_tag("pc\\screens\\button");
 	if (screens.title_art_tag == NONE || screens.list_tag == NONE || screens.item_tag == NONE ||
-		screens.hint_tag == NONE || screens.buttons_tag == NONE)
+		screens.hint_tag == NONE || screens.buttons_tag == NONE || screens.button_tag == NONE)
 	{
 		platform_log("menus: the screens' blocks (screens/blocks.xml) are not all there");
 		screens.blocks_found = FALSE;
@@ -511,6 +541,44 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 
 /* ---------- the engine's calls */
 
+/* the server browser's HOST button made over it (TRUE), where it is the
+server browser (not the local network's list, nor Join by Link) */
+static boolean screen_browser_opened(struct widget_instance *widget)
+{
+	char const *name = tag_get_name(widget->definition_tag_index);
+	long index;
+
+	if (!name || strncmp(name, "pc\\", 3) || strcmp(name + 3, SCREEN_BROWSER) || !pc_menu_browser_visit_kind() ||
+		!screen_blocks_found())
+	{
+		return FALSE;
+	}
+	for (index = 0; index < SCREEN_MAXIMUM_OPEN; index++)
+	{
+		struct screen_open *open = &screens.open[index];
+		struct widget_instance *button;
+		boolean coop = pc_menu_browser_visit_kind() == 2;
+
+		if (open->widget)
+			continue;
+		memset(open, 0, sizeof(*open));
+		button = screen_widget_add(widget, screens.button_tag, SCREEN_BROWSER_BUTTON_X, SCREEN_BROWSER_BUTTON_Y);
+		if (!button)
+			return FALSE;
+		open->widget = widget;
+		open->place = &screen_browser_place;
+		open->extra = TRUE;
+		open->items[0] = button;
+		open->pictures[0] = NONE;
+		open->item_count = 1;
+		snprintf(open->ids[0], SCREEN_ID_LENGTH, "host");
+		snprintf(open->actions[0], SCREEN_ACTION_LENGTH, "%s", coop ? "open host coop" : "open host");
+		screen_text_set(button, coop ? "%back-button HOST CO-OP" : "%back-button HOST & MORE");
+		return TRUE;
+	}
+	return FALSE;
+}
+
 boolean menu_screen_opened(struct widget_instance *widget)
 {
 	struct screen_place const *place = screen_place_of(widget->definition_tag_index);
@@ -518,7 +586,7 @@ boolean menu_screen_opened(struct widget_instance *widget)
 	long index;
 
 	if (!place)
-		return FALSE;
+		return screen_browser_opened(widget);
 	screens_names_give();
 	menu_screens_poll(ui_widget_port_milliseconds());
 	screen = menu_screens_find(place->screen);
@@ -571,6 +639,16 @@ void menu_screen_frame(struct widget_instance *widget)
 
 	if (!open)
 		return;
+	/* (the browser's button: the focus back to the browser's own widgets
+	once the pointer is not what gave the button it, the d-pad its) */
+	if (open->extra)
+	{
+		if (widget->focused_child != open->items[0])
+			open->kept_focus = widget->focused_child;
+		else if (open->kept_focus && !ui_widget_port_pointer_focused())
+			widget->focused_child = open->kept_focus;
+		return;
+	}
 	/* (its file read again: made again, the focus on the same item) */
 	menu_screens_poll(ui_widget_port_milliseconds());
 	if (menu_screens_generation(open->place->screen) != open->generation)
@@ -619,6 +697,8 @@ static boolean screen_action_run(struct widget_instance *widget, struct event_re
 		platform_log("menus: there is no action \"%s\"", name);
 		return FALSE;
 	}
+	if (action->browser_tab || action->before)
+		pc_menu_browser_visit(action->browser_tab);
 	if (action->before)
 	{
 		index = pc_menu_event_function_index(action->before);
@@ -654,7 +734,8 @@ boolean menu_screen_do(struct widget_instance *item, struct event_record *event,
 	{
 		if (open->items[index] == item)
 		{
-			snprintf(screens.focused[open->place - screen_places], SCREEN_ID_LENGTH, "%s", open->ids[index]);
+			if (!open->extra)
+				snprintf(screens.focused[open->place - screen_places], SCREEN_ID_LENGTH, "%s", open->ids[index]);
 			return screen_action_run(item, event, open->actions[index], deleted);
 		}
 	}
@@ -666,6 +747,15 @@ boolean menu_screen_back(struct widget_instance *widget, struct event_record *ev
 	struct screen_open *open = screen_open_of(widget);
 
 	*deleted = FALSE;
+	if (open && open->extra)
+	{
+		if (event->type != SCREEN_EVENT_BUTTON || event->data.button.value != 1 ||
+			event->data.button.index != _gamepad_binary_button_back)
+		{
+			return FALSE;
+		}
+		return screen_action_run(widget, event, open->actions[0], deleted);
+	}
 	if (!open || !open->back[0] || event->type != SCREEN_EVENT_BUTTON || event->data.button.value != 1 ||
 		(event->data.button.index != _gamepad_analog_button_b &&
 			event->data.button.index != _gamepad_binary_button_back))

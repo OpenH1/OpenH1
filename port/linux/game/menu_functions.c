@@ -8201,6 +8201,10 @@ struct browser_sort_entry
 static short browser_sort_column = _browser_sort_players;
 static boolean browser_sort_descending = TRUE;
 static short browser_tab = _browser_tab_all;
+/* the tab the server browser shows this visit, not the player's own kept in
+network.browser_tab (a hand-written screen's MULTIPLAYER: all; its CO-OP:
+co-op: menu_screen.c), NONE for theirs; their own choice of a tab ends it */
+static short browser_tab_visit = NONE;
 /* whether the list being ordered is in groups (the server browser's) */
 static boolean browser_grouped;
 /* the 2V2 browser's (doubles_browser.inc): the server browser kept to the
@@ -8667,6 +8671,8 @@ static void browser_view_read(void)
 {
 	browser_tab = browser_word_index(config_string("network.browser_tab"), browser_tab_words,
 		NUMBER_OF_BROWSER_TABS);
+	if (browser_tab_visit != NONE)
+		browser_tab = browser_tab_visit;
 	browser_sort_column = browser_word_index(config_string("network.browser_sort"), browser_sort_words,
 		NUMBER_OF_BROWSER_SORTS);
 	browser_sort_descending = config_boolean("network.browser_sort_descending") != 0;
@@ -8675,12 +8681,36 @@ static void browser_view_read(void)
 /* (only what changed: config_write writes config.toml) */
 static void browser_view_write(void)
 {
-	if (strcmp(config_string("network.browser_tab"), browser_tab_words[browser_tab]))
+	if (browser_tab_visit == NONE && strcmp(config_string("network.browser_tab"), browser_tab_words[browser_tab]))
 		config_write("network.browser_tab", browser_tab_words[browser_tab]);
 	if (strcmp(config_string("network.browser_sort"), browser_sort_words[browser_sort_column]))
 		config_write("network.browser_sort", browser_sort_words[browser_sort_column]);
 	if ((config_boolean("network.browser_sort_descending") != 0) != (browser_sort_descending != FALSE))
 		config_write("network.browser_sort_descending", browser_sort_descending ? "true" : "false");
+}
+
+/* the server browser's tab for the next visit (a hand-written screen's
+action: "all" or "coop"; NULL, the player's own), and what this visit of the
+browser is: 0 not the server browser (the local network's list, Join by
+Link), 1 the server browser, 2 the server browser opened on co-op
+(menu_screen.c's HOST button) */
+void pc_menu_browser_visit(char const *tab)
+{
+	short index;
+
+	browser_tab_visit = NONE;
+	for (index = 0; tab && index < NUMBER_OF_BROWSER_TABS; index++)
+	{
+		if (!strcmp(tab, browser_tab_words[index]))
+			browser_tab_visit = index;
+	}
+}
+
+int pc_menu_browser_visit_kind(void)
+{
+	if (multiplayer.mode != _multiplayer_mode_server_browser)
+		return 0;
+	return browser_tab_visit == _browser_tab_coop ? 2 : 1;
 }
 
 static void browser_filters_refresh(void)
@@ -8863,6 +8893,7 @@ static boolean browser_tab_choose(short tab)
 	if (tab != browser_tab)
 	{
 		browser_tab = tab;
+		browser_tab_visit = NONE;
 		browser_view_write();
 		browser_list_restart();
 		ui_play_audio_feedback_sound(SOUND_CURSOR);
@@ -8904,6 +8935,8 @@ static void browser_empty_text(short mode, short tab, boolean online, boolean pu
 		usnprintf(text, size - 1, L"%d %s hidden by your filters.\r\nChoose FILTERS to change them.", filtered,
 			filtered == 1 ? L"game is" : L"games are");
 	}
+	else if (tab == _browser_tab_coop && server_browser)
+		usnprintf(text, size - 1, L"No co-op games right now \x00B7 Host one");
 	else if (tab == _browser_tab_favorites)
 	{
 		usnprintf(text, size - 1, server_browser ? L"None of your favorites is online.\r\n%s" :

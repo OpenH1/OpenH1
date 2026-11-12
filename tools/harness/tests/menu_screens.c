@@ -149,7 +149,7 @@ static int value(void *context, char const *name, char *out, unsigned long size)
 
 #define GOOD(label) \
 	"<screen name=\"main\" back=\"quit\"><title-art/><list focus=\"a\">" \
-	"<item id=\"a\" label=\"" label "\" do=\"open versus\"/><item id=\"b\" label=\"QUIT\" do=\"quit\"/></list>" \
+	"<item id=\"a\" label=\"" label "\" do=\"open multiplayer\"/><item id=\"b\" label=\"QUIT\" do=\"quit\"/></list>" \
 	"<space/><buttons><button key=\"accept\" label=\"SELECT\"/></buttons></screen>"
 
 int main(int argc, char **argv)
@@ -175,24 +175,24 @@ int main(int argc, char **argv)
 		}
 		CHECK(kinds[MENU_SCREEN_TITLE_ART] == 1 && kinds[MENU_SCREEN_LIST] == 1, "not one title art and list");
 		campaign = block_of(&screen, "campaign");
-		versus = block_of(&screen, "versus");
+		versus = block_of(&screen, "multiplayer");
 		CHECK(campaign && versus && block_of(&screen, "settings") && block_of(&screen, "quit"),
 			"the four doors are not all there");
-		CHECK(!strcmp(campaign->action, "open campaign") && !strcmp(versus->action, "open versus"),
-			"CAMPAIGN or VERSUS does not open its screen");
+		CHECK(!strcmp(campaign->action, "open campaign") && !strcmp(versus->action, "open multiplayer"),
+			"CAMPAIGN or MULTIPLAYER does not open its screen");
 		CHECK(!strcmp(block_of(&screen, "quit")->action, "quit"), "QUIT does not quit");
 		CHECK(campaign->picture && !strcmp(campaign->picture, "main_menu/menu_load_campaign") && versus->picture &&
-			!strcmp(versus->picture, "main_menu/menu_versus"), "CAMPAIGN or VERSUS is not its lettered picture");
+			!strcmp(versus->picture, "main_menu/menu_multiplayer"), "CAMPAIGN or MULTIPLAYER is not its lettered picture");
 		list = &screen.blocks[campaign->parent];
 		CHECK(list->kind == MENU_SCREEN_LIST && list->focus && !strcmp(list->focus, "campaign"),
 			"the list's focus is not CAMPAIGN");
 		CHECK(items == 5 && buttons == 0, "%d items and %d buttons", items, buttons);
-		/* (no PRO 2V2 and no MULTIPLAYER) */
+		/* (no PRO 2V2) */
 		for (index = 0; index < screen.block_count; index++)
 		{
 			char const *label = screen.blocks[index].label;
 
-			CHECK(!label || (!strstr(label, "2V2") && strcmp(label, "MULTIPLAYER")), "the main menu has %s", label);
+			CHECK(!label || !strstr(label, "2V2"), "the main menu has %s", label);
 		}
 		menu_screen_free(&screen);
 	}

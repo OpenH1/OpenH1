@@ -6,6 +6,16 @@ Each is drawn and takes its events as the game's widgets do, from its
 definition here, not the model. A block's words, place and action are the
 screen file's, set on each widget as the screen is made. -->
 <menus>
+	<!-- a hand-written screen of its own (not one that takes a generated
+	screen's place): the screen the game opens, which the engine fills from its
+	file (menu_screen.c's screen_places) -->
+	<widget name="screens/campaign" width="640" height="480" flags="pass_unhandled_to_focused_child"/>
+	<!-- a button over a generated screen (the server browser's HOST): its words
+	and key, and a click or a tap does its action -->
+	<widget name="screens/button" type="text" width="148" height="24" bitmap="main_menu/parts/button_148x24" font="ui\small_ui" color="#FFFFFFFF" text_x="8" text_y="3">
+		<on event="a" run="port screen do"/>
+		<on event="left_mouse" run="port screen do"/>
+	</widget>
 	<!-- Halo's title art, as the main menu has it -->
 	<widget name="screens/title_art" width="640" height="256" bitmap="ui\shell\main_menu\halo_logo"/>
 	<!-- a list: the d-pad, the stick and the wheel step its items -->
