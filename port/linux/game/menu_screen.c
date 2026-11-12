@@ -63,7 +63,7 @@ focus moving does not move the items), the button-hint bar's room at the
 foot, and the blocks' widths (blocks.xml's) */
 #define SCREEN_HEIGHT 480
 #define SCREEN_WIDTH 640
-#define TITLE_ART_ROOM 232
+#define TITLE_ART_ROOM 247
 #define TITLE_ART_TOP 28
 #define TITLE_ART_LEAST_ROOM 160
 #define ITEM_WIDTH 256
@@ -71,6 +71,11 @@ foot, and the blocks' widths (blocks.xml's) */
 #define HINT_WIDTH 440
 #define HINT_TOP 34
 #define ITEM_STEP 54
+/* an item with no hint: the PC version's main menu's step, and an item drawn
+as a picture: the PC version's items' box (256 by 33) */
+#define ITEM_STEP_PLAIN 36
+#define PICTURE_HEIGHT 33
+#define BITMAP_GROUP_TAG 'bitm'
 #define BUTTONS_ROOM 30
 #define BUTTONS_TOP 4
 /* an item's label drawn larger than its font (large_ui's): at 4:3, and
@@ -183,6 +188,8 @@ struct screen_open
 	struct widget_instance *list;
 	struct widget_instance *items[SCREEN_MAXIMUM_ITEMS];
 	struct widget_instance *hints[SCREEN_MAXIMUM_ITEMS];
+	/* (each item's picture's bitmap tag, NONE for its label) */
+	long pictures[SCREEN_MAXIMUM_ITEMS];
 	char ids[SCREEN_MAXIMUM_ITEMS][SCREEN_ID_LENGTH];
 	char actions[SCREEN_MAXIMUM_ITEMS][SCREEN_ACTION_LENGTH];
 	long item_count;
@@ -275,6 +282,25 @@ static void screen_text_set(struct widget_instance *widget, char const *utf8)
 	widget->parameters.text_box.text = buffer;
 }
 
+/* a picture of the menus' files' bitmap tag (its name as the files have it,
+"main_menu/menu_versus"), NONE (logged) if there is none */
+static long screen_picture_tag(char const *name)
+{
+	char tag_name[256];
+	long index, tag_index;
+
+	snprintf(tag_name, sizeof(tag_name), "pc\\%s", name);
+	for (index = 0; tag_name[index]; index++)
+	{
+		if (tag_name[index] == '/')
+			tag_name[index] = '\\';
+	}
+	tag_index = tag_loaded(BITMAP_GROUP_TAG, tag_name);
+	if (tag_index == NONE)
+		platform_log("menus: there is no picture %s; the item is drawn as its label", name);
+	return tag_index;
+}
+
 /* a block's widget made in the parent, at x and y on the screen */
 static struct widget_instance *screen_widget_add(struct widget_instance *parent, long tag_index, short x, short y)
 {
@@ -351,7 +377,8 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		case MENU_SCREEN_ITEM:
 			shown[index] = screen_item_shown(block, &values, label, sizeof(label));
 			if (shown[index])
-				heights[block->parent] = (short)(heights[block->parent] + ITEM_STEP);
+				heights[block->parent] = (short)(heights[block->parent] +
+					(block->hint_count ? ITEM_STEP : ITEM_STEP_PLAIN));
 			break;
 		case MENU_SCREEN_SPACE:
 			spaces++;
@@ -422,7 +449,9 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 				if (!made)
 					break;
 				menu_screen_text(item->label, screen_value, &values, label, sizeof(label));
-				screen_text_set(made, label);
+				open->pictures[open->item_count] = item->picture ? screen_picture_tag(item->picture) : NONE;
+				/* (a picture in place of its words, which it stands for) */
+				screen_text_set(made, open->pictures[open->item_count] != NONE ? "" : label);
 				open->items[open->item_count] = made;
 				open->hints[open->item_count] = NULL;
 				snprintf(open->ids[open->item_count], SCREEN_ID_LENGTH, "%s", item->id ? item->id : "");
@@ -450,7 +479,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 					focus_index = open->item_count;
 				}
 				open->item_count++;
-				y = (short)(y + ITEM_STEP);
+				y = (short)(y + (item->hint_count ? ITEM_STEP : ITEM_STEP_PLAIN));
 			}
 			break;
 		}
@@ -561,6 +590,8 @@ void menu_screen_frame(struct widget_instance *widget)
 	{
 		if (open->hints[index])
 			open->hints[index]->visible = index == focused;
+		/* (a picture's frames: lit while focused, as the PC version's items) */
+		open->items[index]->animation.current_frame_index = (short)(index == focused);
 	}
 	if (focused != NONE)
 		snprintf(screens.focused[open->place - screen_places], SCREEN_ID_LENGTH, "%s", open->ids[focused]);
@@ -668,4 +699,30 @@ boolean menu_screen_text_color(struct widget_instance const *widget, real_argb_c
 	}
 	color->red = color->green = color->blue = 1.0f;
 	return TRUE;
+}
+
+boolean menu_screen_item_picture(struct widget_instance const *widget, long *bitmap_tag, rectangle2d *bounds)
+{
+	long open_index, index;
+
+	if (!screens.blocks_found || widget->definition_tag_index != screens.item_tag)
+		return FALSE;
+	for (open_index = 0; open_index < SCREEN_MAXIMUM_OPEN; open_index++)
+	{
+		struct screen_open const *open = &screens.open[open_index];
+
+		for (index = 0; open->widget && index < open->item_count; index++)
+		{
+			if (open->items[index] == widget && open->pictures[index] != NONE)
+			{
+				*bitmap_tag = open->pictures[index];
+				bounds->x0 = 0;
+				bounds->y0 = 0;
+				bounds->x1 = ITEM_WIDTH;
+				bounds->y1 = PICTURE_HEIGHT;
+				return TRUE;
+			}
+		}
+	}
+	return FALSE;
 }

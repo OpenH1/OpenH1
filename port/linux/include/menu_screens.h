@@ -48,6 +48,9 @@ struct menu_screen_block
 	char const *action;
 	char const *when;
 	char const *key;
+	/* (an item drawn as a picture of the menus' files: its bitmap's name,
+	"main_menu/menu_versus"; its label then the words it stands for) */
+	char const *picture;
 	/* (a list's item focused first, by its id) */
 	char const *focus;
 	char const *hints[MENU_SCREEN_MAXIMUM_HINTS];

@@ -292,7 +292,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	else if (parent_element == _element_list && !strcmp(name, "item"))
 	{
-		static char const *const names[] = { "id", "label", "hint", "do", "when", NULL };
+		static char const *const names[] = { "id", "label", "hint", "do", "when", "picture", NULL };
 
 		element = _element_item;
 		attributes_read(reader, name, attributes, names, values);
@@ -305,6 +305,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			item->label = values[1];
 			item->action = values[3];
 			item->when = values[4];
+			item->picture = values[5];
 			if (values[2])
 				item->hints[item->hint_count++] = values[2];
 			if (!item->label || !item->label[0])

@@ -141,6 +141,10 @@ boolean menu_screen_back(struct widget_instance *screen, struct event_record *ev
 /* a building block's text colour, where it is not its definition's (a
 focused item's): TRUE if it is */
 boolean menu_screen_text_color(struct widget_instance const *widget, real_argb_color *color);
+/* a hand-written screen's item drawn as a picture (its screen file's
+picture="..."): the picture's bitmap tag and the box it is drawn in; FALSE
+for any other widget */
+boolean menu_screen_item_picture(struct widget_instance const *widget, long *bitmap_tag, rectangle2d *bounds);
 /* "port screen do", an item's A: its action run */
 boolean menu_screen_do(struct widget_instance *item, struct event_record *event, boolean *deleted);
 

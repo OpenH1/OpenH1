@@ -1,21 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- The main menu: four doors (docs/menu_screens.md). The new menu engine's;
-display.menu_engine = "classic" keeps the PC version's. -->
+display.menu_engine = "classic" keeps the PC version's. Laid out as the PC
+version's main menu: the title art, then the items as its lettered pictures,
+no hints or button bar. -->
 <screen name="main" back="quit">
 	<title-art/>
 	<list focus="campaign">
-		<item id="training" label="VR TUTORIAL" when="vr" hint="Learn to move, aim and fight in the headset" do="open training"/>
-		<item id="campaign" label="CAMPAIGN" do="open campaign">
-			<hint>Continue · {campaign.level} · {campaign.difficulty}</hint>
-			<hint>The story · solo, or with friends online</hint>
-		</item>
-		<item id="versus" label="VERSUS" hint="Slayer, CTF, 2v2, Infection · find or host a game" do="open versus"/>
-		<item id="settings" label="SETTINGS" hint="Video, sound, controls and your profile" do="open settings"/>
-		<item id="quit" label="QUIT" do="quit"/>
+		<item id="training" label="VR TUTORIAL" picture="main_menu/menu_training" when="vr" do="open training"/>
+		<item id="campaign" label="CAMPAIGN" picture="main_menu/menu_load_campaign" do="open campaign"/>
+		<item id="versus" label="VERSUS" picture="main_menu/menu_versus" do="open versus"/>
+		<item id="settings" label="SETTINGS" picture="main_menu/menu_settings" do="open settings"/>
+		<item id="quit" label="QUIT" picture="main_menu/menu_quit" do="quit"/>
 	</list>
-	<space/>
-	<buttons>
-		<button key="accept" label="SELECT"/>
-		<button key="back" label="QUIT"/>
-	</buttons>
 </screen>

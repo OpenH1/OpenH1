@@ -8875,10 +8875,22 @@ static void widget_instance_render_recursive(
 	/* port: (custom_edition_maps_picture) */
 	struct bitmap_data *custom_edition_picture;
 	short frame_index;
+	/* port: (a hand-written screen's item's own picture) */
+	struct ui_widget_definition pictured;
+	long picture_index;
 
 	/* port: a screen the port's menu engine draws (port/linux/game/menu_engine.c) */
 	if (!widget->parent && menu_engine_screen_draw(widget, clip_rect, offset, focus, use_nifty_plasma_fx))
 		return;
+	/* port: a hand-written screen's item drawn as its picture, in a box of
+	the picture's height (port/linux/game/menu_screen.c) */
+	if (menu_screen_item_picture(widget, &picture_index, &pictured.bounds))
+	{
+		pictured = *definition;
+		menu_screen_item_picture(widget, &picture_index, &pictured.bounds);
+		pictured.background_bitmap.index = picture_index;
+		definition = &pictured;
+	}
 	if (!use_nifty_plasma_fx &&
 		TEST_FLAG(definition->flags, _widget_always_render_with_nifty_fx_bit))
 	{

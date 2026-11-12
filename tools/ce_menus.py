@@ -946,6 +946,8 @@ def main() -> None:
                                   port_settings.menu_item_frames("VR TUTORIAL", art.redraws)))
     # (the main menu's PRO 2V2, so too: port_settings._doubles)
     lines.append(art.port_picture("main_menu/menu_doubles", port_settings.menu_item_frames("PRO 2V2", art.redraws)))
+    # (the main menu's VERSUS: port/assets/menus/screens/main.xml)
+    lines.append(art.port_picture("main_menu/menu_versus", port_settings.menu_item_frames("VERSUS", art.redraws)))
     lines.append(art.port_picture("mods/status", port_settings.mod_status_frames(ROOT / "port/assets/icons/lucide")))
     lines.append(art.port_picture("mods/status_small",
                                   port_settings.mod_status_frames(ROOT / "port/assets/icons/lucide", 16)))

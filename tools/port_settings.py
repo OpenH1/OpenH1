@@ -8605,7 +8605,8 @@ MENU_ITEM_TOP, MENU_ITEM_SCALE, MENU_ITEM_MIDDLE = 6.57, 0.9037, 130.0
 # to G, less D's side
 MENU_ITEM_SPACES = {"VR": 0.3, "R ": 6.0, " T": 6.0, "TU": 2.12, "UT": 1.66, "TO": 0.75, "OR": 3.0, "RI": 3.25,
                     "IA": 1.3, "AL": 1.58, "2V": 1.2, "V2": 1.2,
-                    "PR": 3.16, "RO": 1.85, "O ": 6.0, " 2": 6.0}
+                    "PR": 3.16, "RO": 1.85, "O ": 6.0, " 2": 6.0,
+                    "VE": 1.2, "ER": 3.0, "RS": 3.0, "SU": 2.0, "US": 1.7}
 # a space's own width (none: the spaces about it are its pairs')
 MENU_ITEM_SPACE_WIDTH = 0.0
 # the mods' status icons (port/assets/icons/lucide): a mod out of the order it

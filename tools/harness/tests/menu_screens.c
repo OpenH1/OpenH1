@@ -142,6 +142,11 @@ static int value(void *context, char const *name, char *out, unsigned long size)
 	return 1;
 }
 
+#define HINTED \
+	"<screen name=\"main\"><list><item id=\"campaign\" label=\"CAMPAIGN\" do=\"open campaign\">" \
+	"<hint>Continue \xC2\xB7 {campaign.level} \xC2\xB7 {campaign.difficulty}</hint>" \
+	"<hint>The story \xC2\xB7 solo, or with friends online</hint></item></list></screen>"
+
 #define GOOD(label) \
 	"<screen name=\"main\" back=\"quit\"><title-art/><list focus=\"a\">" \
 	"<item id=\"a\" label=\"" label "\" do=\"open versus\"/><item id=\"b\" label=\"QUIT\" do=\"quit\"/></list>" \
@@ -168,8 +173,7 @@ int main(int argc, char **argv)
 			items += screen.blocks[index].kind == MENU_SCREEN_ITEM;
 			buttons += screen.blocks[index].kind == MENU_SCREEN_BUTTON;
 		}
-		CHECK(kinds[MENU_SCREEN_TITLE_ART] == 1 && kinds[MENU_SCREEN_LIST] == 1 && kinds[MENU_SCREEN_BUTTONS] == 1,
-			"not one title art, list and button bar");
+		CHECK(kinds[MENU_SCREEN_TITLE_ART] == 1 && kinds[MENU_SCREEN_LIST] == 1, "not one title art and list");
 		campaign = block_of(&screen, "campaign");
 		versus = block_of(&screen, "versus");
 		CHECK(campaign && versus && block_of(&screen, "settings") && block_of(&screen, "quit"),
@@ -177,12 +181,12 @@ int main(int argc, char **argv)
 		CHECK(!strcmp(campaign->action, "open campaign") && !strcmp(versus->action, "open versus"),
 			"CAMPAIGN or VERSUS does not open its screen");
 		CHECK(!strcmp(block_of(&screen, "quit")->action, "quit"), "QUIT does not quit");
-		CHECK(campaign->hint_count == 2, "CAMPAIGN has %d hints, not the saved game's and the story's",
-			campaign->hint_count);
+		CHECK(campaign->picture && !strcmp(campaign->picture, "main_menu/menu_load_campaign") && versus->picture &&
+			!strcmp(versus->picture, "main_menu/menu_versus"), "CAMPAIGN or VERSUS is not its lettered picture");
 		list = &screen.blocks[campaign->parent];
 		CHECK(list->kind == MENU_SCREEN_LIST && list->focus && !strcmp(list->focus, "campaign"),
 			"the list's focus is not CAMPAIGN");
-		CHECK(items == 5 && buttons == 2, "%d items and %d buttons", items, buttons);
+		CHECK(items == 5 && buttons == 0, "%d items and %d buttons", items, buttons);
 		/* (no PRO 2V2 and no MULTIPLAYER) */
 		for (index = 0; index < screen.block_count; index++)
 		{
@@ -197,7 +201,7 @@ int main(int argc, char **argv)
 		char text[256];
 		struct menu_screen_block const *campaign;
 
-		CHECK(read_text(main_xml, &screen, problem), "the main menu's file is refused: %s", problem);
+		CHECK(read_text(HINTED, &screen, problem), "the hinted screen is refused: %s", problem);
 		campaign = block_of(&screen, "campaign");
 		/* (no saved game: the first hint's binding has no value, so its line
 		is not shown, and the second is) */
