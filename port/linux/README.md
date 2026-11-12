@@ -1482,6 +1482,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.voice_mode` | `"team_global_enemy_proximity"` | `HALO_NET_VOICE_MODE` | When you host: who hears whom during a game. `"off"`; `"team_proximity"` (teammates who are near); `"team_enemy_proximity"` (all players who are near); `"team_global"` (all teammates); `"team_global_enemy_proximity"` (all teammates, and enemies who are near). Refer to "Voice chat". |
 | `network.voice_kbps` | `24` | `HALO_NET_VOICE_KBPS` | When you host: the voice quality in the lobby and in a game, in kilobits per second, `8` to `64`. |
 | `network.voice_proximity` | `15.0` | `HALO_NET_VOICE_PROXIMITY` | When you host: the distance in world units (1 unit is approximately 3 metres) at which players are near, for voice chat. `5` to `100`. |
+| `network.chat_channels` | `"all"` | `HALO_NET_CHAT_CHANNELS` | The text chat's channel each local player chose last (by Y, a team or vehicle chat button, Tab, or D-pad Up and Down on the on-screen keyboard), which T (`controls.chat`) and a controller's D-pad Up open the chat on: a word for each player in turn, separated by commas, `"all"`, `"team"` or `"vehicle"` (as `"team,all"`). A team's opens to all the players in a game without teams, a vehicle's to the team (or all) on foot. The chat writes it. Refer to "Text chat". |
 | `network.pings` | `true` | `HALO_NET_PINGS` | When you host (or play on one computer): let the players ping (`controls.ping`; a controller's D-pad Right), in co-op and in games with teams. PINGS in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. Refer to "Pings". |
 | `network.text_chat` | `"on"` | `HALO_NET_TEXT_CHAT` | When you host: the text chat. `"on"`, lines with links refused; `"links"`, links allowed; `"off"`, no chat (in either case). Listed in the server browser or not. TEXT CHAT in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. Refer to "Text chat". |
 | `network.host_playlist` | `""` | `HALO_NET_HOST_PLAYLIST` | When you host: the games played one after another, each after the last one's scores: `map[:gametype[+rule=value...]]`, separated by commas, as a dedicated server's `server.rotation` (`docs/dedicated_server.md`). Host Controls' PLAYLIST and MAPS write it, and the console's `host_playlist`. Empty: you pick each game. Refer to "Host Controls". |
@@ -3136,16 +3137,26 @@ concerned can work out.
 ### Text chat
 
 Network games have a text chat, as the PC version had. Press T
-(`controls.chat`) to type a line to all the players, or Y
-(`controls.team_chat`) to type one to your team (in a game without teams,
-to all the players). While you type, Tab changes who the line is to, in
-turn: all the players, your team, or your vehicle (the players riding in
-the vehicle you ride in, whatever the map's vehicles are, Custom Edition
-maps' too; on foot, only you see it). Enter sends the line, Escape cancels
-it. While you type, your player does not move.
+(`controls.chat`) to type a line, or Y (`controls.team_chat`) to type one
+to your team (in a game without teams, to all the players). While you type,
+Tab changes who the line is to, in turn: all the players, your team, or your
+vehicle (the players riding in the vehicle you ride in, whatever the map's
+vehicles are, Custom Edition maps' too; on foot, only you see it). Enter
+sends the line, Escape cancels it. While you type, your player does not
+move.
+
+T starts the line to whoever you chose last, with Y or Tab (or a
+controller's buttons, below), in this game or an earlier one; all the
+players at first (`network.chat_channels`, which keeps each split-screen
+player's). Where that does not apply, it starts to the next that does: a
+team in a game without teams to all the players, a vehicle on foot to your
+team (or, without teams, all the players), and what you chose is kept for
+the next game.
 
 With a controller, D-pad Up opens an on-screen keyboard at the bottom right
-(on Android, at the bottom in the middle) for a line to all the players:
+(on Android, at the bottom in the middle) for a line to whoever you chose
+last, as T does (the team chat and vehicle chat buttons, when you give them
+buttons, open it to the team and the vehicle):
 the left stick (or D-pad Left and Right) moves between the keys, A types
 the key, X deletes, Y switches capitals, D-pad Up and Down change who the
 line is to (all the players, your team, your vehicle), Start sends the
