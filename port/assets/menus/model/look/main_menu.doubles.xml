@@ -47,7 +47,7 @@
 		<text font="ui\small_ui" color="#FF2896FF" flags="no_focus_test"/>
 	</look>
 	<look name="main_menu/doubles/panel_help" type="text" box="330 310 598 388" wide="0 132">
-		<text font="ui\small_ui" color="#FF2896FF" flags="no_focus_test wrap" text="Pro settings on the 2v2 maps. Classic: 30 ticks, Instant Aim off for everyone. Lowest Latency: 120. Each lists only its own games."/>
+		<text font="ui\small_ui" color="#FF2896FF" flags="no_focus_test wrap" text="Pro settings on the 2v2 maps, 120 ticks. Classic: Instant Aim off, lead your shots. Crispy: Instant Aim on. Each lists only its own games."/>
 	</look>
 	<look name="main_menu/doubles/matchmaking_panel" box="316 80 612 400" wide="-26 132" picture="main_menu/parts/panel_296x320">
 		<at widget="main_menu/doubles/panel_title" x="0" y="0"/>

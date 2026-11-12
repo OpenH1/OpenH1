@@ -3,7 +3,7 @@ MATCHMAKING_MENU.INC
 
 The main menu's PRO 2V2 screen (tools/port_settings.py's _doubles, its list
 doubles_list), matchmaking's one screen (the search itself is
-matchmaking.c's): a row for each of its kinds, CLASSIC and LOWEST LATENCY
+matchmaking.c's): a row for each of its kinds, CLASSIC and CRISPY
 (matchmaking_doubles_playlist), the panel beside them (the kind chosen, a
 search's time and what it does), and the footer's CHOOSE, CANCEL and BACK.
 A row's A, or CHOOSE on the row chosen, opens the PRO 2V2 browser of that
@@ -25,7 +25,7 @@ static struct
 /* the 2V2 screen's rows' names and lines, by kind (_matchmaking_doubles_*) */
 static wchar_t const *const matchmaking_doubles_names[NUMBER_OF_MATCHMAKING_DOUBLES_KINDS] =
 {
-	L"CLASSIC", L"LOWEST LATENCY"
+	L"CLASSIC", L"CRISPY"
 };
 
 /* a row's playlist (0 up), its kind's, NONE for none */
@@ -165,7 +165,7 @@ static __declspec(noinline) void matchmaking_screen_update(struct widget_instanc
 		matchmaking_menu.chosen = status.playlist;
 	/* (the choice one of its kinds: its first, else) */
 	if (matchmaking_menu.chosen != matchmaking_doubles_playlist(_matchmaking_doubles_classic) &&
-		matchmaking_menu.chosen != matchmaking_doubles_playlist(_matchmaking_doubles_lowest_latency))
+		matchmaking_menu.chosen != matchmaking_doubles_playlist(_matchmaking_doubles_crispy))
 	{
 		matchmaking_menu.chosen = matchmaking_doubles_playlist(_matchmaking_doubles_classic);
 	}
@@ -257,8 +257,8 @@ static boolean matchmaking_screen_button(struct widget_instance *widget, short c
 		ui_play_audio_feedback_sound(SOUND_BACK);
 		return TRUE;
 	}
-	return doubles_browser_open(widget, kind == matchmaking_doubles_playlist(_matchmaking_doubles_lowest_latency) ?
-		_matchmaking_doubles_lowest_latency : _matchmaking_doubles_classic, widget_deleted);
+	return doubles_browser_open(widget, kind == matchmaking_doubles_playlist(_matchmaking_doubles_crispy) ?
+		_matchmaking_doubles_crispy : _matchmaking_doubles_classic, widget_deleted);
 }
 
 /* "port matchmaking x" (the screen's X): CANCEL, while it is shown */

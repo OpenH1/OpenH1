@@ -264,8 +264,9 @@ static void case_host(void)
 static void case_playlists(void)
 {
 	/* the listings' numbers (1 up) of the playlists, as the builds before
-	knew them: a playlist is only ever added after these */
-	static char const *const listed[] = { "Team Slayer", "Slayer", "CTF", "SWAT", "Big Team", "2v2 Low Latency",
+	knew them (the sixth, 2v2 Low Latency before, is the same kind renamed
+	Crispy): a playlist is only ever added after these */
+	static char const *const listed[] = { "Team Slayer", "Slayer", "CTF", "SWAT", "Big Team", "2v2 Crispy",
 		"2v2 Classic" };
 	/* the Xbox's multiplayer maps */
 	static char const *const maps[] = { "beavercreek", "bloodgulch", "boardingaction", "carousel", "chillout",
@@ -307,21 +308,24 @@ static void case_playlists(void)
 	}
 }
 
-/* 2V2's kinds: each its own playlist and tick rate, the same rules
-otherwise, and a search of one never takes a game of the other's */
+/* 2V2's kinds: each its own playlist, both at 120, Classic's aim off for
+everyone, the same rules otherwise, and a search of one never takes a game
+of the other's: told apart by the listing's playlist alone */
 static void case_doubles(void)
 {
 	short classic = matchmaking_doubles_playlists[_matchmaking_doubles_classic];
-	short lowest = matchmaking_doubles_playlists[_matchmaking_doubles_lowest_latency];
+	short crispy = matchmaking_doubles_playlists[_matchmaking_doubles_crispy];
 	struct matchmaking_playlist const *a = &matchmaking_playlists[classic];
-	struct matchmaking_playlist const *b = &matchmaking_playlists[lowest];
+	struct matchmaking_playlist const *b = &matchmaking_playlists[crispy];
 	struct p2p_listing games[4];
 	long index;
 
-	CHECK(classic != lowest && classic >= 0 && classic < NUMBEROF(matchmaking_playlists) && lowest >= 0 &&
-		lowest < NUMBEROF(matchmaking_playlists), "two playlists of their own");
-	CHECK(a->rate == 30 && a->classic_aim, "Classic: OpenH1 30 Tick, Instant Aim off for everyone");
-	CHECK(b->rate == 120 && !b->classic_aim, "Lowest Latency: OpenH1 120 Tick, each player's own aim");
+	CHECK(classic == 6 && crispy == 5, "Classic still playlist 7, Crispy 6 (1 up)");
+	CHECK(classic != crispy && classic >= 0 && classic < NUMBEROF(matchmaking_playlists) && crispy >= 0 &&
+		crispy < NUMBEROF(matchmaking_playlists), "two playlists of their own");
+	CHECK(a->rate == 120 && a->classic_aim, "Classic: OpenH1 120 Tick, Instant Aim off for everyone");
+	CHECK(b->rate == 120 && !b->classic_aim, "Crispy: OpenH1 120 Tick, each player's own aim");
+	CHECK(!wcscmp(a->title, L"PRO 2V2 CLASSIC") && !wcscmp(b->title, L"PRO 2V2 CRISPY"), "their titles");
 	CHECK(a->team_size == 2 && a->players == 4 && a->party_most == 2, "Classic: 2 against 2, a party of 2 at most");
 	CHECK(b->team_size == a->team_size && b->players == a->players && b->minimum == a->minimum &&
 		b->party_most == a->party_most, "the same teams");
@@ -334,78 +338,82 @@ static void case_doubles(void)
 	}
 	for (index = 0; index < NUMBEROF(matchmaking_playlists); index++)
 	{
-		if (index != classic && index != lowest)
+		if (index != classic && index != crispy)
 			CHECK(matchmaking_playlists[index].rate == 0 && !matchmaking_playlists[index].classic_aim,
 				"%s: the host's own rate and aim", matchmaking_playlists[index].name);
 	}
 	/* (listings stamp the playlist 1 up) */
 	games[0] = game((short)(classic + 1), 1, 4, 30);
-	games[0].rate = 30;
-	games[1] = game((short)(lowest + 1), 1, 4, 30);
+	games[0].rate = 120;
+	games[1] = game((short)(crispy + 1), 1, 4, 30);
 	games[1].rate = 120;
-	CHECK(matchmaking_game_score(&games[0], (short)(classic + 1), 2) != NONE, "Classic takes a Classic game at 30");
-	CHECK(matchmaking_game_score(&games[1], (short)(lowest + 1), 2) != NONE,
-		"Lowest Latency takes a Lowest Latency game at 120");
+	CHECK(matchmaking_game_score(&games[0], (short)(classic + 1), 2) != NONE, "Classic takes a Classic game at 120");
+	CHECK(matchmaking_game_score(&games[1], (short)(crispy + 1), 2) != NONE, "Crispy takes a Crispy game at 120");
 	CHECK(matchmaking_game_score(&games[1], (short)(classic + 1), 1) == NONE &&
-		matchmaking_game_score(&games[0], (short)(lowest + 1), 1) == NONE, "nor the other kind's game");
-	/* (a game stamped for a kind but at another rate: an older build's, or
-	a host whose rate was not the playlist's) */
+		matchmaking_game_score(&games[0], (short)(crispy + 1), 1) == NONE,
+		"nor the other kind's game, at the same rate");
+	/* (a game stamped for a kind but at another rate: a host whose rate was
+	not the playlist's; Classic's at 30 was a build's before protocol
+	version 27, which this build never hears: p2p_lobby.c's version_ours) */
 	games[2] = game((short)(classic + 1), 1, 4, 10);
-	games[2].rate = 120;
-	games[3] = game((short)(lowest + 1), 1, 4, 10);
+	games[2].rate = 30;
+	games[3] = game((short)(crispy + 1), 1, 4, 10);
 	games[3].rate = 60;
 	CHECK(matchmaking_game_score(&games[2], (short)(classic + 1), 1) == NONE,
-		"Classic never takes a 120 Tick game, even stamped Classic");
-	CHECK(matchmaking_game_score(&games[3], (short)(lowest + 1), 1) == NONE,
-		"Lowest Latency never takes a 60 Tick one");
+		"Classic never takes a 30 Tick game, even stamped Classic");
+	CHECK(matchmaking_game_score(&games[3], (short)(crispy + 1), 1) == NONE, "Crispy never takes a 60 Tick one");
 	games[3].rate = 30;
-	CHECK(matchmaking_game_score(&games[3], (short)(lowest + 1), 1) == NONE, "nor a 30 Tick one");
+	CHECK(matchmaking_game_score(&games[3], (short)(crispy + 1), 1) == NONE, "nor a 30 Tick one");
 	CHECK(matchmaking_pick(games, 4, (short)(classic + 1), 1) == 0, "Classic's pick: its own, not the nearer others");
-	CHECK(matchmaking_pick(games, 4, (short)(lowest + 1), 1) == 1, "Lowest Latency's: its own");
+	CHECK(matchmaking_pick(games, 4, (short)(crispy + 1), 1) == 1, "Crispy's: its own");
 	games[0].rate = 0;
 	CHECK(matchmaking_game_score(&games[0], (short)(classic + 1), 1) == NONE, "nor a game of no rate said");
 }
 
 /* the 2V2 browser's list (matchmaking_playlist_games): of every public game,
-the kind's alone, in their order: never the other kind's, a Legacy game, a
-game of the kind's playlist at another rate, or another playlist's */
+the kind's alone, in their order: never the other kind's (at the same rate),
+a Legacy game, a game of the kind's playlist at another rate, or another
+playlist's */
 static void case_browser(void)
 {
 	short classic = matchmaking_doubles_playlists[_matchmaking_doubles_classic];
-	short lowest = matchmaking_doubles_playlists[_matchmaking_doubles_lowest_latency];
+	short crispy = matchmaking_doubles_playlists[_matchmaking_doubles_crispy];
 	struct p2p_listing games[8], copy[8];
 	short count;
 
 	games[0] = game((short)(classic + 1), 2, 4, 40);
-	games[0].rate = 30;
-	games[1] = game((short)(lowest + 1), 2, 4, 30);
+	games[0].rate = 120;
+	games[1] = game((short)(crispy + 1), 2, 4, 30);
 	games[1].rate = 120;
 	/* (a Legacy game stamped as the kind's: a Legacy listing has no playlist,
-	p2p_lobby.c's, but the browser does not lean on it) */
+	p2p_lobby.c's, but the browser does not lean on it; at the kind's rate,
+	so that only its being Legacy keeps it out) */
 	games[2] = game((short)(classic + 1), 1, 4, 20);
-	games[2].rate = 30;
+	games[2].rate = 120;
 	games[2].standard = 0;
 	games[3] = game((short)(classic + 1), 1, 4, 20);
-	games[3].rate = 120;
+	games[3].rate = 30;
 	games[4] = game(1, 3, 8, 20);
 	games[5] = game(0, 3, 4, 20);
-	games[5].rate = 30;
+	games[5].rate = 120;
 	games[6] = game((short)(classic + 1), 3, 4, 90);
-	games[6].rate = 30;
+	games[6].rate = 120;
 	games[6].locked = 1;
-	games[7] = game((short)(lowest + 1), 4, 4, 10);
+	games[7] = game((short)(crispy + 1), 4, 4, 10);
 	games[7].rate = 120;
 	games[7].in_progress = 1;
 	memcpy(copy, games, sizeof(games));
 	count = matchmaking_playlist_games(copy, 8, classic);
 	CHECK(count == 2 && copy[0].ping == 40 && copy[1].ping == 90,
 		"Classic's browser lists its two games, in order (it listed %d)", count);
-	CHECK(copy[0].rate == 30 && copy[1].rate == 30 && copy[0].standard && copy[1].standard,
-		"never a 120 Tick game nor a Legacy one");
+	CHECK(copy[0].playlist == classic + 1 && copy[1].playlist == classic + 1 && copy[0].rate == 120 &&
+		copy[1].rate == 120 && copy[0].standard && copy[1].standard,
+		"never a Crispy game, a 30 Tick one nor a Legacy one");
 	memcpy(copy, games, sizeof(games));
-	count = matchmaking_playlist_games(copy, 8, lowest);
-	CHECK(count == 2 && copy[0].ping == 30 && copy[1].ping == 10 && copy[0].rate == 120 && copy[1].rate == 120,
-		"Lowest Latency's lists its two (full and under way too: the browser shows them as they are)");
+	count = matchmaking_playlist_games(copy, 8, crispy);
+	CHECK(count == 2 && copy[0].ping == 30 && copy[1].ping == 10 && copy[0].playlist == crispy + 1 &&
+		copy[1].playlist == crispy + 1,
+		"Crispy's lists its two (full and under way too: the browser shows them as they are), never Classic's");
 	memcpy(copy, games, sizeof(games));
 	count = matchmaking_playlist_games(copy, 8, 0);
 	CHECK(count == 1 && copy[0].playlist == 1, "Team Slayer's (no rate of its own) lists its game");
@@ -418,35 +426,35 @@ maps, a party's member, while a search goes on */
 static void case_host_action(void)
 {
 	short classic = matchmaking_doubles_playlists[_matchmaking_doubles_classic];
-	short lowest = matchmaking_doubles_playlists[_matchmaking_doubles_lowest_latency];
+	short crispy = matchmaking_doubles_playlists[_matchmaking_doubles_crispy];
 
 	matchmaking.stage = _matchmaking_idle;
 	CHECK(matchmaking_host_playlist(classic, 1) && stub_hosts == 1 && stub_hosted_playlist == classic &&
 		matchmaking.stage == _matchmaking_hosting && matchmaking.controller == 1,
 		"Classic's HOST GAME hosts its playlist (its rate, gametype and maps: matchmaking_host)");
-	CHECK(!matchmaking_host_playlist(lowest, 0) && stub_hosts == 1, "not over a game being hosted");
+	CHECK(!matchmaking_host_playlist(crispy, 0) && stub_hosts == 1, "not over a game being hosted");
 	matchmaking.stage = _matchmaking_looking;
-	CHECK(!matchmaking_host_playlist(lowest, 0) && stub_hosts == 1, "nor over a search, which hosts by itself");
+	CHECK(!matchmaking_host_playlist(crispy, 0) && stub_hosts == 1, "nor over a search, which hosts by itself");
 	matchmaking.stage = _matchmaking_idle;
 	stub_online = FALSE;
-	CHECK(!matchmaking_host_playlist(lowest, 0) && matchmaking.problem == _matchmaking_problem_offline &&
+	CHECK(!matchmaking_host_playlist(crispy, 0) && matchmaking.problem == _matchmaking_problem_offline &&
 		stub_hosts == 1, "offline: refused, and why");
 	stub_online = TRUE;
 	stub_maps = 0;
-	CHECK(!matchmaking_host_playlist(lowest, 0) && matchmaking.problem == _matchmaking_problem_no_maps &&
+	CHECK(!matchmaking_host_playlist(crispy, 0) && matchmaking.problem == _matchmaking_problem_no_maps &&
 		stub_hosts == 1, "none of its maps: refused, and why");
 	stub_maps = 5;
 	stub_member = TRUE;
 	stub_party_size = 2;
-	CHECK(!matchmaking_host_playlist(lowest, 0) && matchmaking.problem == _matchmaking_problem_member &&
+	CHECK(!matchmaking_host_playlist(crispy, 0) && matchmaking.problem == _matchmaking_problem_member &&
 		stub_hosts == 1, "a party's member: its leader hosts");
 	stub_member = FALSE;
 	stub_party_size = 3;
-	CHECK(!matchmaking_host_playlist(lowest, 0) && matchmaking.problem == _matchmaking_problem_party_too_big,
+	CHECK(!matchmaking_host_playlist(crispy, 0) && matchmaking.problem == _matchmaking_problem_party_too_big,
 		"a party of 3 for 2 against 2: refused");
 	stub_party_size = 2;
-	CHECK(matchmaking_host_playlist(lowest, 0) && stub_hosted_playlist == lowest &&
-		matchmaking.stage == _matchmaking_hosting, "a party of two's leader hosts Lowest Latency's");
+	CHECK(matchmaking_host_playlist(crispy, 0) && stub_hosted_playlist == crispy &&
+		matchmaking.stage == _matchmaking_hosting, "a party of two's leader hosts Crispy's");
 	matchmaking.stage = _matchmaking_idle;
 	stub_hosted_ok = FALSE;
 	CHECK(!matchmaking_host_playlist(classic, 0) && matchmaking.stage == _matchmaking_idle,

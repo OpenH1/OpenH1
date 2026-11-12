@@ -2,7 +2,7 @@
 DOUBLES_BROWSER.INC
 
 The 2V2 browser (tools/port_settings.py's _doubles_browser): the main menu's
-2V2, its kind chosen (CLASSIC or LOWEST LATENCY: matchmaking_menu.inc's
+2V2, its kind chosen (CLASSIC or CRISPY: matchmaking_menu.inc's
 chooser), lists that kind's games. It is the server browser: its list is the
 server browser's widgets (the column titles, which sort and search, and the
 games' rows) and is filled, ordered, grouped and joined by the server
@@ -10,7 +10,7 @@ browser's code (lobby_browser_update, lobby_browser_select), with the games
 kept to the kind's (browser_doubles_playlist: matchmaking.c's
 matchmaking_playlist_games, the search's own test, so the browser and the
 search never disagree: an OpenH1 game listed for the kind's playlist, at its
-tick rate; never the other kind's, nor a Legacy game). A row's A joins its
+tick rate, 120 for both; never the other kind's, nor a Legacy game). A row's A joins its
 game, the party following its leader as always.
 
 Under the rows: HOST GAME, the kind's game hosted at once as matchmaking
@@ -24,7 +24,8 @@ With no game of the kind, the list says so and HOST GAME has the focus.
 The panel on the right: the game chosen (its name, map and mode, how it is,
 as the server browser's panel says), or the search under way, and the
 friends online under it, those in a 2v2 of this kind first, marked IN PRO 2V2 (their
-presence says "OpenH1 30 Tick · Pro Doubles on ...": lobby_menu.inc's
+presence says "OpenH1 120 Tick · Classic · Pro Doubles on ..." for a Classic
+game, without "Classic · " for a Crispy one: lobby_menu.inc's
 lobby_presence_tell); a friend's A joins them where the Friends screen
 would (p2p_friends_join), else invites them to this machine's party; the
 footer names it for the friend chosen (A JOIN, with X INVITE where both
@@ -68,26 +69,32 @@ static struct
 /* the kind's words: "PRO 2V2 CLASSIC", "Pro 2v2 Classic" */
 static wchar_t const *doubles_browser_title(void)
 {
-	return doubles_browser.kind == _matchmaking_doubles_lowest_latency ? L"PRO 2V2 LOW LATENCY" : L"PRO 2V2 CLASSIC";
+	return doubles_browser.kind == _matchmaking_doubles_crispy ? L"PRO 2V2 CRISPY" : L"PRO 2V2 CLASSIC";
 }
 
 static wchar_t const *doubles_browser_words(void)
 {
-	return doubles_browser.kind == _matchmaking_doubles_lowest_latency ? L"Pro 2v2 Low Latency" : L"Pro 2v2 Classic";
+	return doubles_browser.kind == _matchmaking_doubles_crispy ? L"Pro 2v2 Crispy" : L"Pro 2v2 Classic";
 }
 
 /* whether a friend's game (their presence's words) is a 2v2 of this kind:
-Pro Doubles at the kind's tick rate */
+Pro Doubles at the kind's tick rate, said to be Classic for Classic's and
+not for Crispy's (both at 120: lobby_presence_tell) */
 static boolean doubles_friend_in_kind(struct p2p_friend const *entry)
 {
 	char prefix[32];
+	char const *classic = " \xC2\xB7 Classic \xC2\xB7 ";
 	short rate = matchmaking_playlist_rate(browser_doubles_playlist);
+	size_t length;
 
 	if (entry->kind != _p2p_friend_online || !rate || !entry->game[0])
 		return FALSE;
 	snprintf(prefix, sizeof(prefix), "OpenH1 %d Tick", rate);
-	return !strncmp(entry->game, prefix, strlen(prefix)) && (entry->game[strlen(prefix)] == ' ') &&
-		strstr(entry->game, "Pro Doubles") != NULL;
+	length = strlen(prefix);
+	if (strncmp(entry->game, prefix, length) || entry->game[length] != ' ' || !strstr(entry->game, "Pro Doubles"))
+		return FALSE;
+	return !strncmp(entry->game + length, classic, strlen(classic)) ==
+		(doubles_browser.kind == _matchmaking_doubles_classic);
 }
 
 /* the friends online, read again a while apart: those in this kind's 2v2
@@ -151,7 +158,7 @@ static boolean doubles_browser_open(struct widget_instance *widget, short kind, 
 		return TRUE;
 	doubles_browser.kind = kind;
 	platform_log("menus: 2V2 %s chosen: its games listed (OpenH1 %d Tick)",
-		kind == _matchmaking_doubles_classic ? "CLASSIC" : "LOWEST LATENCY",
+		kind == _matchmaking_doubles_classic ? "CLASSIC" : "CRISPY",
 		matchmaking_playlist_rate(matchmaking_doubles_playlist(kind)));
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
 	return ui_widget_port_open(widget, DOUBLES_BROWSER_NAME, widget_deleted);
@@ -172,8 +179,8 @@ static boolean doubles_browser_initialize(struct widget_instance *screen, struct
 	doubles_browser.friend_chosen = FALSE;
 	doubles_browser.prompts_logged = (unsigned long)-1;
 	doubles_browser.empty_focused = FALSE;
-	text_set(named(screen, "doubles_kind", 0), doubles_browser.kind == _matchmaking_doubles_lowest_latency ?
-		L"LOWEST LATENCY \x00B7 OPENH1 120 TICK" : L"CLASSIC \x00B7 OPENH1 30 TICK \x00B7 INSTANT AIM OFF");
+	text_set(named(screen, "doubles_kind", 0), doubles_browser.kind == _matchmaking_doubles_crispy ?
+		L"CRISPY \x00B7 120 TICK \x00B7 INSTANT AIM ON" : L"CLASSIC \x00B7 120 TICK \x00B7 INSTANT AIM OFF");
 	return browser_initialize(screen, event, widget_deleted);
 }
 
