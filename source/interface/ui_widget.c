@@ -8884,11 +8884,15 @@ static void widget_instance_render_recursive(
 		return;
 	/* port: a hand-written screen's item drawn as its picture, in a box of
 	the picture's height (port/linux/game/menu_screen.c) */
+	pictured.bounds = definition->bounds;
 	if (menu_screen_item_picture(widget, &picture_index, &pictured.bounds))
 	{
+		rectangle2d bounds = pictured.bounds;
+
 		pictured = *definition;
-		menu_screen_item_picture(widget, &picture_index, &pictured.bounds);
-		pictured.background_bitmap.index = picture_index;
+		pictured.bounds = bounds;
+		if (picture_index != NONE)
+			pictured.background_bitmap.index = picture_index;
 		definition = &pictured;
 	}
 	if (!use_nifty_plasma_fx &&

@@ -40,7 +40,23 @@ screen file's, set on each widget as the screen is made. -->
 		<child widget="screens/card_title"/>
 		<child widget="screens/card_subtitle"/>
 	</widget>
-	<widget name="screens/card_art" left="6" top="6" width="146" height="119" bitmap="main_menu/campaign/art_146x119" radius="5"/>
+	<widget name="screens/card_art" left="6" top="6" width="146" height="119" bitmap="screens/card_still" radius="5"/>
+	<!-- the campaign's level stills, as the mission cards' (main_menu/campaign/art_146x119) at the scale the
+	Campaign screen's cards are drawn at, filling their room (menu_screen.c's card_scale: 1.28): a map's frame
+	is drawn at the size it is given here, not its widget's -->
+	<bitmap name="screens/card_still">
+		<frame map="ui\shell\bitmaps\sp_levels" index="0" width="343" height="172"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="1" width="343" height="172"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="2" width="343" height="172"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="3" width="343" height="172"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="4" width="343" height="172"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="5" width="343" height="172"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="6" width="343" height="172"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="7" width="343" height="172"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="8" width="343" height="172"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="9" width="343" height="172"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="10" width="343" height="172"/>
+	</bitmap>
 	<widget name="screens/card_title" type="text" left="6" top="132" width="146" height="34" font="ui\large_ui" color="#FF8DB6E6" align="center"/>
 	<widget name="screens/card_subtitle" type="text" left="10" top="172" width="138" height="60" font="ui\small_ui" color="#FF6F9CD0" align="center" text_flags="no_focus_test wrap"/>
 	<!-- the focused item's hint, under it -->

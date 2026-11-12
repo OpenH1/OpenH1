@@ -7,8 +7,12 @@ campaign's pictures, by level). -->
 	<header title="CAMPAIGN" picture="main_menu/campaign/header_campaign"/>
 	<space/>
 	<cards focus="solo">
-		<card id="solo" title="SOLO" subtitle="Play the story on your own" picture="main_menu/campaign/art_146x119" frame="0" do="open solo"/>
-		<card id="coop" title="CO-OP" subtitle="Join a game or host one for friends" picture="main_menu/campaign/art_146x119" frame="3" do="open coop"/>
+		<card id="solo" title="SOLO" subtitle="Play the story on your own" picture="screens/card_still" frame="0" do="open solo"/>
+		<card id="coop" title="CO-OP" subtitle="Join a game or host one for friends" picture="screens/card_still" frame="3" do="open coop"/>
 	</cards>
 	<space/>
+	<buttons>
+		<button key="accept" label="SELECT"/>
+		<button key="back" label="BACK"/>
+	</buttons>
 </screen>
