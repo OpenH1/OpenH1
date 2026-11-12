@@ -419,7 +419,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	else if (parent_element == _element_buttons && !strcmp(name, "button"))
 	{
-		static char const *const names[] = { "key", "label", NULL };
+		static char const *const names[] = { "key", "label", "side", NULL };
 
 		element = _element_button;
 		attributes_read(reader, name, attributes, names, values);
@@ -430,6 +430,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 
 			button->key = values[0];
 			button->label = values[1];
+			button->side = values[2];
 			if (!button->key || (strcmp(button->key, "accept") && strcmp(button->key, "back") &&
 				strcmp(button->key, "x") && strcmp(button->key, "y")))
 			{
@@ -438,6 +439,10 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			else if (!button->label || !button->label[0])
 			{
 				reader_problem(reader, "<button> has no label", NULL);
+			}
+			else if (button->side && strcmp(button->side, "left") && strcmp(button->side, "right"))
+			{
+				reader_problem(reader, "<button>'s side is left or right", NULL);
 			}
 		}
 	}

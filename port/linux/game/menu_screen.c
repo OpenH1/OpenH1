@@ -24,6 +24,8 @@ kept on the item of the same id.
 #include "interface/event_manager.h"
 #include "interface/ui_widget.h"
 #include "interface/ui_widget_event_handler_functions.h"
+#include "math/integer_math.h"
+#include "text/draw_string.h"
 #include "tag_files/tag_groups.h"
 
 #include "halo_menus.h"
@@ -46,6 +48,8 @@ boolean pc_menu_campaign_saved(char *level, char *difficulty, long size);
 void pc_menu_browser_visit(char const *tab);
 int pc_menu_browser_visit_kind(void);
 void pc_menu_main_menu_shown(struct widget_instance *screen);
+int halo_keyboard_prompts(void);
+long ui_widget_port_text_box_font(struct widget_instance *widget, short *width);
 boolean ui_widget_port_pointer_focused(void);
 
 /* ---------- constants */
@@ -58,6 +62,7 @@ the most items a screen's list makes */
 #define SCREEN_MAXIMUM_ITEMS 16
 #define SCREEN_ID_LENGTH 32
 #define SCREEN_ACTION_LENGTH 48
+#define SCREEN_MAXIMUM_BUTTONS 4
 
 /* the layout, in the menus' 640 by 480 units: the title art's room at the
 top (its picture TITLE_ART_TOP down in it, as the main menu has it), an
@@ -83,17 +88,24 @@ as a picture: the PC version's items' box (256 by 33) */
 240): their gap, and their row's room, below them too */
 #define CARD_WIDTH 158
 #define CARD_GAP 24
-#define CARDS_ROOM 264
+#define CARDS_ROOM 260
 /* (the card picture's own height, and the margin above and below the cards
 filling their room) */
 #define CARD_HEIGHT 240
 #define CARD_MARGIN 10
 /* a card's title drawn larger than its font (large_ui's) */
 #define CARD_TITLE_SCALE 1.4f
-/* an inner screen's header's room (its picture where the campaign menu's is) */
+/* an inner screen's header's room (its picture where the campaign menu's is),
+or the tall layout's band's (port_settings.py's TALL_BAND) */
 #define HEADER_ROOM 80
-#define BUTTONS_ROOM 72
-#define BUTTONS_TOP 18
+#define HEADER_ROOM_TALL 40
+/* the header's words drawn larger than their font (the heading's), as the
+tall layout's titles (TALL_TITLE_SCALE) */
+#define HEADER_TITLE_SCALE 1.4f
+/* the button bar's right side's margin from the screen's right (port_settings.py's WIDE_MARGIN) */
+#define BUTTONS_MARGIN 24
+#define BUTTONS_ROOM 37
+#define BUTTONS_TOP 9
 /* an item's label drawn larger than its font (large_ui's): at 4:3, and
 at 16:9 and wider */
 #define ITEM_SCALE_LEAST 1.45f
@@ -250,6 +262,13 @@ struct screen_open
 	long header_picture;
 	/* (its cards' scale, to fill their room: 0 for their own size) */
 	real card_scale;
+	/* (its button bar's right side, its keys and words, which is placed to
+	end at the screen's right margin each frame: the keys' pictures differ by
+	the device) */
+	struct widget_instance *buttons_right;
+	char right_keys[SCREEN_MAXIMUM_BUTTONS][SCREEN_ID_LENGTH];
+	char right_labels[SCREEN_MAXIMUM_BUTTONS][SCREEN_ID_LENGTH];
+	long right_count;
 };
 
 static struct
@@ -261,7 +280,7 @@ static struct
 	the screen its item opened) */
 	char focused[NUMBEROF(screen_places)][SCREEN_ID_LENGTH];
 	/* the blocks' tags, as the menus' tags were last built */
-	long title_art_tag, list_tag, item_tag, hint_tag, buttons_tag, button_tag, cards_tag, card_tag, card_title_tag, card_art_tag, card_subtitle_tag, header_tag;
+	long title_art_tag, list_tag, item_tag, hint_tag, buttons_tag, button_tag, cards_tag, card_tag, card_title_tag, card_art_tag, card_subtitle_tag, header_tag, buttons_right_tag, header_text_tag;
 } screens = { FALSE };
 
 static void screens_names_give(void)
@@ -320,11 +339,13 @@ static boolean screen_blocks_found(void)
 	screens.card_art_tag = screen_block_tag("pc\\screens\\card_art");
 	screens.header_tag = screen_block_tag("pc\\screens\\header");
 	screens.card_subtitle_tag = screen_block_tag("pc\\screens\\card_subtitle");
+	screens.buttons_right_tag = screen_block_tag("pc\\screens\\buttons_right");
+	screens.header_text_tag = screen_block_tag("pc\\screens\\header_text");
 	if (screens.title_art_tag == NONE || screens.list_tag == NONE || screens.item_tag == NONE ||
 		screens.hint_tag == NONE || screens.buttons_tag == NONE || screens.button_tag == NONE ||
 		screens.cards_tag == NONE || screens.card_tag == NONE || screens.card_title_tag == NONE ||
 		screens.card_art_tag == NONE || screens.header_tag == NONE ||
-		screens.card_subtitle_tag == NONE)
+		screens.card_subtitle_tag == NONE || screens.buttons_right_tag == NONE || screens.header_text_tag == NONE)
 	{
 		platform_log("menus: the screens' blocks (screens/blocks.xml) are not all there");
 		screens.blocks_found = FALSE;
@@ -390,7 +411,13 @@ static boolean screen_item_shown(struct menu_screen_block const *item, struct sc
 
 /* the buttons' words: each one's key (its icon, "%a-button": the menus' key
 for it while the keyboard plays) and label */
-static void screen_buttons_text(struct menu_screen const *screen, long buttons, char *text, unsigned long size)
+static boolean screen_button_right(struct menu_screen_block const *button)
+{
+	return button->side ? !strcmp(button->side, "right") : strcmp(button->key, "back") != 0;
+}
+
+static void screen_buttons_text(struct menu_screen const *screen, long buttons, boolean right, char *text,
+	unsigned long size)
 {
 	long index;
 
@@ -401,7 +428,7 @@ static void screen_buttons_text(struct menu_screen const *screen, long buttons, 
 		char const *icon;
 		size_t used = strlen(text);
 
-		if (button->kind != MENU_SCREEN_BUTTON || button->parent != buttons)
+		if (button->kind != MENU_SCREEN_BUTTON || button->parent != buttons || screen_button_right(button) != right)
 			continue;
 		icon = !strcmp(button->key, "accept") ? "%a-button" : !strcmp(button->key, "back") ? "%b-button" :
 			!strcmp(button->key, "x") ? "%x-button" : "%y-button";
@@ -444,7 +471,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 			heights[index] = CARDS_ROOM;
 			break;
 		case MENU_SCREEN_HEADER:
-			heights[index] = HEADER_ROOM;
+			heights[index] = block->picture ? HEADER_ROOM : HEADER_ROOM_TALL;
 			break;
 		case MENU_SCREEN_CARD:
 		case MENU_SCREEN_ITEM:
@@ -469,15 +496,6 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 			fixed = (short)(fixed + heights[index]);
 	}
 	extra = (short)(SCREEN_HEIGHT - fixed);
-	/* (cards fill what is left, as tall as it lets them: the spaces none) */
-	for (index = 0; extra > 0 && index < screen->block_count; index++)
-	{
-		if (screen->blocks[index].kind == MENU_SCREEN_CARDS)
-		{
-			heights[index] = (short)(heights[index] + extra);
-			extra = 0;
-		}
-	}
 	/* (too much for the screen: the title art's room the less) */
 	if (extra < 0)
 	{
@@ -510,10 +528,19 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 			break;
 		case MENU_SCREEN_HEADER:
 		{
-			struct widget_instance *header = screen_widget_add(widget, screens.header_tag, 0, top);
+			/* (its picture where the campaign menu has its own; or its
+			title's words in the tall layout's band, as Settings' and the
+			browsers' titles) */
+			struct widget_instance *header = screen_widget_add(widget,
+				block->picture ? screens.header_tag : screens.header_text_tag, 0, top);
 
 			open->header_picture = block->picture ? screen_picture_tag(block->picture) : NONE;
 			open->header = header;
+			if (header && !block->picture)
+			{
+				menu_screen_text(block->label, screen_value, &values, label, sizeof(label));
+				screen_text_set(header, label);
+			}
 			break;
 		}
 		case MENU_SCREEN_CARDS:
@@ -529,10 +556,10 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 				break;
 			if (!focus_id)
 				focus_id = block->focus;
-			/* (as tall as the room lets them, their proportions kept) */
-			open->card_scale = (real)(height - 2 * CARD_MARGIN) / (real)CARD_HEIGHT;
-			card_width = (short)(CARD_WIDTH * open->card_scale + 0.5f);
-			card_gap = (short)(CARD_GAP * open->card_scale + 0.5f);
+			/* (at their own size: a scale, 0 for none, would draw them larger) */
+			open->card_scale = 0.0f;
+			card_width = CARD_WIDTH;
+			card_gap = CARD_GAP;
 			x = (short)((SCREEN_WIDTH - count * card_width - (count - 1) * card_gap) / 2);
 			for (card_index = 0; card_index < screen->block_count; card_index++)
 			{
@@ -652,11 +679,33 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		case MENU_SCREEN_BUTTONS:
 		{
 			struct widget_instance *bar;
+			long button;
 
-			screen_buttons_text(screen, index, text, sizeof(text));
-			bar = screen_widget_add(widget, screens.buttons_tag, 0, (short)(top + BUTTONS_TOP));
+			/* (back at the left, the rest at the right, on the screen's
+			bottom line) */
+			screen_buttons_text(screen, index, FALSE, text, sizeof(text));
+			bar = text[0] ? screen_widget_add(widget, screens.buttons_tag, 0, (short)(top + BUTTONS_TOP)) : NULL;
 			if (bar)
 				screen_text_set(bar, text);
+			screen_buttons_text(screen, index, TRUE, text, sizeof(text));
+			bar = text[0] ? screen_widget_add(widget, screens.buttons_right_tag, 0, (short)(top + BUTTONS_TOP)) :
+				NULL;
+			if (bar)
+				screen_text_set(bar, text);
+			open->buttons_right = bar;
+			open->right_count = 0;
+			for (button = 0; button < screen->block_count && open->right_count < SCREEN_MAXIMUM_BUTTONS; button++)
+			{
+				struct menu_screen_block const *block_button = &screen->blocks[button];
+
+				if (block_button->kind == MENU_SCREEN_BUTTON && block_button->parent == index &&
+					screen_button_right(block_button))
+				{
+					snprintf(open->right_keys[open->right_count], SCREEN_ID_LENGTH, "%s", block_button->key);
+					snprintf(open->right_labels[open->right_count], SCREEN_ID_LENGTH, "%s", block_button->label);
+					open->right_count++;
+				}
+			}
 			break;
 		}
 		}
@@ -755,6 +804,50 @@ void menu_screen_closed(struct widget_instance *widget)
 		memset(open, 0, sizeof(*open));
 }
 
+/* the button bar's right side placed to end at the screen's right margin:
+its words measured in its font, each key's picture as wide as the device
+shows it (a controller's button, or the keyboard's key's cap) */
+static void screen_buttons_right_place(struct screen_open *open)
+{
+	struct widget_instance *bar = open->buttons_right;
+	short box_width = 0;
+	long font = ui_widget_port_text_box_font(bar, &box_width);
+	boolean keys = halo_keyboard_prompts() != 0;
+	wchar_t measured[MENU_SCREEN_MAXIMUM_TEXT];
+	char text[MENU_SCREEN_MAXIMUM_TEXT];
+	unsigned short wide[MENU_SCREEN_MAXIMUM_TEXT];
+	rectangle2d bounds, text_bounds, cursor_bounds;
+	real_argb_color color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	long index, length;
+	short width;
+
+	if (font == NONE)
+		return;
+	text[0] = 0;
+	for (index = 0; index < open->right_count; index++)
+	{
+		size_t used = strlen(text);
+		/* (a key's picture as wide as its name's letters and its cap's
+		edges, or a button's as two letters) */
+		char const *key = !strcmp(open->right_keys[index], "accept") ? "Enter" :
+			!strcmp(open->right_keys[index], "back") ? "Esc" : !strcmp(open->right_keys[index], "x") ? "Tab" : "F";
+
+		snprintf(text + used, sizeof(text) - used, "%s%s %s", used ? "     " : "", keys ? key : "WW",
+			open->right_labels[index]);
+		if (keys)
+			snprintf(text + strlen(text), sizeof(text) - strlen(text), "  ");
+	}
+	length = halo_menus_utf16(text, wide, NUMBEROF(wide));
+	csmemcpy(measured, wide, length * (long)sizeof(wchar_t));
+	set_rectangle2d(&bounds, 0, 0, 640, 40);
+	draw_string_set_draw_mode(font, NONE, 0, 0, &color);
+	draw_unicode_string_compute_bounds(&bounds, measured, &text_bounds, &cursor_bounds);
+	width = (short)(text_bounds.x1 - text_bounds.x0);
+	if (width <= 0 || width > SCREEN_WIDTH)
+		return;
+	bar->horizontal_offset = (short)(open->widget->horizontal_offset + SCREEN_WIDTH - BUTTONS_MARGIN - width);
+}
+
 /* the item focused now (its index, NONE for none) */
 static long screen_focused(struct screen_open const *open)
 {
@@ -799,6 +892,8 @@ void menu_screen_frame(struct widget_instance *widget)
 		else
 			open->generation = menu_screens_generation(open->place->screen);
 	}
+	if (open->buttons_right)
+		screen_buttons_right_place(open);
 	focused = screen_focused(open);
 	for (index = 0; index < open->item_count; index++)
 	{
@@ -915,6 +1010,11 @@ boolean menu_screen_back(struct widget_instance *widget, struct event_record *ev
 the larger, from 4:3 to 16:9 */
 boolean menu_screen_text_scale(long definition_index, short wide_extra, real *scale)
 {
+	if (screens.blocks_found && definition_index == screens.header_text_tag)
+	{
+		*scale = HEADER_TITLE_SCALE;
+		return TRUE;
+	}
 	if (screens.blocks_found && (definition_index == screens.card_title_tag ||
 		definition_index == screens.card_subtitle_tag))
 	{

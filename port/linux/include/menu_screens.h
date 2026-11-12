@@ -56,6 +56,9 @@ struct menu_screen_block
 	/* (an item drawn as a picture of the menus' files: its bitmap's name,
 	"main_menu/menu_versus"; its label then the words it stands for) */
 	char const *picture;
+	/* (a button's side of the bar: "left" or "right"; NULL, back's left
+	and the others' right) */
+	char const *side;
 	/* (a card's picture's frame: the campaign's stills by level; -1, none) */
 	long frame;
 	/* (a list's item focused first, by its id) */
