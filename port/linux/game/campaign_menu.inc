@@ -651,38 +651,74 @@ static struct widget_instance *mission_card(struct widget_instance *list, short 
 	return named(list, name, 0);
 }
 
-/* the tall layout's card's foot: "BEATEN ON LEGENDARY", the hardest
-difficulty the mission is beaten on, or nothing; no badges */
-static void mission_card_beaten_show(struct widget_instance *card, char const *kind, byte beaten)
+/* the tall layout's card's foot, in the difficulties' badges (the map's own,
+ui.map's difficulty_options_small, drawn from it): the chosen card's the
+difficulty a mission starts on (game.campaign_difficulty, the one chosen last)
+at the left, its name beside it; the hardest the mission is beaten on at the
+right, small; nothing for one beaten on none. Without the map's badges, the
+words: the difficulty's name, BEATEN ON <it> */
+static void mission_card_foot_show(struct widget_instance *card, char const *kind, byte beaten, boolean chosen)
 {
+	boolean have_badges = tag_loaded('bitm', MISSION_BADGES) != NONE;
 	wchar_t text[MISSION_TEXT_LENGTH], name_text[ROW_TEXT_LENGTH];
-	char name[48];
+	char badge_name[48], shape_name[48], name[48];
 	short difficulty, hardest = NONE, index;
+	short current = (short)PIN(config_integer("game.campaign_difficulty"), 0, NUMBER_OF_DIFFICULTIES - 1);
+	struct widget_instance *badge;
 
-	snprintf(name, sizeof(name), "card_badge_%s", kind);
+	snprintf(badge_name, sizeof(badge_name), "card_badge_%s", kind);
+	snprintf(shape_name, sizeof(shape_name), "card_badge_shape_%s", kind);
 	for (index = 0; index < NUMBER_OF_DIFFICULTIES; index++)
-		visible_set(named(card, name, index), FALSE);
-	snprintf(name, sizeof(name), "card_badge_shape_%s", kind);
-	for (index = 0; index < NUMBER_OF_DIFFICULTIES; index++)
-		visible_set(named(card, name, index), FALSE);
+	{
+		visible_set(named(card, badge_name, index), FALSE);
+		visible_set(named(card, shape_name, index), FALSE);
+	}
 	for (difficulty = 0; difficulty < NUMBER_OF_DIFFICULTIES; difficulty++)
 	{
 		if (beaten & (1 << difficulty))
 			hardest = difficulty;
 	}
-	snprintf(name, sizeof(name), "card_unbeaten_%s", kind);
-	visible_set(named(card, name, 0), hardest != NONE);
-	if (hardest == NONE)
-		return;
-	campaign_difficulty_name(hardest, name_text, ROW_TEXT_LENGTH);
-	for (index = 0; name_text[index]; index++)
+	text[0] = 0;
+	/* (the chosen card's: the difficulty it starts on, its badge and name) */
+	if (chosen)
 	{
-		if (name_text[index] >= L'a' && name_text[index] <= L'z')
-			name_text[index] = (wchar_t)(name_text[index] - L'a' + L'A');
+		badge = named(card, badge_name, 0);
+		visible_set(badge, have_badges);
+		if (badge)
+		{
+			badge->animation.current_frame_index = current;
+			badge->alpha_modifier = 1.0f;
+		}
+		campaign_difficulty_name(current, name_text, ROW_TEXT_LENGTH);
+		ustrncpy(text, name_text, MISSION_TEXT_LENGTH - 1);
+		text[MISSION_TEXT_LENGTH - 1] = 0;
 	}
-	usnprintf(text, MISSION_TEXT_LENGTH - 1, L"BEATEN ON %s", name_text);
-	text[MISSION_TEXT_LENGTH - 1] = 0;
-	menu_text_box_fit(named(card, name, 0), text, 0);
+	/* (the hardest it is beaten on, small, at the right) */
+	if (hardest != NONE)
+	{
+		badge = named(card, badge_name, 1);
+		visible_set(badge, have_badges);
+		if (badge)
+		{
+			badge->animation.current_frame_index = hardest;
+			badge->alpha_modifier = 1.0f;
+		}
+		if (!have_badges && !chosen)
+		{
+			campaign_difficulty_name(hardest, name_text, ROW_TEXT_LENGTH);
+			usnprintf(text, MISSION_TEXT_LENGTH - 1, L"BEATEN ON %s", name_text);
+			text[MISSION_TEXT_LENGTH - 1] = 0;
+		}
+	}
+	for (index = 0; text[index]; index++)
+	{
+		if (text[index] >= L'a' && text[index] <= L'z')
+			text[index] = (wchar_t)(text[index] - L'a' + L'A');
+	}
+	snprintf(name, sizeof(name), "card_unbeaten_%s", kind);
+	visible_set(named(card, name, 0), text[0] != 0);
+	if (text[0])
+		menu_text_box_fit(named(card, name, 0), text, 0);
 }
 
 /* a card's parts for a mission: its picture (a title card for a Custom
@@ -742,7 +778,7 @@ static void mission_card_show(struct widget_instance *card, short mission, boole
 			wchar_t const *words = custom_edition_maps_description(display_index);
 
 			menu_text_box_wrap(named(card, name, 0), words ? words : L"", MISSION_TALL_OBJECTIVE_LINES);
-			mission_card_beaten_show(card, kind, 0);
+			mission_card_foot_show(card, kind, 0, chosen);
 		}
 		card->animation.current_frame_index = chosen ? MISSION_CARD_CHOSEN : MISSION_CARD_RESTING;
 		return;
@@ -797,7 +833,7 @@ static void mission_card_show(struct widget_instance *card, short mission, boole
 		/* (the tall layout: no badges; nothing where it is beaten on none,
 		else the hardest it is beaten on at the card's foot) */
 		if (menu_engine_looks())
-			mission_card_beaten_show(card, kind, beaten);
+			mission_card_foot_show(card, kind, beaten, chosen);
 	}
 	card->animation.current_frame_index = chosen ? MISSION_CARD_CHOSEN : MISSION_CARD_RESTING;
 }

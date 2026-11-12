@@ -8077,7 +8077,9 @@ def _mission_card(size: tuple, slot: int, kind: str = None) -> list:
     base = f"{CAMPAIGN}/card_{kind}_{slot}"
     art_w, art_h = campaign_art_size(width - 2 * MISSION_ART_INSET)
     inset = MISSION_ART_INSET
-    badge, step = MISSION_BADGE[MISSION_BIG if tall else size]
+    # (the tall layout's at the card's foot, smaller: the chosen card's difficulty at the left, the hardest it is
+    # beaten on at the right, campaign_menu.inc's mission_card_foot_show)
+    badge, step = MISSION_BADGE[MISSION_SMALL if tall else size]
     text_top = inset + art_h + 6
     # (the missions' names in the menus' heading font: OpenCE, the titles' face; the tall layout's every card's)
     font = CAMPAIGN_TITLE_FONT if size == MISSION_BIG or tall else "ui\\small_ui"
@@ -8085,11 +8087,12 @@ def _mission_card(size: tuple, slot: int, kind: str = None) -> list:
                 ("card_art_back", "card_art", "card_custom_art", "card_card_tag",
                  "card_card_title", "card_resume",
                  "card_number", "card_title", "card_objective")]
-    # (the badges in a row under the name, across the card)
+    # (the badges in a row under the name, across the card; the tall layout's two at its foot's ends)
     badges_x = (width - 3 * step - badge) // 2
-    children += [f'<child widget="{CAMPAIGN}/card_badge_shape_{kind}" x="{badges_x + step * index}"/>'
-                 for index in range(4)]
-    children += [f'<child widget="{CAMPAIGN}/card_badge_{kind}" x="{badges_x + step * index}"/>' for index in range(4)]
+    places = [10, width - 10 - badge, width - 10 - badge, width - 10 - badge] if tall else \
+        [badges_x + step * index for index in range(4)]
+    children += [f'<child widget="{CAMPAIGN}/card_badge_shape_{kind}" x="{x}"/>' for x in places]
+    children += [f'<child widget="{CAMPAIGN}/card_badge_{kind}" x="{x}"/>' for x in places]
     children.append(f'<child widget="{CAMPAIGN}/card_unbeaten_{kind}"/>')
     lines = _widget(base, [("width", width), ("height", height), ("bitmap", mission_card(size))],
                     [*(f'<on event="{event}" run="port campaign choose" open="{CAMPAIGN}/difficulty_screen"/>'
@@ -8136,15 +8139,17 @@ def _mission_card(size: tuple, slot: int, kind: str = None) -> list:
                             max(height - objective_top - 30, 16), "ui\\small_ui", MISSION_TALL_BLUE)
     for name, bitmap in (("card_badge_shape", f"{CAMPAIGN}/badge_shape_{badge}"),
                          ("card_badge", f"{CAMPAIGN}/badges_{badge}")):
-        lines += _widget(f"{CAMPAIGN}/{name}_{kind}", [("controller", 1), ("top", text_top + 62),
+        lines += _widget(f"{CAMPAIGN}/{name}_{kind}", [("controller", 1),
+                                                        ("top", height - 8 - badge if tall else text_top + 62),
                                                         ("width", badge), ("height", badge), ("bitmap", bitmap)], [])
     # (a mission not beaten on any difficulty says so, in the badges' place,
     # across the card, in the middle as the badges are; in the tall layout,
     # the hardest difficulty it is beaten on, at the card's foot, and nothing
     # where it is beaten on none)
     if tall:
-        lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", 10, height - 26, width - 20, 18,
-                                "ui\\small_ui", MISSION_TALL_DIM)
+        # (the chosen card's difficulty's name, beside its badge; without the map's badges, the words alone)
+        lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", 10 + badge + 6, height - 8 - badge // 2 - 9,
+                                width - 20 - 2 * (badge + 6), 18, "ui\\small_ui", MISSION_TALL_BLUE)
     else:
         lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", MISSION_UNBEATEN_INSET,
                                 text_top + 62 + (badge - 16) // 2, width - 2 * MISSION_UNBEATEN_INSET, 18,
