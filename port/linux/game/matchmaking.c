@@ -43,8 +43,9 @@ leader as always (party_menu.inc), and the game's host holds room for them
   every player's view as with display.direct_camera off
   (network_standard_set_hosting_rules); its search takes only games listed
   at that rate. The 2V2 screen's kinds are two such playlists
-  (matchmaking_doubles_playlist): Classic at 30, Lowest Latency at 120,
-  each only ever matched with its own, by its number and its rate.
+  (matchmaking_doubles_playlist), both at 120: Classic, with Instant Aim
+  off for everyone, and Crispy, with each player's own; each only ever
+  matched with its own, by its number.
 - Following: a leader that passed the lead follows its new leader's game as
   a member does, by its invite.
 A Legacy game, or one of an older OpenH1, is never picked (the listing says
@@ -250,16 +251,17 @@ static struct matchmaking_playlist const matchmaking_playlists[] =
 	/* the PRO 2V2 screen's (matchmaking_doubles_playlists): 2 against 2 on pro
 	settings (game_modes.c's pro_doubles) on the 2v2 maps of the competitive
 	rules, Chill Out, Hang 'Em High, Prisoner, Damnation and Derelict
-	(carousel); Lowest Latency at 120 ticks, Classic at the Xbox's 30 with
-	Instant Aim off for everyone. Only the tick rate and the aim differ */
-	{ "2v2 Low Latency", L"PRO 2V2 LOW LATENCY", L"2 against 2, pro settings, at 120 ticks.",
+	(carousel); both at 120 ticks, Classic with Instant Aim off for everyone
+	(each leads their shots), Crispy with each player's own. Only the aim
+	differs (Classic was at the Xbox's 30 before protocol version 27) */
+	{ "2v2 Crispy", L"PRO 2V2 CRISPY", L"2 against 2, pro settings, 120 ticks, Instant Aim on.",
 		{ "pro_doubles", NULL },
 		{ "chillout", "hangemhigh", "prisoner", "damnation", "carousel", NULL, NULL, NULL, NULL },
 		2, 4, 2, 2, 120, FALSE },
-	{ "2v2 Classic", L"PRO 2V2 CLASSIC", L"2 against 2, pro settings, at the Xbox's 30.",
+	{ "2v2 Classic", L"PRO 2V2 CLASSIC", L"2 against 2, pro settings, 120 ticks, Instant Aim off.",
 		{ "pro_doubles", NULL },
 		{ "chillout", "hangemhigh", "prisoner", "damnation", "carousel", NULL, NULL, NULL, NULL },
-		2, 4, 2, 2, 30, TRUE },
+		2, 4, 2, 2, 120, TRUE },
 };
 
 /* the 2V2 screen's kinds' playlists (0 up), by _matchmaking_doubles_* */
@@ -353,8 +355,10 @@ short matchmaking_playlist_rate(
 
 /* whether a public game is one of the playlist's (its listing's number, 1
 up): an OpenH1 game this build joins as one, listed for it, at its tick rate
-where it has one (2V2's kinds: a Classic game is never a 120 Tick one, nor a
-Lowest Latency game a 30 Tick one). The search's (matchmaking_game_score) and
+where it has one. 2V2's kinds, both at 120, are kept apart by the number
+alone (a Classic game is never a Crispy one, nor the other way): the
+listing says no more of the aim, which is the host's word in the game
+record (network_standard_direct_camera_allowed). The search's (matchmaking_game_score) and
 the 2V2 browser's (matchmaking_playlist_games) */
 static boolean matchmaking_listing_of(
 	struct p2p_listing const *game,

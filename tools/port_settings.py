@@ -35,7 +35,7 @@ DOUBLES_ITEM_PLACE = (192, 319)
 SETTINGS_ITEM_PLACE = (192, 355)
 QUIT_ITEM_PLACE = (192, 391)
 # The main menu's PRO 2V2 (port/linux/game/matchmaking_menu.inc): its screen of
-# kinds, CLASSIC and LOWEST LATENCY, each a matchmaking playlist
+# kinds, CLASSIC and CRISPY, each a matchmaking playlist
 # (matchmaking.c's matchmaking_doubles_playlist), whose browser it opens
 DOUBLES = "main_menu/doubles"
 DOUBLES_ROWS = 2
@@ -6315,7 +6315,7 @@ DOUBLES_PROMPTS = [
 def _doubles() -> list:
     """the main menu's PRO 2V2 (main_menu_item_doubles, in the redraws' letters:
     menu_item_frames) and its screen (_matchmaking_screen), a row for each
-    kind, CLASSIC and LOWEST LATENCY: A on one opens the PRO 2V2 browser of
+    kind, CLASSIC and CRISPY: A on one opens the PRO 2V2 browser of
     its playlist (matchmaking_menu.inc), and the panel says why it cannot be
     searched (internet play off, no maps for it)"""
     lines = _widget("main_menu/main_menu_item_doubles",
@@ -6325,8 +6325,8 @@ def _doubles() -> list:
                      '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _header(f"{DOUBLES}/header_doubles", f"{DOUBLES}/header_doubles")
     return lines + _matchmaking_screen(DOUBLES, "doubles", f"{DOUBLES}/header_doubles", "2 AGAINST 2", DOUBLES_ROWS,
-                                       "Pro settings on the 2v2 maps. Classic: 30 ticks, Instant Aim off for "
-                                       "everyone. Lowest Latency: 120. Each lists only its own games.",
+                                       "Pro settings on the 2v2 maps, 120 ticks. Classic: Instant Aim off, lead "
+                                       "your shots. Crispy: Instant Aim on. Each lists only its own games.",
                                        DOUBLES_PROMPTS) + _doubles_browser()
 
 

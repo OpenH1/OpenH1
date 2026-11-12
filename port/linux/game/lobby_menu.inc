@@ -1016,7 +1016,8 @@ static void lobby_utf8(wchar_t const *wide, char *text, short size)
 }
 
 /* the game this machine is in, as Discord's activity says it: "OpenH1 120
-Tick · Slayer on Blood Gulch" (Legacy for a game of OpenCE's netcode; a
+Tick · Slayer on Blood Gulch", "OpenH1 120 Tick · Classic · Pro Doubles on
+Prisoner" for a Pro 2v2 Classic game (Legacy for a game of OpenCE's netcode; a
 game of this machine alone's without either), "Campaign on Halo"; whether
 this machine hosts it for the network, and whether it is under way, its
 invite link and players */
@@ -1048,7 +1049,12 @@ static void lobby_presence_tell(void)
 		text[0] = 0;
 		if (!local)
 		{
-			if (standard)
+			/* (a Pro 2v2 Classic game's said so, its record's Instant Aim
+			off for everyone: the 2V2 browser tells a friend's kind by it,
+			doubles_friend_in_kind, both kinds at 120) */
+			if (standard && TEST_FLAG(game->cooperative_flags, _network_game_no_direct_camera_bit))
+				usnprintf(text, NUMBEROF(text) - 1, L"OpenH1 %ld Tick \x00B7 Classic \x00B7 ", rate > 0 ? rate : 30L);
+			else if (standard)
 				usnprintf(text, NUMBEROF(text) - 1, L"OpenH1 %ld Tick \x00B7 ", rate > 0 ? rate : 30L);
 			else
 				usnprintf(text, NUMBEROF(text) - 1, L"Legacy \x00B7 ");

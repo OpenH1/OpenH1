@@ -711,7 +711,7 @@ it is English. The pictures with words in them (the screens' titles, the
 main menu's items) are drawn in English.
 
 The main menu has one item the PC version's has not, PRO 2V2, after MULTIPLAYER:
-matchmaking's two against two, CLASSIC or LOWEST LATENCY (refer to "PRO 2V2"
+matchmaking's two against two, CLASSIC or CRISPY (refer to "PRO 2V2"
 under "Internet play"). Its item is drawn in the redraws' own letters, as VR
 TUTORIAL is.
 
@@ -2943,9 +2943,9 @@ games they list (`debug.matchmaking` searches any of them, for a test).
 - The playlists: TEAM SLAYER (4 against 4), SLAYER (everyone for
   themselves, 8 at most, parties of 2), CAPTURE THE FLAG (4 against 4), SWAT,
   BIG TEAM BATTLE (8 against 8 on Blood Gulch, Sidewinder and Boarding
-  Action), and PRO 2V2 LOW LATENCY and PRO 2V2 CLASSIC (the main menu's PRO 2V2,
+  Action), and PRO 2V2 CRISPY and PRO 2V2 CLASSIC (the main menu's PRO 2V2,
   below). Each has its gametypes, maps, players and the biggest party it
-  takes; PRO 2V2's have a tick rate too. A game is listed by its playlist's
+  takes; PRO 2V2's have a tick rate too (120, both). A game is listed by its playlist's
   number, so a new playlist is added after the others: an older build of the
   same version does not show it, and passes over its games.
 - Your party's leader searches for everyone; a member sees that its leader
@@ -2975,18 +2975,18 @@ games they list (`debug.matchmaking` searches any of them, for a test).
 ### PRO 2V2
 
 The main menu's PRO 2V2 is matchmaking's two against two (until now named 2V2). It asks which kind,
-CLASSIC or LOWEST LATENCY (in Multiplayer's look, a row for each;
+CLASSIC or CRISPY (in Multiplayer's look, a row for each;
 `game/matchmaking_menu.inc`),
 and A on one opens that kind's **PRO 2V2 browser** (`game/doubles_browser.inc`):
 
 - **Its games**: the server browser itself, kept to the kind's games: the
-  OpenH1 games listed for the kind's playlist at its tick rate, players'
+  OpenH1 games listed for the kind's playlist at its tick rate (120), players'
   and dedicated servers' alike (a server that lists the playlist), never the
   other kind's nor a Legacy game. Its columns, groups (OpenH1 Dedicated
   Servers, Hosted Servers), sorting, searches, pings and stars are the
   server browser's, and so is joining: A on a game joins it, your party
   following you. The line under the title says the kind and its rules
-  (CLASSIC · OPENH1 30 TICK · INSTANT AIM OFF).
+  (CLASSIC · 120 TICK · INSTANT AIM OFF, CRISPY · 120 TICK · INSTANT AIM ON).
 - **HOST GAME** hosts the kind's game at once, as matchmaking hosts one: its
   tick rate, Pro Doubles, one of its maps, listed for its playlist so that
   others see it, OpenCE's players kept out, Classic's Instant Aim, bots
@@ -2997,7 +2997,9 @@ and A on one opens that kind's **PRO 2V2 browser** (`game/doubles_browser.inc`):
   SEARCH stops it; the panel says what it is doing.
 - **The panel** shows the game chosen, as the server browser's does, and
   under it your friends online, those in a 2v2 of this kind first, marked IN
-  PRO 2V2 (their presence says "OpenH1 30 Tick · Pro Doubles on ..."). A
+  PRO 2V2 (their presence says "OpenH1 120 Tick · Classic · Pro Doubles on
+  ..." in a Classic game, "OpenH1 120 Tick · Pro Doubles on ..." in a Crispy
+  one). A
   friend's A joins them, as the Friends screen's JOIN does, or invites them
   to your party. Down from HOST GAME and FIND GAME reaches them. The footer
   names what the friend chosen offers, as the Friends screen does: A JOIN,
@@ -3006,20 +3008,22 @@ and A on one opens that kind's **PRO 2V2 browser** (`game/doubles_browser.inc`):
   neither offline. REFRESH and SORT give their places while a friend is
   chosen.
 - With none of the kind's games, the list says so ("No Pro 2v2 Classic games
-  right now") and HOST GAME has the focus. Offline, or without the kind's
+  right now", "No Pro 2v2 Crispy games right now") and HOST GAME has the focus. Offline, or without the kind's
   maps, it says why, and HOST GAME and FIND GAME say it again.
 
-- **CLASSIC** is an OpenH1 game at 30 ticks (OpenH1 30 Tick, the Xbox's rate,
-  on OpenH1's netcode, not a Legacy game), with INSTANT AIM off for every
-  player: each machine draws its player's view as with
+- **CLASSIC** is an OpenH1 game at 120 ticks (OpenH1 120 Tick), with INSTANT
+  AIM off for every player, so you lead your shots: each machine draws its player's view as with
   `display.direct_camera = false`, the view turning on the game's ticks as
   the original's did, whatever the player's own setting. It is the host's
   word in the game record (`_network_game_no_direct_camera_bit`), so every
   machine of the game has it; the setting itself is not changed, and is the
   player's again after the game. Settings' INSTANT AIM row shows OFF, dimmed,
   during such a game, and its help says why.
-- **LOWEST LATENCY** is an OpenH1 game at 120 ticks (OpenH1 120 Tick), each
-  player's INSTANT AIM their own.
+- **CRISPY** (LOWEST LATENCY before) is an OpenH1 game at 120 ticks (OpenH1
+  120 Tick), each player's INSTANT AIM their own (on by default): the modern
+  shooter's aim. (Until OpenH1 protocol version 27 Classic was at 30 ticks,
+  the Xbox's rate: a build before it does not see these games, nor these
+  builds its.)
 - **The Pro 2v2 rules**, both kinds', whatever the host's or a player's own
   settings, which stay as they are and are theirs again after the game:
   - The shields' effects are the stock game's: no overshield flare, no glow
@@ -3055,7 +3059,7 @@ and A on one opens that kind's **PRO 2V2 browser** (`game/doubles_browser.inc`):
   OVERSHIELD, MOUSE AIM ASSIST, and Classic's INSTANT AIM) show the value the
   game plays at, dimmed, during such a game, and their notes say why; FIELD
   OF VIEW's note says it is capped.
-- Only the tick rate (and with it Classic's aim) differs. Both play Pro
+- Only Classic's aim differs. Both play Pro
   Doubles on the same maps: Chill Out, Hang 'Em High, Prisoner, Damnation
   and Derelict, the Team Slayer maps of the competitive 2v2 rules below, all
   stock multiplayer maps. Pro Doubles (`pro_doubles` for
@@ -3069,9 +3073,9 @@ and A on one opens that kind's **PRO 2V2 browser** (`game/doubles_browser.inc`):
   respawn growth. What the rules leave unsaid is Team Slayer's: friendly fire
   on, no time limit.
 - A kind only ever meets its own: each is a playlist of its own, listed by
-  its number, and its search takes only a game listed at its rate (a Classic
-  search never a 120 Tick game, Lowest Latency never a 30 Tick one). The
-  machine that hosts one hosts it at the kind's rate whatever its
+  its number, and its search takes only a game listed for that number at
+  its rate (a Classic search never a Crispy game, nor the other way, though
+  both are at 120). The machine that hosts one hosts it at the kind's rate whatever its
   `network.game_mode` and `network.sim_rate` say, closed to OpenCE's players
   (Host Controls cannot open it to them), and the next game it hosts is its
   settings' again.
@@ -3267,7 +3271,7 @@ It is off as each game starts.
 
 The link is for co-op (network and split screen; each window has its own,
 of its player's teammates) and games with teams, and shows only teammates.
-In a free-for-all game, and in Pro 2V2 (Classic and Lowest Latency), the key
+In a free-for-all game, and in Pro 2V2 (Classic and Crispy), the key
 says so on the HUD and shows nothing. `display.spartan_link` sets the
 feeds' size (small, medium, large) or turns the key off.
 

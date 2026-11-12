@@ -210,7 +210,7 @@ static void spartan_link_read(
 }
 
 /* a game whose host allows no teammates' feeds: Pro 2V2's, Classic and
-Lowest Latency (network_standard_teammate_feeds_allowed) */
+Crispy (network_standard_teammate_feeds_allowed) */
 static boolean spartan_link_pro_doubles(
 	void)
 {

@@ -80,14 +80,14 @@ int main(int argc, char **argv)
 
 	CASE("pro_host")
 	{
-		host_with_rules(30, TRUE, TRUE);
+		host_with_rules(120, TRUE, TRUE);
 		CHECK(network_standard_pro_game(), "a Pro host's own game not Pro");
 		CHECK(!network_standard_enhanced_lights_allowed(), "a Pro host draws enhanced lights");
 		CHECK(!network_standard_teammate_feeds_allowed(), "a Pro host shows teammates' feeds");
 	}
 	CASE("pro_client")
 	{
-		host_with_rules(30, TRUE, TRUE);
+		host_with_rules(120, TRUE, TRUE);
 		CHECK(TEST_FLAG(record.cooperative_flags, _network_game_pro_rules_bit), "the record does not say Pro");
 		memset(&network_standard_globals, 0, sizeof(network_standard_globals));
 		connection = _game_connection_network_client;
@@ -96,13 +96,13 @@ int main(int argc, char **argv)
 		CHECK(!network_standard_enhanced_lights_allowed(), "a Pro game's client draws enhanced lights");
 		CHECK(!network_standard_teammate_feeds_allowed(), "a Pro game's client shows teammates' feeds");
 	}
-	CASE("lowest_latency")
+	CASE("crispy")
 	{
 		/* (the Pro rules both kinds', Instant Aim only Classic's) */
 		host_with_rules(120, FALSE, TRUE);
 		CHECK(network_standard_pro_game() && TEST_FLAG(record.cooperative_flags, _network_game_pro_rules_bit),
-			"Lowest Latency not Pro");
-		CHECK(!network_standard_globals.hosting_no_direct_camera, "Lowest Latency's Instant Aim off");
+			"Crispy not Pro");
+		CHECK(!network_standard_globals.hosting_no_direct_camera, "Crispy's Instant Aim off");
 	}
 	CASE("not_pro")
 	{
@@ -119,7 +119,7 @@ int main(int argc, char **argv)
 	}
 	CASE("shields")
 	{
-		host_with_rules(30, TRUE, TRUE);
+		host_with_rules(120, TRUE, TRUE);
 		CHECK(network_shield_effects() == _shield_effects_stock, "a Pro host's shields its own light show");
 		host_with_rules(0, FALSE, FALSE);
 		CHECK(network_shield_effects() == _shield_effects_light_show_overshield, "another game's not the host's");

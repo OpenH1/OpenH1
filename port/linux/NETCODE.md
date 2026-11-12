@@ -1717,15 +1717,26 @@ A party's leader joins a game first and its members follow it in
   name) and a HOST message (`'H'`, the member's id and the playlist) that
   the member takes by taking the lead (`p2p_party.c`). An older build
   passes over the type and never sends the byte, so it is never asked.
-- PRO 2V2's kinds (README, "PRO 2V2") are two playlists, PRO 2V2 LOW LATENCY (6)
-  and PRO 2V2 CLASSIC (7), each with a tick rate of its own (120 and 30). The host of
-  one hosts an OpenH1 game at that rate whatever its `network.game_mode` and
+- PRO 2V2's kinds (README, "PRO 2V2") are two playlists, PRO 2V2 CRISPY (6,
+  PRO 2V2 LOW LATENCY before) and PRO 2V2 CLASSIC (7), both at 120 ticks:
+  Classic's host says every player's Instant Aim is off (below, protocol
+  version 25), Crispy's leaves each player's own. The host of one hosts an
+  OpenH1 game at 120 whatever its `network.game_mode` and
   `network.sim_rate` (`network_standard_set_hosting_rules`), closed to
   OpenCE's players, and the listing says the rate as every OpenH1 game's
   does; a search takes only a game listed for its playlist *and* at its
-  rate (`matchmaking_game_score`), so a Classic search never lands in a 120
-  Tick game, nor a Lowest Latency one in a 30 Tick game, an older build's
-  included. The listing carries nothing new.
+  rate (`matchmaking_game_score`). The two kinds, at one rate, are told
+  apart by the listing's playlist number alone, so a Classic search never
+  lands in a Crispy game, nor the other way. The listing carries nothing
+  new.
+- From protocol version 27 PRO 2V2 CLASSIC (7) is at 120 ticks, where it
+  was at 30. Nothing in a message changed, but a playlist's number and rate
+  are what a search and the 2V2 browser require of a listing, which every
+  machine must take alike: a build of 26 searching Classic wants 30 and
+  would pass over every Classic game of 27's, and 27's over 26's, the two
+  splitting the kind's players with neither told why. Raised, a build of
+  either hears the other's games as another version's (`p2p_lobby.c`'s
+  `version_ours`), and its player is told which is newer.
 - From protocol version 25 the host of a Pro 2v2 Classic game says in the game
   record that every player's view is drawn as with `display.direct_camera`
   off: bit 5 of `cooperative_flags` (`_network_game_no_direct_camera_bit`),

@@ -3,8 +3,8 @@ playlist's, an OpenH1 game of this build, open, no password, room for the whole 
 who may search, how a hosted game starts (full at once, else after a wait with bots or its least players), and a
 search's steps (looked for, reached, joined, failed and looked again, the lead passed or hosted when none fits, the new
 leader followed), and the playlists themselves (each listed by its number, which builds must agree on; teams that a
-party fits on), and 2V2's kinds (Classic and Lowest Latency: each its own
-playlist and tick rate, never matched with the other's games). The party's host election is tools/p2p_party_check.c's "host" case; the listing's playlist
+party fits on), and 2V2's kinds (Classic and Crispy: each its own
+playlist, both at 120, never matched with the other's games). The party's host election is tools/p2p_party_check.c's "host" case; the listing's playlist
 p2p_lobby_check.c's."""
 
 import re
@@ -121,16 +121,20 @@ FAULTS = {
     "followed-for-ever": (("if (view->waited > MATCHMAKING_FOLLOW_MILLISECONDS)", "if (0)"), "host"),
     "playlist-inserted": (('\t{ "Slayer", L"SLAYER"', '\t{ "Doubles", L"DOUBLES", L"", { "team_slayer", NULL },\n'
                            '\t\t{ "wizard", NULL }, 2, 4, 2, 2 },\n\t{ "Slayer", L"SLAYER"'), "playlists"),
-    "party-split-teams": (("\t\t2, 4, 2, 2, 30, TRUE },", "\t\t2, 4, 2, 4, 30, TRUE },"), "playlists"),
+    "party-split-teams": (("\t\t2, 4, 2, 2, 120, TRUE },", "\t\t2, 4, 2, 4, 120, TRUE },"), "playlists"),
     "rate-ignored": (("(!rate || game->rate == rate)", "(1)"), "doubles"),
     "kinds-swapped": (("matchmaking_doubles_playlists[NUMBER_OF_MATCHMAKING_DOUBLES_KINDS] = { 6, 5 };",
                        "matchmaking_doubles_playlists[NUMBER_OF_MATCHMAKING_DOUBLES_KINDS] = { 5, 6 };"), "doubles"),
-    "classic-at-120": (("\t\t2, 4, 2, 2, 30, TRUE },", "\t\t2, 4, 2, 2, 120, TRUE },"), "doubles"),
-    "classic-instant-aim": (("\t\t2, 4, 2, 2, 30, TRUE },", "\t\t2, 4, 2, 2, 30, FALSE },"), "doubles"),
+    "classic-at-30": (("\t\t2, 4, 2, 2, 120, TRUE },", "\t\t2, 4, 2, 2, 30, TRUE },"), "doubles"),
+    "classic-instant-aim": (("\t\t2, 4, 2, 2, 120, TRUE },", "\t\t2, 4, 2, 2, 120, FALSE },"), "doubles"),
+    "crispy-no-instant-aim": (("\t\t2, 4, 2, 2, 120, FALSE },", "\t\t2, 4, 2, 2, 120, TRUE },"), "doubles"),
+    # (the kinds, both at 120, told apart by the rate alone: by nothing)
+    "kinds-by-rate-alone": (("return playlist && game->playlist == playlist && game->standard",
+                             "return playlist && game->playlist && game->standard"), "doubles"),
     "kinds-maps-differ": (('{ "chillout", "hangemhigh", "prisoner", "damnation", "carousel", NULL, NULL, NULL, NULL },\n'
-                           '\t\t2, 4, 2, 2, 30',
+                           '\t\t2, 4, 2, 2, 120, TRUE',
                            '{ "chillout", "hangemhigh", "prisoner", "damnation", "wizard", NULL, NULL, NULL, NULL },\n'
-                           '\t\t2, 4, 2, 2, 30'), "doubles"),
+                           '\t\t2, 4, 2, 2, 120, TRUE'), "doubles"),
     "server-waited-for-ever": (("if (!view->hosting && view->waited > MATCHMAKING_HOST_MILLISECONDS)", "if (0)"),
                                "host"),
 }

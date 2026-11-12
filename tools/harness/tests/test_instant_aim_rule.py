@@ -2,7 +2,7 @@
 OpenH1 game at the playlist's rate, closed to OpenCE's players, whatever network.game_mode and network.sim_rate say;
 Classic's say every player's view is drawn as with display.direct_camera off, which the host's game record carries
 (_network_game_no_direct_camera_bit) and every OpenH1 machine takes (network_standard_direct_camera_allowed), the
-player's own setting untouched; Lowest Latency's, and every other game's, leave each player's own."""
+player's own setting untouched; Crispy's, and every other game's, leave each player's own."""
 import sys
 from pathlib import Path
 
@@ -11,7 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run
 
-CASES = ['classic_host', 'classic_client', 'lowest_latency', 'rules_cleared', 'legacy_client', 'out_of_game']
+CASES = ['classic_host', 'classic_client', 'crispy', 'rules_cleared', 'legacy_client', 'out_of_game']
 # (faults, and the case that must catch each)
 CONTROLS = [
     # (the host's own setting kept: it would draw its players' views from the newest step)

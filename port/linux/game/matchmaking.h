@@ -59,12 +59,13 @@ enum
 	_matchmaking_problem_joined,
 };
 
-/* the 2V2 screen's kinds (matchmaking_doubles_playlist): Classic, OpenH1 30
-Tick with Instant Aim off for everyone, and Lowest Latency, OpenH1 120 Tick */
+/* the 2V2 screen's kinds (matchmaking_doubles_playlist), both OpenH1 120
+Tick: Classic, with Instant Aim off for everyone, and Crispy, with each
+player's own */
 enum
 {
 	_matchmaking_doubles_classic,
-	_matchmaking_doubles_lowest_latency,
+	_matchmaking_doubles_crispy,
 	NUMBER_OF_MATCHMAKING_DOUBLES_KINDS
 };
 

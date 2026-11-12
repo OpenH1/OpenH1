@@ -13,7 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run
 
-CASES = ['pro_host', 'pro_client', 'lowest_latency', 'not_pro', 'shields', 'aim_assist', 'pickup', 'mods', 'fov',
+CASES = ['pro_host', 'pro_client', 'crispy', 'not_pro', 'shields', 'aim_assist', 'pickup', 'mods', 'fov',
          'collisions']
 # (faults, and the case that must catch each)
 CONTROLS = [

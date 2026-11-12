@@ -51,7 +51,7 @@
 	</widget>
 	<widget name="main_menu/doubles/panel_detail" type="text" controller="1" left="330" top="206" width="268" height="84" font="ui\small_ui" color="#FF2896FF" wide="0 132" text_flags="no_focus_test" source="tools/port_settings.py _matchmaking_screen/text/_part_text">
 	</widget>
-	<widget name="main_menu/doubles/panel_help" type="text" controller="1" left="330" top="310" width="268" height="78" font="ui\small_ui" color="#FF2896FF" wide="0 132" text="Pro settings on the 2v2 maps. Classic: 30 ticks, Instant Aim off for everyone. Lowest Latency: 120. Each lists only its own games." text_flags="no_focus_test wrap" source="tools/port_settings.py _doubles/_matchmaking_screen/text">
+	<widget name="main_menu/doubles/panel_help" type="text" controller="1" left="330" top="310" width="268" height="78" font="ui\small_ui" color="#FF2896FF" wide="0 132" text="Pro settings on the 2v2 maps, 120 ticks. Classic: Instant Aim off, lead your shots. Crispy: Instant Aim on. Each lists only its own games." text_flags="no_focus_test wrap" source="tools/port_settings.py _doubles/_matchmaking_screen/text">
 	</widget>
 	<widget name="main_menu/doubles/matchmaking_panel" controller="1" left="316" top="80" width="296" height="320" bitmap="main_menu/parts/panel_296x320" wide="-26 132" source="tools/port_settings.py multiplayer_files/_doubles/_matchmaking_screen">
 		<child widget="main_menu/doubles/panel_title"/>
