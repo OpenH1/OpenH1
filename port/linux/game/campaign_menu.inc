@@ -1003,6 +1003,10 @@ static boolean campaign_missions_step(struct widget_instance *widget, short step
 
 	while (list && strcmp(list->name, "mission_cards"))
 		list = list->parent;
+	/* (the screen's own left and right: its row, the focus given back to it
+	from the footer's prompts or the tabs the pointer passed over) */
+	if (!list && (list = named(screen_of(widget), "mission_cards", 0)) != NULL && list->parent)
+		list->parent->focused_child = list;
 	if (chosen == campaign_cards.chosen)
 		return TRUE;
 	campaign_cards.chosen = chosen;
@@ -1108,6 +1112,38 @@ static boolean campaign_difficulty_initialize(struct widget_instance *list, shor
 		list->focused_child = card;
 		list->parameters.list.selected_index = campaign_cards.difficulty;
 	}
+	return TRUE;
+}
+
+/* "port campaign difficulty previous" and "next", the screen's left and
+right (the arrows, the D-pad, the stick): the card before or after the
+focused one, at the row's ends none, the focus given back to the cards from
+the footer's prompts the pointer passed over */
+static boolean campaign_difficulty_step(struct widget_instance *widget, short step)
+{
+	struct widget_instance *list = named(screen_of(widget), "difficulty_list", 0);
+	struct widget_instance *card;
+	short focused = NONE, index;
+	char name[24];
+
+	if (!list)
+		return TRUE;
+	for (index = 0; index < NUMBER_OF_DIFFICULTIES; index++)
+	{
+		snprintf(name, sizeof(name), "difficulty_%d", index);
+		if (list->focused_child && list->focused_child == named(list, name, 0))
+			focused = index;
+	}
+	if (list->parent)
+		list->parent->focused_child = list;
+	index = (short)PIN((focused == NONE ? campaign_cards.difficulty : focused) + step, 0, NUMBER_OF_DIFFICULTIES - 1);
+	snprintf(name, sizeof(name), "difficulty_%d", index);
+	card = named(list, name, 0);
+	if (!card || index == focused)
+		return TRUE;
+	ui_widget_port_give_focus(list, card);
+	list->parameters.list.selected_index = index;
+	ui_play_audio_feedback_sound(SOUND_CURSOR);
 	return TRUE;
 }
 
@@ -1280,6 +1316,10 @@ static boolean campaign_menu_event(struct widget_instance *widget, char const *n
 		return campaign_missions_choose(widget, controller);
 	if (!strcmp(name, "difficulty init"))
 		return campaign_difficulty_initialize(widget, controller);
+	if (!strcmp(name, "difficulty previous"))
+		return campaign_difficulty_step(widget, -1);
+	if (!strcmp(name, "difficulty next"))
+		return campaign_difficulty_step(widget, 1);
 	if (!strcmp(name, "play"))
 		return campaign_difficulty_play(widget, controller);
 	if (!strcmp(name, "restart ask"))

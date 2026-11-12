@@ -8215,6 +8215,10 @@ def _missions() -> list:
                                                ("flags", "pass_unhandled_to_focused_child"),
                                                ("bitmap", TALL_BACKGROUND if tall else "bitmaps/gradient")],
                     ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                     # (left and right, the arrows, A and D, the stick: the row's, whatever has the focus, the
+                     # footer's prompts or the tabs the pointer passed over; up and down none)
+                     *(f'<on event="{event}" run="port campaign previous"/>' for event in ("left", "stick_left")),
+                     *(f'<on event="{event}" run="port campaign next"/>' for event in ("right", "stick_right")),
                      '<on event="white" run="port campaign tab previous"/>',
                      '<on event="black" run="port campaign tab next"/>',
                      f'<on event="y" run="port campaign missions restart" open="{base}/restart_screen"/>',
@@ -8372,6 +8376,11 @@ def _difficulties() -> list:
                                                   ("flags", "pass_unhandled_to_focused_child"),
                                                   ("bitmap", TALL_BACKGROUND if tall else "bitmaps/gradient")],
                     ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                     # (left and right, the stick: the cards', whatever has the focus, as Choose Mission's)
+                     *(f'<on event="{event}" run="port campaign difficulty previous"/>'
+                       for event in ("left", "stick_left")),
+                     *(f'<on event="{event}" run="port campaign difficulty next"/>'
+                       for event in ("right", "stick_right")),
                      f'<child widget="{base}/difficulty_list"/>',
                      '<child widget="main_menu/difficulty_select/header_choose_difficulty"/>',
                      f'<child widget="{base}/difficulty_mission"/>'])
