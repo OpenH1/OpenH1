@@ -223,10 +223,17 @@ static void spartan_color_set(
 	struct object_datum *object = object_try_and_get(object_index);
 	real_rgb_color color = player_profile_get_rgb_color(color_index);
 
+	short index;
+
 	if (!object)
 		return;
-	object->object.base_change_colors[0] = color;
-	object->object.outgoing_change_colors[0] = color;
+	/* (every change color, as a player's body has its color: players.c; the
+	armor's shader takes its third) */
+	for (index = 0; index < NUMBER_OF_OBJECT_CHANGE_COLORS; index++)
+	{
+		object->object.base_change_colors[index] = color;
+		object->object.outgoing_change_colors[index] = color;
+	}
 }
 
 /* a Spartan's objects made where it stands: FALSE if they cannot be */
@@ -237,7 +244,12 @@ static boolean spartan_make(
 
 	object_placement_data_new(&data, menu_spartan.spartan_definition, NONE);
 	spartan_place_in_view(spartan, &data.position, &data.forward, &data.up);
-	data.change_colors[0] = player_profile_get_rgb_color(spartan->color_index);
+	{
+		short color;
+
+		for (color = 0; color < NUMBER_OF_OBJECT_CHANGE_COLORS; color++)
+			data.change_colors[color] = player_profile_get_rgb_color(spartan->color_index);
+	}
 	spartan->object_index = object_new(&data);
 	if (spartan->object_index == NONE)
 		return FALSE;
@@ -279,7 +291,8 @@ static void spartan_idle_loop(
 	if (object->object.animation.state.index < 0 || object->object.animation.state.index >= graph->animations.count)
 		return;
 	animation = (struct animation *)graph->animations.address + object->object.animation.state.index;
-	if (object->object.animation.state.frame_index >= animation->frame_count - 1)
+	/* (scenery_update holds it a frame short of its last) */
+	if (object->object.animation.state.frame_index >= animation->frame_count - 2)
 		scenery_animation_start(spartan->object_index, menu_spartan.animation_graph, SPARTAN_IDLE);
 }
 
