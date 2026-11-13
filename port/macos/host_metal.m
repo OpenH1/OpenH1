@@ -653,6 +653,71 @@ static id<MTLTexture> loading_upload(id<MTLCommandBuffer> buffer,
 	return texture;
 }
 
+/* HALO_LOADING_CAPTURE_DIR's pictures of the loading screen as it is shown
+(the frame scaled, the caption over it at the drawable's pixels), beside
+its frames' (host_loading_capture.h): the drawable read back once drawn, as
+screen-<epoch>-<serial>.ppm, every HALO_LOADING_SCREEN_EVERY frames of a
+load (60: a second's; 0: none); the drawable's BGRA8 only. */
+static void loading_screen_capture(id<MTLCommandBuffer> buffer, id<MTLTexture> texture,
+	const struct loading_presentation_frame *frame)
+{
+	static int checked;
+	static unsigned every;
+	static const char *directory;
+	id<MTLBuffer> pixels;
+	id<MTLBlitCommandEncoder> blit;
+	NSUInteger width = texture.width, height = texture.height;
+	unsigned long long epoch = frame->epoch, serial = frame->serial;
+	char *path;
+
+	if (!checked)
+	{
+		const char *value = getenv("HALO_LOADING_SCREEN_EVERY");
+
+		directory = getenv("HALO_LOADING_CAPTURE_DIR");
+		every = value ? (unsigned)strtoul(value, NULL, 10) : 60;
+		checked = 1;
+	}
+	if (!directory || !*directory || !every || frame->serial % every || texture.framebufferOnly ||
+		texture.pixelFormat != MTLPixelFormatBGRA8Unorm)
+		return;
+	pixels = [xgpu_metal_device() newBufferWithLength:width * height * 4 options:MTLResourceStorageModeShared];
+	if (!pixels || asprintf(&path, "%s/screen-%llu-%llu.ppm", directory, epoch, serial) < 0)
+		return;
+	blit = [buffer blitCommandEncoder];
+	[blit copyFromTexture:texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
+		sourceSize:MTLSizeMake(width, height, 1) toBuffer:pixels destinationOffset:0
+		destinationBytesPerRow:width * 4 destinationBytesPerImage:width * height * 4];
+	[blit endEncoding];
+	[buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
+		FILE *file = fopen(path, "wb");
+		const unsigned char *bgra = pixels.contents;
+		unsigned char *row = malloc(width * 3);
+		NSUInteger x, y;
+
+		(void)done;
+		if (file && row)
+		{
+			fprintf(file, "P6\n%lu %lu\n255\n", (unsigned long)width, (unsigned long)height);
+			for (y = 0; y < height; y++)
+			{
+				for (x = 0; x < width; x++)
+				{
+					row[x * 3] = bgra[(y * width + x) * 4 + 2];
+					row[x * 3 + 1] = bgra[(y * width + x) * 4 + 1];
+					row[x * 3 + 2] = bgra[(y * width + x) * 4];
+				}
+				fwrite(row, 3, width, file);
+			}
+			host_load_trace("loading.screen_capture", "epoch=%llu serial=%llu path=%s", epoch, serial, path);
+		}
+		if (file)
+			fclose(file);
+		free(row);
+		free(path);
+	}];
+}
+
 /* The caption over the loading frame shown `shown_width` by `shown_height`
 pixels: its texture, at those pixels (loading_art_caption_shown), and its
 place in them; nil: none. */
@@ -1783,6 +1848,8 @@ static BOOL rate_adapt(BOOL shown, double now)
 			}
 		}
 		[encoder endEncoding];
+		if (loading_image)
+			loading_screen_capture(buffer, drawable.texture, &loading_frame);
 		atomic_fetch_add(&presentation.drawables_pending, 1);
 #if TARGET_OS_SIMULATOR
 		/* (the iOS simulator's drawables say nothing of their presentation:
@@ -2251,7 +2318,9 @@ int host_metal_window_open(uint32_t window)
 	presentation.layer = (__bridge CAMetalLayer *)SDL_Metal_GetLayer(presentation.view);
 	presentation.layer.device = xgpu_metal_device();
 	presentation.layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-	presentation.layer.framebufferOnly = YES;
+	/* (read back for HALO_LOADING_CAPTURE_DIR's pictures of the screen:
+	loading_screen_capture) */
+	presentation.layer.framebufferOnly = !getenv("HALO_LOADING_CAPTURE_DIR");
 	/* (the presentation writes every pixel, alpha 1: the window server
 	need not draw what is behind the window, nor blend the window over it) */
 	presentation.layer.opaque = YES;
