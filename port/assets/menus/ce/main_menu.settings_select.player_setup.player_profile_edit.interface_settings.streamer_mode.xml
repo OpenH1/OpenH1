@@ -6,6 +6,7 @@
 		<on event="back" run="port settings page cancel" back="true"/>
 		<on event="y" run="port settings search"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/header_streamer_mode"/>
+		<child widget="main_menu/settings/profile"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/options_menu"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/header_streamer_mode" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/header_streamer_mode" wide="-106 0" source="tools/port_settings.py settings_files/_settings_page">

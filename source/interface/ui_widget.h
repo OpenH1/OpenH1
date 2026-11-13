@@ -223,6 +223,9 @@ void render_ui_widgets_postgame(
 void render_ui_widgets(
 	short local_player_index,
 	rectangle2d const *window_bounds);
+/* port: (port/linux/game/menu_view.c's menu_view_over_views) */
+void render_ui_widgets_over_views(
+	rectangle2d const *window_bounds);
 struct widget_instance *ui_widget_load_by_name_or_tag(
 	char const *name,
 	long tag_index,

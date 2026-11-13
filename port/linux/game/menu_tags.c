@@ -688,6 +688,8 @@ static char const *const port_game_data_input_names[] =
 	"port campaign restart update",
 	/* (the main menu's 2V2 browser: doubles_browser.inc) */
 	"port doubles update",
+	/* (Settings' band's right: the profile it edits) */
+	"port settings profile",
 };
 
 /* a pause box made wider while the keyboard plays (pause_boxes_fit) */

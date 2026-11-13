@@ -12574,6 +12574,36 @@ static boolean coop_friendly_fire_change(void)
 	return TRUE;
 }
 
+/* "port settings profile": Settings' band's right, the profile it edits:
+PROFILE: and its name, as Select Profile's band has player 1's; in a split
+screen game, the player whose it is, PLAYER 2 and its name; nothing with no
+profile. Each frame, so a profile chosen or renamed shows at once */
+static void settings_profile_text(struct widget_instance *widget)
+{
+	struct player_profile const *profile = player_ui_get_edit_player_profile();
+	wchar_t text[ROW_TEXT_LENGTH];
+	wchar_t name[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1];
+	char prefix[32];
+	long length = 0, index;
+
+	text[0] = 0;
+	if (profile)
+	{
+		settings_wide_copy(name, profile->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1);
+		name[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
+		if (!main_menu_is_active() && players_port_local_player_count() > 1)
+			snprintf(prefix, sizeof(prefix), "PLAYER %d \xB7 ", settings_local_player + 1);
+		else
+			snprintf(prefix, sizeof(prefix), "PROFILE: ");
+		for (index = 0; prefix[index] && length < ROW_TEXT_LENGTH - 1; index++)
+			text[length++] = (wchar_t)(unsigned char)prefix[index];
+		for (index = 0; name[index] && length < ROW_TEXT_LENGTH - 1; index++)
+			text[length++] = name[index];
+		text[length] = 0;
+	}
+	text_set(widget, text);
+}
+
 /* "port coop friendly fire text": the button's text, ON or OFF */
 static void coop_friendly_fire_text(struct widget_instance *button)
 {
@@ -14848,6 +14878,8 @@ void pc_menu_game_data_function_invoke(
 		profile_gamepad_layout(widget);
 	else if (!strcmp(name, "port coop friendly fire text"))
 		coop_friendly_fire_text(widget);
+	else if (!strcmp(name, "port settings profile"))
+		settings_profile_text(widget);
 	else if (!strcmp(name, "port multiplayer status"))
 		multiplayer_status_update(widget);
 	else if (!strcmp(name, "port party update"))
