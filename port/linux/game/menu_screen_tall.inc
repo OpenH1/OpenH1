@@ -1209,6 +1209,9 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 		count++;
 	}
 	tall->prompt_count = count;
+	/* (the bar's focus on its first, as a list's: A on the bar presses it) */
+	if (count)
+		tall->bar->focused_child = tall->prompts[0].widget;
 	/* (on a wide screen: each at the edge it is nearest; or laid out again
 	from the edges, each as wide as the controller's pictures need) */
 	for (index = 0; index < count; index++)
