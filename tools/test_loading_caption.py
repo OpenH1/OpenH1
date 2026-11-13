@@ -100,9 +100,9 @@ int main(int argc, char **argv) {
     /* (as sdl_platform.c sets it: in capitals, in the words' face, its
     capitals 15 of the 480 lines, at LOADING_PRESENTATION_CAPTION_SCALE
     times their size) */
-    line = text_hires_line("pc\\heading", "PREPARING MENU PICTURES \xb7 4 OF 23",
+    line = text_hires_line("pc\\heading", "MENU PICTURES \xb7 4 OF 23",
         15.0f * LOADING_PRESENTATION_CAPTION_SCALE, &width, &height);
-    assert(line && width > 1000 && width <= 8192 && height >= 120 && height <= 512);
+    assert(line && width > 600 && width <= 8192 && height >= 120 && height <= 512);
     for (x = 0; x < width; x++) {
         int inked = 0;
         for (y = 0; y < height; y++) {
@@ -124,7 +124,7 @@ int main(int argc, char **argv) {
             char text[64];
             unsigned char *other;
             int left = -1;
-            snprintf(text, sizeof(text), "PREPARING MENU PICTURES \xb7 %d OF 23", count);
+            snprintf(text, sizeof(text), "MENU PICTURES \xb7 %d OF 23", count);
             other = text_hires_line("pc\\heading", text, 15.0f * LOADING_PRESENTATION_CAPTION_SCALE,
                 &count_width, &count_height);
             assert(other && count_width == width && count_height == height);
