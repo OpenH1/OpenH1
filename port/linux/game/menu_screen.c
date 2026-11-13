@@ -406,7 +406,7 @@ static char const *const screen_binding_names[] =
 	"lobby.card.party", "lobby.card.note", "lobby.card.facts", "lobby.card.friend",
 	"lobby.card.mutable", "lobby.card.mute", "lobby.card.kick", "lobby.friends", "lobby.friends.count",
 	"lobby.friend", "lobby.friend.where", "lobby.friends.said", "lobby.map.picture", "lobby.description",
-	"lobby.where", "pause.friendly_fire", "pause.host_controls", "pause.end_game",
+	"lobby.where", "lobby.lineup", "pause.friendly_fire", "pause.host_controls", "pause.end_game",
 	"pause.chapters",
 };
 
@@ -813,7 +813,8 @@ static boolean box_build(struct screen_open *open, struct menu_screen const *scr
 
 /* a <spartan> of the screen's made (the widget it is drawn at: its
 picture), its Spartans' indices after those of the screen's <spartan>s
-before it: a binding's one, a profile's its players */
+before it: a binding's of the screen's own as many as a lineup has (each
+place its color), one in a panel; a profile's its players */
 static struct screen_spartan *screen_spartan_add(struct screen_open *open, struct menu_screen_block const *block,
 	struct widget_instance *picture)
 {
@@ -830,7 +831,8 @@ static struct screen_spartan *screen_spartan_add(struct screen_open *open, struc
 	spartan->block = *block;
 	spartan->picture = picture;
 	spartan->first = first;
-	spartan->places = (short)(block->color == MENU_SCREEN_SPARTAN_PROFILE ? block->players : 1);
+	spartan->places = (short)(block->color == MENU_SCREEN_SPARTAN_BINDING ? (block->parent < 0 ?
+		MAXIMUM_MENU_SPARTAN_PLACES : 1) : block->color == MENU_SCREEN_SPARTAN_PROFILE ? block->players : 1);
 	if (first + spartan->places > MAXIMUM_MENU_SPARTANS)
 	{
 		platform_log("menus: a screen's <spartan>s are more than %d Spartans; the last is left out",

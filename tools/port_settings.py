@@ -5594,6 +5594,8 @@ def lobby_pictures(framed, highlight) -> list:
 # inset and height, on the computer and on a touchscreen; a panel's choice's size (its width the panel's inside)
 # and an outlined button's
 SCREEN_LANES = {"computer": (404, 74, 436), "touch": (364, 76, 410)}
+# (under a lineup, a tall screen's own <spartan>: the lobby's, on the computer, 80 tall and 4 over the lanes)
+SCREEN_LANES_LINEUP = {"computer": (404, 74 + 80 + 4, 436)}
 SCREEN_LANE_GAP, SCREEN_LANE_INSET, SCREEN_LANE_ROW = 12, 8, 18
 SCREEN_CHOICE_HEIGHTS = {"computer": (148, 22), "touch": (188, 32)}
 SCREEN_PANEL_BUTTON = (148, 24)
@@ -5617,9 +5619,9 @@ def screen_chat_sizes() -> list:
 
 def screen_lane_sizes(lanes: int = 2) -> list:
     """(table width, lane width, lanes' height, a lane's row's width) of a table of lanes, each layout's: alone,
-    and over a chat"""
+    over a chat, and under a lineup"""
     sizes = []
-    for layout, (width, top, bottom) in SCREEN_LANES.items():
+    for layout, (width, top, bottom) in [*SCREEN_LANES.items(), *SCREEN_LANES_LINEUP.items()]:
         lane = (width - (lanes - 1) * SCREEN_LANE_GAP) // lanes
         feet = [bottom] + [bottom - height - SCREEN_CHAT_GAP for chat_layout, _, height, _ in screen_chat_sizes()
                            if chat_layout == layout]

@@ -63,6 +63,7 @@ static short player_colors[MAXIMUM_MENU_SPARTANS];
 static boolean available = TRUE;
 /* the Spartans asked for (NONE: none), and their colors */
 static short placed[MAXIMUM_MENU_SPARTANS];
+static real placed_x[MAXIMUM_MENU_SPARTANS];
 
 static short screen_spartan_colors(struct screen_open const *open, struct screen_spartan const *spartan, long focused,
 	short *colors)
@@ -89,10 +90,10 @@ static boolean menu_spartan_available(void)
 
 static void menu_spartan_place(short index, short color_index, real x, real bottom, real height)
 {
-	(void)x;
 	(void)bottom;
 	(void)height;
 	placed[index] = color_index;
+	placed_x[index] = x;
 }
 
 static unsigned short player_profile_number_of_available_primary_colors(void)
@@ -169,6 +170,42 @@ int main(int argc, char **argv)
 		frame(3);
 		CHECK(placed[0] == 3 && placed[1] == MENU_SPARTAN_RANDOM && placed[2] == MENU_SPARTAN_RANDOM,
 			"players asked for %d %d %d", placed[0], placed[1], placed[2]);
+		return 0;
+	}
+
+	/* a lineup (a binding's places, the lobby's): each place's Spartan in its
+	color (a team's), at its place across the box, an empty place none, and no
+	original picture */
+	CASE("lineup")
+	{
+		short index;
+
+		for (index = 0; index < MAXIMUM_MENU_SPARTAN_PLACES; index++)
+			player_colors[index] = SCREEN_SPARTAN_EMPTY;
+		player_colors[0] = MENU_SPARTAN_TEAM_RED;
+		player_colors[1] = MENU_SPARTAN_TEAM_RED;
+		player_colors[4] = MENU_SPARTAN_TEAM_BLUE;
+		open_screen.spartans[0].block.color = MENU_SCREEN_SPARTAN_BINDING;
+		for (index = 0; index < MAXIMUM_MENU_SPARTANS; index++)
+			placed[index] = -100;
+		open_screen.spartan_count = 1;
+		open_screen.spartans[0].block.box_x = 380;
+		open_screen.spartans[0].block.box_y = 84;
+		open_screen.spartans[0].block.box_width = 200;
+		open_screen.spartans[0].block.box_height = 80;
+		open_screen.spartans[0].picture = &picture;
+		open_screen.spartans[0].first = 0;
+		open_screen.spartans[0].places = MAXIMUM_MENU_SPARTAN_PLACES;
+		open_screen.spartans[0].shown = TRUE;
+		picture.visible = TRUE;
+		screen_spartan_frame(&open_screen, NONE);
+		CHECK(placed[0] == MENU_SPARTAN_TEAM_RED && placed[1] == MENU_SPARTAN_TEAM_RED &&
+			placed[4] == MENU_SPARTAN_TEAM_BLUE, "the places' colors: %d %d %d", placed[0], placed[1], placed[4]);
+		CHECK(placed[2] == -100 && placed[3] == -100 && placed[5] == -100, "an empty place asked for a Spartan");
+		CHECK(fabsf(placed_x[0] - (380.0f + 200.0f * 0.5f / 8.0f)) < 0.01f &&
+			fabsf(placed_x[4] - (380.0f + 200.0f * 4.5f / 8.0f)) < 0.01f, "the places across the box: %.2f %.2f",
+			placed_x[0], placed_x[4]);
+		CHECK(!picture.visible, "a lineup showed the original picture");
 		return 0;
 	}
 
