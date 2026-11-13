@@ -1272,13 +1272,41 @@ static boolean host_controls_unban_named(
 	return FALSE;
 }
 
+/* the first player whose name begins with the text (to a quote or a
+parenthesis), in either case, but those who quit; NONE, said, if none */
+static long host_controls_player_named(
+	char const *text)
+{
+	struct data_iterator iterator;
+	struct player_datum *player;
+	short index;
+
+	while (*text == ' ' || *text == '"')
+		text++;
+	data_iterator_new(&iterator, player_data);
+	while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
+	{
+		for (index = 0; text[index] && text[index] != '"' && text[index] != ')' &&
+			index < (short)NUMBEROF(player->name); index++)
+		{
+			char a = (char)player_name_character_ascii(player->name[index]);
+			char b = text[index];
+
+			if ((a >= 'A' && a <= 'Z' ? a - 'A' + 'a' : a) != (b >= 'A' && b <= 'Z' ? b - 'A' + 'a' : b))
+				break;
+		}
+		if (!player->quit_out_of_game && (!text[index] || text[index] == '"' || text[index] == ')'))
+			return iterator.datum_index;
+	}
+	console_warning("host_controls: no player's name begins with \"%s\"", text);
+	return NONE;
+}
+
 boolean network_host_controls_open_command(
 	char const *text)
 {
 	/* (host_controls_menu.inc's tabs, in their order) */
 	static char const *const tabs[] = { "players", "game", "maps", "playlist", "bans", "bots", "rules" };
-	struct data_iterator iterator;
-	struct player_datum *player;
 	long chosen = NONE;
 	short tab = 0;
 	short index;
@@ -1293,6 +1321,22 @@ boolean network_host_controls_open_command(
 	/* (Bans' Unban: the first ban whose players or address begin with the rest) */
 	if (!strncmp(text, "unban ", 6))
 		return host_controls_unban_named(text + 6);
+	/* (co-op's BRING TO ME and GO TO <name>, at once) */
+	if (!strncmp(text, "bring ", 6) || !strncmp(text, "goto ", 5))
+	{
+		boolean go_to = text[0] == 'g';
+
+		chosen = network_host_controls_available() ? host_controls_player_named(text + (go_to ? 5 : 6)) : NONE;
+		if (chosen == NONE)
+			return FALSE;
+		if (!network_host_controls_teleport(chosen, go_to))
+		{
+			console_warning(go_to ? "host_controls: you can't go to them now" :
+				"host_controls: they can't be brought to you now");
+			return FALSE;
+		}
+		return TRUE;
+	}
 	for (index = 0; index < NUMBEROF(tabs); index++)
 	{
 		size_t length = strlen(tabs[index]);
@@ -1309,26 +1353,9 @@ boolean network_host_controls_open_command(
 	/* (the first player whose name begins with the rest, in either case) */
 	if (*text && *text != ')' && network_host_controls_available())
 	{
-		data_iterator_new(&iterator, player_data);
-		while (chosen == NONE && (player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
-		{
-			for (index = 0; text[index] && text[index] != '"' && text[index] != ')' &&
-				index < (short)NUMBEROF(player->name); index++)
-			{
-				char a = (char)player_name_character_ascii(player->name[index]);
-				char b = text[index];
-
-				if ((a >= 'A' && a <= 'Z' ? a - 'A' + 'a' : a) != (b >= 'A' && b <= 'Z' ? b - 'A' + 'a' : b))
-					break;
-			}
-			if (!player->quit_out_of_game && (!text[index] || text[index] == '"' || text[index] == ')'))
-				chosen = iterator.datum_index;
-		}
+		chosen = host_controls_player_named(text);
 		if (chosen == NONE)
-		{
-			console_warning("host_controls: no player's name begins with \"%s\"", text);
 			return FALSE;
-		}
 	}
 	return network_host_controls_open(chosen, tab);
 }
