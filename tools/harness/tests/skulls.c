@@ -42,6 +42,10 @@ static boolean game_team_is_enemy(short a, short b)
  boolean a_human=a==_game_team_player||a==_game_team_human, b_human=b==_game_team_player||b==_game_team_human;
  return a_human!=b_human;
 }
+/* the grunts' bursts (grunt_birthday_party.c): unit 200 a grunt, 201 an elite */
+static long burst_unit = NONE; static int bursts;
+static boolean grunt_birthday_party_grunt(long unit_index){return unit_index==200;}
+static boolean grunt_birthday_party_burst(long unit_index){burst_unit=unit_index;bursts++;return TRUE;}
 /* the players' units: 100 and 101 */
 static long player_index_from_unit_index(long unit_index){return unit_index==100||unit_index==101?unit_index-100:NONE;}
 
@@ -189,6 +193,7 @@ int main(int argc,char **argv)
   CHECK(skulls_shields_recharge(100),"a player's shields recharge");
   CHECK(!skulls_melee_recharges_shields(TRUE,100,_game_team_player,_game_team_covenant),"no melee recharge");
   CHECK(!skulls_motion_sensor_hidden()&&!skulls_hud_hidden(),"the HUD drawn");
+  CHECK(!skulls_unit_killed(200,TRUE,FALSE)&&bursts==0,"no confetti for a grunt's headshot");
   weapon.weapon.magazines[0].rounds_total=60;weapon.weapon.magazines[0].rounds_loaded=32;
   skulls_actor_dropped_weapon(7);
   CHECK(weapon.weapon.magazines[0].rounds_total==60&&weapon.weapon.magazines[0].rounds_loaded==32,"the ammunition kept");
@@ -242,6 +247,20 @@ int main(int argc,char **argv)
   CHECK(skulls_motion_sensor_hidden()&&!skulls_hud_hidden(),"Fog: no motion tracker, the HUD drawn");
   new_map(_game_connection_local,"blind");
   CHECK(!skulls_motion_sensor_hidden()&&skulls_hud_hidden(),"Blind: no HUD");
+ } else CASE("grunt_birthday_party") {
+  new_map(_game_connection_local,"grunt_birthday_party");
+  CHECK(skulls_unit_killed(200,TRUE,FALSE)&&bursts==1&&burst_unit==200,"a grunt killed by a headshot bursts");
+  CHECK(!skulls_unit_killed(200,FALSE,FALSE)&&bursts==1,"not a grunt killed by a body shot");
+  CHECK(!skulls_unit_killed(201,TRUE,FALSE)&&bursts==1,"not an elite killed by a headshot");
+  CHECK(!skulls_unit_killed(200,TRUE,TRUE)&&bursts==1,"not a grunt killed by a melee to its head");
+  engine_running=TRUE;
+  CHECK(!skulls_unit_killed(200,TRUE,FALSE)&&bursts==1,"none in multiplayer");
+  engine_running=FALSE;
+  new_map(_game_connection_local,"mythic tilt");
+  CHECK(!skulls_unit_killed(200,TRUE,FALSE)&&bursts==1,"none with the skull off");
+  new_map(_game_connection_network_client,"");
+  take(NONE,message_of(FLAG(_skull_grunt_birthday_party)));
+  CHECK(skulls_unit_killed(200,TRUE,FALSE)&&bursts==2,"a client's, from the host's skulls (its replay of the blow)");
  } else CASE("famine") {
   new_map(_game_connection_local,"famine");
   weapon.weapon.magazines[0].rounds_total=61;weapon.weapon.magazines[0].rounds_loaded=33;

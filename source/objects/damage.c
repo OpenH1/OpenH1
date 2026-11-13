@@ -1517,6 +1517,9 @@ void object_cause_damage(
 	long damaged_object_indices[16];
 	/* port: the gametype's friendly fire (game_engine_friendly_damage) */
 	short friendly_damage;
+	/* port: whether the hit struck the object's head (its damage material's
+	head flag), for the Grunt Birthday Party skull (port/linux/game/skulls.c) */
+	boolean head_hit;
 
 	/* the distributed netcode (port/linux/NETCODE.md): the host deals
 	damage; a client reports its own players' hits instead, and the host
@@ -1774,6 +1777,7 @@ void object_cause_damage(
 			being_damaged_flags = 0;
 			body_part = NONE;
 			friendly_damage = _friendly_damage_all;
+			head_hit = FALSE;
 
 			if (collision_model_index != NONE)
 			{
@@ -1825,6 +1829,7 @@ void object_cause_damage(
 						&collision_model->resistance.materials,
 						material_index,
 						struct damage_resistance_material);
+					head_hit = TEST_FLAG(damage_material->flags, _damage_material_head_bit);
 				}
 				else if (collision_model->resistance.indirect_damage_material_index >= 0 &&
 					collision_model->resistance.indirect_damage_material_index <
@@ -1973,6 +1978,17 @@ void object_cause_damage(
 				struct unit_datum *victim = unit_try_and_get(current_object_index);
 
 				victim_player_index = victim ? victim->unit.player_index : NONE;
+			}
+			/* port: the Grunt Birthday Party skull's: a grunt's killing blow
+			to its head bursts it into confetti, with a cheer. Every machine
+			decides it from the blow alone: the host as it deals it, a client
+			as it replays the host's (the same object, node, region and
+			material: network_damage.c) (port/linux/game/skulls.c) */
+			if (TEST_FLAG(being_damaged_flags, _object_being_damaged_body_depleted_bit) &&
+				TEST_FLAG(_object_mask_unit, current_object->object.type))
+			{
+				skulls_unit_killed(current_object_index, head_hit,
+					damage_definition->category == _damage_category_melee);
 			}
 			object_damage_aftermath(
 				current_object_index,

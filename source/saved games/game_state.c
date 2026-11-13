@@ -123,6 +123,8 @@ symbols in this file:
 #include "lruv_cache.h"
 #include "memory_pool.h"
 #include "cluster_partitions.h"
+#include "effects.h" /* port: effects_delete_unloaded_definitions */
+#include "particles.h"
 /* port: object_bounds_cache.c's */
 void object_bounds_cache_invalidate(void);
 /* port: port/linux/game/determinism_log.c */
@@ -223,7 +225,12 @@ static game_state_after_load_proc after_load_procs[] =
 	director_initialize_for_saved_game,
 	scripted_hud_messages_clear,
 	/* port: restore matching homes or forget an unrelated disk/core load. */
-	coop_vehicles_after_load
+	coop_vehicles_after_load,
+	/* port: the effects and particles of tags this game has not made (a
+	saved game's, played with the Grunt Birthday Party skull's confetti,
+	port/linux/game/grunt_birthday_party.c) let go */
+	effects_delete_unloaded_definitions,
+	particles_delete_unloaded_definitions
 };
 
 /* ---------- public code */

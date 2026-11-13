@@ -178,6 +178,9 @@ void particles_disconnect_from_structure_bsp(
 	void);
 void particles_reconnect_to_structure_bsp(
 	void);
+/* port: those of a tag the map has not, let go as a game state loads */
+void particles_delete_unloaded_definitions(
+	void);
 void particle_new(
 	struct new_particle_data const *data);
 void particles_update(

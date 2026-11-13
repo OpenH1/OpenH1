@@ -1156,6 +1156,52 @@ void effects_disconnect_from_structure_bsp(
 	return;
 }
 
+/* port: the effects of a tag the map's table has not, let go as a game
+state loads: a saved game's, resumed in a game that did not make the tags
+it was played with (the Grunt Birthday Party skull's confetti,
+port/linux/game/grunt_birthday_party.c, made only where the skull may play) */
+void effects_delete_unloaded_definitions(
+	void)
+{
+	extern boolean tag_index_is_group(long tag_index, long group_tag);
+	long effect_index;
+
+	if (!effect_data)
+		return;
+	for (effect_index = data_next_index(effect_data, NONE);
+		effect_index != NONE;
+		effect_index = data_next_index(effect_data, effect_index))
+	{
+		struct effect_datum *effect = effect_get(effect_index);
+		short location_index;
+
+		if (tag_index_is_group(effect->definition_index, EFFECT_DEFINITION_TAG))
+			continue;
+		for (location_index = 0;
+			location_index < (short)NUMBEROF(effect->location_datum_indices);
+			location_index++)
+		{
+			long location_datum_index = effect->location_datum_indices[location_index];
+
+			while (location_datum_index != NONE)
+			{
+				struct effect_location_datum *location =
+					(struct effect_location_datum *)datum_try_and_get(effect_location_data, location_datum_index);
+				long next_index;
+
+				if (!location)
+					break;
+				next_index = location->next_instance_location_index;
+				datum_delete(effect_location_data, location_datum_index);
+				location_datum_index = next_index;
+			}
+		}
+		datum_delete(effect_data, effect_index);
+	}
+
+	return;
+}
+
 void effects_reconnect_to_structure_bsp(
 	void)
 {

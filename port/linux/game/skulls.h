@@ -37,6 +37,9 @@ enum
 	_skull_tilt,
 	/* no HUD and no first-person weapon */
 	_skull_blind,
+	/* a grunt killed by a shot to its head bursts into confetti, with a
+	cheer (grunt_birthday_party.c) */
+	_skull_grunt_birthday_party,
 	NUMBER_OF_SKULLS
 };
 
@@ -108,5 +111,10 @@ boolean skulls_melee_recharges_shields(boolean melee, long dealer_unit_index, sh
 first-person weapon (first_person_weapons.c) are drawn: Fog's, Blind's */
 boolean skulls_motion_sensor_hidden(void);
 boolean skulls_hud_hidden(void);
+/* ... a unit's killing blow (damage.c, on every machine: the host's, and a
+client's replay of it), a hit to its head (its damage material's head
+flag) or not, a melee's or not: Grunt Birthday Party's confetti and cheer
+for a grunt's headshot (grunt_birthday_party.c). TRUE where they burst */
+boolean skulls_unit_killed(long unit_index, boolean head, boolean melee);
 
 #endif

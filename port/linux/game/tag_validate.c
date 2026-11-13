@@ -158,6 +158,8 @@ typedef char verify_tag_validate_instance_size[sizeof(struct tag_validate_instan
 typedef char verify_tag_validate_custom_edition_header_size[
 	sizeof(struct tag_validate_custom_edition_header) == 0x28 ? 1 : -1];
 typedef char verify_tag_validate_header_size[sizeof(struct tag_validate_header) == 0x24 ? 1 : -1];
+typedef char verify_tag_validate_added_tags_header_size[
+	sizeof(struct tag_validate_header) == TAG_VALIDATE_ADDED_TAGS_HEADER_SIZE ? 1 : -1];
 typedef char verify_tag_validate_structure_bsp_header_size[
 	sizeof(struct tag_validate_structure_bsp_header) == 0x18 ? 1 : -1];
 
@@ -215,6 +217,11 @@ static struct
 /* a bit for each byte of the tag cache that a tag's root, block or data
 holds */
 static unsigned long tag_validate_claims[CLAIM_WORDS];
+
+/* the map's validation while tags added to it are checked
+(tag_validate_added_tags), and the corrections those needed */
+static __typeof__(tag_validate_globals) tag_validate_saved_globals;
+static long tag_validate_added_corrections;
 
 static char const tag_validate_empty_name[] = "";
 
@@ -1582,12 +1589,15 @@ through its schema, then every tag's checks */
 static boolean validate_tag_table(
 	struct tag_validation *validation,
 	struct tag_validate_instance *instances,
+	long first_index,
 	long tag_count)
 {
 	long absolute_index;
 
-	/* the tag table: each tag's index, name, groups and root */
-	for (absolute_index = 0; absolute_index < tag_count && !validation->refused; absolute_index++)
+	/* the tag table: each tag's index, name, groups and root (from
+	first_index: the tags before it were checked as their map loaded,
+	tag_validate_added_tags) */
+	for (absolute_index = first_index; absolute_index < tag_count && !validation->refused; absolute_index++)
 	{
 		struct tag_validate_instance *instance = &instances[absolute_index];
 		struct tag_schema_group const *group = schema_group_get(instance->group_tag);
@@ -1643,16 +1653,16 @@ static boolean validate_tag_table(
 	}
 
 	/* every tag through its schema, then every tag's checks */
-	for (absolute_index = 0; absolute_index < tag_count && !validation->refused; absolute_index++)
+	for (absolute_index = first_index; absolute_index < tag_count && !validation->refused; absolute_index++)
 		validate_instance(validation, &instances[absolute_index], _pass_values);
-	for (absolute_index = 0; absolute_index < tag_count && !validation->refused; absolute_index++)
+	for (absolute_index = first_index; absolute_index < tag_count && !validation->refused; absolute_index++)
 		validate_instance(validation, &instances[absolute_index], _pass_checks);
 
 	/* each tag's name, now that every root, block and data is claimed: a
 	name in any of their bytes could lose its terminator to what is written
 	there (the corrections above, the game's runtime values), and is none.
 	(Tags may share a name: names are only read) */
-	for (absolute_index = 0; absolute_index < tag_count && !validation->refused; absolute_index++)
+	for (absolute_index = first_index; absolute_index < tag_count && !validation->refused; absolute_index++)
 	{
 		struct tag_validate_instance *instance = &instances[absolute_index];
 
@@ -1733,7 +1743,7 @@ boolean tag_validate_tags(
 		return FALSE;
 	}
 
-	return validate_tag_table(&validation, header->instances, header->tag_count);
+	return validate_tag_table(&validation, header->instances, 0, header->tag_count);
 }
 
 boolean tag_validate_custom_edition_tags(
@@ -1773,7 +1783,81 @@ boolean tag_validate_custom_edition_tags(
 	this build's, custom_edition_geometry.c) */
 	validate_buffers(&validation, NULL, 0, NULL, 0);
 
-	return validate_tag_table(&validation, header->instances, header->tag_count);
+	return validate_tag_table(&validation, header->instances, 0, header->tag_count);
+}
+
+boolean tag_validate_added_tags(
+	void *instances,
+	long tag_count,
+	long first_index,
+	void *region,
+	unsigned long region_size,
+	char const *name)
+{
+	/* (the map's own validation, kept for its bsps and its checks: the
+	globals, and the claims of the bytes at the start of its tag cache, the
+	words the region's bytes are counted in here) */
+	static unsigned long saved_claims[TAG_VALIDATE_ADDED_TAGS_MAXIMUM_SIZE / CLAIM_BITS + 1];
+	unsigned long saved_words = region_size / CLAIM_BITS + 1;
+	struct tag_validate_header *header = region;
+	struct tag_validation validation;
+	boolean custom_edition = tag_validate_globals.custom_edition;
+	boolean valid;
+	long corrections;
+
+	if (!instances || !region || region_size < sizeof(*header) || region_size > TAG_VALIDATE_ADDED_TAGS_MAXIMUM_SIZE ||
+		first_index < 0 || first_index > tag_count || tag_count > UNSIGNED_SHORT_MAX)
+	{
+		return FALSE;
+	}
+	memcpy(&tag_validate_saved_globals, &tag_validate_globals, sizeof(tag_validate_globals));
+	memcpy(saved_claims, tag_validate_claims, saved_words * sizeof(*saved_claims));
+
+	/* (as a map's tags: the region is their tag cache, its header theirs,
+	whose table is the whole of the map's with them, so that what they
+	refer to in the map is found; the map's tags are not walked again) */
+	memset(&validation, 0, sizeof(validation));
+	memset(&tag_validate_globals, 0, sizeof(tag_validate_globals));
+	tag_validate_globals.header = header;
+	tag_validate_globals.tag_data_size = (long)region_size;
+	tag_validate_globals.tag_cache_size = region_size;
+	tag_validate_globals.custom_edition = custom_edition;
+	snprintf(tag_validate_globals.map_name, sizeof(tag_validate_globals.map_name), "%s", name);
+	memset(tag_validate_claims, 0, saved_words * sizeof(*tag_validate_claims));
+	validation_new(&validation, region, region_size);
+	memset(header, 0, sizeof(*header));
+	header->instances = instances;
+	header->scenario_tag_index = NONE;
+	header->tag_count = tag_count;
+	header->signature = TAG_HEADER_SIGNATURE;
+
+	if (!schemas_fit())
+	{
+		tag_validate_refuse(&validation, "cannot be checked: a tag schema is wrong");
+		valid = FALSE;
+	}
+	else if (!claim(header, sizeof(*header)))
+	{
+		tag_validate_refuse(&validation, "has a damaged tag header");
+		valid = FALSE;
+	}
+	else
+	{
+		valid = validate_tag_table(&validation, instances, first_index, tag_count);
+	}
+	corrections = validation.corrections;
+
+	memcpy(tag_validate_claims, saved_claims, saved_words * sizeof(*saved_claims));
+	memcpy(&tag_validate_globals, &tag_validate_saved_globals, sizeof(tag_validate_globals));
+	tag_validate_added_corrections = corrections;
+
+	return valid;
+}
+
+long tag_validate_added_tags_corrections(
+	void)
+{
+	return tag_validate_added_corrections;
 }
 
 boolean tag_validate_structure_bsp(

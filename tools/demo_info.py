@@ -24,7 +24,8 @@ SNAPSHOT_FLAGS = {0: "start", 1: "loaded", 2: "reset", 3: "seek"}
 RULES = {0: "enhanced animations", 1: "turns with the aim", 2: "walks over a second weapon",
          3: "simulation fixes"}
 # the campaign's skulls the header holds (port/linux/game/skulls.h's order), 0 before them
-SKULLS = ["iron", "black_eye", "mythic", "thunderstorm", "catch", "tough_luck", "famine", "fog", "tilt", "blind"]
+SKULLS = ["iron", "black_eye", "mythic", "thunderstorm", "catch", "tough_luck", "famine", "fog", "tilt", "blind",
+          "grunt_birthday_party"]
 # the records the tick's code takes as it runs, which only a tick holds,
 # between its sub-steps' U and its Z
 TICK_CODE_RECORDS = set("DFIL")

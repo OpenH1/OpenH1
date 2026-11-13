@@ -205,6 +205,7 @@ static struct screen_action const screen_actions[] =
 	{ "skull fog", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_fog), FALSE },
 	{ "skull tilt", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_tilt), FALSE },
 	{ "skull blind", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_blind), FALSE },
+	{ "skull grunt_birthday_party", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_grunt_birthday_party), FALSE },
 	{ "skulls mythic", NULL, NULL, NULL, NULL, NULL, NULL, SKULLS_PRESET_MYTHIC, TRUE },
 	{ "skulls laso", NULL, NULL, NULL, NULL, NULL, NULL, SKULLS_PRESET_LASO, TRUE },
 };
@@ -213,8 +214,8 @@ static char const *const screen_action_names[] =
 {
 	"open campaign", "open solo", "open multiplayer", "open coop", "open host", "open host coop", "open settings",
 	"open training", "quit", "open skulls", "skull iron", "skull black_eye", "skull mythic", "skull thunderstorm",
-	"skull catch", "skull tough_luck", "skull famine", "skull fog", "skull tilt", "skull blind", "skulls mythic",
-	"skulls laso",
+	"skull catch", "skull tough_luck", "skull famine", "skull fog", "skull tilt", "skull blind",
+	"skull grunt_birthday_party", "skulls mythic", "skulls laso",
 };
 
 /* a binding's value: the saved game's mission and difficulty (player 1's
@@ -231,6 +232,7 @@ static char const *const screen_binding_names[] =
 {
 	"campaign.level", "campaign.difficulty", "skull.iron", "skull.black_eye", "skull.mythic", "skull.thunderstorm",
 	"skull.catch", "skull.tough_luck", "skull.famine", "skull.fog", "skull.tilt", "skull.blind",
+	"skull.grunt_birthday_party",
 };
 
 static int screen_value(void *context, char const *name, char *value, unsigned long size)
@@ -259,6 +261,7 @@ static int screen_value(void *context, char const *name, char *value, unsigned l
 			{ "skull.thunderstorm", _skull_thunderstorm }, { "skull.catch", _skull_catch },
 			{ "skull.tough_luck", _skull_tough_luck }, { "skull.famine", _skull_famine }, { "skull.fog", _skull_fog },
 			{ "skull.tilt", _skull_tilt }, { "skull.blind", _skull_blind },
+			{ "skull.grunt_birthday_party", _skull_grunt_birthday_party },
 		};
 		long index;
 

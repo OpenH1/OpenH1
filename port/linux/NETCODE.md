@@ -1779,6 +1779,17 @@ A party's leader joins a game first and its members follow it in
   without them, does not join. A host plays none in a Legacy game or a game
   OpenCE's players may join (`network_standard_hosting_mixed`), whose
   machines could not hear them; a Legacy game is unchanged in every byte.
+  Grunt Birthday Party (the eleventh bit) sends nothing of its own: every
+  machine bursts a grunt's head into confetti, with its cheer, from the
+  killing blow it already has, the host as it deals the blow and a client
+  as it replays the host's (`_damage_event_kill`, sent to every client
+  reliably, with its node, region and material: the material's head flag
+  and the unit's grunt variant decide it alike everywhere). The confetti
+  and the cheer change nothing any machine computes (their particles and
+  sounds take the local random numbers): a client whose blow came late
+  sees it late; one whose host's word on the body came without its blow
+  (`unit_kill_no_statistics`) sees none. A client makes the confetti's tags
+  as its map loads, before the host's skulls come (`grunt_birthday_party.c`).
 
 ## Joining a game in progress
 

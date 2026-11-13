@@ -39,7 +39,8 @@ def generated(fault=None):
                           'skulls_game', 'skulls_set_game', 'skull_active', 'skulls_enemy_difficulty_value',
                           'skulls_material_modifier', 'skulls_evasion_chance', 'skulls_force_major_upgrade',
                           'skulls_actor_dropped_weapon', 'skulls_shields_recharge',
-                          'skulls_melee_recharges_shields', 'skulls_motion_sensor_hidden', 'skulls_hud_hidden')),
+                          'skulls_melee_recharges_shields', 'skulls_motion_sensor_hidden', 'skulls_hud_hidden',
+                          'skulls_unit_killed')),
                       function(globals_source, 'game_difficulty_get_value_by_difficulty'),
                       function(globals_source, 'game_difficulty_get_team_value'),
                       function(read('source/items/weapons.c'), 'weapon_halve_ammunition'),
@@ -51,7 +52,7 @@ def generated(fault=None):
 
 
 CASES = ['names', 'local', 'host', 'client', 'client_untrusted', 'demo', 'off', 'mythic', 'catch', 'tilt',
-         'tough_luck', 'thunderstorm', 'black_eye', 'fog_blind', 'famine']
+         'tough_luck', 'thunderstorm', 'black_eye', 'fog_blind', 'famine', 'grunt_birthday_party']
 
 
 @pytest.mark.parametrize('case', CASES)
@@ -89,6 +90,14 @@ def test_case(case):
     (('\t\tgame_team_is_enemy(dealer_team_index, target_team_index);', '\t\tTRUE;'), 'black_eye'),
     # Famine's battery left full
     (('weapon->weapon.age = 1.0f-(1.0f-weapon->weapon.age)*0.5f;', ';'), 'famine'),
+    # Grunt Birthday Party's confetti for a body kill
+    (('if (!head || melee ||', 'if (melee ||'), 'grunt_birthday_party'),
+    # ... for an elite's headshot
+    ((' || !grunt_birthday_party_grunt(unit_index))', ')'), 'grunt_birthday_party'),
+    # ... with the skull off
+    (('!skull_active(_skull_grunt_birthday_party) || ', ''), 'grunt_birthday_party'),
+    # ... for a melee to the head
+    (('if (!head || melee ||', 'if (!head ||'), 'grunt_birthday_party'),
     # a demo's skulls this computer's
     (('if (demo_playback_skulls(&recorded))', 'if (FALSE && demo_playback_skulls(&recorded))'), 'demo'),
 ])

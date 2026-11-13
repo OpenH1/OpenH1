@@ -47,6 +47,9 @@ void effects_disconnect_from_structure_bsp(
 	void);
 void effects_reconnect_to_structure_bsp(
 	void);
+/* port: those of a tag the map has not, let go as a game state loads */
+void effects_delete_unloaded_definitions(
+	void);
 void effect_stop(
 	long effect_index,
 	boolean and_delete);

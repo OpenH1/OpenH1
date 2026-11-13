@@ -610,6 +610,13 @@ void scenario_tags_unload(
 
 		menu_tags_unloaded();
 	}
+	/* port: the Grunt Birthday Party skull's confetti goes, after the
+	menus', whose table followed it (port/linux/game/grunt_birthday_party.c) */
+	{
+		extern void grunt_birthday_party_tags_unloaded(void);
+
+		grunt_birthday_party_tags_unloaded();
+	}
 	cache_file_close();
 	/* port: a Halo Custom Edition map has no Xbox vertex or index buffers
 	(port/linux/game/custom_edition_cache.c) */
@@ -1280,6 +1287,12 @@ long scenario_tags_load(
 			global_tag_instances = cache_file_globals.tag_header->tag_instances;
 			global_tag_count = cache_file_globals.tag_header->tag_count;
 			cache_file_globals.tags_loaded = TRUE;
+			/* (the Grunt Birthday Party skull's confetti, as below) */
+			{
+				extern void grunt_birthday_party_tags_loaded(void);
+
+				grunt_birthday_party_tags_loaded();
+			}
 			/* (the menus' tags, as for this build's maps below) */
 			{
 				extern void menu_tags_loaded(char const *map_name);
@@ -1398,6 +1411,15 @@ long scenario_tags_load(
 				extern void powerup_render_bounds_tags_loaded(void);
 
 				powerup_render_bounds_tags_loaded();
+			}
+			/* port: the Grunt Birthday Party skull's confetti, made of the
+			map's own pieces where the skull may play, added to the map's
+			tags first, so that its indices follow the map's alone
+			(port/linux/game/grunt_birthday_party.c) */
+			{
+				extern void grunt_birthday_party_tags_loaded(void);
+
+				grunt_birthday_party_tags_loaded();
 			}
 			/* port: the menus' tags, added to the map's (port/linux/game/menu_tags.c) */
 			{

@@ -302,6 +302,27 @@ void particles_disconnect_from_structure_bsp(
 	return;
 }
 
+/* port: the particles of a tag the map's table has not, let go as a game
+state loads (effects.c's effects_delete_unloaded_definitions) */
+void particles_delete_unloaded_definitions(
+	void)
+{
+	extern boolean tag_index_is_group(long tag_index, long group_tag);
+	long particle_index;
+
+	if (!particle_data)
+		return;
+	for (particle_index = data_next_index(particle_data, NONE);
+		particle_index != NONE;
+		particle_index = data_next_index(particle_data, particle_index))
+	{
+		if (!tag_index_is_group(particle_get(particle_index)->definition_index, PARTICLE_TAG))
+			particle_delete(particle_index);
+	}
+
+	return;
+}
+
 void particles_reconnect_to_structure_bsp(
 	void)
 {

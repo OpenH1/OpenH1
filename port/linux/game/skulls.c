@@ -28,9 +28,10 @@ game's own systems where it decides, and nothing else:
   what does less, less.
 - Blind: the HUD (hud.c) and the first-person weapon
   (first_person_weapons.c) are not drawn.
-
-Anniversary's Grunt Birthday Party is left out: no map has a confetti
-effect to burst into.
+- Grunt Birthday Party: a unit's killing blow (damage.c): a grunt's that
+  struck its head (not a melee's) bursts its head into confetti, with the
+  grunts' cheer. No map has confetti: grunt_birthday_party.c makes it, as
+  the map's tags load, from a bitmap of the map's own.
 
 A game's skulls are taken as its map begins (skulls_initialize_for_new_map)
 and hold until it is left: a revert or a reset keeps them. They are the
@@ -52,6 +53,7 @@ game plays none. A demo plays its recording's, which its header keeps
 #include "scenario/scenario.h"
 #include "scenario/scenario_definitions.h"
 #include "demo.h"
+#include "grunt_birthday_party.h"
 #include "network_standard.h"
 #include "skulls.h"
 
@@ -64,7 +66,8 @@ int config_write(char const *name, char const *value);
 
 static char const *const skull_names[NUMBER_OF_SKULLS] =
 {
-	"iron", "black_eye", "mythic", "thunderstorm", "catch", "tough_luck", "famine", "fog", "tilt", "blind"
+	"iron", "black_eye", "mythic", "thunderstorm", "catch", "tough_luck", "famine", "fog", "tilt", "blind",
+	"grunt_birthday_party"
 };
 
 static unsigned long skulls_of_game;
@@ -281,4 +284,14 @@ boolean skulls_hud_hidden(
 	void)
 {
 	return skull_active(_skull_blind);
+}
+
+boolean skulls_unit_killed(
+	long unit_index,
+	boolean head,
+	boolean melee)
+{
+	if (!head || melee || !skull_active(_skull_grunt_birthday_party) || !grunt_birthday_party_grunt(unit_index))
+		return FALSE;
+	return grunt_birthday_party_burst(unit_index);
 }

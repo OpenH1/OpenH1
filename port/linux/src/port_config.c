@@ -1238,7 +1238,9 @@ static const struct config_setting config_settings[] =
 		"always dive and evade), famine (enemies' dropped weapons carry half\n"
 		"their ammunition), fog (no motion tracker), tilt (damage types'\n"
 		"strengths and weaknesses exaggerated), blind (no HUD and no weapon in\n"
-		"view). Read as a level begins; the Campaign screen's SKULLS writes it.\n"
+		"view), grunt_birthday_party (a grunt killed by a headshot bursts into\n"
+		"confetti, with a cheer). Read as a level begins; the Campaign screen's\n"
+		"SKULLS writes it.\n"
 		"A network co-op game plays its host's,\n"
 		"in an OpenH1 game that OpenCE's players cannot join; a Legacy game none." },
 	{ "game.sim_rate", _config_integer, "60", "HALO_SIM_RATE", _environment_value, _platform_all,

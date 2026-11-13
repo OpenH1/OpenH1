@@ -94,7 +94,7 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | --- | --- |
 | `{campaign.level}` | The saved game's mission (player 1's profile), for example `The Silent Cartographer`; none without a saved game, or in co-op |
 | `{campaign.difficulty}` | The saved game's difficulty, for example `Legendary` |
-| `{skull.<name>}` | `ON` or `OFF`: whether `game.skulls` has the skull (`iron`, `black_eye`, `mythic`, `thunderstorm`, `catch`, `tough_luck`, `famine`, `fog`, `tilt`, `blind`) |
+| `{skull.<name>}` | `ON` or `OFF`: whether `game.skulls` has the skull (`iron`, `black_eye`, `mythic`, `thunderstorm`, `catch`, `tough_luck`, `famine`, `fog`, `tilt`, `blind`, `grunt_birthday_party`) |
 
 ## Actions
 

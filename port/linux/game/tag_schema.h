@@ -102,6 +102,12 @@ enum
 	/* the file ranges a Custom Edition map's bitmap pixels and sound samples
 	may be in (tag_validate_custom_edition_tags) */
 	MAXIMUM_TAG_VALIDATE_FILE_RANGES = 4,
+
+	/* tags added to a map (tag_validate_added_tags): the most bytes they
+	may lie in, and the bytes at the start of them that are the validator's
+	(a tags' header) */
+	TAG_VALIDATE_ADDED_TAGS_MAXIMUM_SIZE = 0x10000,
+	TAG_VALIDATE_ADDED_TAGS_HEADER_SIZE = 0x24,
 };
 
 /* ---------- macros */
@@ -336,6 +342,24 @@ void tag_validate_custom_edition_note_structure_bsp(
 	char const *map_name);
 /* a structure bsp just read (size bytes at base, its header there) as tag
 tag_index: FALSE if it cannot be used */
+/* tags made for a map as it loads (grunt_birthday_party.c), added to its
+table (instances, tag_count tags, theirs from first_index): checked as a
+map's tags are, against their groups' schemas, the references to the map's
+tags found in the table. Their roots, blocks, data and names must lie in
+region (region_size bytes, at most TAG_VALIDATE_ADDED_TAGS_MAXIMUM_SIZE),
+whose first TAG_VALIDATE_ADDED_TAGS_HEADER_SIZE bytes are the validator's.
+The map's own validation (its bsps' checks to come) is kept. FALSE if they
+cannot be used; tag_validate_added_tags_corrections, what was corrected */
+boolean tag_validate_added_tags(
+	void *instances,
+	long tag_count,
+	long first_index,
+	void *region,
+	unsigned long region_size,
+	char const *name);
+long tag_validate_added_tags_corrections(
+	void);
+
 boolean tag_validate_structure_bsp(
 	long tag_index,
 	void *base,
