@@ -32,6 +32,7 @@ kept on the item of the same id.
 #include "menu_engine.h"
 #include "menu_screens.h"
 #include "menu_widget.h"
+#include "../src/whats_new.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -53,6 +54,7 @@ long ui_widget_port_text_box_font(struct widget_instance *widget, short *width);
 short ui_widget_port_past_move(void);
 boolean ui_widget_port_pointer_focused(void);
 void event_manager_post_button(short controller_index, short button_index);
+void ui_widget_port_go_back(struct widget_instance *widget);
 
 /* ---------- constants */
 
@@ -120,6 +122,19 @@ right, this far apart) */
 at 16:9 and wider */
 #define ITEM_SCALE_LEAST 1.45f
 #define ITEM_SCALE_MOST 1.6f
+/* a note (blocks.xml's screens/note_*: What's new's card), in the middle of
+the screen: its width, its edge's thickness, the room inside it about its
+words, its title's and a line's height, and the room above its prompts */
+#define NOTE_WIDTH 480
+#define NOTE_EDGE 2
+#define NOTE_PAD_X 20
+#define NOTE_PAD_TOP 16
+#define NOTE_PAD_BOTTOM 16
+#define NOTE_TITLE_HEIGHT 24
+#define NOTE_TITLE_GAP 8
+#define NOTE_LINE_HEIGHT 19
+#define NOTE_PROMPTS_GAP 14
+#define NOTE_PROMPT_HEIGHT 24
 /* (menu_tags.c's WIDE_LAYOUT_EXTRA: 16:9's width past 640) */
 #define WIDE_LAYOUT_EXTRA 212
 /* (menu_functions.c's BUTTON_B, BUTTON_X, BUTTON_Y: the buttons a prompt presses) */
@@ -148,42 +163,51 @@ struct screen_action
 	char const *then;
 	char const *open;
 	char const *otherwise;
+	/* (the platform's to do, with its argument, and then the screen closed,
+	back to the one before: What's new's) */
+	void (*call)(int argument);
+	int argument;
+	boolean back;
 };
 
 static struct screen_action const screen_actions[] =
 {
 	/* (the Campaign screen, screens/campaign.xml) */
-	{ "open campaign", NULL, NULL, NULL, NULL, "screens/campaign", NULL },
+	{ "open campaign", NULL, NULL, NULL, NULL, "screens/campaign", NULL, NULL, 0, FALSE },
 	/* (Choose Mission, the campaign's missions as cards, as the campaign
 	menu's CHOOSE MISSION opens it once the menu has read the profile's
 	campaign: a profile made first if there is none, as the PC version's
 	CAMPAIGN, and then Choose Mission at once: port_settings.py's
 	_solo_new_profile) */
 	{ "open solo", NULL, NULL, "new game if no plyr profiles", "port campaign init", "main_menu/campaign/mission_screen",
-		"main_menu/campaign/solo_creating_profile" },
+		"main_menu/campaign/solo_creating_profile", NULL, 0, FALSE },
 	/* (the server browser, as Multiplayer's SERVER BROWSER opens it: its mode
 	the browser's; every game, or the co-op games, this visit) */
 	{ "open multiplayer", "all", "mp type set mode", "new game if no plyr profiles", NULL,
 		"main_menu/multiplayer_type_select/join_game/join_game_screen",
-		"main_menu/profile_manager/multiplayer_creating_profile" },
+		"main_menu/profile_manager/multiplayer_creating_profile", NULL, 0, FALSE },
 	{ "open coop", "coop", "mp type set mode", "new game if no plyr profiles", NULL,
 		"main_menu/multiplayer_type_select/join_game/join_game_screen",
-		"main_menu/profile_manager/multiplayer_creating_profile" },
+		"main_menu/profile_manager/multiplayer_creating_profile", NULL, 0, FALSE },
 	/* (the browser's HOST & MORE: the PC version's Multiplayer screen, the
 	hub; its HOST CO-OP: the hub's co-op page, online or split screen) */
-	{ "open host", NULL, NULL, NULL, NULL, "main_menu/multiplayer_type_select/multiplayer_type_select_screen", NULL },
-	{ "open host coop", NULL, NULL, NULL, NULL, "main_menu/multiplayer_type_select/hub/coop_screen", NULL },
+	{ "open host", NULL, NULL, NULL, NULL, "main_menu/multiplayer_type_select/multiplayer_type_select_screen", NULL, NULL, 0, FALSE },
+	{ "open host coop", NULL, NULL, NULL, NULL, "main_menu/multiplayer_type_select/hub/coop_screen", NULL, NULL, 0, FALSE },
 	{ "open settings", NULL, NULL, "port settings begin", NULL,
-		"main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen", NULL },
-	{ "open training", NULL, NULL, NULL, NULL, "main_menu/training/training_screen", NULL },
+		"main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen", NULL, NULL, 0, FALSE },
+	{ "open training", NULL, NULL, NULL, NULL, "main_menu/training/training_screen", NULL, NULL, 0, FALSE },
 	/* (the quit question, as QUIT and B on the main menu open it) */
-	{ "quit", NULL, NULL, NULL, NULL, "main_menu/quit_select/quit_screen", NULL },
+	{ "quit", NULL, NULL, NULL, NULL, "main_menu/quit_select/quit_screen", NULL, NULL, 0, FALSE },
+	/* (What's new's OK and B: the build noted as seen, the card closed; its
+	READ ALL: the release's page opened too, whats_new.c) */
+	{ "close whats new", NULL, NULL, NULL, NULL, NULL, NULL, whats_new_dismiss, 0, TRUE },
+	{ "read whats new", NULL, NULL, NULL, NULL, NULL, NULL, whats_new_dismiss, 1, TRUE },
 };
 
 static char const *const screen_action_names[] =
 {
 	"open campaign", "open solo", "open multiplayer", "open coop", "open host", "open host coop", "open settings",
-	"open training", "quit",
+	"open training", "quit", "close whats new", "read whats new",
 };
 
 /* a binding's value: the saved game's mission and difficulty (player 1's
@@ -199,12 +223,37 @@ struct screen_values
 static char const *const screen_binding_names[] =
 {
 	"campaign.level", "campaign.difficulty",
+	/* (What's new's: its build, and its highlights, whats_new.c) */
+	"whats_new.build", "whats_new.1", "whats_new.2", "whats_new.3", "whats_new.4", "whats_new.5",
 };
 
 static int screen_value(void *context, char const *name, char *value, unsigned long size)
 {
 	struct screen_values *values = context;
 
+	if (!strncmp(name, "whats_new.", 10))
+	{
+		if (!strcmp(name, "whats_new.build"))
+		{
+			long build = whats_new_build();
+
+			if (build > 0)
+				snprintf(value, size, "%ld", build);
+			return build > 0;
+		}
+		static char const *const lines[WHATS_NEW_MAXIMUM_LINES] =
+		{
+			"whats_new.1", "whats_new.2", "whats_new.3", "whats_new.4", "whats_new.5",
+		};
+		long line;
+
+		for (line = 0; line < WHATS_NEW_MAXIMUM_LINES; line++)
+		{
+			if (!strcmp(name, lines[line]))
+				return whats_new_line((int)line, value, size) && value[0];
+		}
+		return 0;
+	}
 	if (!values->read)
 	{
 		values->read = TRUE;
@@ -239,6 +288,7 @@ static struct screen_place const screen_places[] =
 {
 	{ "main", "main_menu\\main_menu", pc_menu_main_menu_shown },
 	{ "campaign", "screens\\campaign", NULL },
+	{ "whats_new", "screens\\whats_new", NULL },
 };
 
 /* the server browser, whose screen gets a button of the hand-written
@@ -283,7 +333,13 @@ struct screen_open
 	char prompt_keys[SCREEN_MAXIMUM_BUTTONS][SCREEN_ID_LENGTH];
 	short prompt_x[SCREEN_MAXIMUM_BUTTONS];
 	boolean prompt_right[SCREEN_MAXIMUM_BUTTONS];
+	/* (each prompt's own action, "" for none; and whether the prompts are a
+	note's, which stay where they are) */
+	char prompt_actions[SCREEN_MAXIMUM_BUTTONS][SCREEN_ACTION_LENGTH];
+	boolean prompts_in_note;
 	long prompt_count;
+	/* (its note's height, 0 for none) */
+	short note_height;
 };
 
 static struct
@@ -297,6 +353,7 @@ static struct
 	/* the blocks' tags, as the menus' tags were last built */
 	long prompts_tag;
 	long title_art_tag, list_tag, item_tag, hint_tag, prompt_left_tag, button_tag, cards_tag, card_tag, card_title_tag, card_art_tag, card_subtitle_tag, header_tag, prompt_tag, header_text_tag;
+	long note_edge_tag, note_fill_tag, note_title_tag, note_line_tag, note_prompts_tag, note_prompt_tag;
 } screens = { FALSE };
 
 static void screens_names_give(void)
@@ -358,12 +415,20 @@ static boolean screen_blocks_found(void)
 	screens.prompt_tag = screen_block_tag("pc\\screens\\prompt");
 	screens.prompts_tag = screen_block_tag("pc\\screens\\prompts");
 	screens.header_text_tag = screen_block_tag("pc\\screens\\header_text");
+	screens.note_edge_tag = screen_block_tag("pc\\screens\\note_edge");
+	screens.note_fill_tag = screen_block_tag("pc\\screens\\note_fill");
+	screens.note_title_tag = screen_block_tag("pc\\screens\\note_title");
+	screens.note_line_tag = screen_block_tag("pc\\screens\\note_line");
+	screens.note_prompts_tag = screen_block_tag("pc\\screens\\note_prompts");
+	screens.note_prompt_tag = screen_block_tag("pc\\screens\\note_prompt");
 	if (screens.title_art_tag == NONE || screens.list_tag == NONE || screens.item_tag == NONE ||
 		screens.hint_tag == NONE || screens.prompt_left_tag == NONE || screens.button_tag == NONE ||
 		screens.cards_tag == NONE || screens.card_tag == NONE || screens.card_title_tag == NONE ||
 		screens.card_art_tag == NONE || screens.header_tag == NONE ||
 		screens.card_subtitle_tag == NONE || screens.prompt_tag == NONE || screens.prompts_tag == NONE ||
-		screens.header_text_tag == NONE)
+		screens.header_text_tag == NONE || screens.note_edge_tag == NONE || screens.note_fill_tag == NONE ||
+		screens.note_title_tag == NONE || screens.note_line_tag == NONE || screens.note_prompts_tag == NONE ||
+		screens.note_prompt_tag == NONE)
 	{
 		platform_log("menus: the screens' blocks (screens/blocks.xml) are not all there");
 		screens.blocks_found = FALSE;
@@ -434,6 +499,115 @@ static boolean screen_button_right(struct menu_screen_block const *button)
 	return button->side ? !strcmp(button->side, "right") : strcmp(button->key, "back") != 0;
 }
 
+/* a screen's note (What's new's card), made in the middle of the screen:
+its edge and fill, its title, each line whose bindings have values, and the
+screen's buttons in a row at its foot, from its right (the first the
+rightmost), the focus on accept's. Laid out in the 640, which every aspect
+ratio has whole in its middle, so it stays inside a phone's safe area */
+static void screen_note_build(struct screen_open *open, struct menu_screen const *screen, long note_index,
+	struct screen_values *values)
+{
+	struct widget_instance *widget = open->widget;
+	struct menu_screen_block const *note = &screen->blocks[note_index];
+	char text[MENU_SCREEN_MAXIMUM_TEXT];
+	struct widget_instance *made, *bar, *focus = NULL;
+	long index, line_count = 0, button_count = 0, buttons_index = NONE;
+	long button_blocks[SCREEN_MAXIMUM_BUTTONS];
+	short height, left, top, y, x, inner_width;
+
+	for (index = 0; index < screen->block_count; index++)
+	{
+		struct menu_screen_block const *block = &screen->blocks[index];
+
+		if (block->kind == MENU_SCREEN_LINE && block->parent == note_index &&
+			menu_screen_text(block->label, screen_value, values, text, sizeof(text)))
+			line_count++;
+		else if (block->kind == MENU_SCREEN_BUTTONS)
+			buttons_index = index;
+	}
+	for (index = 0; buttons_index != NONE && index < screen->block_count; index++)
+	{
+		if (screen->blocks[index].kind == MENU_SCREEN_BUTTON && screen->blocks[index].parent == buttons_index &&
+			button_count < SCREEN_MAXIMUM_BUTTONS)
+			button_blocks[button_count++] = index;
+	}
+	height = (short)(NOTE_PAD_TOP + NOTE_TITLE_HEIGHT + NOTE_TITLE_GAP + line_count * NOTE_LINE_HEIGHT +
+		(button_count ? NOTE_PROMPTS_GAP + NOTE_PROMPT_HEIGHT : 0) + NOTE_PAD_BOTTOM);
+	left = (short)((SCREEN_WIDTH - NOTE_WIDTH) / 2);
+	top = (short)((SCREEN_HEIGHT - height) / 2);
+	inner_width = (short)(NOTE_WIDTH - 2 * NOTE_PAD_X);
+	/* (its edge, and its fill inside it: each cut to the card's height,
+	menu_screen_item_picture) */
+	open->note_height = height;
+	screen_widget_add(widget, screens.note_edge_tag, left, top);
+	screen_widget_add(widget, screens.note_fill_tag, (short)(left + NOTE_EDGE), (short)(top + NOTE_EDGE));
+	y = (short)(top + NOTE_PAD_TOP);
+	made = screen_widget_add(widget, screens.note_title_tag, (short)(left + NOTE_PAD_X), y);
+	if (made)
+	{
+		menu_screen_text(note->label, screen_value, values, text, sizeof(text));
+		screen_text_set(made, text);
+	}
+	y = (short)(y + NOTE_TITLE_HEIGHT + NOTE_TITLE_GAP);
+	for (index = 0; index < screen->block_count; index++)
+	{
+		struct menu_screen_block const *block = &screen->blocks[index];
+
+		if (block->kind != MENU_SCREEN_LINE || block->parent != note_index ||
+			!menu_screen_text(block->label, screen_value, values, text, sizeof(text)))
+			continue;
+		made = screen_widget_add(widget, screens.note_line_tag, (short)(left + NOTE_PAD_X), y);
+		if (made)
+			screen_text_set(made, text);
+		y = (short)(y + NOTE_LINE_HEIGHT);
+	}
+	if (!button_count)
+		return;
+	/* (the prompts, the bar's look: the bar a list of them, so the d-pad,
+	the stick and the pointer move the focus between them; made from the
+	left, in the order they are seen, so left is left) */
+	y = (short)(y + NOTE_PROMPTS_GAP);
+	bar = screen_widget_add(widget, screens.note_prompts_tag, (short)(left + NOTE_PAD_X), y);
+	if (!bar)
+		return;
+	open->prompts_in_note = TRUE;
+	open->prompt_count = 0;
+	/* (in the bar, from its left: its prompts at the card's right) */
+	x = (short)(inner_width - button_count * PROMPT_WIDTH - (button_count - 1) * PROMPT_GAP);
+	for (index = button_count - 1; index >= 0; index--)
+	{
+		struct menu_screen_block const *button = &screen->blocks[button_blocks[index]];
+		struct widget_instance *prompt = ui_widget_port_add_child(bar, screens.note_prompt_tag, NULL);
+		long made_index = open->prompt_count;
+
+		if (!prompt)
+			continue;
+		prompt->horizontal_offset = x;
+		prompt->vertical_offset = 0;
+		snprintf(text, sizeof(text), "%s %s", !strcmp(button->key, "accept") ? "%a-button" :
+			!strcmp(button->key, "back") ? "%b-button" : !strcmp(button->key, "x") ? "%x-button" :
+			"%y-button", button->label);
+		screen_text_set(prompt, text);
+		open->prompts[made_index] = prompt;
+		open->prompt_x[made_index] = x;
+		open->prompt_right[made_index] = TRUE;
+		snprintf(open->prompt_keys[made_index], SCREEN_ID_LENGTH, "%s", button->key);
+		snprintf(open->prompt_actions[made_index], SCREEN_ACTION_LENGTH, "%s", button->action ? button->action : "");
+		if (!focus || !strcmp(button->key, "accept"))
+		{
+			focus = prompt;
+			bar->parameters.list.selected_index = (short)made_index;
+		}
+		open->prompt_count++;
+		x = (short)(x + PROMPT_WIDTH + PROMPT_GAP);
+	}
+	if (focus)
+	{
+		widget->focused_child = bar;
+		bar->focused_child = focus;
+	}
+}
+
 /* the screen's widgets made from the hand-written screen, in place of
 whatever it had: FALSE (nothing changed) if they cannot be */
 static boolean screen_build(struct screen_open *open, struct menu_screen const *screen)
@@ -446,7 +620,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 	short heights[MENU_SCREEN_MAXIMUM_BLOCKS];
 	char const *focus_id;
 	short fixed = 0, spaces = 0, spaces_left, extra, top, shrink = 0;
-	long index, place_index = open->place - screen_places;
+	long index, place_index = open->place - screen_places, note_index = NONE;
 	struct widget_instance *focus = NULL;
 	long focus_index = 0;
 
@@ -486,7 +660,16 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		case MENU_SCREEN_BUTTONS:
 			heights[index] = BUTTONS_ROOM;
 			break;
+		case MENU_SCREEN_NOTE:
+			note_index = index;
+			break;
 		}
+	}
+	/* (a note has the buttons at its foot: no bar of their own) */
+	for (index = 0; note_index != NONE && index < screen->block_count; index++)
+	{
+		if (screen->blocks[index].kind == MENU_SCREEN_BUTTONS)
+			heights[index] = 0;
 	}
 	for (index = 0; index < screen->block_count; index++)
 	{
@@ -506,6 +689,8 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		ui_widget_delete(widget->child);
 	open->list = NULL;
 	open->item_count = 0;
+	open->prompt_count = 0;
+	open->prompts_in_note = FALSE;
 	focus_id = screens.focused[place_index][0] ? screens.focused[place_index] : NULL;
 	top = 0;
 	spaces_left = spaces;
@@ -678,9 +863,16 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 			}
 			break;
 		}
+		case MENU_SCREEN_NOTE:
+			screen_note_build(open, screen, index, &values);
+			break;
 		case MENU_SCREEN_BUTTONS:
 		{
 			long button;
+
+			/* (a note's: made with it) */
+			if (note_index != NONE)
+				break;
 			short left_x = BUTTONS_MARGIN, right_x = (short)(SCREEN_WIDTH - BUTTONS_MARGIN - PROMPT_WIDTH);
 			struct widget_instance *bar =
 				screen_widget_add(widget, screens.prompts_tag, 0, (short)(top + PROMPTS_TOP));
@@ -713,6 +905,8 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 				open->prompt_x[made] = right ? right_x : left_x;
 				open->prompt_right[made] = right;
 				snprintf(open->prompt_keys[made], SCREEN_ID_LENGTH, "%s", block_button->key);
+				snprintf(open->prompt_actions[made], SCREEN_ACTION_LENGTH, "%s",
+					block_button->action ? block_button->action : "");
 				open->prompt_count++;
 				if (right)
 					right_x = (short)(right_x - PROMPT_GAP - PROMPT_WIDTH);
@@ -865,7 +1059,7 @@ void menu_screen_frame(struct widget_instance *widget)
 	edges, as the tall layout's titles and footer's prompts) */
 	if (open->header && open->header_picture == NONE)
 		open->header->horizontal_offset = (short)(widget->horizontal_offset - ui_widget_port_past_move() / 2);
-	for (index = 0; index < open->prompt_count; index++)
+	for (index = 0; !open->prompts_in_note && index < open->prompt_count; index++)
 	{
 		open->prompts[index]->horizontal_offset = (short)(open->prompt_x[index] +
 			(open->prompt_right[index] ? 1 : -1) * (ui_widget_port_past_move() / 2));
@@ -933,6 +1127,14 @@ static boolean screen_action_run(struct widget_instance *widget, struct event_re
 		if (*deleted)
 			return TRUE;
 	}
+	if (action->call)
+		action->call(action->argument);
+	if (action->back)
+	{
+		ui_widget_port_go_back(widget_instance_get_topmost_parent(widget));
+		*deleted = TRUE;
+		return TRUE;
+	}
 	open = succeeded ? action->open : action->otherwise;
 	if (open && !menu_tags_open(widget, event, open, deleted))
 		platform_log("menus: action \"%s\": there is no screen %s", name, open);
@@ -969,6 +1171,9 @@ boolean menu_screen_key(struct widget_instance *prompt, struct event_record *eve
 
 		if (open->prompts[index] != prompt)
 			continue;
+		/* (its own action, if it has one) */
+		if (open->prompt_actions[index][0])
+			return screen_action_run(prompt, event, open->prompt_actions[index], deleted);
 		/* (accept: the item the list has chosen, as A on it; the others their
 		button pressed, which the screen takes as it takes the controller's) */
 		if (!strcmp(key, "accept"))
@@ -993,6 +1198,20 @@ boolean menu_screen_back(struct widget_instance *widget, struct event_record *ev
 			return FALSE;
 		}
 		return screen_action_run(widget, event, open->actions[0], deleted);
+	}
+	/* (X or Y: the prompt of that key, where it has an action of its own) */
+	if (open && event->type == SCREEN_EVENT_BUTTON && event->data.button.value == 1 &&
+		(event->data.button.index == _gamepad_analog_button_x || event->data.button.index == _gamepad_analog_button_y))
+	{
+		long index;
+		char const *key = event->data.button.index == _gamepad_analog_button_x ? "x" : "y";
+
+		for (index = 0; index < open->prompt_count; index++)
+		{
+			if (!strcmp(open->prompt_keys[index], key) && open->prompt_actions[index][0])
+				return screen_action_run(open->prompts[index], event, open->prompt_actions[index], deleted);
+		}
+		return FALSE;
 	}
 	if (!open || !open->back[0] || event->type != SCREEN_EVENT_BUTTON || event->data.button.value != 1 ||
 		(event->data.button.index != _gamepad_analog_button_b &&
@@ -1051,6 +1270,21 @@ boolean menu_screen_text_color(struct widget_instance const *widget, real_argb_c
 boolean menu_screen_item_picture(struct widget_instance const *widget, long *bitmap_tag, rectangle2d *bounds)
 {
 	long open_index, index;
+
+	/* (a note's edge and fill: as tall as its lines need) */
+	if (screens.blocks_found && (widget->definition_tag_index == screens.note_edge_tag ||
+		widget->definition_tag_index == screens.note_fill_tag))
+	{
+		struct screen_open const *open = screen_open_of(widget_instance_get_topmost_parent(
+			(struct widget_instance *)widget));
+
+		if (!open || !open->note_height)
+			return FALSE;
+		*bitmap_tag = NONE;
+		bounds->y1 = (short)(bounds->y0 + open->note_height -
+			(widget->definition_tag_index == screens.note_fill_tag ? 2 * NOTE_EDGE : 0));
+		return TRUE;
+	}
 
 	/* (a header: the picture its file names) */
 	if (screens.blocks_found && widget->definition_tag_index == screens.header_tag)

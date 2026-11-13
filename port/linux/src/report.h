@@ -55,6 +55,10 @@ void report_session_handover(int leaving);
 and "port crash dismiss", 0): its report saved at the next frame, its issue
 opened, or the crash let go; neither asked of again */
 void report_crash_answer(int report);
+/* whether nobody watches this run (a test's: debug.test_input, the null
+renderer, debug.exit_after...), which asks no questions at the main menu
+(the crash question; What's new, whats_new.c) */
+int report_run_unattended(void);
 
 /* ---------- report.c's parts (tools/harness/tests/test_report.py) */
 

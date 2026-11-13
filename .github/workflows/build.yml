@@ -91,14 +91,17 @@ jobs:
     outputs:
       build: ${{ steps.diff.outputs.build }}
       ios: ${{ steps.diff.outputs.ios }}
+      whats_new: ${{ steps.whats_new.outputs.highlights }}
     steps:
       # (the history's commits and trees, without their files' contents,
-      # and one file checked out: seconds)
+      # and two files checked out: seconds)
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           filter: blob:none
-          sparse-checkout: README.md
+          sparse-checkout: |
+            README.md
+            tools/release_notes.py
           sparse-checkout-cone-mode: false
 
       - name: Changed files
@@ -144,9 +147,26 @@ jobs:
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "ios=$ios" >> "$GITHUB_OUTPUT"
 
+      # A build of master's release highlights (tools/release_notes.py: the
+      # pull requests merged since the last release), which each build
+      # embeds (CI_WHATS_NEW, tools/ci_build.py) for What's new, the card
+      # over the main menu after an update. None found: no card, and the
+      # builds go on
+      - name: What's new
+        id: whats_new
+        if: ${{ github.ref == 'refs/heads/master' }}
+        continue-on-error: true
+        run: |
+          highlights="$(python3 tools/release_notes.py highlights "$GITHUB_SHA")" || highlights=
+          printf '%s\n' "$highlights"
+          { echo 'highlights<<WHATS_NEW_END'; printf '%s\n' "$highlights"; echo 'WHATS_NEW_END'; } >> "$GITHUB_OUTPUT"
+
   linux-arm64:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
+    # (a build of master's release highlights, for What's new: tools/ci_build.py)
+    env:
+      CI_WHATS_NEW: ${{ needs.changes.outputs.whats_new }}
     # Ubuntu 22.04 (glibc 2.35, so the build starts on older distributions
     # too) on GitHub's 64-bit ARM runner, with its clang for the host and the
     # development files SDL3 builds with; the guest's compiler (arm64_32) is
@@ -306,6 +326,9 @@ jobs:
   linux-x86_64:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
+    # (a build of master's release highlights, for What's new: tools/ci_build.py)
+    env:
+      CI_WHATS_NEW: ${{ needs.changes.outputs.whats_new }}
     # The 64-bit x86 build (ninja linux_x86_64: the game as x32 code in a
     # 64-bit host, drawn with Vulkan), made as the 64-bit ARM one is: Ubuntu
     # 22.04 (glibc 2.35, so the build starts on older distributions too) with
@@ -552,7 +575,7 @@ jobs:
       - name: Test
         run: |
           PATH="$(python3 tools/guest_toolchain.py --cache "$CI_GUEST_LLVM_CACHE"):$PATH"
-          files="$(python3 tools/ci_test_shards.py ${{ matrix.shard }} 4 tools/test_host_units.py tools/test_host_pages.py tools/test_android_elf_alignment.py tools/test_guest_image_check.py tools/test_check_host_imports.py tools/test_host_syscall.py tools/test_guest_layout.py tools/test_linux_guest_build.py tools/test_build_errors.py tools/test_guest_toolchain.py tools/test_linux_port.py tools/test_join_page.py tools/test_linux_package.py tools/test_install_layout.py tools/test_android_asm_convert.py tools/test_guest_asm_cache.py tools/test_guest_branch_relax.py tools/test_host_watch_hash.py tools/test_touch_menu.py tools/harness tools/test_controller_remap.py tools/test_controller_remap_context.py tools/test_net_compare.py tools/test_loading_ring.py tools/test_preparation.py tools/test_progress_ownership.py tools/test_ci_test_shards.py tools/test_supersampling.py tools/test_android_resolution.py tools/test_screen_passes_samples.py tools/test_notes.py tools/test_menu_look.py)"
+          files="$(python3 tools/ci_test_shards.py ${{ matrix.shard }} 4 tools/test_host_units.py tools/test_host_pages.py tools/test_android_elf_alignment.py tools/test_guest_image_check.py tools/test_check_host_imports.py tools/test_host_syscall.py tools/test_guest_layout.py tools/test_linux_guest_build.py tools/test_build_errors.py tools/test_guest_toolchain.py tools/test_linux_port.py tools/test_join_page.py tools/test_linux_package.py tools/test_install_layout.py tools/test_android_asm_convert.py tools/test_guest_asm_cache.py tools/test_guest_branch_relax.py tools/test_host_watch_hash.py tools/test_touch_menu.py tools/harness tools/test_controller_remap.py tools/test_controller_remap_context.py tools/test_net_compare.py tools/test_loading_ring.py tools/test_preparation.py tools/test_progress_ownership.py tools/test_ci_test_shards.py tools/test_supersampling.py tools/test_android_resolution.py tools/test_screen_passes_samples.py tools/test_notes.py tools/test_menu_look.py tools/test_release_notes.py)"
           python3 -m pytest -q -rs -n auto --dist loadfile --durations=10 -o junit_family=xunit1 --junitxml "$RUNNER_TEMP/junit.xml" $files
 
       - uses: actions/upload-artifact@v4
@@ -565,6 +588,9 @@ jobs:
   android:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
+    # (a build of master's release highlights, for What's new: tools/ci_build.py)
+    env:
+      CI_WHATS_NEW: ${{ needs.changes.outputs.whats_new }}
     # The runner image has the Android SDK and NDK, a JDK and CMake; the
     # guest's compiler is the pinned LLVM configure.py downloads.
     runs-on: ubuntu-24.04
@@ -732,6 +758,8 @@ jobs:
     # fetch the Android build's SDL and musl, uncached here, for a build this
     # job does not make: 10 seconds or so)
     env:
+      # (a build of master's release highlights, for What's new: tools/ci_build.py)
+      CI_WHATS_NEW: ${{ needs.changes.outputs.whats_new }}
       ANDROID_HOME: ""
       ANDROID_SDK_ROOT: ""
       ANDROID_NDK_HOME: ""
@@ -876,6 +904,8 @@ jobs:
     timeout-minutes: 40
     # (the image's Android SDK hidden from configure.py, as in the Windows job)
     env:
+      # (a build of master's release highlights, for What's new: tools/ci_build.py)
+      CI_WHATS_NEW: ${{ needs.changes.outputs.whats_new }}
       ANDROID_HOME: ""
       ANDROID_SDK_ROOT: ""
       ANDROID_NDK_HOME: ""
@@ -1087,6 +1117,8 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 50
     env:
+      # (a build of master's release highlights, for What's new: tools/ci_build.py)
+      CI_WHATS_NEW: ${{ needs.changes.outputs.whats_new }}
       ANDROID_HOME: ""
       ANDROID_SDK_ROOT: ""
       ANDROID_NDK_HOME: ""
@@ -1264,18 +1296,12 @@ jobs:
           done
           ls -l release
 
-      # the macOS app's appcast (tools/macos_appcast.py), when its disk image
-      # was signed for it (the macOS job's OpenH1.dmg.sparkle): this release's
-      # OpenH1.dmg, and its changes since the last release (the merged pull
-      # requests' titles, and the commits made on master itself)
-      - name: Appcast
+      # the release's changes since the last release (the merged pull
+      # requests' titles, and the commits made on master itself), notes.txt:
+      # the appcast's, and the release page's, which What's new's READ ALL
+      # opens (port/linux/src/whats_new.c)
+      - name: Changes
         run: |
-          signature=artifacts/halo-macos-release/OpenH1.dmg.sparkle
-          if [ ! -f "$signature" ]; then
-            echo "::warning::the macOS disk image was not signed for Sparkle: no appcast.xml"
-            exit 0
-          fi
-          tag="build-$GITHUB_RUN_NUMBER"
           previous="$(gh release list --limit 20 --json tagName,createdAt \
             --jq '[.[] | select(.tagName | startswith("build-"))] | sort_by(.createdAt) | reverse | .[0].tagName // ""')"
           : > notes.txt
@@ -1284,6 +1310,19 @@ jobs:
               --jq '.commits[] | .commit.message | split("\n") | if (.[0] | startswith("Merge pull request")) then (map(select(length > 0)) | .[1] // empty) elif (.[0] | startswith("Merge ")) then empty else .[0] end' \
               | awk '!seen[$0]++' > notes.txt || true
           fi
+          cat notes.txt
+
+      # the macOS app's appcast (tools/macos_appcast.py), when its disk image
+      # was signed for it (the macOS job's OpenH1.dmg.sparkle): this release's
+      # OpenH1.dmg, and its changes (notes.txt)
+      - name: Appcast
+        run: |
+          signature=artifacts/halo-macos-release/OpenH1.dmg.sparkle
+          if [ ! -f "$signature" ]; then
+            echo "::warning::the macOS disk image was not signed for Sparkle: no appcast.xml"
+            exit 0
+          fi
+          tag="build-$GITHUB_RUN_NUMBER"
           python3 tools/macos_appcast.py --build "$GITHUB_RUN_NUMBER" \
             --url "$GITHUB_SERVER_URL/$GH_REPO/releases/download/$tag/OpenH1.dmg" \
             --signature "$signature" --notes notes.txt \
@@ -1363,6 +1402,10 @@ jobs:
           printf '%s\n\nCommit: %s\nBuild: %s\n%s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Windows (64-bit Windows 10 1903 or later, with a Vulkan 1.3 graphics driver), download OpenH1-Windows.zip.\n\nOn Linux and the Steam Deck, download OpenH1-Linux.zip (OpenH1-Linux-ARM64.zip on 64-bit ARM, OpenH1-Linux-VR.zip for VR): it draws with Vulkan 1.3.\n\nOn the Steam Frame, in desktop mode, download OpenH1-Steam-Frame.zip, unzip it and open install.sh in it (port/linux/frame/README.md).\n\nOn macOS (Apple silicon, macOS 14.4 or later), download OpenH1.dmg, open it and drag OpenH1 to Applications: the app is signed and notarized.\n\nOn Android (64-bit, Android 9 or later, with Vulkan 1.3), download OpenH1-Android.apk on the phone and install it. The app is signed with OpenH1'"'"'s own key now: an install signed before it must be uninstalled once first (back up its maps and save folders).\n\nThe -symbols zips are not for playing: each has one build'"'"'s debugging information (OpenH1-macOS-symbols.zip is OpenH1.dmg'"'"'s, OpenH1-Linux-debug-symbols.zip OpenH1-Linux-debug.zip'"'"'s), which tools/symbolize_crash.py gives a crash report'"'"'s frames their source lines with.\n' \
             "$subject" "$COMMIT_URL" "$RUN_URL" "$versions" > notes.md
           if [ -f mac-carried.txt ]; then printf '\n%s\n' "$(cat mac-carried.txt)" >> notes.md; fi
+          # (and its changes, notes.txt: What's new's READ ALL opens this page)
+          if [ -s notes.txt ]; then
+            { printf "\n## What's new\n\n"; sed 's/^/- /' notes.txt; } >> notes.md
+          fi
           gh release create "$tag" release/*.zip release/*.dmg release/*.apk release/SHA256SUMS $(ls release/appcast.xml release/SHA256SUMS.sig 2> /dev/null) --target "$GITHUB_SHA" --latest \
             --title "Build $GITHUB_RUN_NUMBER (${GITHUB_SHA:0:7})" --notes-file notes.md
           echo "tag=$tag" >> "$GITHUB_OUTPUT"

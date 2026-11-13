@@ -38,3 +38,6 @@ dist/
 /.cloudflare/
 # the scorecard's 30 Hz baseline, which CI keeps in its cache (tools/scorecard/ci.py)
 /.scorecard-baseline/
+
+# a release's notes, written for its build to embed (tools/release_notes.py)
+/port/assets/menus/whats_new.txt

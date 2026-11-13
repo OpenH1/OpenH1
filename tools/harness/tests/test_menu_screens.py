@@ -95,6 +95,8 @@ def built(fault=None):
     (work / "names.inc").write_text(game_names())
     (work / "main_xml.inc").write_text("static char const main_xml[] =\n" +
                                        c_string((ROOT / "port/assets/menus/screens/main.xml").read_bytes()) + ";\n")
+    (work / "whats_new_xml.inc").write_text("static char const whats_new_xml[] =\n" + c_string(
+        (ROOT / "port/assets/menus/screens/whats_new.xml").read_bytes()) + ";\n")
     (work / "menu_screens.h").write_text(read("port/linux/include/menu_screens.h"))
     executable = work / "menu_screens"
     command = ["clang", *ABI_FLAGS, "-std=gnu99", "-O1", "-Wall", "-Werror", "-Wno-unused-function",
@@ -106,7 +108,7 @@ def built(fault=None):
     return executable
 
 
-CASES = ["main", "hints", "good", "syntax", "elements", "items", "actions", "bindings", "when", "kept"]
+CASES = ["main", "hints", "note", "good", "syntax", "elements", "items", "actions", "bindings", "when", "kept"]
 
 
 @pytest.mark.parametrize("case", CASES)
@@ -141,6 +143,7 @@ def test_main_menu_files_listed():
     blocks' file as menus but no screen file"""
     import json
     listed = json.loads(read("port/assets/menus/menus.json"))["files"]
-    assert "screens/main.xml" in listed and "screens/blocks.xml" in listed
+    assert "screens/main.xml" in listed and "screens/blocks.xml" in listed and "screens/whats_new.xml" in listed
+    assert "screens/note_edge.png" in listed and "screens/note_fill.png" in listed
     files = read("port/linux/src/menu_files.c")
     assert 'strncmp(files[index].path, "screens/", 8) || !strcmp(files[index].path, "screens/blocks.xml")' in files

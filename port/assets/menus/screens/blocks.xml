@@ -67,4 +67,30 @@ screen file's, set on each widget as the screen is made. -->
 		<on event="start" run="port screen key"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
+	<!-- a note: a small card in the middle of the screen, over the main menu
+	(What's new, screens/whats_new.xml): the screen the game opens, as the
+	update and crash questions are (menu_functions.c's main_menu_question_open),
+	which the engine fills from its file. The card is its edge and its fill,
+	their corners round, as the panels' (main_menu/parts/panel_*); its title,
+	its lines, and its prompts at its foot, as the button bar's (menu_screen.c
+	lays them out by the lines it has) -->
+	<bitmap name="screens/note_edge">
+		<frame png="screens/note_edge.png" width="480" height="256"/>
+	</bitmap>
+	<bitmap name="screens/note_fill">
+		<frame png="screens/note_fill.png" width="480" height="256"/>
+	</bitmap>
+	<widget name="screens/whats_new" width="640" height="480" flags="pass_unhandled_to_focused_child"/>
+	<widget name="screens/note_edge" width="480" height="256" bitmap="screens/note_edge" radius="10"/>
+	<widget name="screens/note_fill" width="476" height="252" bitmap="screens/note_fill" radius="8"/>
+	<widget name="screens/note_title" type="text" width="440" height="24" font="ui\large_ui" color="#FF2896FF" text_flags="no_focus_test"/>
+	<widget name="screens/note_line" type="text" width="440" height="18" font="ui\small_ui" color="#FFCFE3FF" text_flags="no_focus_test"/>
+	<!-- (its prompts: the bar's, in the card, which does not move past 16:9
+	nor above a phone's footer: in the middle, it is inside the safe area) -->
+	<widget name="screens/note_prompts" type="column_list" width="440" height="24" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
+	<widget name="screens/note_prompt" type="text" width="124" height="24" bitmap="main_menu/parts/item_124x24" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="3">
+		<on event="a" run="port screen key"/>
+		<on event="start" run="port screen key"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
 </menus>

@@ -23,7 +23,8 @@ configure.py --profile, so that the profiling build is built too. CI_COMPILER_LA
 passed on as --compiler-launcher, CI_GUEST_LLVM_CACHE as --guest-llvm-cache, and CI_GUEST_ASM_CACHE as
 --guest-asm-cache. A build of the master branch gets the run's
 number (HALO_BUILD_NUMBER), which its release is named after and the
-self-updater compares.
+self-updater compares, and its release's highlights (CI_WHATS_NEW, the
+changes job's: tools/release_notes.py), which it embeds for What's new.
 
 --vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md).
 For linux_x86_64, into dist/halo-linux-x86_64-vr-<config>/, a build of its
@@ -76,6 +77,7 @@ import sys
 from pathlib import Path
 
 import linux_package
+import release_notes
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -264,6 +266,16 @@ def main() -> int:
     if os.environ.get("GITHUB_REF") == "refs/heads/master" and os.environ.get("GITHUB_RUN_NUMBER", "").isdigit():
         os.environ["HALO_BUILD_NUMBER"] = os.environ["GITHUB_RUN_NUMBER"]
         print(f"build number {os.environ['HALO_BUILD_NUMBER']}", flush=True)
+        # (and its release's highlights, for What's new after an update: the
+        # changes job's, CI_WHATS_NEW, tools/release_notes.py; the build
+        # embeds them with the menus' files)
+        build = int(os.environ["HALO_BUILD_NUMBER"])
+        page = (f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/"
+                f"{os.environ.get('GITHUB_REPOSITORY', '')}/releases/tag/build-{build}")
+        if release_notes.write(build, page, os.environ.get("CI_WHATS_NEW", "").splitlines()):
+            print(f"What's new: {release_notes.NOTES.relative_to(ROOT)}", flush=True)
+        else:
+            print("What's new: no highlights for this build", flush=True)
     run(configure)
 
     if args.platform == "ios":

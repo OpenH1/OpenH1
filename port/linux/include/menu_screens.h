@@ -10,7 +10,8 @@ types, for both.
 A screen file holds <screen> (name, back), and in it, from the top of the
 screen down: <title-art/>, <list> (focus) holding <item>s (id, label, hint
 or <hint>s, do, when), <space/>, and <buttons> holding <button>s (key,
-label). An item's label and hints may hold bindings, {name}, filled from C;
+label, do); or a <note> (title) holding <line>s (label), a card with the
+buttons at its foot. An item's label and hints may hold bindings, {name}, filled from C;
 its do and the screen's back are actions, names the game knows. Both are
 checked as the file is read against the names the game gave
 (menu_screens_names).
@@ -38,7 +39,12 @@ enum menu_screen_block_kind
 	MENU_SCREEN_CARDS,
 	MENU_SCREEN_CARD,
 	/* (an inner screen's header: its lettered picture, its title the words) */
-	MENU_SCREEN_HEADER
+	MENU_SCREEN_HEADER,
+	/* (a note: a small card in the middle of the screen, over the one
+	before it, its title, its lines, and the screen's buttons at its foot;
+	What's new's) */
+	MENU_SCREEN_NOTE,
+	MENU_SCREEN_LINE
 };
 
 /* a building block: its kind, the block it is in (-1: the screen), and what

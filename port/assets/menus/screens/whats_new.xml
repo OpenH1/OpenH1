@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- What's new (docs/menu_screens.md, port/linux/src/whats_new.c): a card
+over the main menu, the first time it is shown after an update, with the
+build's highlights from its release notes (whats_new.txt, which a release's
+build embeds). Each line whose binding has no value is left out: a build has
+up to five. READ ALL opens the build's release page; OK, and B, close it.
+The new menu engine's; never shown under the classic one. -->
+<screen name="whats_new" back="close whats new">
+	<note title="WHAT'S NEW IN BUILD {whats_new.build}">
+		<line label="·  {whats_new.1}"/>
+		<line label="·  {whats_new.2}"/>
+		<line label="·  {whats_new.3}"/>
+		<line label="·  {whats_new.4}"/>
+		<line label="·  {whats_new.5}"/>
+	</note>
+	<buttons>
+		<button key="accept" label="OK" do="close whats new"/>
+		<button key="x" label="READ ALL" do="read whats new"/>
+	</buttons>
+</screen>

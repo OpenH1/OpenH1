@@ -86,6 +86,7 @@ void platform_log(char const *format, ...)
 #include "under_test.inc"
 #include "names.inc"
 #include "main_xml.inc"
+#include "whats_new_xml.inc"
 
 /* ---------- the cases */
 
@@ -227,6 +228,31 @@ int main(int argc, char **argv)
 	{
 		CHECK(read_text(GOOD("VERSUS"), &screen, problem), "refused: %s", problem);
 		menu_screen_free(&screen);
+	}
+	else if (!strcmp(name, "note"))
+	{
+		/* (What's new's card: port/assets/menus/screens/whats_new.xml) */
+		int index, lines = 0, buttons = 0;
+
+		CHECK(read_text(whats_new_xml, &screen, problem), "whats_new.xml refused: %s", problem);
+		for (index = 0; index < screen.block_count; index++)
+		{
+			lines += screen.blocks[index].kind == MENU_SCREEN_LINE;
+			if (screen.blocks[index].kind == MENU_SCREEN_BUTTON)
+			{
+				buttons++;
+				CHECK(screen.blocks[index].action != NULL, "a card's button has no do");
+			}
+		}
+		CHECK(!strcmp(screen.name, "whats_new") && lines == 5 && buttons == 2, "%s: %d lines, %d buttons",
+			screen.name, lines, buttons);
+		menu_screen_free(&screen);
+		refused("<screen name=\"main\"><note/></screen>", "<note> has no title");
+		refused("<screen name=\"main\"><note title=\"A\"><line/></note></screen>", "<line> has no label");
+		refused("<screen name=\"main\"><note title=\"A\"/><note title=\"B\"/></screen>", "one <note>");
+		refused("<screen name=\"main\"><line label=\"A\"/></screen>", "<line> is not one of");
+		refused("<screen name=\"main\"><note title=\"A\"/><buttons><button key=\"x\" label=\"A\" do=\"open nowhere\"/>"
+			"</buttons></screen>", "no action \"open nowhere\"");
 	}
 	else if (!strcmp(name, "syntax"))
 	{

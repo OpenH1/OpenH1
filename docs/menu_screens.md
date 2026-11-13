@@ -64,7 +64,9 @@ centred, and the bar's wide layout reaches the screen's edges up to 16:9.
 | `<item>` | `label` (required), `do` (required), `id`, `hint`, `when` | One item. A, Start, a click or a tap runs `do`. `hint` is the line shown under the item while it is focused. Write `<hint>` children instead to give alternatives: the first whose bindings all have values is shown. `when` lists platforms (`desktop android vr hdr touch pointer computer`, as for `platform=` in the menu files) and the item is made only on one of them |
 | `<space/>` | | Takes the height left over (several spaces share it) |
 | `<buttons>` | | The button bar: each button a prompt, as Choose Mission's footer has them (its key's picture and word, lit while it has the focus; A, a click or a tap presses its key, accept running the chosen item's action), BACK at the left and the rest from the right, past 16:9 at the screen's edges, and on a touchscreen raised above a phone's safe area with the tall layout's footer (`foot`) |
-| `<button>` | `key` (`accept`, `back`, `x`, `y`), `label` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word |
+| `<button>` | `key` (`accept`, `back`, `x`, `y`), `label`, `do` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word. With `do`, pressing it (A on it, a click, a tap, or its key: X and Y anywhere on the screen) runs that action |
+| `<note>` | `title` (required) | A small card in the middle of the screen, opened over the one before (What's new's): its title, its lines, and the screen's `<buttons>` at its foot instead of a bar, the focus on accept's. It is as tall as its lines, inside the middle 640, so inside a phone's safe area at every aspect ratio |
+| `<line>` | `label` (required) | One line of a note; left out when a binding in it has no value |
 
 The reader checks each file whole. A file is refused if it has any of these
 problems: bad XML; an element where it may not be; an attribute an element
@@ -94,6 +96,8 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | --- | --- |
 | `{campaign.level}` | The saved game's mission (player 1's profile), for example `The Silent Cartographer`; none without a saved game, or in co-op |
 | `{campaign.difficulty}` | The saved game's difficulty, for example `Legendary` |
+| `{whats_new.build}` | The build What's new is of, from its notes |
+| `{whats_new.1}` to `{whats_new.5}` | Its highlights; a build has up to five |
 
 ## Actions
 
@@ -112,6 +116,8 @@ sounds and the fades are the game's.
 | `open settings` | Settings, as the main menu's SETTINGS opens it |
 | `open training` | The VR tutorial (Basic Training's chapters) |
 | `quit` | The quit question, as the main menu's QUIT and B open it |
+| `close whats new` | What's new closed, its build noted as seen |
+| `read whats new` | The build's release page opened in the browser, then as `close whats new` |
 
 A file is checked against `screen_action_names` as it is read, and
 `tools/harness/tests/test_menu_screens.py` checks that every name there has an
@@ -212,3 +218,35 @@ There are two temporary ways in. `display.menu_engine = "classic"` has the old
 main menu. `debug.menu_open =
 main_menu/multiplayer_type_select/multiplayer_type_select_screen` starts on
 the Multiplayer hub, from which everything above is reached.
+
+## What's new
+
+`screens/whats_new.xml`: a card over the main menu, the first time it is
+shown after the game was updated to a new build: WHAT'S NEW IN BUILD
+NNNN, the build's highlights, READ ALL (its release page, which lists every
+change) and OK. B closes it as OK does. `port/linux/src/whats_new.c` decides
+and opens it (`pc_menu_whats_new_open`, as the update and crash questions
+open theirs); the classic engine never shows it.
+
+The notes are bundled, never fetched. On master, the workflow's changes job
+picks the highlights (`tools/release_notes.py highlights`: the titles of
+the pull requests merged since the last `build-<n>` tag, newest first,
+without dev's merges and test, CI or documentation work, cut to fit), and
+each build writes them as `port/assets/menus/whats_new.txt` (`tools/ci_build.py`),
+which `tools/embed_assets.py` embeds with the menus' files:
+
+```
+build 2290
+page https://github.com/OpenH1/goath1/releases/tag/build-2290
+- Add a Doubles matchmaking playlist, 2 against 2 on the small maps
+```
+
+A build without the file (a local one, a branch's) shows no card. The build
+seen last is kept in `whats_new_seen.txt` beside `config.toml`. The card
+shows when the notes' build is not that one. With no file, a fresh install
+(`config.toml` written with the defaults as the run started) notes its build
+without the card, and an install older than the card shows it. A run nobody
+watches (a test's) does neither, unless `debug.whats_new = "show"`. To see the
+card in a local build, write the notes with `tools/release_notes.py
+whats-new` into `port/assets/menus/whats_new.txt`, build, and start with
+`whats_new_seen.txt` holding an older number.

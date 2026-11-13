@@ -290,6 +290,7 @@
   "screens/blocks.xml",
   "screens/campaign.xml",
   "screens/main.xml",
+  "screens/whats_new.xml",
   "ce/port/bitmaps/text_button_background__0.png",
   "ce/port/bitmaps/text_button_background__1.png",
   "ce/port/blank__0.png",
@@ -768,6 +769,8 @@
   "ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__6.png",
   "ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__8.png",
   "ce/shell/main_menu/settings_select/player_setup/player_profile_edit/video_settings/header_profile_video_settings__0.png",
-  "ce/shell/main_menu/solo_level_select/header_load_level__0.png"
+  "ce/shell/main_menu/solo_level_select/header_load_level__0.png",
+  "screens/note_edge.png",
+  "screens/note_fill.png"
  ]
 }

@@ -80,6 +80,10 @@ unexpectedly), opened over the main menu as the update question is
 (pc_menu_crash_question_open, main_menu/crash/crash_screen): REPORT runs
 "port crash report", SKIP (and B) "port crash dismiss".
 
+What's new (port/linux/src/whats_new.c's: the first main menu after an
+update), opened over the new engine's main menu as the questions are
+(pc_menu_whats_new_open, the hand-written screens/whats_new: menu_screen.c).
+
 The rest are the PC version's, which its menus (port/assets/menus/ce)
 name and the Xbox's has not: they do nothing yet, and succeed, so that what
 their handlers open opens.
@@ -5570,7 +5574,10 @@ static struct
 	boolean main_menu_shown;
 	long main_menu_tag;
 	unsigned long main_menu_generation;
-} update_question = { FALSE, NONE, 0 };
+	/* (and the main menu drawn was the new engine's hand-written one, which
+	What's new opens over: pc_menu_whats_new_open) */
+	boolean hand_written_shown;
+} update_question = { FALSE, NONE, 0, FALSE };
 
 /* "port update question": the QUIT item, drawn on the main menu */
 static void update_question_note(struct widget_instance *widget)
@@ -5591,6 +5598,7 @@ item's "port update question" notes it (menu_screen.c) */
 void pc_menu_main_menu_shown(struct widget_instance *screen)
 {
 	update_question_note(screen);
+	update_question.hand_written_shown = TRUE;
 }
 
 /* between frames (not while the widgets are drawn, which opening a screen
@@ -5612,6 +5620,24 @@ static int main_menu_question_open(char const *screen_name)
 int pc_menu_update_question_open(void)
 {
 	return main_menu_question_open("pc\\main_menu\\update\\update_screen");
+}
+
+/* whats_new.c's: 1 when the new engine's main menu was the screen drawn last
+(and so the menus' files are read) */
+int pc_menu_whats_new_ready(void)
+{
+	return update_question.main_menu_shown && update_question.hand_written_shown &&
+		update_question.main_menu_generation == cache_files_tags_generation();
+}
+
+/* whats_new.c's: the What's new card (screens/whats_new, menu_screen.c) over
+the main menu, B going back to it; 1 when it was opened, or cannot be */
+int pc_menu_whats_new_open(void)
+{
+	if (!pc_menu_whats_new_ready())
+		return 0;
+	update_question.hand_written_shown = FALSE;
+	return main_menu_question_open("pc\\screens\\whats_new");
 }
 
 /* report.c's: the crash question (the last run closed unexpectedly), whose

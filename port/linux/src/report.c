@@ -1969,6 +1969,11 @@ static int report_unattended(void)
 		config_string("debug.network_test")[0] || config_real("debug.exit_after") > 0.0;
 }
 
+int report_run_unattended(void)
+{
+	return report_unattended();
+}
+
 /* an issue opened in the browser, and the folder its zip is in beside it
 (a run nobody watches leaves the desktop alone: the addresses logged); 0 if
 the browser could not be opened */

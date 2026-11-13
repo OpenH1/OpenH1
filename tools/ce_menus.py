@@ -1067,7 +1067,8 @@ def main() -> None:
     report += ["", "Wired: " + ", ".join(f"`{name}`" for name in sorted(WIRED)) + ".", ""]
     (MENUS / "UNWIRED.md").write_text("\n".join(report))
     files = sorted(path.relative_to(MENUS).as_posix() for path in MENUS.rglob("*.xml"))
-    files += sorted(art.pngs)
+    # (and the hand-written screens' own pictures: screens/blocks.xml's)
+    files += sorted(art.pngs + [path.relative_to(MENUS).as_posix() for path in (MENUS / "screens").glob("*.png")])
     (MENUS / "menus.json").write_text(json.dumps({
         "comment": "The menus' files the game embeds (tools/ce_menus.py, tools/embed_assets.py).",
         "files": files,

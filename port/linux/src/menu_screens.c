@@ -55,7 +55,9 @@ enum reader_element
 	_element_button,
 	_element_cards,
 	_element_card,
-	_element_header
+	_element_header,
+	_element_note,
+	_element_line
 };
 
 struct reader
@@ -353,6 +355,36 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			screen->blocks[block].picture = values[1];
 		}
 	}
+	else if (parent_element == _element_screen && !strcmp(name, "note"))
+	{
+		static char const *const names[] = { "title", NULL };
+
+		element = _element_note;
+		attributes_read(reader, name, attributes, names, values);
+		if (!reader->failed && kind_count(screen, MENU_SCREEN_NOTE))
+			reader_problem(reader, "a screen has one <note>", NULL);
+		if (!reader->failed && (!values[0] || !values[0][0]))
+			reader_problem(reader, "<note> has no title", NULL);
+		if (!reader->failed)
+			text_check(reader, values[0]);
+		block = block_add(reader, MENU_SCREEN_NOTE, -1);
+		if (block >= 0)
+			screen->blocks[block].label = values[0];
+	}
+	else if (parent_element == _element_note && !strcmp(name, "line"))
+	{
+		static char const *const names[] = { "label", NULL };
+
+		element = _element_line;
+		attributes_read(reader, name, attributes, names, values);
+		if (!reader->failed && (!values[0] || !values[0][0]))
+			reader_problem(reader, "<line> has no label", NULL);
+		if (!reader->failed)
+			text_check(reader, values[0]);
+		block = block_add(reader, MENU_SCREEN_LINE, parent_block);
+		if (block >= 0)
+			screen->blocks[block].label = values[0];
+	}
 	else if (parent_element == _element_screen && !strcmp(name, "cards"))
 	{
 		static char const *const names[] = { "id", "focus", NULL };
@@ -419,7 +451,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	else if (parent_element == _element_buttons && !strcmp(name, "button"))
 	{
-		static char const *const names[] = { "key", "label", "side", NULL };
+		static char const *const names[] = { "key", "label", "side", "do", NULL };
 
 		element = _element_button;
 		attributes_read(reader, name, attributes, names, values);
@@ -431,6 +463,9 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			button->key = values[0];
 			button->label = values[1];
 			button->side = values[2];
+			/* (its own action, run as it is pressed: else accept is the
+			list's chosen item's, and the others their buttons') */
+			button->action = values[3];
 			if (!button->key || (strcmp(button->key, "accept") && strcmp(button->key, "back") &&
 				strcmp(button->key, "x") && strcmp(button->key, "y")))
 			{
@@ -443,6 +478,10 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			else if (button->side && strcmp(button->side, "left") && strcmp(button->side, "right"))
 			{
 				reader_problem(reader, "<button>'s side is left or right", NULL);
+			}
+			else if (button->action)
+			{
+				action_check(reader, button->action);
 			}
 		}
 	}

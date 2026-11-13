@@ -2286,6 +2286,11 @@ static const struct config_setting config_settings[] =
 		"for automated tests: \"yes\" saves its report, \"no\" lets it go, \"ask\"\n"
 		"asks even in a run nobody watches; empty asks (a run nobody watches only\n"
 		"logs what the report would say)." },
+	{ "debug.whats_new", _config_string, "\"\"", "HALO_WHATS_NEW_CARD", _environment_value, _platform_all,
+		"The What's new card over the main menu after an update, for automated\n"
+		"tests: \"show\" shows it even in a run nobody watches; empty shows it\n"
+		"only to a player (a run nobody watches neither shows it nor notes the\n"
+		"build seen)." },
 	{ "debug.first_start_input", _config_string, "\"\"", "HALO_FIRST_START_INPUT", _environment_value, _platform_desktop,
 		"Linux: the buttons an automated test presses on the first start's screen\n"
 		"(no game data), one each half second: \"up\", \"down\", \"a\" and \"b\",\n"
@@ -2818,6 +2823,8 @@ variable or by config_write; display.graphics chooses the others it covers
 (config_graphics_apply) */
 static unsigned char config_set[NUMBER_OF_CONFIG_SETTINGS];
 static int config_loaded = 0;
+/* config.toml was not there as the game started (config_written_fresh) */
+static int config_was_missing = 0;
 static pthread_mutex_t config_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* ---------- the command line */
@@ -4836,6 +4843,8 @@ static void config_load(void)
 	{
 		char *defaults = config_default_text();
 
+		/* (a fresh install: whats_new.c shows no What's new) */
+		config_was_missing = 1;
 		if (defaults && config_write_file(path, defaults))
 			platform_log("settings: wrote the defaults to %s", path);
 		else
@@ -5303,6 +5312,12 @@ int config_text(const char *name, char *text, size_t size)
 		break;
 	}
 	return 1;
+}
+
+int config_written_fresh(void)
+{
+	config_ensure_loaded();
+	return config_was_missing;
 }
 
 void config_folder(char *path, size_t size)

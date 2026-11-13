@@ -430,6 +430,8 @@ static struct platform_keystroke keystroke_queue[KEYSTROKE_QUEUE_SIZE];
 static unsigned long keystroke_head, keystroke_count;
 
 static void screen_keyboard_update(void);
+/* whats_new.c's: What's new over the main menu */
+void whats_new_poll(void);
 #ifndef HALO_ANDROID
 /* dsound_sdl.c's: the output device followed */
 void dsound_sdl_output_device_check(void);
@@ -3447,6 +3449,8 @@ void platform_pump_events(void)
 	orientation_apply();
 #endif
 	screen_keyboard_update();
+	/* (What's new over the main menu, once after an update) */
+	whats_new_poll();
 #ifndef HALO_ANDROID
 	test_menu_mouse();
 #endif
