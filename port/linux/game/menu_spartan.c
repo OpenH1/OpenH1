@@ -956,6 +956,46 @@ static void spartan_animation_pose(
 	}
 }
 
+/* the nodes' matrices of a pose, each its parent's times its own (the
+model's nodes, parents before their children, as
+object_compute_node_matrices places them: the animations' orientations are
+in the model's nodes' order), the root's from root */
+static void spartan_node_matrices(
+	struct model const *model,
+	short node_count,
+	real_orientation const *pose,
+	real_matrix4x3 const *root,
+	real_matrix4x3 *nodes)
+{
+	short stack[MAXIMUM_NODES_PER_MODEL];
+	short stacked = 0, done = 0;
+
+	stack[stacked++] = 0;
+	while (stacked && done < node_count)
+	{
+		short node_index = stack[--stacked];
+		struct model_node const *node = (struct model_node const *)model->nodes.address + node_index;
+		real_matrix4x3 local;
+
+		matrix4x3_from_orientation(&local, &pose[node_index]);
+		if (node_index == 0 || node->parent_node_index < 0 || node->parent_node_index >= node_count)
+			matrix4x3_multiply(root, &local, &nodes[node_index]);
+		else
+			matrix4x3_multiply(&nodes[node->parent_node_index], &local, &nodes[node_index]);
+		done++;
+		if (node->next_sibling_node_index > 0 && node->next_sibling_node_index < node_count &&
+			stacked < MAXIMUM_NODES_PER_MODEL)
+		{
+			stack[stacked++] = node->next_sibling_node_index;
+		}
+		if (node->first_child_node_index > 0 && node->first_child_node_index < node_count &&
+			stacked < MAXIMUM_NODES_PER_MODEL)
+		{
+			stack[stacked++] = node->first_child_node_index;
+		}
+	}
+}
+
 /* the menus' clock's frame of a looped animation frame_count frames long,
 at the Spartan's own time (its idle's phase): in whole rounds of it, so
 that a long clock loses nothing */
@@ -969,7 +1009,7 @@ static real spartan_loop_frame(
 	unsigned long round = (unsigned long)MAX(frame_count, 1) * 100UL;
 	unsigned long at = (milliseconds + spartan->variation.idle_phase) % round;
 
-	return (real)at * (real)SPARTAN_FRAMES_PER_SECOND / 1000.0f;
+	return (real)fmod((double)at * SPARTAN_FRAMES_PER_SECOND / 1000.0, (double)MAX(frame_count, 1));
 }
 
 static char const *spartan_fidget_name(
@@ -1033,6 +1073,7 @@ static boolean spartan_pose(
 	boolean fidgeting;
 	real_vector3d left;
 	real_point3d origin;
+	real_matrix4x3 root;
 
 	spartan->posed = FALSE;
 	spartan->rifle_posed = FALSE;
@@ -1044,8 +1085,7 @@ static boolean spartan_pose(
 	model = model_definition_get(definition->object.model.index);
 	graph = animation_graph_definition_get(menu_spartan.animation_graph);
 	node_count = (short)model->nodes.count;
-	if (node_count <= 0 || node_count > MAXIMUM_NODES_PER_MODEL || graph->nodes.count != node_count ||
-		menu_spartan.idle_animation >= graph->animations.count)
+	if (node_count <= 0 || node_count > MAXIMUM_NODES_PER_MODEL || menu_spartan.idle_animation >= graph->animations.count)
 	{
 		return FALSE;
 	}
@@ -1114,8 +1154,8 @@ static boolean spartan_pose(
 		left.j * definition->object.origin_offset.y + object->object.up.j * definition->object.origin_offset.z;
 	origin.z = object->object.position.z + object->object.forward.k * definition->object.origin_offset.x +
 		left.k * definition->object.origin_offset.y + object->object.up.k * definition->object.origin_offset.z;
-	animation_graph_node_matrices_from_orientations(menu_spartan.animation_graph, spartan->body_nodes, fidget, &origin,
-		&object->object.forward, &object->object.up);
+	matrix4x3_from_point_and_vectors(&root, &origin, &object->object.forward, &object->object.up);
+	spartan_node_matrices(model, node_count, fidget, &root, spartan->body_nodes);
 	spartan->posed = TRUE;
 
 	/* (its rifle where its hand has it: the game's rifle moved as the hand
@@ -1161,6 +1201,52 @@ static boolean spartan_pose(
 		}
 	}
 	return TRUE;
+}
+
+/* debug: how far (world units, the most of any node) the pose drawn of the
+game's idle frame is from the game's own nodes: none, but for the
+interpolation between the ticks */
+static real spartan_pose_check(
+	struct menu_spartan const *spartan)
+{
+	struct object_datum *object = object_try_and_get(spartan->object_index);
+	real_orientation rest[MAXIMUM_NODES_PER_MODEL], idle[MAXIMUM_NODES_PER_MODEL];
+	real_matrix4x3 nodes[MAXIMUM_NODES_PER_MODEL];
+	struct object_definition *definition;
+	struct model *model;
+	struct animation_graph *graph;
+	struct animation const *animation;
+	real_matrix4x3 const *game;
+	real_matrix4x3 root;
+	real_vector3d left;
+	real_point3d origin;
+	real most = 0.0f;
+	short node_index;
+
+	if (!object || menu_spartan.animation_graph == NONE || object->object.animation.state.index == NONE)
+		return -1.0f;
+	definition = object_definition_get(object->definition_index);
+	model = model_definition_get(definition->object.model.index);
+	graph = animation_graph_definition_get(menu_spartan.animation_graph);
+	animation = (struct animation const *)graph->animations.address + object->object.animation.state.index;
+	if (model->nodes.count > MAXIMUM_NODES_PER_MODEL)
+		return -1.0f;
+	model_get_node_orientations(model, rest);
+	spartan_animation_frame(model, animation, object->object.animation.state.frame_index, rest,
+		(short)model->nodes.count, idle);
+	cross_product3d(&object->object.up, &object->object.forward, &left);
+	origin.x = object->object.position.x + object->object.forward.i * definition->object.origin_offset.x +
+		left.i * definition->object.origin_offset.y + object->object.up.i * definition->object.origin_offset.z;
+	origin.y = object->object.position.y + object->object.forward.j * definition->object.origin_offset.x +
+		left.j * definition->object.origin_offset.y + object->object.up.j * definition->object.origin_offset.z;
+	origin.z = object->object.position.z + object->object.forward.k * definition->object.origin_offset.x +
+		left.k * definition->object.origin_offset.y + object->object.up.k * definition->object.origin_offset.z;
+	matrix4x3_from_point_and_vectors(&root, &origin, &object->object.forward, &object->object.up);
+	spartan_node_matrices(model, (short)model->nodes.count, idle, &root, nodes);
+	game = (real_matrix4x3 const *)object_header_block_get(spartan->object_index, &object->object.node_matrices);
+	for (node_index = 0; node_index < model->nodes.count; node_index++)
+		most = MAX(most, (real)sqrt(distance_squared3d(&nodes[node_index].position, &game[node_index].position)));
+	return most;
 }
 
 /* ---------- public code */
@@ -1442,6 +1528,8 @@ void menu_spartan_draw(
 
 			if (!object)
 				continue;
+			platform_log("menu spartan: %d: the game's idle frame posed %.4f from the game's nodes", index,
+				spartan_pose_check(spartan));
 			if (spartan_fidget_now(spartan, index, milliseconds, &kind, &start, &pose))
 			{
 				platform_log("menu spartan: %d: %s, %lu ms in, weight %.2f, frame %.1f, look %.2f", index,
