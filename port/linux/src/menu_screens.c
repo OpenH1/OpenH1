@@ -68,7 +68,10 @@ enum reader_element
 	_element_panel_text,
 	_element_pills,
 	_element_pill,
-	_element_pair
+	_element_pair,
+	_element_box,
+	_element_legend,
+	_element_objectives
 };
 
 struct reader
@@ -788,7 +791,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			reader_problem(reader, "a screen has one <title-art>", NULL);
 		block = block_add(reader, element == _element_space ? MENU_SCREEN_SPACE : MENU_SCREEN_TITLE_ART, -1);
 	}
-	else if (parent_element == _element_screen && !strcmp(name, "list"))
+	else if ((parent_element == _element_screen || parent_element == _element_box) && !strcmp(name, "list"))
 	{
 		static char const *const names[] = { "id", "focus", NULL };
 
@@ -796,7 +799,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 		attributes_read(reader, name, attributes, names, values);
 		if (kind_count(screen, MENU_SCREEN_LIST) || kind_count(screen, MENU_SCREEN_CARDS) || kind_count(screen, MENU_SCREEN_COLORS))
 			reader_problem(reader, "a screen has one <list>, <cards> or <colors>", NULL);
-		block = block_add(reader, MENU_SCREEN_LIST, -1);
+		block = block_add(reader, MENU_SCREEN_LIST, parent_element == _element_box ? parent_block : -1);
 		if (block >= 0)
 		{
 			screen->blocks[block].id = values[0];
@@ -805,7 +808,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	else if (parent_element == _element_list && !strcmp(name, "item"))
 	{
-		static char const *const names[] = { "id", "label", "hint", "do", "when", "picture", NULL };
+		static char const *const names[] = { "id", "label", "hint", "do", "when", "picture", "if", NULL };
 
 		element = _element_item;
 		attributes_read(reader, name, attributes, names, values);
@@ -819,6 +822,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			item->action = values[3];
 			item->when = values[4];
 			item->picture = values[5];
+			item->condition = values[6];
 			if (values[2])
 				item->hints[item->hint_count++] = values[2];
 			if (!item->label || !item->label[0])
@@ -833,6 +837,8 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 				action_check(reader, item->action);
 			if (!reader->failed && item->when)
 				when_check(reader, item->when);
+			if (!reader->failed && item->condition)
+				binding_check(reader, item->condition);
 		}
 	}
 	else if (parent_element == _element_item && !strcmp(name, "hint"))
@@ -939,6 +945,55 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 		element = _element_spartan;
 		block = spartan_read(reader, attributes, -1);
 	}
+	else if (parent_element == _element_screen && !strcmp(name, "box"))
+	{
+		static char const *const names[] = { "x", "y", "width", "align", NULL };
+
+		element = _element_box;
+		attributes_read(reader, name, attributes, names, values);
+		one_check(reader, MENU_SCREEN_BOX, "box");
+		if (!reader->failed && (!values[0] || !values[1] || !values[2]))
+			reader_problem(reader, "a <box> has its x, y and width", NULL);
+		if (!reader->failed && values[3] && strcmp(values[3], "top") && strcmp(values[3], "middle"))
+			reader_problem(reader, "a <box>'s align is top or middle: \"%s\"", values[3]);
+		block = block_add(reader, MENU_SCREEN_BOX, -1);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *box = &screen->blocks[block];
+
+			box->box_x = number_read(reader, values[0], "a <box>'s x", 0, 640);
+			if (!reader->failed)
+				box->box_y = number_read(reader, values[1], "a <box>'s y", 0, 480);
+			if (!reader->failed)
+				box->box_width = number_read(reader, values[2], "a <box>'s width", 64, 640);
+			box->side = values[3];
+		}
+	}
+	else if (parent_element == _element_box && !strcmp(name, "legend"))
+	{
+		static char const *const names[] = { "x", NULL };
+
+		element = _element_legend;
+		attributes_read(reader, name, attributes, names, values);
+		one_check(reader, MENU_SCREEN_LEGEND, "legend");
+		block = block_add(reader, MENU_SCREEN_LEGEND, parent_block);
+		if (block >= 0 && !reader->failed && values[0])
+			screen->blocks[block].box_x = number_read(reader, values[0], "a <legend>'s x", 0, 640);
+	}
+	else if (parent_element == _element_screen && !strcmp(name, "objectives"))
+	{
+		static char const *const names[] = { "title", NULL };
+
+		element = _element_objectives;
+		attributes_read(reader, name, attributes, names, values);
+		one_check(reader, MENU_SCREEN_OBJECTIVES, "objectives");
+		if (!reader->failed && !kind_count(screen, MENU_SCREEN_BOX))
+			reader_problem(reader, "<objectives> is beside a <box> before it", NULL);
+		text_attribute_check(reader, values[0]);
+		block = block_add(reader, MENU_SCREEN_OBJECTIVES, -1);
+		if (block >= 0)
+			screen->blocks[block].label = values[0];
+	}
 	else if (parent_element == _element_screen && !strcmp(name, "buttons"))
 	{
 		static char const *const names[] = { NULL };
@@ -1031,6 +1086,13 @@ static void XMLCALL element_end(void *data, XML_Char const *name)
 				"a <table> has no <column>" : element == _element_pills ? "a <pills> has no <pill>" :
 				"a <panel> has nothing in it", NULL);
 		}
+	}
+	else if (element == _element_box)
+	{
+		struct menu_screen *screen = reader->screen;
+
+		if (!kind_count(screen, MENU_SCREEN_LIST))
+			reader_problem(reader, "a <box> has a <list>", NULL);
 	}
 	else if (element == _element_list || element == _element_cards)
 	{

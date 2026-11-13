@@ -388,7 +388,8 @@ read `xbox/include`. To add a name, follow `port/include/xdk/README.md`.
   `git status` shows only the screens meant to change.
 - The new menu engine (`display.menu_engine = "new"`, the default) draws
   some screens from hand-written files instead: `port/assets/menus/screens/`
-  (`docs/menu_screens.md`): the main menu, Campaign (Solo, Co-op), and,
+  (`docs/menu_screens.md`): the main menu, Campaign (Solo, Co-op), the
+  in-game pause menu, and,
   in the tall layout, Choose Mission and Choose Difficulty. Edit those files
   by hand; `debug.menu_screens` (`HALO_MENU_SCREENS=<tree>/port/assets/menus/screens`)
   reloads them within a second. Their actions and bindings are C

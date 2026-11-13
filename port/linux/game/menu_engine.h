@@ -163,6 +163,10 @@ drawn in (what its widget's own size shows of it), not cut to it: the
 original picture in a tall panel's <spartan> line, smaller than the
 picture */
 boolean menu_screen_picture_stretched(struct widget_instance const *widget);
+/* the screen a pause menu opens as (name: the map's pause screen's tag):
+under the menu engine, the hand-written pause menu that takes its place,
+else name */
+char const *menu_screen_pause_name(char const *name);
 /* "port screen do", an item's A: its action run */
 boolean menu_screen_do(struct widget_instance *item, struct event_record *event, boolean *deleted);
 /* "port screen key", a button bar prompt's A (a click, a tap): its key
