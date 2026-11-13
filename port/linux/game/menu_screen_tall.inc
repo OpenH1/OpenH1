@@ -2102,6 +2102,7 @@ static void tall_rows_frame(struct screen_tall *tall, struct widget_instance *sc
 	view->focused = focused;
 	view->hover = ui_widget_port_hover_focused();
 	view->titles = tall->titles && tall->titles->visible;
+	view->lanes = tall->lanes;
 	view->chosen = NONE;
 	view->focus = NONE;
 	if (tall->source)
