@@ -8,10 +8,15 @@ into widgets by the menu engine (port/linux/game/menu_screen.c). Plain C89
 types, for both.
 
 A screen file holds <screen> (name, back), and in it, from the top of the
-screen down: <title-art/>, <list> (focus) holding <item>s (id, label, hint
-or <hint>s, do, when), <space/>, and <buttons> holding <button>s (key,
-label). An item's label and hints may hold bindings, {name}, filled from C;
-its do and the screen's back are actions, names the game knows. Both are
+screen down: <title-art/>, <header> (title, picture, detail, a <button>),
+<list> (focus) holding <item>s (id, label, hint or <hint>s, do, when),
+<cards> holding <card>s, <tabs> (current) holding <tab>s, <table> (source,
+sorted, do, empty) holding <column>s (each a <search> in its title) and a
+<button>, <search>, <panel> holding <heading>, <text>, <pills> of <pill>s,
+<pair> and <button>, <space/>, and <buttons> holding <button>s (key, label,
+do, width, if). Texts may hold bindings, {name}, filled from C; a do and the
+screen's back are actions, a table's source a row source, an if, a current,
+a sorted and a search's value bindings: names the game knows. All are
 checked as the file is read against the names the game gave
 (menu_screens_names).
 */
@@ -20,9 +25,9 @@ checked as the file is read against the names the game gave
 #define MENU_SCREENS_H
 
 /* the most a screen has of each, and the longest of its texts */
-#define MENU_SCREEN_MAXIMUM_BLOCKS 32
+#define MENU_SCREEN_MAXIMUM_BLOCKS 96
 #define MENU_SCREEN_MAXIMUM_HINTS 4
-#define MENU_SCREEN_MAXIMUM_STRINGS 256
+#define MENU_SCREEN_MAXIMUM_STRINGS 640
 #define MENU_SCREEN_MAXIMUM_TEXT 256
 #define MENU_SCREEN_MAXIMUM_SCREENS 16
 
@@ -38,7 +43,33 @@ enum menu_screen_block_kind
 	MENU_SCREEN_CARDS,
 	MENU_SCREEN_CARD,
 	/* (an inner screen's header: its lettered picture, its title the words) */
-	MENU_SCREEN_HEADER
+	MENU_SCREEN_HEADER,
+	/* (a strip of tabs, the current one framed; each tab its label and do) */
+	MENU_SCREEN_TABS,
+	MENU_SCREEN_TAB,
+	/* (a live table: its rows from a source of C's, its columns' titles
+	sorting it; a column's search typed into in its title's place) */
+	MENU_SCREEN_TABLE,
+	MENU_SCREEN_COLUMN,
+	MENU_SCREEN_SEARCH,
+	/* (the details of a table's chosen row, beside it: its heading, lines
+	of text, pills, label and value pairs, a button) */
+	MENU_SCREEN_PANEL,
+	MENU_SCREEN_PANEL_HEADING,
+	MENU_SCREEN_PANEL_TEXT,
+	MENU_SCREEN_PILLS,
+	MENU_SCREEN_PILL,
+	MENU_SCREEN_PAIR
+};
+
+/* a column's cells: words, words in white (the row's name), a ping (its
+bars and its number), a star (a favorite) */
+enum menu_screen_cell_kind
+{
+	MENU_SCREEN_CELL_TEXT,
+	MENU_SCREEN_CELL_STRONG,
+	MENU_SCREEN_CELL_PING,
+	MENU_SCREEN_CELL_STAR
 };
 
 /* a building block: its kind, the block it is in (-1: the screen), and what
@@ -65,6 +96,34 @@ struct menu_screen_block
 	char const *focus;
 	char const *hints[MENU_SCREEN_MAXIMUM_HINTS];
 	int hint_count;
+	/* (a binding named: a tabs' current, a table's sorted, a search's
+	value; NULL, none) */
+	char const *value;
+	/* (the binding whose value must not be empty for the block to be
+	shown, checked each frame: its if; NULL, always) */
+	char const *condition;
+	/* (a table's row source, and its words while it has no rows; a
+	header's detail, at the band's right) */
+	char const *source;
+	char const *empty;
+	/* (a column's title's action: sorts by it) */
+	char const *sort;
+	/* (a column's: its kind of cell, menu_screen_cell_kind; its width, how
+	much wider it grows on a wide screen and the room before it (after the
+	column before), in the menus' units; its
+	words at its right; and on a touchscreen its place in a row of two
+	lines, x y width and its wide move and growth, its touch_width 0 if it
+	has none there) */
+	int cell;
+	short width, grow, gap;
+	/* (its title's width, 0: as its words need) */
+	short title_width;
+	int right;
+	short touch_x, touch_y, touch_width, touch_move, touch_grow;
+	/* (a panel's text: the lines it wraps to, and on a touchscreen) */
+	short lines, touch_lines;
+	/* (a pill's frame, a number, or a binding's name giving one) */
+	char const *tone;
 	long line;
 };
 
@@ -82,7 +141,8 @@ struct menu_screen
 };
 
 /* the names the game gives the files: its actions (a block's do, a screen's
-back) and its bindings ({name} in a text); a name not among them is a
+back), its bindings ({name} in a text, an if, a current...) and its row
+sources (a table's); a name not among them is a
 problem in the file. NULL tables: any name passes */
 struct menu_screen_names
 {
@@ -90,6 +150,8 @@ struct menu_screen_names
 	long action_count;
 	char const *const *bindings;
 	long binding_count;
+	char const *const *sources;
+	long source_count;
 };
 
 /* a binding's value as text (UTF-8) for menu_screen_text: nonzero if it has

@@ -18,7 +18,9 @@ the PC version's screens, generated as before, and its parity check.
 | `port/assets/menus/screens/<name>.xml` | One screen a file: its building blocks, words and actions |
 | `port/assets/menus/screens/blocks.xml` | The building blocks' widgets, written by hand in the menus' own format (`port/assets/menus/README.md`) |
 | `port/linux/src/menu_screens.c`, `port/linux/include/menu_screens.h` | The reader: a file read with Expat into blocks and checked; hot reload |
-| `port/linux/game/menu_screen.c` | The screens made into widgets, and the registry: actions, bindings, and which screen a hand-written one replaces |
+| `port/linux/game/menu_screen.c` | The screens made into widgets, and the registry: actions, bindings, row sources, and which screen a hand-written one replaces |
+| `port/linux/game/menu_screen_tall.inc` | The tall layout's blocks (a screen with a `<table>`): tabs, the table, its panel, searches and the spread bar, made and updated each frame |
+| `port/linux/game/menu_table.h` | A table's row source: what C gives a `<table>` each frame, and the menus' text fields and fitted text the blocks use (menu_functions.c's) |
 | `tools/harness/tests/test_menu_screens.py` | The reader's tests, asset-free |
 
 Release builds embed the files with the other menu files (`menus.json`,
@@ -64,7 +66,61 @@ centred, and the bar's wide layout reaches the screen's edges up to 16:9.
 | `<item>` | `label` (required), `do` (required), `id`, `hint`, `when` | One item. A, Start, a click or a tap runs `do`. `hint` is the line shown under the item while it is focused. Write `<hint>` children instead to give alternatives: the first whose bindings all have values is shown. `when` lists platforms (`desktop android vr hdr touch pointer computer`, as for `platform=` in the menu files) and the item is made only on one of them |
 | `<space/>` | | Takes the height left over (several spaces share it) |
 | `<buttons>` | | The button bar: each button a prompt, as Choose Mission's footer has them (its key's picture and word, lit while it has the focus; A, a click or a tap presses its key, accept running the chosen item's action), BACK at the left and the rest from the right, past 16:9 at the screen's edges, and on a touchscreen raised above a phone's safe area with the tall layout's footer (`foot`) |
-| `<button>` | `key` (`accept`, `back`, `x`, `y`), `label` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word |
+| `<button>` | `key` (`accept`, `back`, `x`, `y`, `lb`, `rb`, `lt`, `rt`, `r3`, `view`), `label`, `side`, `do`, `width`, `if`, `when` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word. `do` is the action the key (anywhere on the screen) and a click run; without it, the key is pressed. In a tall screen's bar (below), `width` is its least width, `if` a binding that must have a value for it to be shown, and two buttons of one key share one place, shown as their `if`s say |
+
+### The tall layout: tabs, tables, panels and searches
+
+A screen with a `<table>` is laid out as Settings' and the server browser's
+generated screens are (the tall layout, `tools/port_settings.py`'s
+`BROWSER_TALL`): the whole height of the screen, the `<header>`'s title in
+the band at the top, the `<tabs>` under it, the table at the left with its
+`<panel>` beside it at the right, and the `<buttons>` at the foot. The
+blocks' places are the tall layout's (`menu_screen_tall.inc`), not a flow from
+the top, and a `<space/>` there does nothing. On a 16:9 screen the table, its
+columns and the panel are as much wider as their layout says, and past 16:9
+they reach the screen's edges; the tabs and the bar keep 16:9's places. On a
+touchscreen (`debug.touch_menus`, the phones' builds) the tabs are chips, a
+row is two lines of its cells (each column's `touch` place), the columns have
+no titles, and the bar's buttons are a touchscreen's, BACK at the right.
+
+| Element | Attributes | Meaning |
+| --- | --- | --- |
+| `<header>` | `title`, `picture`, `detail` | (in a tall screen) its title's words in the band, `detail` at the band's right (on a touchscreen, under the title), and a `<button>` in the band |
+| `<tabs>` | `current`, `if`, `when` | A strip of tabs: `current` names the binding whose value is the current tab's id (framed, its words white). LB and RB (Q and E) run the `do` of the tab either side, the keys' prompts beside the strip; the d-pad steps the strip, A or a click runs a tab's `do` |
+| `<tab>` | `id` (required), `label` (required), `do` (required), `when` | One tab |
+| `<table>` | `source` (required), `sorted`, `do`, `empty` | A live table: its rows come from the row source C names `source` (below), as many as fit over the panel's foot, scrolling at their ends. `do` is the action A, a click or a double click on a row runs (the row given to it); `sorted` names the binding whose value is the column sorted by and its way (`players down`); `empty` the words in the rows' place while there are none |
+| `<column>` | `id` (required), `width` (required), `label`, `kind`, `grow`, `gap`, `align`, `sort`, `do`, `title-width`, `touch`, `when` | One column, from the left: `kind` its cells, `text` (the default), `strong` (white words), `ping` (the ping's bars and its number) or `star` (a favorite's star). `width` and `gap` (the room before it, 4) in the menus' units; `grow`, how much wider it is at 16:9; `align` its words at its `right`. Its title (`label`) runs `sort` when chosen, its arrow after the words when `sorted` names it; `title-width` its title's width, if not its words'. `do`: a click on a cell of it runs that, not the table's. `touch`: its place in a touchscreen's row, `x y width move grow` |
+| `<search>` | `value` (required), `label`, `if`, `when` | A search: in a `<column>`, its magnifying glass after the column's title, the field typed into in the title's place and its X; at the screen's level, a field of its own at the top's right (a touchscreen's). A, a click or a tap types into it; each letter typed sets the binding `value` (the list filtered at once); Enter, A again or the focus taken off it keeps the words; B and Esc clear them; the X clears them |
+| `<button>` | (in a `<table>`) | A button under the table's words for none (CLEAR SEARCH), shown as its `if` says, the focus on it as it comes |
+| `<panel>` | `if` | The details beside the table: its lines one after another from its top, and a `<button>` at its foot |
+| `<heading>` | `text` (required), `lines`, `touch-lines`, `when` | The panel's heading, large and white, wrapped to its lines |
+| `<text>` | `text` (required), `lines`, `touch-lines`, `when` | A line of the panel's, wrapped to its lines (`touch-lines` on a touchscreen) |
+| `<pills>`, `<pill>` | `text` (required), `width` (required), `tone` | A row of pills (as many to a line as fit): each its words, its frame `tone` (a number, or a binding giving one) |
+| `<pair>` | `label` (required), `value` (required), `when` | A label at the left and its value, large, at the right |
+| `<button>` | (in a `<panel>`) | The panel's button at its foot (JOIN GAME), shown as its `if` says |
+
+A panel's line whose text has a binding of no value (or none at all) is not
+shown, and its place stays. Each text of a tall screen (the header's detail,
+the panel's lines, the buttons' labels, the words for none) is filled again
+every frame, and the `if`s read, so a binding's value can change while the
+screen is open.
+
+## Row sources
+
+A table's rows are C's: `source` names a `struct menu_table_source`
+(`menu_table.h`) in `menu_screen.c`'s `screen_sources`, by its name in
+`screen_source_names`. Each frame the table (the view) tells the source what
+it shows: its rows, the row focused, whether the pointer resting on it put the
+focus there, whether the titles are shown. The source (the model) answers how
+many rows there are, which is first on the table, which is chosen (the panel's
+row, its picture brighter), and which row of the table to give the focus (a
+row moved, a heading passed over, a scroll at the table's ends), and then
+gives each row: a heading across it, or its cells by their columns' ids, each
+its words, their colour, a picture's frame (a ping's bars, a star) and a pill
+or a lock after the words. The table cuts words too long for their column
+short with "...", puts the pill and the lock after them, and leaves a ping's
+bars out where they would meet its number. The actions a row runs get the row
+(0 up, on the table).
 
 The reader checks each file whole. A file is refused if it has any of these
 problems: bad XML; an element where it may not be; an attribute an element
@@ -74,6 +130,15 @@ other than the four; an action or binding the game does not have. The
 problem is logged with its file and line, for example `menus:
 screens/main.xml:6: <list> is not one of what its element may hold; the
 screen stays as it was`. A refused file never crashes the game:
+
+A tall screen's file is refused, too, for: a `<tabs>` with no `<tab>`, a tab
+with no id, label or `do`, two tabs or columns of one id; a `<table>` with no
+source, a source the game has not got, no `<column>`, a column with no id or
+width, a `kind`, `align` or `touch` it may not have; a `<search>` with no
+value; a `<panel>` with nothing in it, a `<pill>` with no width, a `<pair>`
+with no value; a binding named alone (`current`, `sorted`, `value`, `if`,
+`tone`) that the game has not got; a second `<tabs>`, `<table>` or
+`<panel>`.
 
 - an embedded or menus-folder file that is refused at start leaves no
   hand-written screen, and the screen the file would have replaced is drawn
@@ -94,6 +159,11 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | --- | --- |
 | `{campaign.level}` | The saved game's mission (player 1's profile), for example `The Silent Cartographer`; none without a saved game, or in co-op |
 | `{campaign.difficulty}` | The saved game's difficulty, for example `Legendary` |
+| `{browser.title}`, `{browser.counts}`, `{browser.empty}`, `{browser.host}` | The server browser's title (SERVER BROWSER, LOCAL NETWORK, JOIN BY LINK), its counts (`20 GAMES    24 PLAYERS`, `2 OF 18 GAMES ...` while some are hidden), its words while it lists none, its HOST button's (HOST & MORE, HOST CO-OP) |
+| `{browser.tab}`, `{browser.sort}`, `{browser.sort.title}` | The tab shown (`all`, `coop`...), the sort (`players down`), its column's title (PLAYERS) |
+| `{browser.search.server}`, `{browser.search.map}`, `{browser.search.any}` | The searches' words (set as they are typed) |
+| `{browser.panel.title}` ... `{browser.panel.status}` | The chosen game's name (or the list's title), where (map and mode), kind (OPENH1, LEGACY) and its `tone`, tick rate, OPENCE CAN JOIN, players, ping, and its status line |
+| `{browser.searched}`, `{browser.joinable}`, `{browser.server}`, `{browser.link}`, `{browser.filtered}` | (for `if`s) the searches hide every game; a game to join is chosen; the server browser's list; Join by Link's; a list filtered and searched (not Join by Link's) |
 
 ## Actions
 
@@ -108,14 +178,47 @@ sounds and the fades are the game's.
 | Action | Does |
 | --- | --- |
 | `open campaign` | The Campaign screen, as the PC version's CAMPAIGN opens it (a profile made first if there is none) |
-| `open versus` | The server browser (the full-height one), as Multiplayer's SERVER BROWSER opens it |
+| `open multiplayer`, `open coop` | The server browser, as Multiplayer's SERVER BROWSER opens it (`open coop`: on its CO-OP tab, this visit) |
+| `open host`, `open host coop` | Multiplayer's hub (the server browser's HOST & MORE), its co-op page (HOST CO-OP) |
 | `open settings` | Settings, as the main menu's SETTINGS opens it |
 | `open training` | The VR tutorial (Basic Training's chapters) |
 | `quit` | The quit question, as the main menu's QUIT and B open it |
+| `search next` | The next of the screen's searches typed into (the first, if none is) |
+| `search clear` | Every search's words cleared, as a table's CLEAR SEARCH |
+| `browser back` | The browser's back (its own: `gamespy back handler`) |
+| `browser host` | HOST & MORE, or HOST CO-OP on the co-op visit |
+| `browser tab <tab>` | The tab shown (`all`, `dedicated`, `openh1`, `legacy`, `coop`, `favorites`) |
+| `browser sort <column>`, `browser sort next` | Sorted by the column (`players`, `ping`, `server`, `map`, `mode`; again the other way), or the next (X) |
+| `browser favorite` | The row's game (or the chosen one) made a favorite, or no longer one |
+| `browser join` | The row's game chosen, or joined if it is chosen (a password asked for first, the connecting box opened); JOIN GAME's |
+| `browser refresh` | The public games asked for again; Join by Link's PASTE LINK |
+| `browser filters` | The Filters page |
 
 A file is checked against `screen_action_names` as it is read, and
 `tools/harness/tests/test_menu_screens.py` checks that every name there has an
 entry in `screen_actions`.
+
+## The server browser
+
+`screens/browser.xml` is the server browser of the new engine: it takes the
+place of Join Game's screen (`main_menu/multiplayer_type_select/join_game/
+join_game_screen`) while it is the server browser's (`screen_places`'
+`takes`: menu_functions.c's `pc_menu_browser_visit_kind`). The classic engine,
+PRO 2V2's browser and a refused or missing file keep the generated screen
+(and its HOST button, `screen_browser_opened`).
+
+What it lists and does is menu_functions.c's, as for the generated screen: the
+games found, their order, the groups and their headings, the filters, the
+searches, the favorites, the tab and the sort kept in `config.toml`, joining
+(the password screen, the connecting box, the A press posted once the host is
+reached) and the panel's words. Its model (`lobby_browser_model`,
+`local_browser_model`) works out each frame what is listed, which row is
+first and which chosen, and the panel's and the counts' words
+(`browser_display`), for its two views: the generated screen's list
+(`lobby_browser_update`, `browser_update`) and the hand-written screen's table
+(`pc_menu_browser_source`, the `browser.*` bindings and actions). The screen's
+stand-in (Join Game's own widget) still opens and closes the browser
+(`gamespy screen init`, `gamespy screen dispose`).
 
 ## How a screen is made
 
@@ -174,7 +277,8 @@ studio's reload (`debug.menu_studio`, F7) reads them again.
      step 2 opens hand-written screens directly).
 3. A block that does not exist yet: add its widget to `blocks.xml`, its
    element to the reader (`menu_screens.c`, `menu_screens.h`) and its layout
-   to `screen_build`.
+   to `screen_build` (a tall screen's to `menu_screen_tall.inc`). A table's
+   rows: a row source in `screen_sources`.
 4. Tests: add a case to `tools/harness/tests/test_menu_screens.py` for what
    the reader must accept or refuse. Take screenshots of the screen at 16:9,
    16:10 and 4:3, and make a scripted run (`debug.test_input "menu:ready

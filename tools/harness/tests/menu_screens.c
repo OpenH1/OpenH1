@@ -93,7 +93,35 @@ static struct menu_screen_names const names =
 {
 	game_actions, sizeof(game_actions) / sizeof(game_actions[0]),
 	game_bindings, sizeof(game_bindings) / sizeof(game_bindings[0]),
+	game_sources, sizeof(game_sources) / sizeof(game_sources[0]),
 };
+
+/* the count of a screen's blocks of a kind (in the block parent; -2: any) */
+static int kind_total(struct menu_screen const *screen, int kind, int parent)
+{
+	int index, count = 0;
+
+	for (index = 0; index < screen->block_count; index++)
+		count += screen->blocks[index].kind == kind && (parent == -2 || screen->blocks[index].parent == parent);
+	return count;
+}
+
+static int kind_first(struct menu_screen const *screen, int kind)
+{
+	int index;
+
+	for (index = 0; index < screen->block_count; index++)
+	{
+		if (screen->blocks[index].kind == kind)
+			return index;
+	}
+	return -1;
+}
+
+/* a table screen, its table's insides given */
+#define TABLE(inside) \
+	"<screen name=\"t\"><table source=\"test.rows\">" inside "</table></screen>"
+#define COLUMN "<column id=\"server\" label=\"SERVER\" width=\"110\"/>"
 
 static int read_text(char const *text, struct menu_screen *screen, char *problem)
 {
@@ -235,7 +263,10 @@ int main(int argc, char **argv)
 	}
 	else if (!strcmp(name, "elements"))
 	{
-		refused("<screen name=\"main\"><table/></screen>", "<table> is not one of");
+		refused("<screen name=\"main\"><grid/></screen>", "<grid> is not one of");
+		refused("<screen name=\"main\"><list><column id=\"a\" width=\"1\"/></list></screen>", "<column> is not one of");
+		refused("<screen name=\"main\"><panel><tab id=\"a\" label=\"A\" do=\"quit\"/></panel></screen>",
+			"<tab> is not one of");
 		refused("<screen name=\"main\"><item label=\"A\" do=\"quit\"/></screen>", "<item> is not one of");
 		refused("<screen name=\"main\"><list><item label=\"A\" do=\"quit\" colour=\"red\"/></list></screen>",
 			"has no attribute colour");
@@ -325,6 +356,145 @@ int main(int argc, char **argv)
 		CHECK(found && !strcmp(found->blocks[2].label, "FIGHT"), "the file read again is not the screen");
 		CHECK(menu_screens_generation("main") > generation, "the generation did not change");
 		CHECK(!menu_screens_find("versus"), "a screen no file has is found");
+	}
+	else if (!strcmp(name, "browser"))
+	{
+		struct menu_screen_block const *table, *server, *ping;
+		int table_index, index, searches = 0, touch_searches = 0;
+
+		/* (the real server browser's file: its tabs, its table's columns and
+		their searches, its panel and its bar) */
+		CHECK(read_text(browser_xml, &screen, problem), "the browser's file is refused: %s", problem);
+		CHECK(!strcmp(screen.name, "browser") && screen.back && !strcmp(screen.back, "browser back"),
+			"its name or back is not the browser's");
+		CHECK(kind_total(&screen, MENU_SCREEN_TAB, -2) == 6, "%d tabs", kind_total(&screen, MENU_SCREEN_TAB, -2));
+		table_index = kind_first(&screen, MENU_SCREEN_TABLE);
+		CHECK(table_index >= 0, "no table");
+		table = &screen.blocks[table_index];
+		CHECK(!strcmp(table->source, "browser.games") && !strcmp(table->value, "browser.sort") &&
+			!strcmp(table->action, "browser join") && table->empty, "the table's source, sort, do or empty");
+		CHECK(kind_total(&screen, MENU_SCREEN_COLUMN, table_index) == 6, "%d columns",
+			kind_total(&screen, MENU_SCREEN_COLUMN, table_index));
+		server = block_of(&screen, "server");
+		ping = block_of(&screen, "ping");
+		CHECK(server && server->cell == MENU_SCREEN_CELL_STRONG && server->width == 110 && server->grow == 64 &&
+			server->touch_width == 220 && server->title_width == 76, "the server's column");
+		CHECK(ping && ping->cell == MENU_SCREEN_CELL_PING && ping->right, "the ping's column");
+		CHECK(block_of(&screen, "players")->gap == 2 && block_of(&screen, "map")->gap == 4, "the columns' gaps");
+		CHECK(block_of(&screen, "favorite")->cell == MENU_SCREEN_CELL_STAR &&
+			!strcmp(block_of(&screen, "favorite")->action, "browser favorite"), "the star's column");
+		for (index = 0; index < screen.block_count; index++)
+		{
+			if (screen.blocks[index].kind != MENU_SCREEN_SEARCH)
+				continue;
+			if (screen.blocks[index].parent < 0)
+				touch_searches++;
+			else
+				searches++;
+		}
+		CHECK(searches == 2 && touch_searches == 1, "%d columns' searches and %d of the screen's", searches,
+			touch_searches);
+		CHECK(kind_total(&screen, MENU_SCREEN_PANEL, -2) == 1 && kind_total(&screen, MENU_SCREEN_PILL, -2) == 3 &&
+			kind_total(&screen, MENU_SCREEN_PAIR, -2) == 2, "the panel");
+		CHECK(kind_total(&screen, MENU_SCREEN_BUTTON, kind_first(&screen, MENU_SCREEN_BUTTONS)) == 8, "the bar's buttons");
+		menu_screen_free(&screen);
+	}
+	else if (!strcmp(name, "tabs"))
+	{
+		CHECK(read_text("<screen name=\"t\"><tabs current=\"test.value\"><tab id=\"a\" label=\"A\" do=\"quit\"/>"
+			"</tabs></screen>", &screen, problem), "good tabs refused: %s", problem);
+		menu_screen_free(&screen);
+		refused("<screen name=\"t\"><tabs/></screen>", "has no <tab>");
+		refused("<screen name=\"t\"><tabs><tab label=\"A\" do=\"quit\"/></tabs></screen>", "<tab> has no id");
+		refused("<screen name=\"t\"><tabs><tab id=\"a\" do=\"quit\"/></tabs></screen>", "<tab> has no label");
+		refused("<screen name=\"t\"><tabs><tab id=\"a\" label=\"A\"/></tabs></screen>", "<tab> has no do");
+		refused("<screen name=\"t\"><tabs><tab id=\"a\" label=\"A\" do=\"quit\"/><tab id=\"a\" label=\"B\" "
+			"do=\"quit\"/></tabs></screen>", "id is \"a\"");
+		refused("<screen name=\"t\"><tabs current=\"nothing.here\"><tab id=\"a\" label=\"A\" do=\"quit\"/></tabs>"
+			"</screen>", "no binding {nothing.here}");
+		refused("<screen name=\"t\"><tabs if=\"nothing.here\"><tab id=\"a\" label=\"A\" do=\"quit\"/></tabs>"
+			"</screen>", "no binding {nothing.here}");
+		refused("<screen name=\"t\"><tabs><tab id=\"a\" label=\"A\" do=\"quit\"/></tabs><tabs><tab id=\"b\" "
+			"label=\"B\" do=\"quit\"/></tabs></screen>", "one <tabs>");
+	}
+	else if (!strcmp(name, "table"))
+	{
+		struct menu_screen_block const *column;
+
+		CHECK(read_text(TABLE(COLUMN "<column id=\"ping\" kind=\"ping\" width=\"54\" align=\"right\" "
+			"touch=\"272 30 80 144 0\"><search value=\"test.value\"/></column>"), &screen, problem),
+			"a good table refused: %s", problem);
+		column = block_of(&screen, "ping");
+		CHECK(column && column->right && column->touch_x == 272 && column->touch_y == 30 && column->touch_width == 80 &&
+			column->touch_move == 144 && column->touch_grow == 0 && column->gap == 4, "the ping's column as read");
+		menu_screen_free(&screen);
+		refused("<screen name=\"t\"><table>" COLUMN "</table></screen>", "has no source");
+		refused("<screen name=\"t\"><table source=\"nowhere\">" COLUMN "</table></screen>",
+			"no row source \"nowhere\"");
+		refused(TABLE(""), "has no <column>");
+		refused(TABLE("<column label=\"A\" width=\"10\"/>"), "<column> has no id");
+		refused(TABLE("<column id=\"a\"/>"), "<column> has no width");
+		refused(TABLE("<column id=\"a\" width=\"wide\"/>"), "width is a number");
+		refused(TABLE("<column id=\"a\" width=\"10\" kind=\"bars\"/>"), "kind is text, strong, ping or star");
+		refused(TABLE("<column id=\"a\" width=\"10\" align=\"center\"/>"), "align is left or right");
+		refused(TABLE("<column id=\"a\" width=\"10\" touch=\"1 2\"/>"), "touch is");
+		refused(TABLE("<column id=\"a\" width=\"10\" sort=\"sort nowhere\"/>"), "no action \"sort nowhere\"");
+		refused(TABLE(COLUMN COLUMN), "id is \"server\"");
+		refused(TABLE("<column id=\"a\" width=\"10\"><search/></column>"), "<search> has no value");
+		refused(TABLE("<column id=\"a\" width=\"10\"><search value=\"nothing.here\"/></column>"),
+			"no binding {nothing.here}");
+		refused("<screen name=\"t\"><table source=\"test.rows\" sorted=\"nothing.here\">" COLUMN "</table>"
+			"</screen>", "no binding {nothing.here}");
+		refused("<screen name=\"t\"><table source=\"test.rows\" empty=\"{nothing.here}\">" COLUMN "</table>"
+			"</screen>", "no binding {nothing.here}");
+		refused("<screen name=\"t\">" "<table source=\"test.rows\">" COLUMN "</table>"
+			"<table source=\"test.rows\">" COLUMN "</table></screen>", "one <table>");
+	}
+	else if (!strcmp(name, "panel"))
+	{
+		CHECK(read_text("<screen name=\"t\"><panel><heading text=\"{test.value}\" lines=\"2\"/>"
+			"<text text=\"A\" lines=\"3\" touch-lines=\"4\"/><pills><pill text=\"B\" tone=\"test.value\" "
+			"width=\"64\"/><pill text=\"C\" tone=\"2\" width=\"64\"/></pills><pair label=\"P\" value=\"1\"/>"
+			"<button key=\"accept\" label=\"JOIN\" do=\"quit\"/></panel></screen>", &screen, problem),
+			"a good panel refused: %s", problem);
+		CHECK(screen.blocks[kind_first(&screen, MENU_SCREEN_PANEL_TEXT)].lines == 3 &&
+			screen.blocks[kind_first(&screen, MENU_SCREEN_PANEL_TEXT)].touch_lines == 4, "a text's lines");
+		menu_screen_free(&screen);
+		refused("<screen name=\"t\"><panel/></screen>", "has nothing in it");
+		refused("<screen name=\"t\"><panel><text/></panel></screen>", "<text> has no text");
+		refused("<screen name=\"t\"><panel><text text=\"A\" lines=\"9\"/></panel></screen>", "lines is a number");
+		refused("<screen name=\"t\"><panel><pills/></panel></screen>", "has no <pill>");
+		refused("<screen name=\"t\"><panel><pills><pill text=\"A\"/></pills></panel></screen>", "has no width");
+		refused("<screen name=\"t\"><panel><pills><pill text=\"A\" width=\"64\" tone=\"nothing.here\"/></pills>"
+			"</panel></screen>", "no binding {nothing.here}");
+		refused("<screen name=\"t\"><panel><pills><pill text=\"A\" width=\"64\" tone=\"99\"/></pills></panel>"
+			"</screen>", "tone is a number");
+		refused("<screen name=\"t\"><panel><pair label=\"A\"/></panel></screen>", "<pair> has no value");
+		refused("<screen name=\"t\"><panel><pair value=\"A\"/></panel></screen>", "<pair> has no label");
+	}
+	else if (!strcmp(name, "buttons"))
+	{
+		static char const *const keys[] = { "accept", "back", "x", "y", "lb", "rb", "lt", "rt", "r3", "view" };
+		unsigned index;
+
+		for (index = 0; index < sizeof(keys) / sizeof(keys[0]); index++)
+		{
+			char text[256];
+
+			snprintf(text, sizeof(text), "<screen name=\"t\"><buttons><button key=\"%s\" label=\"A\" width=\"90\" "
+				"if=\"test.flag\" do=\"quit\"/></buttons></screen>", keys[index]);
+			CHECK(read_text(text, &screen, problem), "the key %s refused: %s", keys[index], problem);
+			menu_screen_free(&screen);
+		}
+		refused("<screen name=\"t\"><buttons><button key=\"l3\" label=\"A\"/></buttons></screen>", "key is");
+		refused("<screen name=\"t\"><buttons><button key=\"x\" label=\"A\" do=\"nowhere\"/></buttons></screen>",
+			"no action \"nowhere\"");
+		refused("<screen name=\"t\"><buttons><button key=\"x\" label=\"A\" if=\"nothing.here\"/></buttons></screen>",
+			"no binding {nothing.here}");
+		refused("<screen name=\"t\"><buttons><button key=\"x\" label=\"A\" width=\"0\"/></buttons></screen>",
+			"width is a number");
+		refused("<screen name=\"t\"><header title=\"T\"><button key=\"view\" label=\"{nothing.here}\"/></header>"
+			"</screen>", "no binding {nothing.here}");
 	}
 	else
 	{
