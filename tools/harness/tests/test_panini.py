@@ -12,9 +12,10 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from harness import CHECK_FAILED, ROOT, build, mutated, read, run  # noqa: E402
+from harness import CHECK_FAILED, ROOT, build, mutated, player_settings_slots, read, run  # noqa: E402
 
-CASES = ["round_trip", "identity", "edges", "coverage", "shape", "hud_matches_pass", "center", "off", "direction"]
+CASES = ["round_trip", "identity", "edges", "coverage", "shape", "hud_matches_pass", "center", "off", "direction",
+         "players"]
 PROJECTION = "port/linux/include/panini_projection.h"
 GAME = "port/linux/game/panini.c"
 # (file, before, after, the case that must fail)
@@ -48,8 +49,14 @@ CONTROLS = [
     (GAME, "void panini_window_end(void)\n{\n\twindow.active = window.journaled = FALSE;", "void panini_window_end(void)\n{\n",
      "center"),
     # on whatever the setting says
-    (GAME, "\tif (!panini_settings(&d, &s))\n\t{\n\t\twindow.viewport = camera->viewport_bounds;",
-     "\tif ((panini_settings(&d, &s), FALSE))\n\t{\n\t\twindow.viewport = camera->viewport_bounds;", "off"),
+    (GAME, "\tif (!panini_settings(local_player_index, &d, &s))\n\t{\n\t\twindow.viewport = camera->viewport_bounds;",
+     "\tif ((panini_settings(local_player_index, &d, &s), FALSE))\n\t{\n\t\twindow.viewport = "
+     "camera->viewport_bounds;", "off"),
+    # one setting kept for every player (the first asked)
+    (GAME, "short slot = PLAYER_SETTINGS_SLOT(local_player_index);", "short slot = 0;", "players"),
+    # every window drawn as player 1's settings say
+    (GAME, "\tif (!panini_settings(local_player_index, &d, &s))\n\t{\n\t\twindow.viewport = camera->viewport_bounds;",
+     "\tif (!panini_settings(0, &d, &s))\n\t{\n\t\twindow.viewport = camera->viewport_bounds;", "players"),
     # the arrows' direction kept rectilinear
     (GAME, "\t*x = across;\n\t*y = -up;", "\t(void)across;\n\t(void)up;", "direction"),
 ]
@@ -72,8 +79,7 @@ def generated(fault=None):
             game = mutated(game, before, after)
     # (the game's code after its includes: the stubs are the test's)
     game = game[game.index("/* (the window's rasterizer target"):]
-    game = game.replace("double config_real(const char *name);\nunsigned long config_changes(void);\n", "")
-    return (("projection.inc", projection), ("under_test.inc", game))
+    return (("projection.inc", projection), ("under_test.inc", player_settings_slots() + game))
 
 
 @pytest.mark.parametrize("case", CASES)
