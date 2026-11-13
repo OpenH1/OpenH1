@@ -103,6 +103,10 @@ that the Spartan is not drawn wider at the top than at the feet */
 as the originals' pictures were taken (player_color_marine_large), not
 from its middle */
 #define SPARTAN_PITCH_DEGREES 8.0f
+/* how its idle aims (degrees from ahead, through the aiming screen, as a
+unit aims) */
+#define SPARTAN_AIM_YAW_DEGREES 0.0f
+#define SPARTAN_AIM_PITCH_DEGREES 0.0f
 /* the view's rectangle about a Spartan's box, in its heights: the rifle
 and the arms reach out of the box at the sides, the helmet a little above */
 #define SPARTAN_VIEW_SIDE 0.45f
@@ -715,16 +719,21 @@ static void spartan_camera_at(
 }
 
 /* the view's camera: its pitch, field of view and the Spartan's turn
-(degrees: SPARTAN_PITCH_DEGREES, _FIELD_OF_VIEW_DEGREES, _TURN_DEGREES;
-debug: HALO_MENU_SPARTAN_CAMERA's "<pitch> <field of view> <turn>" in their
+(degrees: SPARTAN_PITCH_DEGREES, _FIELD_OF_VIEW_DEGREES, _TURN_DEGREES, and
+the idle's aim, _AIM_YAW_DEGREES, _AIM_PITCH_DEGREES; debug:
+HALO_MENU_SPARTAN_CAMERA's "<pitch> <field of view> <turn> <aim yaw> <aim
+pitch>" in their
 place, to match them to the originals' pictures), in radians */
+static real spartan_camera_angles_read[5] = { SPARTAN_PITCH_DEGREES, SPARTAN_FIELD_OF_VIEW_DEGREES, SPARTAN_TURN_DEGREES,
+	SPARTAN_AIM_YAW_DEGREES, SPARTAN_AIM_PITCH_DEGREES };
+
 static void spartan_camera_angles(
 	real *pitch,
 	real *field_of_view,
 	real *turn)
 {
 	static boolean read;
-	static real angles[3] = { SPARTAN_PITCH_DEGREES, SPARTAN_FIELD_OF_VIEW_DEGREES, SPARTAN_TURN_DEGREES };
+	real *angles = spartan_camera_angles_read;
 
 	if (!read)
 	{
@@ -732,7 +741,7 @@ static void spartan_camera_angles(
 		short each;
 
 		read = TRUE;
-		for (each = 0; given && *given && each < 3; each++)
+		for (each = 0; given && *given && each < 5; each++)
 		{
 			char *end;
 			double value = strtod(given, &end);
@@ -1107,6 +1116,7 @@ static boolean spartan_pose(
 	real_vector3d left;
 	real_point3d origin;
 	real_matrix4x3 root;
+	real camera_pitch, camera_field_of_view, camera_turn, aim_yaw, aim_pitch;
 
 	spartan->posed = FALSE;
 	spartan->rifle_posed = FALSE;
@@ -1130,7 +1140,10 @@ static boolean spartan_pose(
 	model_get_node_orientations(model, rest);
 	spartan_animation_pose(model, idle_animation, spartan_loop_frame(spartan, idle_animation->frame_count, milliseconds),
 		TRUE, rest, node_count, idle);
-	spartan_aim(graph, node_count, 0.0f, 0.0f, 0.0f, idle);
+	spartan_camera_angles(&camera_pitch, &camera_field_of_view, &camera_turn);
+	aim_yaw = spartan_camera_angles_read[3] * 3.14159265f / 180.0f;
+	aim_pitch = spartan_camera_angles_read[4] * 3.14159265f / 180.0f;
+	spartan_aim(graph, node_count, aim_yaw, aim_pitch, 0.0f, idle);
 
 	/* (a fidget over it) */
 	fidgeting = spartan_fidget_now(spartan, index, milliseconds, &kind, &start, &fidget_pose);
@@ -1148,14 +1161,14 @@ static boolean spartan_pose(
 		case SPARTAN_FIDGET_CROUCH:
 			spartan_animation_pose(model, animation, spartan_loop_frame(spartan, animation->frame_count, milliseconds),
 				TRUE, rest, node_count, fidget);
-			spartan_aim(graph, node_count, 0.0f, 0.0f, 0.0f, fidget);
+			spartan_aim(graph, node_count, aim_yaw, aim_pitch, 0.0f, fidget);
 			break;
 		case SPARTAN_FIDGET_LOOK:
 			/* (the aim turned, and the head on from it) */
 			spartan_animation_pose(model, idle_animation, spartan_loop_frame(spartan, idle_animation->frame_count,
 				milliseconds), TRUE, rest, node_count, fidget);
-			spartan_aim(graph, node_count, fidget_pose.look * SPARTAN_LOOK_AIM_DEGREES * 3.14159265f / 180.0f,
-				(real)fabs(fidget_pose.look) * SPARTAN_LOOK_PITCH_DEGREES * 3.14159265f / 180.0f,
+			spartan_aim(graph, node_count, aim_yaw + fidget_pose.look * SPARTAN_LOOK_AIM_DEGREES * 3.14159265f / 180.0f,
+				aim_pitch + (real)fabs(fidget_pose.look) * SPARTAN_LOOK_PITCH_DEGREES * 3.14159265f / 180.0f,
 				fidget_pose.look * SPARTAN_LOOK_HEAD_DEGREES * 3.14159265f / 180.0f, fidget);
 			break;
 		default:
