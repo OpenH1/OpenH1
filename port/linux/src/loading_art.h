@@ -812,22 +812,12 @@ static inline void loading_art_follow(struct loading_art *art, unsigned int foll
 	}
 }
 
-/* the caption's margin at each side, in the 480 lines: room for its
-shadow (loading_art_caption_scaled) */
-#define LOADING_ART_CAPTION_MARGIN 2
-/* the shadow's reach about its letters, in tenths of the 480 lines, and how
-dark it is at most, of 256 */
-#define LOADING_ART_CAPTION_SHADOW_REACH 15
-#define LOADING_ART_CAPTION_SHADOW 176
-
 /* A line under the words (a wait's: what is being done), its coverage
  * `width` by `height`, set at LOADING_PRESENTATION_CAPTION_SCALE times the
- * 480 lines' size (copied, with LOADING_ART_CAPTION_MARGIN at its sides);
- * NULL: none. */
+ * 480 lines' size (copied); NULL: none. */
 static inline void loading_art_caption(struct loading_art *art, const uint8_t *coverage, unsigned int width,
 	unsigned int height)
 {
-	unsigned int margin = LOADING_ART_CAPTION_MARGIN * LOADING_PRESENTATION_CAPTION_SCALE, y;
 	free(art->caption);
 	art->caption = NULL;
 	art->caption_width = art->caption_height = 0;
@@ -836,12 +826,11 @@ static inline void loading_art_caption(struct loading_art *art, const uint8_t *c
 	art->caption_rows = art->caption_shown_width = art->caption_shown_height = 0;
 	if (!coverage || !width || !height || width > 8192 || height > 512)
 		return;
-	art->caption = calloc((size_t)(width + 2 * margin) * height, 1);
+	art->caption = malloc((size_t)width * height);
 	if (!art->caption)
 		return;
-	for (y = 0; y < height; y++)
-		memcpy(art->caption + (size_t)y * (width + 2 * margin) + margin, coverage + (size_t)y * width, width);
-	art->caption_width = width + 2 * margin;
+	memcpy(art->caption, coverage, (size_t)width * height);
+	art->caption_width = width;
 	art->caption_height = height;
 }
 
@@ -923,71 +912,20 @@ static inline uint8_t *loading_art_caption_resample(const struct loading_art *ar
 }
 
 /* The caption's coverage for a frame `rows` high, art->caption_coverage,
- * caption_shown_width by caption_shown_height, and after it, as large, its
- * shadow: how much the frame about its letters is darkened (of 255), its
- * coverage spread LOADING_ART_CAPTION_SHADOW_REACH about them (twice a box
- * each way), so that its letters stand apart from the light behind them as
- * the sweep's band crosses (kept until the caption or the rows change); 0
- * without a caption, or the memory. */
+ * caption_shown_width by caption_shown_height (kept until the caption or
+ * the rows change); 0 without a caption, or the memory. */
 static inline int loading_art_caption_scaled(struct loading_art *art, unsigned int rows)
 {
-	uint8_t *coverage;
-	uint32_t *sums;
-	unsigned int width, height, reach, pass, x, y;
 	if (!art->caption || !rows || rows > 16384)
 		return 0;
 	if (art->caption_coverage && art->caption_rows == rows)
 		return 1;
 	free(art->caption_coverage);
-	art->caption_coverage = NULL;
 	art->caption_rows = 0;
-	coverage = loading_art_caption_resample(art, rows, &width, &height);
-	if (!coverage)
+	art->caption_coverage = loading_art_caption_resample(art, rows, &art->caption_shown_width,
+		&art->caption_shown_height);
+	if (!art->caption_coverage)
 		return 0;
-	art->caption_coverage = realloc(coverage, (size_t)width * height * 2);
-	sums = malloc((size_t)(width > height ? width : height) * sizeof(uint32_t) + sizeof(uint32_t));
-	if (!art->caption_coverage || !sums)
-	{
-		free(art->caption_coverage ? art->caption_coverage : coverage);
-		art->caption_coverage = NULL;
-		free(sums);
-		return 0;
-	}
-	/* (its shadow: a box of 2 * reach + 1 pixels across, then down, twice,
-	the pixels past the edges none) */
-	reach = (unsigned int)((uint64_t)rows * LOADING_ART_CAPTION_SHADOW_REACH / (LOADING_ART_FRAME_HEIGHT * 10 * 2));
-	reach = reach ? reach : 1;
-	{
-		uint8_t *shadow = art->caption_coverage + (size_t)width * height;
-		memcpy(shadow, art->caption_coverage, (size_t)width * height);
-		for (pass = 0; pass < 4; pass++)
-		{
-			unsigned int across = !(pass & 1), count = across ? width : height, lines = across ? height : width;
-			size_t step = across ? 1 : width, line_step = across ? width : 1;
-			unsigned int line;
-			for (line = 0; line < lines; line++)
-			{
-				uint8_t *values = shadow + line * line_step;
-				sums[0] = 0;
-				for (x = 0; x < count; x++)
-					sums[x + 1] = sums[x] + values[x * step];
-				for (x = 0; x < count; x++)
-				{
-					unsigned int from = x > reach ? x - reach : 0, to = x + reach + 1 < count ? x + reach + 1 : count;
-					values[x * step] = (uint8_t)((sums[to] - sums[from]) / (2 * reach + 1));
-				}
-			}
-		}
-		/* (as dark as the shadow's reach in full, past the letters' edges) */
-		for (y = 0; y < (size_t)width * height; y++)
-		{
-			unsigned int value = shadow[y] * 3u;
-			shadow[y] = (uint8_t)(value < 255 ? value : 255);
-		}
-	}
-	free(sums);
-	art->caption_shown_width = width;
-	art->caption_shown_height = height;
 	art->caption_rows = rows;
 	return 1;
 }
@@ -2221,13 +2159,6 @@ static inline const uint8_t *loading_art_caption_shown(struct loading_art *art, 
 			}
 			out[3] = 255;
 			coverage = art->caption_coverage[y * art->caption_shown_width + x];
-			/* (the frame about its letters darkened: their shadow) */
-			{
-				unsigned int shade = art->caption_coverage[(size_t)art->caption_shown_width * art->caption_shown_height +
-					y * art->caption_shown_width + x] * LOADING_ART_CAPTION_SHADOW / 255 * art->caption_completion >> 8;
-				for (channel = 0; channel < 3; channel++)
-					out[channel] = (uint8_t)(out[channel] * (256 - shade) >> 8);
-			}
 			if (coverage)
 			{
 				uint8_t lit[3];
