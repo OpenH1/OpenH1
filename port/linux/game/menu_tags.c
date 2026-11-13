@@ -2922,9 +2922,15 @@ void menu_tags_background_set(
 		tag_get(UI_WIDGET_DEFINITION_TAG, tag_index) : NULL;
 	struct ui_widget_definition const *background = background_tag_index != NONE ?
 		tag_get(UI_WIDGET_DEFINITION_TAG, background_tag_index) : NULL;
+	/* (and the menu engine's, which it draws: its look's) */
+	struct ui_widget_definition *look = tag_index != NONE ? pc_menu_look_definition(tag_index) : NULL;
 
-	if (definition && background)
+	if (!background)
+		return;
+	if (definition)
 		definition->background_bitmap = background->background_bitmap;
+	if (look)
+		look->background_bitmap = background->background_bitmap;
 }
 
 /* the screen before the widget's gone back to, as a handler's back goes (its
