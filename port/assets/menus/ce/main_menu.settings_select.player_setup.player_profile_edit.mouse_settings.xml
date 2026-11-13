@@ -8,6 +8,7 @@
 		<on event="black" run="port settings tab next"/>
 		<on event="y" run="port settings search"/>
 		<child widget="main_menu/settings/header_settings"/>
+		<child widget="main_menu/settings/profile"/>
 		<child widget="main_menu/settings/tabs/tab_prompt_previous" x="24" y="76"/>
 		<child widget="main_menu/settings/tabs/tab_prompt_next" x="586" y="76"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/options_menu"/>

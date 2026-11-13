@@ -4,8 +4,9 @@ MENU_ENGINE.C
 The port's menu engine (docs/menu_engine.md), under display.menu_engine
 "new": the generated screens of the PC menus (port/assets/menus, the widgets
 menu_tags.c builds) run from the menus' model (port/assets/menus/model,
-halo_menus.h), the in-game pause menu and the Xbox's menus (display.menus
-"xbox") still the game's.
+halo_menus.h), the in-game pause menu a hand-written screen in place of the
+map's (menu_screen.c), and the Xbox's menus (display.menus "xbox") still the
+game's.
 
 A screen is one widget of the game's with no parent, its stand-in, which
 ui_widget.c opens, keeps in its history and closes as its own (its hooks:
@@ -1298,6 +1299,11 @@ boolean menu_engine_screen_draw(struct widget_instance *screen, rectangle2d *cli
 	engine_draw(owned, screen, clip, offset, focus, nifty);
 	engine.drawing = previous;
 	return TRUE;
+}
+
+boolean menu_engine_screen_owned(struct widget_instance const *screen)
+{
+	return screen && engine_screen_of(screen) != NULL;
 }
 
 boolean menu_engine_screen_event(struct widget_instance *screen, struct event_record *event, boolean *deleted)

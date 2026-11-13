@@ -63,12 +63,28 @@ centred, and the bar's wide layout reaches the screen's edges up to 16:9.
 | `<screen>` | `name` (required), `back`, `start` | The screen. `back` is the action for B and Back; without it, B goes back to the screen before. `start` is the action for Start anywhere on the screen (the lobby's start, as the generated lobby's every control's Start); where it does nothing (a player's), Start is the screen's widgets' and its own handlers' |
 | `<title-art/>` | | Halo's title art, where the main menu has it. If the screen's blocks need more height than the canvas has, this block gives up some of its room |
 | `<list>` | `id`, `focus` | A list of items. The d-pad, the stick and the mouse wheel move through it, wrapping from the last item to the first, as the classic lists do. `focus` is the id of the item focused when the screen first opens. After that the screen remembers the last focused item |
-| `<item>` | `label` (required), `do` (required), `id`, `hint`, `when` | One item. A, Start, a click or a tap runs `do`. `hint` is the line shown under the item while it is focused. Write `<hint>` children instead to give alternatives: the first whose bindings all have values is shown. `when` lists platforms (`desktop android vr hdr touch pointer computer`, as for `platform=` in the menu files) and the item is made only on one of them |
+| `<item>` | `label` (required), `do` (required), `id`, `hint`, `when`, `if` | One item. A, Start, a click or a tap runs `do`. `hint` is the line shown under the item while it is focused. Write `<hint>` children instead to give alternatives: the first whose bindings all have values is shown. `when` lists platforms (`desktop android vr hdr touch pointer computer`, as for `platform=` in the menu files) and the item is made only on one of them; `if` names a binding that must have a value for it to be made |
 | `<space/>` | | Takes the height left over (several spaces share it) |
 | `<buttons>` | | The button bar: each button a prompt, as Choose Mission's footer has them (its key's picture and word, lit while it has the focus; A, a click or a tap presses its key, accept running the chosen item's action), BACK at the left and the rest from the right, past 16:9 at the screen's edges, and on a touchscreen raised above a phone's safe area with the tall layout's footer (`foot`) |
 | `<button>` | `key` (`accept`, `back`, `x`, `y`, `lb`, `rb`, `lt`, `rt`, `r3`, `view`, `dpad`), `label`, `side`, `do`, `width`, `touch-width`, `if`, `when` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word. `do` is the action the key (anywhere on the screen) and a click run; without it, the key is pressed. In a tall screen's bar (below), `width` is its least width, `if` a binding that must have a value for it to be shown, two buttons of one key share one place, shown as their `if`s say, and the buttons run from the left one after another, but those of `side="right"` (written after the rest) end at the right margin, as Select Profile's BACK at the left and OK, CREATE NEW and DELETE at the right (on a touchscreen, `side` changes nothing; on a wide screen those of `side="right"` keep to its right edge, wherever their place); `touch-width` is its width on a touchscreen (the bar's own by default). `dpad`'s picture is the D-pad's left and right (none on the keyboard, whose arrows are the menus' left and right) and no key presses it: it is a click's, a tap's or A's on it |
 | `<colors>` | `id` | The player profile's colors, one item each, under one another in its name and its color (white while focused). It is the screen's list (a screen has one `<list>`, `<cards>` or `<colors>`). The profile's own color is focused first. A chooses the color for the profile being edited, as the PC version's color picker did, and goes back |
 | `<spartan>` | `x`, `y`, `width`, `height`, `color` (`focus`, `profile`, or a binding), `players` (1 to 4) | The Spartan, which the game draws (port/linux/game/menu_spartan.c) standing in this box of the 640 by 480 canvas, its feet at the box's foot, as tall as the box. It is drawn in a view of its own where the block is in the screen's order: over the screen's background and the blocks before it, under those after, with its own fixed camera, depth and light, so nothing of the menus' scene (the ring, the sky) cuts it and the scene's camera never moves or tilts it. It takes no room in the layout. `color="focus"` follows the focused `<colors>` item; `profile` (the default) is the color of the profile being edited, else the player's own, live as it changes; any other word is a binding whose value is the color's number (`random` for random), read each frame, and while it has no value there is neither Spartan nor picture. `players` puts that many side by side, each its local player's profile's color. A random color's Spartan cycles through the profile colors in their list's order, one a second (each held three quarters of a second, then blended into the next), on the menus' frame clock, so it cycles while the game is paused too; side by side, each random one is a quarter of the round on from the one before. Where there is no Spartan (no multiplayer map exported one, a refused file, `display.menu_pictures` off, no profile), the box shows the original picture of the color (ui.map's `player_color_marine_large`, frame 18, the "?", for random or no profile). It is gone as soon as its screen closes |
+
+### A box of rows: the pause menu's
+
+A screen with a `<box>` is laid out as the Xbox's pause menu is, as the port
+has it: a framed box of rows (its `<list>`), the legend row under them, and
+beside it an objectives' box. Its places are the box's, not a flow from the
+top.
+
+| Element | Attributes | Meaning |
+| --- | --- | --- |
+| `<box>` | `x`, `y`, `width` (all required), `align` (`top`, the default, or `middle`) | The rounded blue box (the port's pause box, its frame for the number of rows), `width` wide from `x`, its top at `y` (or its middle, `align="middle"`), as tall as its rows and its legend need: the first row 9 units below its top, the rows 30 apart and 27 tall, the legend 14 below the last and the box's foot 25 below the legend's top. It holds the screen's `<list>`, whose items are its rows (in the middle of it, the focused one framed, its words white), and a `<legend>`. While the keyboard's keys are drawn in its legend, the box is as much wider as they need, half each side, and what is beside it moves right by half (the Xbox's width while a controller's buttons are) |
+| `<legend>` | `x` | (in a `<box>`) The Xbox's legend row under the rows, `B = CANCEL  A = SELECT` (the keys' caps on the keyboard), `x` units into the box |
+| `<objectives>` | `title` | A framed box beside the `<box>` (5 units to its right, as tall), its title at its top and the mission's objectives under it, a line each, as the game writes them |
+
+A row's label can be a binding's (`{pause.friendly_fire}`), read again each
+frame.
 
 ### The tall layout: tabs, tables, panels and searches
 
@@ -193,6 +209,8 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | `{browser.search.server}`, `{browser.search.map}`, `{browser.search.any}` | The searches' words (set as they are typed) |
 | `{browser.panel.title}` ... `{browser.panel.status}` | The chosen game's name (or the list's title), where (map and mode), kind (GOAT H1, LEGACY) and its `tone`, tick rate, OPENCE CAN JOIN, players, ping, and its status line |
 | `{browser.searched}`, `{browser.joinable}`, `{browser.server}`, `{browser.link}`, `{browser.filtered}` | (for `if`s) the searches hide every game; a game to join is chosen; the server browser's list; Join by Link's; a list filtered and searched (not Join by Link's) |
+| `{pause.friendly_fire}` | Network co-op's FRIENDLY FIRE row's words, `FRIENDLY FIRE ON` or `OFF` (this machine's choice); none elsewhere |
+| `{pause.host_controls}`, `{pause.end_game}`, `{pause.chapters}` | (for `if`s) the pause menu's HOST CONTROLS (a network game's host's), END GAME (the host of a game of this machine alone) and CHAPTERS (Basic Training's), as `menu_tags.c` adds them to the map's |
 | `{profile.title}` | Select Profile's chosen row: its profile's name, or `Create New Player Profile` on the row that makes one |
 | `{profile.name}`, `{profile.controls}`, `{profile.difficulty}`, `{profile.level}` | The chosen profile's name, controls (`Default`, `Inverted`), best difficulty finished (none before a level is) and current level (`The Pillar of Autumn`); none on the row that makes one |
 | `{profile.color}`, `{profile.chosen}` | (for a `<spartan>`'s color and `if`s) the chosen profile's color's number, or `random`; whether a profile (not the row that makes one) is chosen |
@@ -232,6 +250,13 @@ sounds and the fades are the game's.
 | `browser join` | The row's game chosen, or joined if it is chosen (a password asked for first, the connecting box opened); JOIN GAME's |
 | `browser refresh` | The public games asked for again; Join by Link's PASTE LINK |
 | `browser filters` | The Filters page |
+| `close`, `close all` | The screen closed (the multiplayer pause menu's RESUME GAME), or every screen (B on a pause menu, the campaign's RESUME GAME) |
+| `open host controls` | Host Controls, as the pause menu's HOST CONTROLS opens it |
+| `pause leave` | The player out of the game, as the multiplayer pause menu's LEAVE GAME (`mp game player quit`), and the screen closed |
+| `pause end game` | The game ended as its time limit would (END GAME) |
+| `pause friendly fire` | This machine's friendly fire in network co-op on or off (FRIENDLY FIRE) |
+| `pause revert`, `pause restart` | The campaign's questions for REVERT TO SAVED and RESTART LEVEL (the map's) |
+| `pause quit` | SAVE AND QUIT: the main menu, as the campaign's pause menu's |
 | `profile select` | The row's profile (OK: the chosen one's) made player 1's, and back to the screen before; on the row that makes one, the question whether to make one |
 | `profile new` | A new profile's name asked (CREATE NEW) |
 | `profile delete` | The question whether to delete the chosen profile (DELETE) |
@@ -403,6 +428,30 @@ deletes the chosen one, B goes back. The list's model is the generated screen's 
 `profile_list`: the profiles read, the row chosen, its scroll), and the
 actions run the generated screen's functions and open its screens. The
 classic engine keeps its own screen and the original pictures.
+
+## The pause menu
+
+`screens/pause.xml` (a multiplayer game's) and `screens/pause_campaign.xml`
+(a campaign's, single player's or network co-op's) take the place of the
+map's pause screens under the new engine: the game opens them where it
+would open the map's (`ui_widget.c`'s `ui_check_for_pause_game` asks
+`menu_screen_pause_name`), as a stand-in of `screens/blocks.xml` that pauses
+the game as the map's screen would (`screens/pause`, `screens/pause_campaign`)
+or not (a network game's: `screens/pause_live`, `screens/pause_campaign_live`).
+They look as the map's do as the port has patched them (`menu_tags.c`'s
+`pause_patch` and `pause_campaign_patch`), drawn with the same pictures,
+fonts and the map's legend row, and have the same rows and actions:
+
+- multiplayer: RESUME GAME, SETTINGS, the host's HOST CONTROLS, END GAME or
+  CHAPTERS, LEAVE GAME;
+- campaign: RESUME GAME, SETTINGS, network co-op's FRIENDLY FIRE and its
+  host's HOST CONTROLS, REVERT TO SAVED, RESTART LEVEL, SAVE AND QUIT, and
+  the mission objectives beside them.
+
+Each opens on RESUME GAME. In split screen the one screen, made for the
+menus' 640 by 480, is scaled into the player's view (`menu_view.c`), in place
+of the Xbox's own 2-player and 4-player layouts. The classic engine keeps the
+map's screens.
 
 ## The main menu: four doors
 

@@ -37,6 +37,7 @@ kept on the item of the same id.
 #include "menu_table.h"
 #include "menu_widget.h"
 #include "menu_spartan.h"
+#include "network_host_controls.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,6 +50,11 @@ boolean menu_tags_open(struct widget_instance *widget, struct event_record *even
 	boolean *deleted);
 void menu_tags_back(struct widget_instance *widget, struct event_record *event, boolean *deleted);
 long menu_tags_background(long tag_index);
+long menu_tags_flags(long tag_index);
+short menu_tags_legend_growth(long legends_tag);
+unsigned long menu_tags_pause_rows(void);
+int halo_keyboard_prompts(void);
+boolean config_boolean(char const *name);
 struct widget_instance *ui_widget_port_add_child(struct widget_instance *parent, long tag_index,
 	struct widget_instance *before);
 /* (menu_functions.c) */
@@ -159,6 +165,39 @@ random), drawn where no Spartan can be */
 #define SCREEN_SPARTAN_PICTURE_HEIGHT 294
 #define SCREEN_SPARTAN_RANDOM_FRAME 18
 /* (menu_functions.c's BUTTON_B, BUTTON_X, BUTTON_Y: the buttons a prompt presses) */
+/* a <box>'s layout, the Xbox's pause menu's as the port has it (menu_tags.c's
+PAUSE_BOX_*): its first row this far below its top, its rows this far apart
+and this tall, its legend this far below its last row, its foot this far
+below the legend's top; the frame's left and right pieces' width, its first
+frame's rows; its rows' width; and the objectives' box beside it: this far
+from its right, as wide, its frame's first rows, its title's and its text's
+places in it */
+#define BOX_ROWS_TOP 9
+#define BOX_ROW_PITCH 30
+#define BOX_ROW_HEIGHT 27
+#define BOX_LEGEND_GAP 14
+#define BOX_LEGEND_BOTTOM 25
+#define BOX_SIDE 16
+#define BOX_FIRST_ROWS 3
+#define BOX_FRAMES 5
+#define BOX_ROW_WIDTH 202
+#define OBJECTIVES_GAP 5
+#define OBJECTIVES_MIDDLE 253
+#define OBJECTIVES_FIRST_ROWS 5
+#define OBJECTIVES_FRAMES 3
+#define OBJECTIVES_X 15
+#define OBJECTIVES_TITLE_Y 4
+#define OBJECTIVES_TEXT_Y 33
+/* the parts a box moves as its legend grows (its frame's three, the
+objectives' five) */
+#define BOX_MAXIMUM_PARTS 8
+/* a widget definition's flag: the game paused while it is open */
+#define SCREEN_PAUSE_GAME_FLAG 0x2
+/* the Xbox's legend row under its pause menu, which a <legend> shows */
+#define BOX_LEGENDS "ui\\shell\\main_menu\\button_key_sm"
+/* the Xbox's pause menu's rows' frame, framing the focused one */
+#define BOX_ROW_PICTURE "ui\\shell\\bitmaps\\menu_bkds"
+
 #define SCREEN_BUTTON_B 1
 #define SCREEN_BUTTON_X 2
 #define SCREEN_BUTTON_Y 3
@@ -197,6 +236,8 @@ static boolean screen_call_search(struct widget_instance *widget, struct event_r
 static boolean screen_call_profile(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted);
 static boolean screen_call_lobby(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted);
+static boolean screen_call_close(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted);
 /* the row of the table an action is run for (0 up, on the table), NONE for
 none (a key's, a button's) */
@@ -289,6 +330,21 @@ static struct screen_action const screen_actions[] =
 	{ "lobby skill right", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
 	{ "lobby teams left", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
 	{ "lobby teams right", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	/* (the pause menu's, screens/pause.xml and pause_campaign.xml, as its
+	rows did on the map's: the screen closed (RESUME GAME), or every screen
+	(B; the campaign's RESUME GAME); the player out of a multiplayer game
+	(LEAVE GAME, the screen closed); the host's Host Controls and END GAME;
+	network co-op's FRIENDLY FIRE; the campaign's REVERT TO SAVED and
+	RESTART LEVEL, each its question first, and SAVE AND QUIT) */
+	{ "close", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_close },
+	{ "close all", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_close },
+	{ "pause leave", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_close },
+	{ "open host controls", NULL, NULL, "port host open", NULL, "main_menu/host_controls/host_controls_screen", NULL },
+	{ "pause end game", NULL, NULL, "port pause end game", NULL, NULL, NULL },
+	{ "pause friendly fire", NULL, NULL, "port coop friendly fire", NULL, NULL, NULL },
+	{ "pause revert", NULL, NULL, NULL, NULL, "ui\\shell\\error\\confirm_restartatsave_modal_fullscreen", NULL },
+	{ "pause restart", NULL, NULL, NULL, NULL, "ui\\shell\\error\\confirm_restartlevel_modal_fullscreen", NULL },
+	{ "pause quit", NULL, NULL, "pause game return to main menu", NULL, NULL, NULL },
 };
 
 static char const *const screen_action_names[] =
@@ -301,6 +357,8 @@ static char const *const screen_action_names[] =
 	"profile new", "profile delete", "lobby row", "lobby start", "lobby team red", "lobby team blue",
 	"lobby team toggle", "lobby invite", "lobby settings", "lobby host", "lobby add player", "lobby bots left",
 	"lobby bots right", "lobby skill left", "lobby skill right", "lobby teams left", "lobby teams right",
+	"close", "close all", "pause leave", "open host controls", "pause end game",
+	"pause friendly fire", "pause revert", "pause restart", "pause quit",
 };
 
 /* a binding's value: the saved game's mission and difficulty (player 1's
@@ -326,7 +384,8 @@ static char const *const screen_binding_names[] =
 	"lobby.map", "lobby.limits", "lobby.kind", "lobby.kind.tone", "lobby.tick", "lobby.opence", "lobby.after",
 	"lobby.bots", "lobby.bots.shown", "lobby.bots.locked", "lobby.bots.count.locked", "lobby.skill", "lobby.teams",
 	"lobby.status", "lobby.start", "lobby.host", "lobby.settings", "lobby.controls", "lobby.waiting",
-	"lobby.team.change", "lobby.invite", "lobby.add",
+	"lobby.team.change", "lobby.invite", "lobby.add", "pause.friendly_fire", "pause.host_controls",
+	"pause.end_game", "pause.chapters",
 };
 
 /* the row sources a table may name (menu_table.h), and their names */
@@ -362,6 +421,25 @@ static int screen_value(void *context, char const *name, char *value, unsigned l
 	/* (the lobby's: menu_functions.c's lobby_menu.inc) */
 	if (!strncmp(name, "lobby.", 6))
 		return pc_menu_lobby_value(name, value, size);
+	/* (the pause menu's: the rows this machine's has, as menu_tags.c adds
+	them to the map's; FRIENDLY FIRE's words, this machine's choice) */
+	if (!strncmp(name, "pause.", 6))
+	{
+		unsigned long rows = menu_tags_pause_rows();
+
+		if (!strcmp(name, "pause.friendly_fire") && TEST_FLAG(rows, _host_controls_pause_friendly_fire))
+			snprintf(value, size, config_boolean("network.coop_own_friendly_fire") ? "FRIENDLY FIRE ON" :
+				"FRIENDLY FIRE OFF");
+		else if ((!strcmp(name, "pause.host_controls") && TEST_FLAG(rows, _host_controls_pause_host_controls)) ||
+			(!strcmp(name, "pause.end_game") && TEST_FLAG(rows, _host_controls_pause_end_game)) ||
+			(!strcmp(name, "pause.chapters") && TEST_FLAG(rows, _host_controls_pause_chapters)))
+		{
+			snprintf(value, size, "yes");
+		}
+		else
+			return 0;
+		return 1;
+	}
 	if (!strcmp(name, "campaign.level") && values->saved)
 		snprintf(value, size, "%s", values->level);
 	else if (!strcmp(name, "campaign.difficulty") && values->saved)
@@ -416,6 +494,12 @@ static struct screen_place const screen_places[] =
 	player, X adds one, Y the map vote or the invite), and what its list did
 	each frame done: pc_menu_lobby_frame) */
 	{ "lobby", "main_menu\\multiplayer_type_select\\lobby\\lobby_screen", pc_menu_lobby_frame, NULL },
+	/* (the pause menu, in place of the map's: menu_screen_pause_name opens
+	these, a campaign's or a multiplayer game's, pausing the game or not) */
+	{ "pause", "screens\\pause", NULL, NULL },
+	{ "pause", "screens\\pause_live", NULL, NULL },
+	{ "pause_campaign", "screens\\pause_campaign", NULL, NULL },
+	{ "pause_campaign", "screens\\pause_campaign_live", NULL, NULL },
 };
 
 /* the server browser, whose screen gets a button of the hand-written
@@ -468,6 +552,21 @@ struct screen_open
 	short prompt_x[SCREEN_MAXIMUM_BUTTONS];
 	boolean prompt_right[SCREEN_MAXIMUM_BUTTONS];
 	long prompt_count;
+	/* (its <box>'s: its items' blocks, whose labels' bindings are read
+	again each frame (FRIENDLY FIRE's ON and OFF); the parts that move as
+	its legend grows while the keyboard's keys are drawn in it (its frame's
+	left and middle left by half of it, the middle as much wider, its right
+	and the objectives' box right by half), each its place and way, the
+	middle's width, and the growth they have now) */
+	boolean box;
+	struct menu_screen_block const *item_blocks[SCREEN_MAXIMUM_ITEMS];
+	struct widget_instance *box_parts[BOX_MAXIMUM_PARTS];
+	short box_part_x[BOX_MAXIMUM_PARTS];
+	short box_part_way[BOX_MAXIMUM_PARTS];
+	long box_part_count;
+	struct widget_instance *box_middle;
+	struct widget_instance *box_legend;
+	short box_growth;
 };
 
 static struct
@@ -482,6 +581,9 @@ static struct
 	long prompts_tag;
 	long color_tag, spartan_tag;
 	long title_art_tag, list_tag, item_tag, hint_tag, prompt_left_tag, button_tag, cards_tag, card_tag, card_title_tag, card_art_tag, card_subtitle_tag, header_tag, prompt_tag, header_text_tag;
+	/* (a <box>'s, its <legend>'s and its <objectives>') */
+	long box_left_tag, box_center_tag, box_right_tag, box_list_tag, box_item_tag, legend_tag;
+	long objectives_left_tag, objectives_center_tag, objectives_right_tag, objectives_title_tag, objectives_text_tag;
 } screens = { FALSE };
 
 static void screens_names_give(void)
@@ -548,12 +650,28 @@ static boolean screen_blocks_found(void)
 	screens.prompt_tag = screen_block_tag("pc\\screens\\prompt");
 	screens.prompts_tag = screen_block_tag("pc\\screens\\prompts");
 	screens.header_text_tag = screen_block_tag("pc\\screens\\header_text");
+	screens.box_left_tag = screen_block_tag("pc\\screens\\box_left");
+	screens.box_center_tag = screen_block_tag("pc\\screens\\box_center");
+	screens.box_right_tag = screen_block_tag("pc\\screens\\box_right");
+	screens.box_list_tag = screen_block_tag("pc\\screens\\box_list");
+	screens.box_item_tag = screen_block_tag("pc\\screens\\box_item");
+	screens.legend_tag = screen_block_tag("pc\\screens\\legend");
+	screens.objectives_left_tag = screen_block_tag("pc\\screens\\objectives_left");
+	screens.objectives_center_tag = screen_block_tag("pc\\screens\\objectives_center");
+	screens.objectives_right_tag = screen_block_tag("pc\\screens\\objectives_right");
+	screens.objectives_title_tag = screen_block_tag("pc\\screens\\objectives_title");
+	screens.objectives_text_tag = screen_block_tag("pc\\screens\\objectives_text");
 	if (screens.title_art_tag == NONE || screens.list_tag == NONE || screens.item_tag == NONE ||
 		screens.hint_tag == NONE || screens.prompt_left_tag == NONE || screens.button_tag == NONE ||
 		screens.cards_tag == NONE || screens.card_tag == NONE || screens.card_title_tag == NONE ||
 		screens.card_art_tag == NONE || screens.header_tag == NONE ||
 		screens.card_subtitle_tag == NONE || screens.prompt_tag == NONE || screens.prompts_tag == NONE ||
-		screens.header_text_tag == NONE || screens.color_tag == NONE || screens.spartan_tag == NONE)
+		screens.header_text_tag == NONE || screens.color_tag == NONE || screens.spartan_tag == NONE ||
+		screens.box_left_tag == NONE || screens.box_center_tag == NONE || screens.box_right_tag == NONE ||
+		screens.box_list_tag == NONE || screens.box_item_tag == NONE || screens.legend_tag == NONE ||
+		screens.objectives_left_tag == NONE || screens.objectives_center_tag == NONE ||
+		screens.objectives_right_tag == NONE || screens.objectives_title_tag == NONE ||
+		screens.objectives_text_tag == NONE)
 	{
 		platform_log("menus: the screens' blocks (screens/blocks.xml) are not all there");
 		screens.blocks_found = FALSE;
@@ -631,7 +749,10 @@ values */
 static boolean screen_item_shown(struct menu_screen_block const *item, struct screen_values *values, char *label,
 	unsigned long size)
 {
-	return menu_screen_when(item->when) && menu_screen_text(item->label, screen_value, values, label, size);
+	char shown[MENU_SCREEN_MAXIMUM_TEXT];
+
+	return menu_screen_when(item->when) && menu_screen_text(item->label, screen_value, values, label, size) &&
+		(!item->condition || screen_value(values, item->condition, shown, sizeof(shown)));
 }
 
 /* a button's side of the bar: back's the left, the rest's the right (or as
@@ -642,6 +763,7 @@ static boolean screen_button_right(struct menu_screen_block const *button)
 }
 
 static boolean tall_build(struct screen_open *open, struct menu_screen const *screen);
+static boolean box_build(struct screen_open *open, struct menu_screen const *screen);
 
 /* the screen's widgets made from the hand-written screen, in place of
 whatever it had: FALSE (nothing changed) if they cannot be */
@@ -666,6 +788,9 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 	{
 		if (screen->blocks[index].kind == MENU_SCREEN_TABLE)
 			return tall_build(open, screen);
+		/* (a screen with a <box>: the pause menu's layout) */
+		if (screen->blocks[index].kind == MENU_SCREEN_BOX)
+			return box_build(open, screen);
 	}
 	memset(&values, 0, sizeof(values));
 	/* (each block's room, from the top down: a space shares what is left) */
@@ -1009,6 +1134,311 @@ static void screen_spartan_frame(struct screen_open *open, long focused);
 
 #include "menu_screen_tall.inc"
 
+/* ---------- a <box> (the pause menu's): the Xbox's box of rows as the port
+has it, its legend under them, and the objectives' box beside it */
+
+/* a part of a box made where it is, moved the way the legend's growth
+moves it (-1: left by half the growth, the box's middle (way 0): left by
+half and as much wider, 1: right by half) */
+static struct widget_instance *box_part_add(struct screen_open *open, long tag_index, short x, short y, short way,
+	short frame)
+{
+	struct widget_instance *part = screen_widget_add(open->widget, tag_index, x, y);
+
+	if (!part)
+		return NULL;
+	part->animation.current_frame_index = frame;
+	if (open->box_part_count < BOX_MAXIMUM_PARTS)
+	{
+		open->box_parts[open->box_part_count] = part;
+		open->box_part_x[open->box_part_count] = x;
+		open->box_part_way[open->box_part_count] = way;
+		open->box_part_count++;
+	}
+	return part;
+}
+
+/* the box's widgets made: its rows those shown (each its if's and its
+label's bindings with values), as tall as they need, its frame the one for
+that many rows, at its x and from its y (or about it: align="middle"); its
+legend under them; the objectives' box beside it, as tall. FALSE if the
+screen has no <box> with a <list> */
+static boolean box_build(struct screen_open *open, struct menu_screen const *screen)
+{
+	struct widget_instance *widget = open->widget;
+	struct screen_values values;
+	char label[MENU_SCREEN_MAXIMUM_TEXT];
+	struct menu_screen_block const *box = NULL, *list = NULL, *legend = NULL, *objectives = NULL;
+	long index, rows = 0, list_index = NONE;
+	short height, top, x, frame;
+	struct widget_instance *focus = NULL;
+	char const *focus_id;
+	long focus_index = 0;
+
+	for (index = 0; index < screen->block_count; index++)
+	{
+		struct menu_screen_block const *block = &screen->blocks[index];
+
+		if (block->kind == MENU_SCREEN_BOX)
+			box = block;
+		else if (block->kind == MENU_SCREEN_LIST)
+		{
+			list = block;
+			list_index = index;
+		}
+		else if (block->kind == MENU_SCREEN_LEGEND)
+			legend = block;
+		else if (block->kind == MENU_SCREEN_OBJECTIVES)
+			objectives = block;
+	}
+	if (!box || !list)
+		return FALSE;
+	memset(&values, 0, sizeof(values));
+	for (index = 0; index < screen->block_count; index++)
+	{
+		if (screen->blocks[index].kind == MENU_SCREEN_ITEM && screen->blocks[index].parent == list_index &&
+			screen_item_shown(&screen->blocks[index], &values, label, sizeof(label)))
+		{
+			rows++;
+		}
+	}
+	rows = MAX(rows, 1);
+	height = (short)(BOX_ROWS_TOP + (rows - 1) * BOX_ROW_PITCH + BOX_ROW_HEIGHT + BOX_LEGEND_GAP + BOX_LEGEND_BOTTOM);
+	top = (short)(box->side && !strcmp(box->side, "middle") ? box->box_y - height / 2 : box->box_y);
+	x = (short)box->box_x;
+	frame = (short)PIN(rows - BOX_FIRST_ROWS, 0, BOX_FRAMES - 1);
+	focus_id = screens.focused[open->place - screen_places][0] ? screens.focused[open->place - screen_places] :
+		list->focus;
+	/* the screen's own widgets let go of, and its own made */
+	widget->focused_child = NULL;
+	while (widget->child)
+		ui_widget_delete(widget->child);
+	open->list = NULL;
+	open->item_count = 0;
+	open->colors = FALSE;
+	open->has_spartan = FALSE;
+	open->spartan_picture = NULL;
+	open->header = NULL;
+	open->prompt_count = 0;
+	open->box = TRUE;
+	open->box_part_count = 0;
+	open->box_growth = 0;
+	/* (its frame: the middle as wide as the box less its sides) */
+	box_part_add(open, screens.box_left_tag, x, top, -1, frame);
+	open->box_middle = box_part_add(open, screens.box_center_tag, (short)(x + BOX_SIDE), top, 0, frame);
+	box_part_add(open, screens.box_right_tag, (short)(x + box->box_width - BOX_SIDE), top, 1, frame);
+	/* (its rows, in the middle of it) */
+	open->list = screen_widget_add(widget, screens.box_list_tag, 0, 0);
+	if (!open->list)
+		return FALSE;
+	for (index = 0; index < screen->block_count; index++)
+	{
+		struct menu_screen_block const *item = &screen->blocks[index];
+		struct widget_instance *made;
+
+		if (item->kind != MENU_SCREEN_ITEM || item->parent != list_index ||
+			!screen_item_shown(item, &values, label, sizeof(label)) || open->item_count >= SCREEN_MAXIMUM_ITEMS)
+		{
+			continue;
+		}
+		made = screen_widget_add(open->list, screens.box_item_tag, (short)(x + (box->box_width - BOX_ROW_WIDTH) / 2),
+			(short)(top + BOX_ROWS_TOP + open->item_count * BOX_ROW_PITCH));
+		if (!made)
+			break;
+		screen_text_set(made, label);
+		open->items[open->item_count] = made;
+		open->item_blocks[open->item_count] = item;
+		open->hints[open->item_count] = NULL;
+		open->pictures[open->item_count] = NONE;
+		snprintf(open->ids[open->item_count], SCREEN_ID_LENGTH, "%s", item->id ? item->id : "");
+		snprintf(open->actions[open->item_count], SCREEN_ACTION_LENGTH, "%s", item->action);
+		/* (the item focused last, else the list's focus, else its first) */
+		if (!focus || (focus_id && item->id && !strcmp(item->id, focus_id)))
+		{
+			focus = made;
+			focus_index = open->item_count;
+		}
+		open->item_count++;
+	}
+	/* (its legend, under its last row) */
+	open->box_legend = NULL;
+	if (legend)
+	{
+		long legends = tag_loaded(UI_WIDGET_DEFINITION_TAG, BOX_LEGENDS);
+
+		open->box_legend = screen_widget_add(widget, screens.legend_tag, (short)(x + legend->box_x),
+			(short)(top + BOX_ROWS_TOP + (rows - 1) * BOX_ROW_PITCH + BOX_ROW_HEIGHT + BOX_LEGEND_GAP));
+		if (open->box_legend && legends != NONE)
+		{
+			struct widget_instance *row = ui_widget_port_add_child(open->box_legend, legends, NULL);
+
+			/* (where its parent is: children are drawn from their parent's
+			place) */
+			if (row)
+			{
+				row->horizontal_offset = 0;
+				row->vertical_offset = 0;
+			}
+		}
+	}
+	/* (the objectives' box beside it, as tall: its frame for that many
+	rows, its title and the game's objectives in it) */
+	if (objectives)
+	{
+		short beside = (short)(x + box->box_width + OBJECTIVES_GAP);
+		short frame_beside = (short)PIN(rows - OBJECTIVES_FIRST_ROWS, 0, OBJECTIVES_FRAMES - 1);
+		struct widget_instance *title;
+
+		box_part_add(open, screens.objectives_left_tag, beside, top, 1, frame_beside);
+		box_part_add(open, screens.objectives_center_tag, (short)(beside + BOX_SIDE), top, 1, frame_beside);
+		box_part_add(open, screens.objectives_right_tag, (short)(beside + BOX_SIDE + OBJECTIVES_MIDDLE), top, 1,
+			frame_beside);
+		title = box_part_add(open, screens.objectives_title_tag, (short)(beside + OBJECTIVES_X),
+			(short)(top + OBJECTIVES_TITLE_Y), 1, 0);
+		if (title && objectives->label && menu_screen_text(objectives->label, screen_value, &values, label,
+			sizeof(label)))
+		{
+			screen_text_set(title, label);
+		}
+		box_part_add(open, screens.objectives_text_tag, (short)(beside + OBJECTIVES_X),
+			(short)(top + OBJECTIVES_TEXT_Y), 1, 0);
+	}
+	if (focus)
+	{
+		widget->focused_child = open->list;
+		open->list->focused_child = focus;
+		open->list->parameters.list.selected_index = (short)focus_index;
+	}
+	snprintf(open->back, sizeof(open->back), "%s", screen->back ? screen->back : "");
+	open->generation = menu_screens_generation(screen->name);
+	return TRUE;
+}
+
+/* each frame: its rows' labels with bindings read again (FRIENDLY FIRE's
+ON or OFF), and its parts moved as wide as its legend needs while the
+keyboard's keys are drawn in it (menu_tags.c's pause_boxes_fit), the
+Xbox's width while a controller's buttons are */
+static void box_frame(struct screen_open *open)
+{
+	struct screen_values values;
+	char label[MENU_SCREEN_MAXIMUM_TEXT];
+	short growth = 0;
+	long index;
+
+	memset(&values, 0, sizeof(values));
+	for (index = 0; index < open->item_count; index++)
+	{
+		struct menu_screen_block const *item = open->item_blocks[index];
+
+		if (item && item->label && strchr(item->label, '{') &&
+			menu_screen_text(item->label, screen_value, &values, label, sizeof(label)))
+		{
+			screen_text_set(open->items[index], label);
+		}
+	}
+	if (open->box_legend && halo_keyboard_prompts())
+		growth = menu_tags_legend_growth(tag_loaded(UI_WIDGET_DEFINITION_TAG, BOX_LEGENDS));
+	open->box_growth = growth;
+	for (index = 0; index < open->box_part_count; index++)
+	{
+		open->box_parts[index]->horizontal_offset = (short)(open->box_part_x[index] +
+			(open->box_part_way[index] > 0 ? growth / 2 : -(growth / 2)));
+	}
+}
+
+/* a box's middle drawn as much wider as its legend's growth, and its rows
+with the game map's frame of them (BOX_ROW_PICTURE: the menus have it on
+the maps the pause menu is played on, not ui.map, which their files are
+made on too): TRUE for them */
+static boolean box_picture_of(struct widget_instance const *widget, long *bitmap_tag, rectangle2d *bounds)
+{
+	long open_index, index;
+
+	for (open_index = 0; widget && open_index < SCREEN_MAXIMUM_OPEN; open_index++)
+	{
+		struct screen_open const *open = &screens.open[open_index];
+
+		if (!open->widget || !open->box)
+			continue;
+		if (open->box_middle == widget)
+		{
+			*bitmap_tag = NONE;
+			bounds->x1 = (short)(bounds->x1 + open->box_growth);
+			return TRUE;
+		}
+		for (index = 0; index < open->item_count; index++)
+		{
+			if (open->items[index] == widget)
+			{
+				*bitmap_tag = tag_loaded(BITMAP_GROUP_TAG, BOX_ROW_PICTURE);
+				return TRUE;
+			}
+		}
+	}
+	return FALSE;
+}
+
+/* "close", "close all" and "pause leave": the screen closed (the pause
+menu's RESUME GAME), every screen (B; the campaign's RESUME GAME), or the
+player taken out of the game (the Xbox's "mp game player quit") and the
+screen closed */
+static boolean screen_call_close(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted)
+{
+	struct widget_instance *screen = widget_instance_get_topmost_parent(widget);
+
+	*deleted = FALSE;
+	if (!strcmp(name, "pause leave"))
+	{
+		long index = pc_menu_event_function_index("mp game player quit");
+
+		if (index == NONE || !ui_widget_event_handler_function_invoke(widget, event, (word)index, deleted))
+			return FALSE;
+		if (*deleted)
+			return TRUE;
+	}
+	if (!strcmp(name, "close all"))
+		ui_widgets_close_all();
+	else
+		ui_widget_delete(screen);
+	*deleted = TRUE;
+	return TRUE;
+}
+
+/* the screen the pause menu opens as, for the game's (name: the map's
+pause screen): under the menu engine, the hand-written one in its place, a
+campaign's or a multiplayer game's, pausing the game as the map's does or
+not (screens/blocks.xml's stand-ins), its focus on its first row; else the
+game's own (the classic engine; a file or its blocks missing or refused) */
+char const *menu_screen_pause_name(char const *name)
+{
+	long tag_index = name ? tag_loaded(UI_WIDGET_DEFINITION_TAG, name) : NONE;
+	boolean campaign = name && strstr(name, "\\solo_game\\") != NULL;
+	char const *stand_in;
+	long index;
+
+	if (tag_index == NONE || !menu_engine_looks())
+		return name;
+	if (campaign)
+		stand_in = menu_tags_flags(tag_index) & SCREEN_PAUSE_GAME_FLAG ? "pc\\screens\\pause_campaign" :
+			"pc\\screens\\pause_campaign_live";
+	else
+		stand_in = menu_tags_flags(tag_index) & SCREEN_PAUSE_GAME_FLAG ? "pc\\screens\\pause" : "pc\\screens\\pause_live";
+	screens_names_give();
+	menu_screens_poll(ui_widget_port_milliseconds());
+	if (tag_loaded(UI_WIDGET_DEFINITION_TAG, stand_in) == NONE ||
+		!menu_screens_find(campaign ? "pause_campaign" : "pause") || !screen_blocks_found())
+	{
+		return name;
+	}
+	for (index = 0; index < NUMBEROF(screen_places); index++)
+	{
+		if (!strncmp(screen_places[index].screen, "pause", 5))
+			screens.focused[index][0] = 0;
+	}
+	return stand_in;
+}
+
 /* ---------- the engine's calls */
 
 /* the server browser's HOST button made over it (TRUE), where it is the
@@ -1265,6 +1695,9 @@ void menu_screen_frame(struct widget_instance *widget)
 		else
 			open->generation = menu_screens_generation(open->place->screen);
 	}
+	/* (a box's: its rows' labels, its legend's room) */
+	if (open->box)
+		box_frame(open);
 	/* (the tall layout's: its blocks each frame) */
 	if (tall_of(open))
 	{
@@ -1603,6 +2036,9 @@ boolean menu_screen_item_picture(struct widget_instance const *widget, long *bit
 
 	/* (a tall screen's blocks: their places' widths and pictures) */
 	if (screens.blocks_found && tall_picture_of(widget, bitmap_tag, bounds))
+		return TRUE;
+	/* (a box's middle: as wide as its legend needs) */
+	if (screens.blocks_found && box_picture_of(widget, bitmap_tag, bounds))
 		return TRUE;
 	/* (a header: the picture its file names) */
 	if (screens.blocks_found && widget->definition_tag_index == screens.header_tag)

@@ -235,6 +235,10 @@ enum
 	OpenH1 client, in place of _distributed_message_actor_states): each
 	without the parts at their defaults */
 	_distributed_message_actor_states_compact = 142,
+	/* a player the co-op host brought to its own player, or went to
+	(network_host_controls.c), reliably, to that player's OpenH1 machine:
+	the way the brought player faces, and the words on their screen */
+	_distributed_message_host_teleport = 143,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };

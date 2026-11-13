@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import enum_with, CHECK_FAILED, ROOT, build, constant, mutated, read, run  # noqa: E402
 
 CASES = ["seats", "actions", "team_moves", "kick", "move", "lock", "end", "next", "same", "maximum", "bans",
-         "players", "bots", "bots_tab", "bot_count", "bot_skill", "bot_choices", "pause"]
+         "players", "bots", "bots_tab", "bot_count", "bot_skill", "bot_choices", "pause", "teleports"]
 
 # a fault in network_host_controls.c, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -118,6 +118,18 @@ NEGATIVE_CONTROLS = {
     "coop-end-game": (("\telse if (!view->coop)\n", "\telse\n"), "pause"),
     "coop-no-friendly-fire": (("\tif (view->coop)\n\t\tSET_FLAG(rows, _host_controls_pause_friendly_fire, TRUE);",
                                ""), "pause"),
+    # (co-op's BRING TO ME and GO TO)
+    "teleports-in-versus": (("\tif (view->coop)\n\t{\n\t\tSET_FLAG(actions, _host_controls_bring",
+                             "\tif (1)\n\t{\n\t\tSET_FLAG(actions, _host_controls_bring"), "teleports"),
+    "teleports-of-own": (("\tif (view->own)\n\t\treturn actions;", "\tif (0)\n\t\treturn actions;"), "teleports"),
+    "teleport-not-told": (("\tdistributed_send_to_machine_reliably(machine_index, &message, "
+                           "_distributed_message_host_teleport, 1,", "\tif (0) distributed_send_to_machine_reliably("
+                           "machine_index, &message, _distributed_message_host_teleport, 1,"), "teleports"),
+    "teleport-from-client": (("\t\tif (machine_index == NONE && from_stream && game_connection() == "
+                              "_game_connection_network_client &&", "\t\tif (from_stream && game_connection() == "
+                              "_game_connection_network_client &&"), "teleports"),
+    "teleport-not-turned": (("\t\t\tplayer_control_set_facing(player->local_player_index, &facing);", "\t\t\t;"),
+                            "teleports"),
     "legacy-told-apart": (("\t\telse if (network_standard_machine_is_openh1(machine_index))\n"
                            "\t\t\tentry->tag = _host_controls_tag_openh1;", ""), "players"),
 }
@@ -130,6 +142,8 @@ def generated(fault=None):
         "HALO_PORT_MAXIMUM_NETWORK_MACHINES", "HALO_PORT_MAXIMUM_NETWORK_PLAYERS"))
     value = re.search(r"\b_distributed_message_host_team = (\d+)", distributed).group(1)
     config += f"#define _distributed_message_host_team {value}\n"
+    value = re.search(r"\b_distributed_message_host_teleport = (\d+)", distributed).group(1)
+    config += f"#define _distributed_message_host_teleport {value}\n"
     config += enum_with(read("port/linux/game/network_admin.h"), "_network_admin_lists,") + "\n"
     header = read("port/linux/game/network_host_controls.h")
     # (the constants, structures and prototypes: the code's functions call each other in any order)
