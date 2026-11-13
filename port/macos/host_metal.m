@@ -1516,8 +1516,11 @@ static void window_visibility_read(void)
 {
 	NSWindow *native = (__bridge NSWindow *)SDL_GetPointerProperty(SDL_GetWindowProperties(presentation.window),
 		SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
+	/* (HALO_LOADING_CAPTURE_DIR's pictures of the screen need its frames
+	drawn: a window covered by others still draws them, at the pace its
+	link keeps, so that the pictures are taken whatever covers it) */
 	int hidden = window_hide_forced >= 0 ? window_hide_forced :
-		native && !(native.occlusionState & NSWindowOcclusionStateVisible);
+		native && !(native.occlusionState & NSWindowOcclusionStateVisible) && !getenv("HALO_LOADING_CAPTURE_DIR");
 
 	if (atomic_exchange(&presentation.hidden, hidden) == hidden)
 		return;
