@@ -419,13 +419,13 @@ once a frame (main_loop) */
 void map_cache_prefill_update(void);
 /* (port/linux/game/menu_pictures_render.c) the menus' pictures' pass runs */
 int menu_pictures_preparing(void);
-/* the deflection of a stick (0 the left, 1 the right) read as none, of
-32767: input.left_stick_dead_zone and input.right_stick_dead_zone, else the
-game's own (port/linux/src/xinput_sdl.c) */
-short halo_stick_dead_range(short stick);
-/* whether a controller's look turns the other way side to side:
+/* the deflection of a gamepad's stick (0 the left, 1 the right) read as
+none, of 32767: its player's input.left_stick_dead_zone and
+input.right_stick_dead_zone, else the game's own (port/linux/src/xinput_sdl.c) */
+short halo_stick_dead_range(short gamepad, short stick);
+/* whether a gamepad's look turns the other way side to side: its player's
 input.invert_look_horizontal (port/linux/src/xinput_sdl.c) */
-int halo_look_horizontal_inverted(void);
+int halo_look_horizontal_inverted(short gamepad);
 /* whether a local player's controller aims as Modern does (input.aim_style,
 the player's own), and Modern's acceleration angle, as its tangent, and the
 push that accelerates, or -1 for the game's own (source/game/player_control.c) */

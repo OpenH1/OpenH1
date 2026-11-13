@@ -414,9 +414,10 @@ static void fix_round_dead_zone(
 }
 
 /* port: a gamepad's sticks' dead zones from its reading (input_update's, and
-a sub-step's: input_abstraction.c), each direction's own, as the original's;
-the stick that alone looks round instead under Modern aim (input.aim_style),
-which takes it as a push and a direction (player_control.c) */
+a sub-step's: input_abstraction.c), each its player's own dead range
+(halo_stick_dead_range), each direction's own, as the original's; the stick
+that alone looks round instead under that player's Modern aim
+(input.aim_style), which takes it as a push and a direction (player_control.c) */
 void input_port_fix_stick_dead_zones(
 	short gamepad_index,
 	short left_x,
@@ -426,6 +427,8 @@ void input_port_fix_stick_dead_zones(
 	point2d *sticks)
 {
 	short look_stick = NONE;
+	short left_range = halo_stick_dead_range(gamepad_index, _gamepad_stick_left);
+	short right_range = halo_stick_dead_range(gamepad_index, _gamepad_stick_right);
 	float acceleration_tangent;
 	float acceleration_threshold;
 
@@ -435,22 +438,21 @@ void input_port_fix_stick_dead_zones(
 	}
 	if (look_stick == _gamepad_stick_left)
 	{
-		fix_round_dead_zone(left_x, left_y, halo_stick_dead_range(_gamepad_stick_left), &sticks[_gamepad_stick_left]);
+		fix_round_dead_zone(left_x, left_y, left_range, &sticks[_gamepad_stick_left]);
 	}
 	else
 	{
-		sticks[_gamepad_stick_left].x = fix_dead_zone(left_x, halo_stick_dead_range(_gamepad_stick_left));
-		sticks[_gamepad_stick_left].y = fix_dead_zone(left_y, halo_stick_dead_range(_gamepad_stick_left));
+		sticks[_gamepad_stick_left].x = fix_dead_zone(left_x, left_range);
+		sticks[_gamepad_stick_left].y = fix_dead_zone(left_y, left_range);
 	}
 	if (look_stick == _gamepad_stick_right)
 	{
-		fix_round_dead_zone(right_x, right_y, halo_stick_dead_range(_gamepad_stick_right),
-			&sticks[_gamepad_stick_right]);
+		fix_round_dead_zone(right_x, right_y, right_range, &sticks[_gamepad_stick_right]);
 	}
 	else
 	{
-		sticks[_gamepad_stick_right].x = fix_dead_zone(right_x, halo_stick_dead_range(_gamepad_stick_right));
-		sticks[_gamepad_stick_right].y = fix_dead_zone(right_y, halo_stick_dead_range(_gamepad_stick_right));
+		sticks[_gamepad_stick_right].x = fix_dead_zone(right_x, right_range);
+		sticks[_gamepad_stick_right].y = fix_dead_zone(right_y, right_range);
 	}
 	return;
 }

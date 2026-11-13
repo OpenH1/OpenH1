@@ -51,7 +51,6 @@ enum
 	_rasterizer_target_render_primary = 0
 };
 
-char const *config_string(char const *name);
 unsigned long system_milliseconds(void);
 void platform_log(char const *format, ...);
 /* each weapon's own offsets, as a local player sees them (port/linux/src/port_config.h) */
@@ -488,7 +487,8 @@ real mouse_zoom_look_scale(short local_player_index, long unit_index, short zoom
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
-		mode = strcmp(config_string("input.zoom_sensitivity"), "halo") ? _mouse_zoom_cs2 : _mouse_zoom_halo;
+		/* (the mouse's player's, player 1's: their profile's) */
+		mode = strcmp(config_player_string(0, "input.zoom_sensitivity"), "halo") ? _mouse_zoom_cs2 : _mouse_zoom_halo;
 	}
 	magnification = unit_get_zoom_magnification(unit_index, zoom_level);
 	unit = unit_try_and_get(unit_index);

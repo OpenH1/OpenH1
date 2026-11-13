@@ -168,6 +168,7 @@ int config_profile_viewmodel_weapon_write(char const *folder, char const *path,
 /* a player profile's own values of the settings that are each player's
 (port_config.h; player_settings.c names its folder) */
 int config_per_player(char const *name);
+int config_keyboard_setting(char const *name);
 int config_profile_text(char const *folder, char const *name, char *text, unsigned int size);
 int config_profile_write(char const *folder, char const *name, char const *value);
 int player_settings_profile_folder(long profile_index, char *folder, unsigned long size);
@@ -575,6 +576,40 @@ static boolean settings_profile_folder(char *folder, unsigned long size)
 		player_settings_profile_folder(player_ui_get_edit_profile_index(), folder, size);
 }
 
+/* the folder of the profile a setting that is each player's is set in: the
+profile being edited's; the keyboard and mouse's, which only player 1
+plays with, player 1's (config_keyboard_setting), whoever opened Settings;
+and its name (whose: ROW_TEXT_LENGTH, or NULL); FALSE with none */
+static boolean settings_setting_folder(char const *name, char *folder, unsigned long size, wchar_t *whose)
+{
+	struct player_profile profile, *edited;
+	long profile_index;
+
+	if (config_keyboard_setting(name))
+	{
+		profile_index = player_ui_get_active_player_profile_index(0);
+		if (!player_settings_profile_folder(profile_index, folder, size))
+			return FALSE;
+		/* (the profile player 1 holds, not read again from its file: each frame
+		the panel shows it) */
+		if (whose)
+		{
+			player_ui_get_active_player_profile(0, &profile);
+			ustrncpy(whose, profile.player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
+			whose[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
+		}
+		return TRUE;
+	}
+	if (!settings_profile_folder(folder, size))
+		return FALSE;
+	if (whose && (edited = player_ui_get_edit_player_profile()) != NULL)
+	{
+		ustrncpy(whose, edited->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
+		whose[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
+	}
+	return TRUE;
+}
+
 /* a setting's value as text, or (default_value) its default: config.toml's,
 or the profile's: its controller's, or its own of a setting that is each
 player's */
@@ -583,7 +618,7 @@ static boolean setting_text(char const *name, char *text, unsigned int size, boo
 	char folder[1024];
 	short index;
 
-	if (!default_value && config_per_player(name) && settings_profile_folder(folder, sizeof(folder)) &&
+	if (!default_value && config_per_player(name) && settings_setting_folder(name, folder, sizeof(folder), NULL) &&
 		config_profile_text(folder, name, text, size))
 	{
 		return TRUE;
@@ -649,7 +684,7 @@ static boolean setting_write(char const *name, char const *value)
 	char folder[1024];
 	short index;
 
-	if (config_per_player(name) && settings_profile_folder(folder, sizeof(folder)))
+	if (config_per_player(name) && settings_setting_folder(name, folder, sizeof(folder), NULL))
 		return config_profile_write(folder, name, value);
 	if (settings_weapon_value(name) != NONE)
 		return settings_weapon_write(settings_weapon_value(name), value);
@@ -793,9 +828,9 @@ static boolean setting_save(struct widget_instance *widget)
 		return FALSE;
 	if (widget->parameters.list.selected_index == setting->loaded_index)
 		return TRUE;
-	if (!config_write(setting->setting, setting->values[widget->parameters.list.selected_index]))
+	if (!setting_write(setting->setting, setting->values[widget->parameters.list.selected_index]))
 	{
-		platform_log("menus: could not write %s to config.toml", setting->setting);
+		platform_log("menus: could not write %s", setting->setting);
 		return FALSE;
 	}
 	platform_log("menus: %s = %s (from the next start)", setting->setting, setting->values[widget->parameters.list.selected_index]);
@@ -3828,7 +3863,6 @@ static void settings_fact_add(struct settings_facts *facts, wchar_t const *name,
 profile's edited (first), or every player's, config.toml's (last) */
 static void settings_profile_fact(char const *name, struct settings_facts *facts, boolean first)
 {
-	struct player_profile *profile = player_ui_get_edit_player_profile();
 	char folder[1024];
 	wchar_t whose[ROW_TEXT_LENGTH] = { 0 };
 	boolean own;
@@ -3836,18 +3870,11 @@ static void settings_profile_fact(char const *name, struct settings_facts *facts
 	/* (a weapon's own offsets are each player's too) */
 	if (!name || (!config_per_player(name) && settings_weapon_value(name) == NONE))
 		return;
-	own = profile && settings_profile_folder(folder, sizeof(folder));
+	own = settings_setting_folder(name, folder, sizeof(folder), whose);
 	if (own != first)
 		return;
-	if (own)
-	{
-		ustrncpy(whose, profile->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
-		whose[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
-	}
-	else
-	{
+	if (!own)
 		settings_wide_copy(whose, L"ALL PLAYERS", ROW_TEXT_LENGTH);
-	}
 	settings_fact_add(facts, L"PROFILE", whose);
 }
 
@@ -4893,10 +4920,11 @@ static boolean controls_load(boolean defaults)
 	{
 		char text[128];
 
+		/* (the profile's edited, each a player's: setting_text) */
 		if (defaults)
 			config_default(controls[control].setting, text, sizeof(text));
-		else
-			snprintf(text, sizeof(text), "%s", config_string(controls[control].setting));
+		else if (!setting_text(controls[control].setting, text, sizeof(text), FALSE))
+			text[0] = 0;
 		control_bindings_read(control, text);
 	}
 	controls_screen.capturing_control = NONE;
@@ -4911,12 +4939,14 @@ static boolean controls_save(void)
 
 	for (control = 0; control < NUMBEROF(controls); control++)
 	{
-		char text[128];
+		char text[128], shown[128];
 
 		control_bindings_text(control, text, sizeof(text));
-		if (strcmp(text, config_string(controls[control].setting)))
+		if (!setting_text(controls[control].setting, shown, sizeof(shown), FALSE))
+			shown[0] = 0;
+		if (strcmp(text, shown))
 		{
-			if (config_write(controls[control].setting, text))
+			if (setting_write(controls[control].setting, text))
 				platform_log("menus: %s = %s", controls[control].setting, text);
 			else
 				result = FALSE;

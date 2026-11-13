@@ -179,10 +179,11 @@ static float mouse_sensitivity(void)
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
-		sensitivity = (float)config_real("input.mouse_sensitivity");
+		/* (the keyboard and mouse's player's, player 1's: their profile's) */
+		sensitivity = (float)config_player_real(0, "input.mouse_sensitivity");
 		if (!(sensitivity > 0.0f))
 			sensitivity = (float)MOUSE_SENSITIVITY_DEFAULT;
-		vertical_sensitivity = (float)config_real("input.mouse_vertical_sensitivity");
+		vertical_sensitivity = (float)config_player_real(0, "input.mouse_vertical_sensitivity");
 		if (!(vertical_sensitivity > 0.0f))
 			vertical_sensitivity = 1.0f;
 	}
@@ -194,43 +195,61 @@ static float mouse_sensitivity(void)
 /* the most a stick's dead zone setting takes, in percent */
 #define STICK_DEAD_ZONE_MAXIMUM 50
 
+/* each gamepad's player's settings: the local player of the gamepad's
+index (as controller_remap.c's ports are), their profile's; another
+gamepad's config.toml's */
+#define PAD_PLAYERS 4
+#define PAD_PLAYER_SLOT(gamepad) ((gamepad) >= 0 && (gamepad) < PAD_PLAYERS ? (gamepad) : PAD_PLAYERS)
+
 /* the deflection a stick reads as none, of 32767, for the game's sticks
-(stick 0 the left, 1 the right): input.left_stick_dead_zone and
-input.right_stick_dead_zone as a percentage, else the game's own */
-short halo_stick_dead_range(short stick)
+(stick 0 the left, 1 the right) of a gamepad: its player's
+input.left_stick_dead_zone and input.right_stick_dead_zone as a
+percentage, else the game's own */
+short halo_stick_dead_range(short gamepad, short stick)
 {
 	static const char *const settings[2] = { "input.left_stick_dead_zone", "input.right_stick_dead_zone" };
-	static short ranges[2] = { STICK_DEAD_RANGE, STICK_DEAD_RANGE };
-	static unsigned long read_at = (unsigned long)-1;
+	static struct
+	{
+		short ranges[2];
+		unsigned long read_at;
+		int read;
+	} pads[PAD_PLAYERS + 1];
+	int slot = PAD_PLAYER_SLOT(gamepad);
 	int index;
 
-	if (read_at != config_changes())
+	if (!pads[slot].read || pads[slot].read_at != config_changes())
 	{
-		read_at = config_changes();
+		pads[slot].read = 1;
+		pads[slot].read_at = config_changes();
 		for (index = 0; index < 2; index++)
 		{
-			long percent = config_integer(settings[index]);
+			long percent = config_player_integer(slot < PAD_PLAYERS ? slot : -1, settings[index]);
 
-			ranges[index] = percent < 0 || percent > STICK_DEAD_ZONE_MAXIMUM
+			pads[slot].ranges[index] = percent < 0 || percent > STICK_DEAD_ZONE_MAXIMUM
 				? STICK_DEAD_RANGE : (short)(percent * 32767 / 100);
 		}
 	}
-	return ranges[stick ? 1 : 0];
+	return pads[slot].ranges[stick ? 1 : 0];
 }
 
-/* whether a controller's look turns the other way side to side
-(input.invert_look_horizontal; the profile's INVERT LOOK is up and down) */
-int halo_look_horizontal_inverted(void)
+/* whether a gamepad's look turns the other way side to side (its player's
+input.invert_look_horizontal; the profile's INVERT LOOK is up and down) */
+int halo_look_horizontal_inverted(short gamepad)
 {
-	static unsigned long read_at = (unsigned long)-1;
-	static int inverted;
-
-	if (read_at != config_changes())
+	static struct
 	{
-		read_at = config_changes();
-		inverted = config_boolean("input.invert_look_horizontal");
+		unsigned long read_at;
+		int read, inverted;
+	} pads[PAD_PLAYERS + 1];
+	int slot = PAD_PLAYER_SLOT(gamepad);
+
+	if (!pads[slot].read || pads[slot].read_at != config_changes())
+	{
+		pads[slot].read = 1;
+		pads[slot].read_at = config_changes();
+		pads[slot].inverted = config_player_boolean(slot < PAD_PLAYERS ? slot : -1, "input.invert_look_horizontal");
 	}
-	return inverted;
+	return pads[slot].inverted;
 }
 
 /* radians of yaw and pitch for the mouse motion since the last call: each
@@ -251,7 +270,7 @@ int halo_linux_mouse_look(short gamepad_index, float *yaw, float *pitch)
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
-		invert = config_boolean("input.invert_mouse");
+		invert = config_player_boolean(0, "input.invert_mouse");
 	}
 	pthread_mutex_lock(&mouse_lock);
 	x = mouse_pending_x;
@@ -300,7 +319,7 @@ int halo_linux_mouse_look_late(short gamepad_index, float *yaw, float *pitch)
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
-		invert = config_boolean("input.invert_mouse");
+		invert = config_player_boolean(0, "input.invert_mouse");
 	}
 	/* (the window's events come now, as the next frame's reading would
 	take them) */
@@ -801,7 +820,7 @@ int halo_linux_mouse_aiming(short gamepad_index)
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
-		aim_assist = config_boolean("input.mouse_aim_assist");
+		aim_assist = config_player_boolean(0, "input.mouse_aim_assist");
 	}
 	if (network_aim_assist_block_mouse() && mouse_is_aim_device(gamepad_index))
 		return TRUE;
@@ -1185,7 +1204,8 @@ static void bindings_read(void)
 	bindings_read_at = config_changes();
 	for (action = 0; action < NUMBER_OF_HALO_KEYBOARD_ACTIONS; action++)
 	{
-		const char *text = config_string(binding_settings[action]);
+		/* (the keyboard and mouse's player's, player 1's: their profile's) */
+		const char *text = config_player_string(0, binding_settings[action]);
 		int slot;
 
 		for (slot = 0; slot < MAXIMUM_BINDINGS; slot++)
@@ -3711,7 +3731,7 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 			state->Gamepad.bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER], keyboard_actions_held,
 			input.mouse_released ? 0.0f : input.mouse_dx, input.mouse_released ? 0.0f : input.mouse_dy);
 		/* (a right stick dead zone set below it aims from that) */
-		aiming_deflection = halo_stick_dead_range(1);
+		aiming_deflection = halo_stick_dead_range(0, 1);
 		if (aiming_deflection > STICK_AIMING_DEFLECTION)
 			aiming_deflection = STICK_AIMING_DEFLECTION;
 		if (abs(state->Gamepad.sThumbRX) > aiming_deflection ||

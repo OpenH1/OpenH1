@@ -36,6 +36,9 @@ enum controller_remap_action
  * flashlight, grenade, fire, crouch, zoom. Start and stick axes stay stock. */
 extern unsigned char const controller_remap_controls[CONTROLLER_REMAP_GAME_ACTIONS];
 char const *controller_remap_setting(short port);
+/* the layout text a port's player plays with: their profile's own
+ * (input.controller), else the port's setting's */
+char const *controller_remap_text(short port);
 int controller_remap_parse(char const *text, unsigned char *buttons);
 void controller_remap_format(unsigned char const *buttons, char *text, unsigned int size);
 int controller_remap_read(short port, unsigned char *buttons);

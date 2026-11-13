@@ -428,6 +428,27 @@ def test_config_player_settings_profile(config_check, tmp_path):
     assert config_check("player", "0", str(one), "display.vsync") == vsync
 
 
+def test_config_player_settings_controls(config_check, tmp_path):
+    """the keyboard's and the controller's settings are a profile's too; a profile's own controller layout
+    (input.controller) is never written into config.toml, which keeps each port's"""
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    assert config_check("get", "controls.jump") == "Space"
+    text = config_check.config.read_text()
+    assert "\n# controller_p1 = " in text and not re.search(r"^#? ?controller = ", text, re.M)
+    config_check("profile-write", str(profile), "controls.jump", "Mouse Right")
+    config_check("profile-write", str(profile), "input.mouse_sensitivity", "2.5")
+    config_check("profile-write", str(profile), "input.left_stick_dead_zone", "12")
+    config_check("profile-write", str(profile), "input.controller", "")
+    assert config_check("player", "0", str(profile), "controls.jump") == "Mouse Right"
+    assert config_check("player", "0", str(profile), "input.mouse_sensitivity") == "2.5"
+    assert config_check("player", "1", str(profile), "input.left_stick_dead_zone") == "12"
+    assert config_check("player", "0", "", "controls.jump") == "Space"
+    assert '\n[input]\nmouse_sensitivity = 2.5\nleft_stick_dead_zone = 12\ncontroller = ""\n' in \
+        (profile / "settings.toml").read_text()
+    assert "\njump = \"Mouse Right\"" not in config_check.config.read_text()
+
+
 def test_config_player_settings_weapon(config_check, tmp_path):
     """a weapon's own offsets in a profile's settings.toml are its player's alone, its 0s too (in place of
     config.toml's); a profile without the weapon's table, or no profile, has config.toml's"""
