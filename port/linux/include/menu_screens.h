@@ -113,7 +113,10 @@ enum menu_screen_cell_kind
 	MENU_SCREEN_CELL_PING,
 	MENU_SCREEN_CELL_STAR,
 	/* (a dot of a colour, by its frame: a team's) */
-	MENU_SCREEN_CELL_DOT
+	MENU_SCREEN_CELL_DOT,
+	/* (a swatch of a profile color, by its frame: the colors', then
+	random's) */
+	MENU_SCREEN_CELL_SWATCH
 };
 
 /* a building block: its kind, the block it is in (-1: the screen), and what
@@ -194,6 +197,10 @@ struct menu_screen
 	the screen: an action, NULL for its widgets') */
 	char const *back;
 	char const *start;
+	/* (a tall screen's background: the tall layout's over the generated
+	screen's own, background="tall"; else the generated screen's, the tall
+	layout's where it has none) */
+	int tall_background;
 	char const *file;
 	struct menu_screen_block blocks[MENU_SCREEN_MAXIMUM_BLOCKS];
 	int block_count;

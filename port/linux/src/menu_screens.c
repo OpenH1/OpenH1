@@ -614,7 +614,7 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 	{
 		static char const *const names[] = { "id", "label", "kind", "width", "grow", "align", "sort", "do", "touch",
 			"when", "gap", "title-width", NULL };
-		static char const *const kinds[] = { "text", "strong", "ping", "star", "dot" };
+		static char const *const kinds[] = { "text", "strong", "ping", "star", "dot", "swatch" };
 
 		*element = _element_column;
 		attributes_read(reader, name, attributes, names, values);
@@ -630,7 +630,7 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 			column->action = values[7];
 			column->when = values[9];
 			column->cell = -1;
-			for (kind = 0; kind < 5 && values[2]; kind++)
+			for (kind = 0; kind < 6 && values[2]; kind++)
 			{
 				if (!strcmp(values[2], kinds[kind]))
 					column->cell = kind;
@@ -640,7 +640,7 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 			if (!column->id || !column->id[0])
 				reader_problem(reader, "<column> has no id", NULL);
 			else if (column->cell < 0)
-				reader_problem(reader, "a <column>'s kind is text, strong, ping, star or dot: \"%s\"", values[2]);
+				reader_problem(reader, "a <column>'s kind is text, strong, ping, star, dot or swatch: \"%s\"", values[2]);
 			else if (!values[3])
 				reader_problem(reader, "<column> has no width", NULL);
 			else
@@ -921,7 +921,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	if (!strcmp(name, "screen") && parent_element == -1)
 	{
-		static char const *const names[] = { "name", "back", "start", NULL };
+		static char const *const names[] = { "name", "back", "start", "background", NULL };
 
 		element = _element_screen;
 		attributes_read(reader, name, attributes, names, values);
@@ -934,6 +934,9 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			action_check(reader, screen->back);
 		if (!reader->failed && screen->start)
 			action_check(reader, screen->start);
+		if (!reader->failed && values[3] && strcmp(values[3], "own") && strcmp(values[3], "tall"))
+			reader_problem(reader, "a <screen>'s background is own or tall: \"%s\"", values[3]);
+		screen->tall_background = values[3] && !strcmp(values[3], "tall");
 	}
 	else if (parent_element == _element_screen && (!strcmp(name, "title-art") || !strcmp(name, "space")))
 	{

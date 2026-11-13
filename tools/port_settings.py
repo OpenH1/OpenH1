@@ -5658,8 +5658,39 @@ def screen_pictures(framed, highlight) -> list:
     pictures.append((part_outline(button_w, button_h), [
         (framed(button_w, button_h, "none", 1.0, "#2f7fff"), button_w, button_h),
         (framed(button_w, button_h, "#0d3a7a", 0.9, "#b8dbff"), button_w, button_h)]))
+    # (a profile color's swatch, Profile Color's rows' (screens/cell_swatch): the colors' in their list's order, then
+    # random's, the colors in quarters)
+    pictures.append((part_swatch(SCREEN_SWATCH), swatch_frames(SCREEN_SWATCH)))
     # (a touchscreen's panel beside the lanes, from their top: the touch layouts' own size, touch_pictures')
     return pictures
+
+
+# the player profiles' colors (source/saved games/player_profile.c's profile_color_table), in the color picker's
+# order, and a swatch's size
+PROFILE_COLORS = ["#FFFFFF", "#000000", "#FE0000", "#0201E3", "#707E71", "#FFFF01", "#00FF01", "#FF56B9", "#AB10F4",
+                  "#01FFFF", "#6493ED", "#FF7F00", "#1ECC91", "#006401", "#603814", "#C69C6C", "#9D0B0E", "#F5999E"]
+SCREEN_SWATCH = 16
+
+
+def part_swatch(size: int) -> str:
+    """a profile color's swatch: each color's by the frame, then random's"""
+    return f"{PARTS}/swatch_{size}"
+
+
+def swatch_frames(size: int) -> list:
+    """part_swatch's frames: a rounded square of each profile color, edged so black's shows on the menus' blue; and
+    random's, four of the colors in its quarters"""
+    edge = '  <rect x="1" y="1" width="{0:g}" height="{0:g}" rx="3" fill="none" stroke="#C9DCF7" stroke-opacity="0.7" ' \
+        'stroke-width="1"/>'.format(size - 2)
+    frames = [(_svg(size, size, [_rounded(size, size, 1, 3, color), edge]), size, size) for color in PROFILE_COLORS]
+    half = size / 2
+    quarters = [f'  <rect x="{x:g}" y="{y:g}" width="{half:g}" height="{half:g}" fill="{color}" '
+                f'clip-path="url(#swatch)"/>' for (x, y), color in
+                zip(((0, 0), (half, 0), (0, half), (half, half)), ("#FE0000", "#FFFF01", "#0201E3", "#00FF01"))]
+    clip = (f'  <clipPath id="swatch"><rect x="1" y="1" width="{size - 2:g}" height="{size - 2:g}" rx="3"/>'
+            '</clipPath>')
+    frames.append((_svg(size, size, [clip, *quarters, edge]), size, size))
+    return frames
 
 
 def _part_text(name: str, pairs: list) -> list:

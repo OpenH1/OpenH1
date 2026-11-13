@@ -897,6 +897,27 @@
 		<frame png="ce/port/main_menu/parts/outline_148x24__0.png" width="148" height="24"/>
 		<frame png="ce/port/main_menu/parts/outline_148x24__1.png" width="148" height="24"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/swatch_16">
+		<frame png="ce/port/main_menu/parts/swatch_16__0.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__1.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__2.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__3.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__4.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__5.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__6.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__7.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__8.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__9.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__10.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__11.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__12.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__13.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__14.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__15.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__16.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__17.png" width="16" height="16"/>
+		<frame png="ce/port/main_menu/parts/swatch_16__18.png" width="16" height="16"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/chip_52x52">
 		<frame png="ce/port/main_menu/parts/chip_52x52__0.png" width="52" height="52"/>
 		<frame png="ce/port/main_menu/parts/chip_52x52__1.png" width="52" height="52"/>

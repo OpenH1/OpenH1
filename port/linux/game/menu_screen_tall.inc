@@ -1185,6 +1185,10 @@ static void tall_build_table(struct screen_tall *tall, struct menu_screen const 
 				row->picture[column_index] = tall_add(tall, row->row, tall_tag("cell_dot"), cx, (short)(cy + icon_y),
 					cmove, 0, 0, 0);
 				break;
+			case MENU_SCREEN_CELL_SWATCH:
+				row->picture[column_index] = tall_add(tall, row->row, tall_tag("cell_swatch"), cx,
+					(short)(cy + icon_y), cmove, 0, 0, 0);
+				break;
 			case MENU_SCREEN_CELL_PING:
 				row->picture[column_index] = tall_add(tall, row->row, tall_tag("cell_bars"), cx,
 					(short)(cy + icon_y - (touch && !laned ? 1 : 0)), cmove, 0, 0, 0);
@@ -1866,8 +1870,13 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 	tall->panel_shown = NONE;
 	tall->lineup_spartan = NONE;
 	/* (the tall layout's background, its band's and footer's lines, where
-	the screen it takes the place of has none of its own: Select Profile's,
-	whose generated screen's was its inner screen's) */
+	the screen it takes the place of has none of its own (Select Profile's,
+	whose generated screen's was its inner screen's); or in place of that
+	screen's own where the file asks for it (Profile Color's, whose
+	generated screen's is the PC version's gradient, its band's line lower:
+	drawn over it, both lines would show) */
+	if (screen->tall_background)
+		menu_tags_background_set(widget->definition_tag_index, tall_tag("background"));
 	if (menu_tags_background(widget->definition_tag_index) == NONE)
 		tall_add(tall, widget, tall_tag("background"), 0, 0, 0, 0, 0, 0);
 	/* (the parts that take no focus are the screen's, the rest the body's,

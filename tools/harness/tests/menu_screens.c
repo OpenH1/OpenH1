@@ -453,6 +453,40 @@ int main(int argc, char **argv)
 		}
 		menu_screen_free(&screen);
 	}
+	else if (!strcmp(name, "profile_color"))
+	{
+		struct menu_screen_block const *table, *spartan, *swatch;
+		int table_index;
+
+		/* (the real Profile Color's file: the tall layout's table of the
+		colors, each its swatch and name; its panel with the focused color's
+		Spartan; BACK at the bar's left, SELECT at its right) */
+		CHECK(read_text(profile_color_xml, &screen, problem), "Profile Color's file is refused: %s", problem);
+		CHECK(!strcmp(screen.name, "profile_color") && !screen.back && screen.tall_background,
+			"its name, back or background");
+		CHECK(kind_total(&screen, MENU_SCREEN_COLORS, -2) == 0, "it still has <colors>");
+		table_index = kind_first(&screen, MENU_SCREEN_TABLE);
+		CHECK(table_index >= 0, "no table");
+		table = &screen.blocks[table_index];
+		CHECK(!strcmp(table->source, "profile.colors") && !strcmp(table->action, "profile color"),
+			"the table's source or do");
+		swatch = &screen.blocks[kind_first(&screen, MENU_SCREEN_COLUMN)];
+		CHECK(swatch->parent == table_index && swatch->cell == MENU_SCREEN_CELL_SWATCH && !strcmp(swatch->id, "swatch"),
+			"the first column is not the swatch");
+		spartan = &screen.blocks[kind_first(&screen, MENU_SCREEN_SPARTAN)];
+		CHECK(screen.blocks[spartan->parent].kind == MENU_SCREEN_PANEL &&
+			spartan->color == MENU_SCREEN_SPARTAN_BINDING && !strcmp(spartan->value, "color.spartan"),
+			"the panel's Spartan, in the focused color");
+		CHECK(kind_total(&screen, MENU_SCREEN_BUTTON, -2) == 2, "%d buttons",
+			kind_total(&screen, MENU_SCREEN_BUTTON, -2));
+		menu_screen_free(&screen);
+		/* (a column of a kind there is none of refused, naming the kinds) */
+		refused("<screen name=\"main\"><table source=\"test.rows\"><column id=\"a\" kind=\"chip\" width=\"9\"/>"
+			"</table></screen>", "text, strong, ping, star, dot or swatch");
+		/* (a background neither own nor tall refused) */
+		refused("<screen name=\"main\" background=\"blue\"><list><item label=\"A\" do=\"quit\"/></list></screen>",
+			"background is own or tall");
+	}
 	else if (!strcmp(name, "browser"))
 	{
 		struct menu_screen_block const *table, *server, *ping;
@@ -531,7 +565,7 @@ int main(int argc, char **argv)
 		refused(TABLE("<column label=\"A\" width=\"10\"/>"), "<column> has no id");
 		refused(TABLE("<column id=\"a\"/>"), "<column> has no width");
 		refused(TABLE("<column id=\"a\" width=\"wide\"/>"), "width is a number");
-		refused(TABLE("<column id=\"a\" width=\"10\" kind=\"bars\"/>"), "kind is text, strong, ping, star or dot");
+		refused(TABLE("<column id=\"a\" width=\"10\" kind=\"bars\"/>"), "kind is text, strong, ping, star, dot or swatch");
 		refused(TABLE("<column id=\"a\" width=\"10\" align=\"center\"/>"), "align is left or right");
 		refused(TABLE("<column id=\"a\" width=\"10\" touch=\"1 2\"/>"), "touch is");
 		refused(TABLE("<column id=\"a\" width=\"10\" sort=\"sort nowhere\"/>"), "no action \"sort nowhere\"");
