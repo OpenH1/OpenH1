@@ -37,8 +37,8 @@ rounded down to, so that no machine sees it faster than this one.
 #include <stdlib.h>
 #include <string.h>
 
-unsigned long config_changes(void);
-char const *config_string(char const *name);
+#include "player_settings.h"
+
 void platform_log(char const *format, ...);
 
 /* the share of the threshold's velocity walked at: below it by enough that
@@ -70,7 +70,8 @@ static real walk_speed_setting(
 
 	if (read_at != config_changes())
 	{
-		char const *value = config_string("input.walk_speed");
+		/* (the keys' player's, player 1's: their profile's) */
+		char const *value = config_player_string(0, "input.walk_speed");
 		char *end = NULL;
 		double number = value ? strtod(value, &end) : 0.0;
 

@@ -58,6 +58,19 @@ char const *controller_remap_setting(short port)
     return port >= 0 && port < 4 ? settings[port] : NULL;
 }
 
+/* the layout a port's player plays with: their profile's own
+(input.controller), else the port's (input.controller_p<n>: the older
+versions' every player's, so an upgrade keeps them); the port's
+environment variable wins */
+char const *controller_remap_text(short port)
+{
+    char const *setting = controller_remap_setting(port);
+    if (!setting) return "";
+    if (config_player_has(port, "input.controller") && !config_pinned_by_environment(setting))
+        return config_player_string(port, "input.controller");
+    return config_string(setting);
+}
+
 int controller_remap_parse(char const *text, unsigned char *buttons)
 {
     unsigned char parsed[CONTROLLER_REMAP_ACTIONS];
@@ -129,7 +142,7 @@ int controller_remap_read(short port, unsigned char *buttons)
     {
         for (i = 0; i < 4; i++)
         {
-            char const *text = config_string(controller_remap_setting((short)i));
+            char const *text = controller_remap_text((short)i);
             valid[i] = controller_remap_parse(text, layouts[i]);
             if (valid[i] && i && strncmp(text, "v2:", 3) && strncmp(text, "v3:", 3) && strncmp(text, "v4:", 3))
             {

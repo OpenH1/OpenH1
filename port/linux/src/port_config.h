@@ -112,6 +112,14 @@ double config_player_real(int local_player, const char *name);
 const char *config_player_string(int local_player, const char *name);
 int config_profile_text(const char *folder, const char *name, char *text, size_t size);
 int config_profile_write(const char *folder, const char *name, const char *value);
+/* whether local player 0 to 3's profile has a value of its own of the
+setting (not one its environment variable sets); and whether a setting's
+environment variable sets it for this run */
+int config_player_has(int local_player, const char *name);
+int config_pinned_by_environment(const char *name);
+/* whether a setting is each player's of the keyboard and mouse, which only
+player 1 plays with: player 1's profile's */
+int config_keyboard_setting(const char *name);
 
 /* the settings whose names begin with prefix ("server.") read from
 config.toml again, but for those their environment variables set; 1 on

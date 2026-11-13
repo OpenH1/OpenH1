@@ -94,6 +94,13 @@ enum config_scope
 {
 	_scope_machine,
 	_scope_player,
+	/* (a player's own, of the keyboard and mouse, which drive only player 1:
+	player 1's profile's, whoever opens Settings) */
+	_scope_keyboard,
+	/* (a player profile's alone, which config.toml never has: a profile's
+	own controller layout, input.controller, in place of the machine's
+	input.controller_p<n> its player would have otherwise) */
+	_scope_profile,
 };
 
 struct config_setting
@@ -972,35 +979,35 @@ static const struct config_setting config_settings[] =
 		"A controller's or the keys' Crouch: \"hold\" crouches while it is held,\n"
 		"as Halo did; \"toggle\" crouches at a tap until Crouch is pressed again,\n"
 		"Jump is pressed, a vehicle's seat is taken or the player dies, and still\n"
-		"crouches while held." },
+		"crouches while held.", _scope_player },
 	{ "input.crouch_walk", _config_boolean, "false", "HALO_CROUCH_WALK", _environment_value, _platform_all,
 		"true: a crouched player stays crouched at a full push of a controller's\n"
 		"stick, walking at a crouch's speed; false: a full push stands them up,\n"
 		"as Halo did. The touch controls always stay crouched, and the keys walk\n"
-		"crouched as before." },
+		"crouched as before.", _scope_player },
 	{ "input.walk", _config_string, "\"hold\"", "HALO_WALK", _environment_value, _platform_all,
 		"The keys' Walk (controls.walk): \"hold\" walks while it is held;\n"
 		"\"toggle\" walks from one press to the next. Walking, the movement keys\n"
 		"move the player at input.walk_speed, as a stick pushed part of the way\n"
 		"does: the same input as a controller's, in every game. Crouched, the\n"
 		"slower of the two. On foot only; controllers and the touch controls\n"
-		"have their sticks." },
+		"have their sticks.", _scope_keyboard },
 	{ "input.walk_speed", _config_string, "\"tracker\"", "HALO_WALK_SPEED", _environment_value, _platform_all,
 		"How fast the keys walk: \"tracker\", as fast as a player can go and\n"
 		"stay off the enemies' motion trackers (the map's threshold, the\n"
-		"player's speeds); or a percentage of the full speed, 10 to 90." },
+		"player's speeds); or a percentage of the full speed, 10 to 90.", _scope_keyboard },
 	{ "input.mouse_sensitivity", _config_real, "5.73", "HALO_MOUSE_SENSITIVITY", _environment_value, _platform_desktop,
 		"How far the view turns for the mouse's movement, on " CONFIG_MOUSE_MARK " scale:\n"
 		"0.022 degrees a count of the mouse times this, with no acceleration,\n"
 		"whatever the field of view or the frame rate. The same number as in\n"
 		"CS2 turns the same. (Older versions' scale, 0.0022 radians a count,\n"
-		"was converted once: times 5.7296.)" },
+		"was converted once: times 5.7296.)", _scope_keyboard },
 	{ "input.zoom_sensitivity", _config_string, "\"cs2\"", "HALO_ZOOM_SENSITIVITY", _environment_value,
 		_platform_desktop,
 		"How the mouse turns while zoomed: \"cs2\", by the zoomed field of view\n"
 		"over the unzoomed one (CS2's zoom_sensitivity_ratio 1), at every zoom\n"
 		"of every weapon; \"halo\", by one over the zoom's magnification, as the\n"
-		"game turns. Controllers and the touch controls keep the game's." },
+		"game turns. Controllers and the touch controls keep the game's.", _scope_keyboard },
 	{ "input.playstation_kernel_driver", _config_boolean, "false", "HALO_PLAYSTATION_KERNEL_DRIVER",
 		_environment_value, _platform_desktop,
 		"Linux: a PlayStation controller (DualSense, DualShock 4) through the\n"
@@ -1008,7 +1015,7 @@ static const struct config_setting config_settings[] =
 		"false: through SDL's own, which needs Steam's udev rules to open it. Read\n"
 		"at start-up." },
 	{ "input.invert_mouse", _config_boolean, "false", "HALO_MOUSE_INVERT", _environment_set_is_true, _platform_desktop,
-		"Moving the mouse forward looks down." },
+		"Moving the mouse forward looks down.", _scope_keyboard },
 	{ "network.block_mouse_aim_assist", _config_boolean, "false", "HALO_NET_BLOCK_MOUSE_AIM_ASSIST", _environment_value,
 		_platform_all, "Host: disable optional mouse magnetism for mouse/keyboard players. Controllers and touch keep their own assist." },
 	{ "network.shield_effects", _config_string, "\"overshield\"", "HALO_NET_SHIELD_EFFECTS", _environment_value, _platform_all,
@@ -1036,12 +1043,12 @@ static const struct config_setting config_settings[] =
 		"Magnetism while aiming with the mouse, as with a controller: the view\n"
 		"slowed and dragged along by a target. The last of the mouse and the\n"
 		"right stick to move decides. The bullets' autoaim (bent toward the\n"
-		"target) stays either way." },
+		"target) stays either way.", _scope_keyboard },
 	{ "input.mouse_vertical_sensitivity", _config_real, "1.0", "HALO_MOUSE_VERTICAL_SENSITIVITY", _environment_value,
 		_platform_desktop,
 		"How far the view turns up and down for the mouse's movement, times\n"
 		"input.mouse_sensitivity (as CS2's m_pitch is of m_yaw): 1 the same as\n"
-		"side to side, 0.5 half as far." },
+		"side to side, 0.5 half as far.", _scope_keyboard },
 
 	{ "input.button_prompts", _config_string, "\"auto\"", "HALO_BUTTON_PROMPTS", _environment_value, _platform_all,
 		"The HUD's button prompts (\"Hold [X] to pick up\", \"Press [flashlight]\"):\n"
@@ -1065,19 +1072,23 @@ static const struct config_setting config_settings[] =
 		"P3 custom controller buttons, same format as controller_p1. Empty uses the profile." },
 	{ "input.controller_p4", _config_string, "\"\"", "HALO_CONTROLLER_P4", _environment_value, _platform_all,
 		"P4 custom controller buttons, same format as controller_p1. Empty uses the profile." },
+	{ "input.controller", _config_string, "\"\"", NULL, _environment_value, _platform_all,
+		"A player profile's own controller layout, in its settings.toml (Button\n"
+		"Remapping sets it), as input.controller_p1's; empty: the profile's\n"
+		"preset. A player whose profile has none has input.controller_p<n>'s.", _scope_profile },
 	{ "input.left_stick_dead_zone", _config_integer, "-1", "HALO_LEFT_STICK_DEAD_ZONE", _environment_value, _platform_all,
 		"How far the controller's left stick moves before it moves the player,\n"
 		"in percent of its travel (0 to 50): lower for finer control, higher for\n"
 		"a worn stick that drifts; -1 for the game's own (27%). On Android, the\n"
-		"touch controls' stick too." },
+		"touch controls' stick too.", _scope_player },
 	{ "input.right_stick_dead_zone", _config_integer, "-1", "HALO_RIGHT_STICK_DEAD_ZONE", _environment_value, _platform_all,
 		"How far the controller's right stick moves before it turns the view, in\n"
-		"percent of its travel (0 to 50); -1 for the game's own (27%)." },
+		"percent of its travel (0 to 50); -1 for the game's own (27%).", _scope_player },
 	{ "input.invert_look_horizontal", _config_boolean, "false", "HALO_INVERT_LOOK_HORIZONTAL", _environment_value,
 		_platform_all,
 		"A controller's look turns the other way: pushing the stick that looks to\n"
 		"the right turns the view left. The profile's INVERT LOOK is the up and\n"
-		"down; this is the side to side, for every controller." },
+		"down; this is the side to side, for every controller.", _scope_player },
 	{ "input.gyro_aim", _config_string, "\"off\"", "HALO_GYRO_AIM", _environment_value, _platform_all,
 		"Aiming by turning a controller that has a gyroscope (a DualSense, a\n"
 		"DualShock 4, a Switch Pro Controller or Joy-Cons, a Steam Deck with\n"
@@ -1124,77 +1135,77 @@ static const struct config_setting config_settings[] =
 		"is the one in that place on any keyboard, which the menus show by its\n"
 		"own label. Buttons: \"Mouse Left\", \"Mouse Right\", \"Mouse Middle\",\n"
 		"\"Mouse 4\", \"Mouse 5\", \"Wheel\" (either way), \"Wheel Up\" and \"Wheel\n"
-		"Down\"; empty for none. Moving forward:" },
+		"Down\"; empty for none. Moving forward:", _scope_keyboard },
 	{ "controls.move_backward", _config_string, "\"S\"", "HALO_KEY_MOVE_BACKWARD", _environment_value, _platform_all,
-		"Moving backward." },
+		"Moving backward.", _scope_keyboard },
 	{ "controls.strafe_left", _config_string, "\"A\"", "HALO_KEY_STRAFE_LEFT", _environment_value, _platform_all,
-		"Moving left." },
+		"Moving left.", _scope_keyboard },
 	{ "controls.strafe_right", _config_string, "\"D\"", "HALO_KEY_STRAFE_RIGHT", _environment_value, _platform_all,
-		"Moving right." },
+		"Moving right.", _scope_keyboard },
 	{ "controls.jump", _config_string, "\"Space\"", "HALO_KEY_JUMP", _environment_value, _platform_all,
-		"Jumping (and skipping cutscenes)." },
+		"Jumping (and skipping cutscenes).", _scope_keyboard },
 	{ "controls.crouch", _config_string, CROUCH_KEYS, "HALO_KEY_CROUCH", _environment_value, _platform_all,
-		"Crouching." },
+		"Crouching.", _scope_keyboard },
 	{ "controls.fire", _config_string, "\"Mouse Left\"", "HALO_KEY_FIRE", _environment_value, _platform_all,
-		"Firing." },
+		"Firing.", _scope_keyboard },
 	{ "controls.throw_grenade", _config_string, "\"G\"", "HALO_KEY_THROW_GRENADE", _environment_value,
 		_platform_all,
-		"Throwing a grenade." },
+		"Throwing a grenade.", _scope_keyboard },
 	{ "controls.melee", _config_string, "\"F, Mouse 4\"", "HALO_KEY_MELEE", _environment_value, _platform_all,
-		"Melee attack." },
+		"Melee attack.", _scope_keyboard },
 	{ "controls.reload", _config_string, "\"R\"", "HALO_KEY_RELOAD", _environment_value, _platform_all,
-		"Reloading." },
+		"Reloading.", _scope_keyboard },
 	{ "controls.zoom", _config_string, "\"Mouse Right, Z\"", "HALO_KEY_ZOOM", _environment_value, _platform_all,
-		"Zooming the scope." },
+		"Zooming the scope.", _scope_keyboard },
 	{ "controls.switch_weapon", _config_string, "\"Wheel, 1\"", "HALO_KEY_SWITCH_WEAPON", _environment_value,
 		_platform_all,
-		"Switching weapons." },
+		"Switching weapons.", _scope_keyboard },
 	{ "controls.switch_grenade", _config_string, "\"X\"", "HALO_KEY_SWITCH_GRENADE", _environment_value, _platform_all,
-		"Switching grenades." },
+		"Switching grenades.", _scope_keyboard },
 	{ "controls.action", _config_string, "\"E\"", "HALO_KEY_ACTION", _environment_value, _platform_all,
 		"The action: picking up (held: swapping weapons), entering and leaving\n"
 		"vehicles, pressing switches; never reloading (the controller's X does\n"
-		"when there is nothing to act on)." },
+		"when there is nothing to act on).", _scope_keyboard },
 	{ "controls.flashlight", _config_string, "\"Q\"", "HALO_KEY_FLASHLIGHT", _environment_value, _platform_all,
-		"The flashlight." },
+		"The flashlight.", _scope_keyboard },
 	{ "controls.scoreboard", _config_string, "\"Tab\"", "HALO_KEY_SCOREBOARD", _environment_value, _platform_all,
-		"Showing the scores (the controller's Back)." },
+		"Showing the scores (the controller's Back).", _scope_keyboard },
 	{ "controls.pause", _config_string, "\"Escape\"", "HALO_KEY_PAUSE", _environment_value, _platform_all,
-		"The pause menu (the controller's Start)." },
+		"The pause menu (the controller's Start).", _scope_keyboard },
 	{ "controls.screenshot", _config_string, "\"F10\"", "HALO_KEY_SCREENSHOT", _environment_value, _platform_all,
-		"Save a PNG screenshot in screenshots/ beside maps/ (press once per capture)." },
+		"Save a PNG screenshot in screenshots/ beside maps/ (press once per capture).", _scope_keyboard },
 	{ "controls.report", _config_string, "\"F8\"", "HALO_KEY_REPORT", _environment_value, _platform_all,
 		"Report a problem: a zip in reports/ beside maps/ (the log, the settings,\n"
 		"the GPU, the frame times and a screenshot of that moment), and a GitHub\n"
-		"issue opened in the browser, filled in, for it to be dragged into." },
+		"issue opened in the browser, filled in, for it to be dragged into.", _scope_keyboard },
 	{ "controls.clip", _config_string, "\"F9\"", "HALO_KEY_CLIP", _environment_value, _platform_all,
 		"Clip: mark the demo being recorded at this moment, its last\n"
-		"demo.clip_seconds (docs/demos.md)." },
+		"demo.clip_seconds (docs/demos.md).", _scope_keyboard },
 	{ "controls.push_to_talk", _config_string, "\"V\"", "HALO_KEY_PUSH_TO_TALK", _environment_value, _platform_all,
-		"Voice chat: talk while it is held (audio.voice_chat \"push_to_talk\")." },
+		"Voice chat: talk while it is held (audio.voice_chat \"push_to_talk\").", _scope_keyboard },
 	{ "controls.chat", _config_string, "\"T\"", "HALO_KEY_CHAT", _environment_value, _platform_all,
 		"Network games' text chat: type a line to everyone (Enter sends it,\n"
-		"Escape lets it go)." },
+		"Escape lets it go).", _scope_keyboard },
 	{ "controls.team_chat", _config_string, "\"Y\"", "HALO_KEY_TEAM_CHAT", _environment_value, _platform_all,
-		"Network games' text chat: type a line to your team." },
+		"Network games' text chat: type a line to your team.", _scope_keyboard },
 	{ "controls.party_accept", _config_string, "\"J\"", "HALO_KEY_PARTY_ACCEPT", _environment_value, _platform_all,
 		"Network games: accept the party invite a player sent you (the\n"
-		"controller's D-pad Down)." },
+		"controller's D-pad Down).", _scope_keyboard },
 	{ "controls.vote_yes", _config_string, "\"F1\"", "HALO_KEY_VOTE_YES", _environment_value, _platform_all,
 		"Network games' votes (to kick a player, to end the game): vote yes in\n"
-		"the vote running, whose box shows at the left." },
+		"the vote running, whose box shows at the left.", _scope_keyboard },
 	{ "controls.vote_no", _config_string, "\"F2\"", "HALO_KEY_VOTE_NO", _environment_value, _platform_all,
-		"Network games' votes: vote no in the vote running." },
+		"Network games' votes: vote no in the vote running.", _scope_keyboard },
 	{ "controls.ping", _config_string, "\"Mouse Middle\"", "HALO_KEY_PING", _environment_value, _platform_all,
 		"Ping: mark what you aim at (a spot, an enemy, a vehicle, a weapon) for\n"
 		"your allies, with a nav point and its distance; again on the same spot\n"
-		"takes it away (the controller's D-pad Right)." },
+		"takes it away (the controller's D-pad Right).", _scope_keyboard },
 	{ "controls.walk", _config_string, "\"Left Shift\"", "HALO_KEY_WALK", _environment_value, _platform_all,
 		"Walking: the movement keys move the player slowly while it is held\n"
-		"(input.walk, input.walk_speed)." },
+		"(input.walk, input.walk_speed).", _scope_keyboard },
 	{ "controls.spartan_link", _config_string, "\"B\"", "HALO_KEY_SPARTAN_LINK", _environment_value, _platform_all,
 		"The Spartan link: your teammates' feeds in the HUD shown or hidden\n"
-		"(display.spartan_link)." },
+		"(display.spartan_link).", _scope_keyboard },
 
 	{ "game.console_log", _config_string, "\"important\"", "HALO_CONSOLE_LOG", _environment_value, _platform_all,
 		"What the game's console shows on screen of what it logs: \"important\"\n"
@@ -3168,6 +3179,8 @@ static void config_append_setting(struct config_text *text, const struct config_
 	}
 	if (setting->scope == _scope_player)
 		config_append(text, "# A player profile may keep its own (Settings), in its settings.toml.\n");
+	else if (setting->scope == _scope_keyboard)
+		config_append(text, "# A player profile may keep its own (Settings), in its settings.toml: player 1's.\n");
 #ifndef HALO_ANDROID
 	/* (Android apps have no environment to set; a setting without a variable
 	names none) */
@@ -3222,7 +3235,7 @@ static char *config_default_text(void)
 		size_t length, other;
 		char buffer[64];
 
-		if (!(setting->platforms & CONFIG_PLATFORM) || !dot)
+		if (!(setting->platforms & CONFIG_PLATFORM) || !dot || setting->scope == _scope_profile)
 			continue;
 		length = (size_t)(dot - setting->name);
 		for (other = 0; other < index; other++)
@@ -3666,7 +3679,8 @@ static char *config_add_missing(const char *text, toml_datum_t table)
 		const char *line;
 		const char *insert = NULL;
 
-		if (!(setting->platforms & CONFIG_PLATFORM) || !dot || toml_seek(table, setting->name).type != TOML_UNKNOWN)
+		if (!(setting->platforms & CONFIG_PLATFORM) || !dot || setting->scope == _scope_profile ||
+			toml_seek(table, setting->name).type != TOML_UNKNOWN)
 			continue;
 		/* (a commented default is the setting, at its default) */
 		snprintf(header, sizeof(header), "%.*s", (int)(dot - setting->name), setting->name);
@@ -5886,12 +5900,19 @@ static long config_player_setting(const char *name)
 {
 	long index = config_setting_index(name);
 
-	return index >= 0 && config_settings[index].scope == _scope_player ? index : -1;
+	return index >= 0 && config_settings[index].scope != _scope_machine ? index : -1;
 }
 
 int config_per_player(const char *name)
 {
 	return config_player_setting(name) >= 0;
+}
+
+int config_keyboard_setting(const char *name)
+{
+	long index = config_setting_index(name);
+
+	return index >= 0 && config_settings[index].scope == _scope_keyboard;
 }
 
 static void config_profile_path(const char *folder, char *path, size_t size)
@@ -5968,7 +5989,7 @@ static void config_profile_read(struct config_profile *profile)
 	{
 		struct config_profile_value *entry = &profile->values[profile->count];
 
-		if (config_settings[index].scope != _scope_player || !(config_settings[index].platforms & CONFIG_PLATFORM) ||
+		if (config_settings[index].scope == _scope_machine || !(config_settings[index].platforms & CONFIG_PLATFORM) ||
 			config_profile_find(profile, (long)index))
 		{
 			continue;
@@ -6089,6 +6110,26 @@ const char *config_player_string(int local_player, const char *name)
 	const char *string = config_player_read(local_player, name, _config_string)->string;
 
 	return string ? string : "";
+}
+
+int config_player_has(int local_player, const char *name)
+{
+	long index = config_player_setting(name);
+	int slot;
+
+	if (local_player < 0 || local_player >= CONFIG_LOCAL_PLAYERS || index < 0 || config_pinned[index])
+		return 0;
+	config_ensure_loaded();
+	slot = config_player_profiles[local_player];
+	return slot >= 0 && config_profile_find(&config_profiles[slot], index) != NULL;
+}
+
+int config_pinned_by_environment(const char *name)
+{
+	long index = config_setting_index(name);
+
+	config_ensure_loaded();
+	return index >= 0 && config_pinned[index];
 }
 
 int config_profile_text(const char *folder, const char *name, char *text, size_t size)
