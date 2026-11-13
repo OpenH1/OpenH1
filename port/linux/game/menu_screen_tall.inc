@@ -872,6 +872,16 @@ static void tall_build_table(struct screen_tall *tall, struct menu_screen const 
 				}
 			}
 		}
+		/* (titles that sort nothing and hold no search: words alone, which
+		the focus passes over) */
+		if (tall->titles)
+		{
+			boolean takes = tall->search_count > 0;
+
+			for (column_index = 0; column_index < tall->column_count; column_index++)
+				takes |= tall->columns[column_index].title && tall->columns[column_index].block->sort;
+			tall->titles->disabled = !takes;
+		}
 		tall->line = tall_add(tall, tall->owner, tall_tag("table_line"), TALL_TABLE_X, TALL_LINE_Y, -106,
 			TALL_TABLE_GROW, TALL_TABLE_WIDTH, 0);
 		tall_box_picture(tall, tall->line, "main_menu/parts/line_%d", TALL_TABLE_WIDTH, 0);
