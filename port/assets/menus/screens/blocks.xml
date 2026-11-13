@@ -16,7 +16,7 @@ screen file's, set on each widget as the screen is made. -->
 	<widget name="screens/header_text" type="text" left="24" width="592" height="40" font="heading" color="#FF2995FD" text_y="9" wide="-106 0" text_flags="no_focus_test"/>
 	<!-- an inner screen's header: its lettered picture (the file's picture=), where the campaign menu's is -->
 	<widget name="screens/header" left="35" top="11" width="363" height="59" bitmap="main_menu/campaign/header_campaign" wide="-106 0"/>
-	<!-- a button over a generated screen (the server browser's HOST): its words
+	<!-- a tall screen's button in its band (the server browser's HOST & MORE), in a bar of its own: its words
 	and key, and a click or a tap does its action -->
 	<widget name="screens/button" type="text" width="148" height="24" bitmap="main_menu/parts/button_148x24" font="ui\small_ui" color="#FFFFFFFF" text_x="8" text_y="3">
 		<on event="a" run="port screen do"/>

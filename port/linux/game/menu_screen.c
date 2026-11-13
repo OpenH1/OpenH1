@@ -536,14 +536,6 @@ static struct screen_place const screen_places[] =
 	{ "pause_campaign", "screens\\pause_campaign_live", NULL, NULL },
 };
 
-/* the server browser, whose screen gets a button of the hand-written
-screens' (screens/button) over it: HOST & MORE, or HOST CO-OP when the
-browser was opened on co-op; its key the controller's Back (F1) */
-#define SCREEN_BROWSER "main_menu\\multiplayer_type_select\\join_game\\join_game_screen"
-#define SCREEN_BROWSER_BUTTON_X 276
-#define SCREEN_BROWSER_BUTTON_Y 8
-static struct screen_place const screen_browser_place = { "browser host", SCREEN_BROWSER, NULL, NULL };
-
 /* ---------- the screens open */
 
 /* a <spartan> of an open screen: its block (its box, in a tall screen, set
@@ -576,10 +568,6 @@ struct screen_open
 	long item_count;
 	char back[SCREEN_ACTION_LENGTH];
 	char start[SCREEN_ACTION_LENGTH];
-	/* (a button over a generated screen, its own widgets kept: the
-	browser's; and the child its focus goes back to from the button) */
-	boolean extra;
-	struct widget_instance *kept_focus;
 	/* (its header, and the picture its file names for it, NONE for the
 	block's own) */
 	struct widget_instance *header;
@@ -1516,44 +1504,6 @@ char const *menu_screen_pause_name(char const *name)
 
 /* ---------- the engine's calls */
 
-/* the server browser's HOST button made over it (TRUE), where it is the
-server browser (not the local network's list, nor Join by Link) */
-static boolean screen_browser_opened(struct widget_instance *widget)
-{
-	char const *name = tag_get_name(widget->definition_tag_index);
-	long index;
-
-	if (!name || strncmp(name, "pc\\", 3) || strcmp(name + 3, SCREEN_BROWSER) || !pc_menu_browser_visit_kind() ||
-		!screen_blocks_found())
-	{
-		return FALSE;
-	}
-	for (index = 0; index < SCREEN_MAXIMUM_OPEN; index++)
-	{
-		struct screen_open *open = &screens.open[index];
-		struct widget_instance *button;
-		boolean coop = pc_menu_browser_visit_kind() == 2;
-
-		if (open->widget)
-			continue;
-		memset(open, 0, sizeof(*open));
-		button = screen_widget_add(widget, screens.button_tag, SCREEN_BROWSER_BUTTON_X, SCREEN_BROWSER_BUTTON_Y);
-		if (!button)
-			return FALSE;
-		open->widget = widget;
-		open->place = &screen_browser_place;
-		open->extra = TRUE;
-		open->items[0] = button;
-		open->pictures[0] = NONE;
-		open->item_count = 1;
-		snprintf(open->ids[0], SCREEN_ID_LENGTH, "host");
-		snprintf(open->actions[0], SCREEN_ACTION_LENGTH, "%s", coop ? "open host coop" : "open host");
-		screen_text_set(button, coop ? "%back-button HOST CO-OP" : "%back-button HOST & MORE");
-		return TRUE;
-	}
-	return FALSE;
-}
-
 boolean menu_screen_opened(struct widget_instance *widget)
 {
 	struct screen_place const *place = screen_place_of(widget->definition_tag_index);
@@ -1561,7 +1511,7 @@ boolean menu_screen_opened(struct widget_instance *widget)
 	long index;
 
 	if (!place)
-		return screen_browser_opened(widget);
+		return FALSE;
 	screens_names_give();
 	menu_screens_poll(ui_widget_port_milliseconds());
 	screen = menu_screens_find(place->screen);
@@ -1828,16 +1778,6 @@ void menu_screen_frame(struct widget_instance *widget)
 
 	if (!open)
 		return;
-	/* (the browser's button: the focus back to the browser's own widgets
-	once the pointer is not what gave the button it, the d-pad its) */
-	if (open->extra)
-	{
-		if (widget->focused_child != open->items[0])
-			open->kept_focus = widget->focused_child;
-		else if (open->kept_focus && !ui_widget_port_pointer_focused())
-			widget->focused_child = open->kept_focus;
-		return;
-	}
 	/* (its file read again: made again, the focus on the same item) */
 	menu_screens_poll(ui_widget_port_milliseconds());
 	if (menu_screens_generation(open->place->screen) != open->generation)
@@ -2027,8 +1967,7 @@ boolean menu_screen_do(struct widget_instance *item, struct event_record *event,
 	{
 		if (open->items[index] == item)
 		{
-			if (!open->extra)
-				snprintf(screens.focused[open->place - screen_places], SCREEN_ID_LENGTH, "%s", open->ids[index]);
+			snprintf(screens.focused[open->place - screen_places], SCREEN_ID_LENGTH, "%s", open->ids[index]);
 			return screen_action_run(item, event, open->actions[index], deleted);
 		}
 	}
@@ -2076,15 +2015,6 @@ boolean menu_screen_back(struct widget_instance *widget, struct event_record *ev
 	/* (a tall screen's keys: its buttons' and its tabs') */
 	if (open && tall_of(open) && tall_key(open, widget, event, deleted))
 		return TRUE;
-	if (open && open->extra)
-	{
-		if (event->type != SCREEN_EVENT_BUTTON || event->data.button.value != 1 ||
-			event->data.button.index != _gamepad_binary_button_back)
-		{
-			return FALSE;
-		}
-		return screen_action_run(widget, event, open->actions[0], deleted);
-	}
 	if (!open || !open->back[0] || event->type != SCREEN_EVENT_BUTTON || event->data.button.value != 1 ||
 		(event->data.button.index != _gamepad_analog_button_b &&
 			event->data.button.index != _gamepad_binary_button_back))
