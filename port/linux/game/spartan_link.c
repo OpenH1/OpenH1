@@ -175,6 +175,10 @@ struct spartan_link_feed
 	unsigned long width, height;
 	/* since when their health has flashed, their shield down (0: not) */
 	unsigned long health_flash_at;
+	/* (debug.spartan_link_log's: the reticle (0 none, 1 blue, 2 red) and
+	the health last logged) */
+	short logged_state;
+	real logged_health;
 };
 
 struct spartan_link_window
@@ -210,6 +214,8 @@ static struct
 	long posed_unit;
 	/* the views drawn in this game (to free them as it ends) */
 	unsigned long views_used;
+	/* (debug.spartan_link_log: a red reticle's frame saved, once a run) */
+	boolean red_saved;
 } spartan_link = { FALSE, 0, (unsigned long)-1, TRUE, 1.0f, FALSE };
 
 /* ---------- private code */
@@ -1438,12 +1444,38 @@ void spartan_link_draw(
 		/* (the teammate's reticle, on their feed's picture) */
 		if (halo_view_drawn(SPARTAN_LINK_VIEW(local_player_index, index)))
 		{
+			struct spartan_link_feed *feed = &window->feeds[index];
 			real radius = spartan_link_reticle_radius(&rectangles[index]);
 			real_point2d place;
 			boolean enemy;
+			boolean shown = spartan_link_feed_aim(feed, &rectangles[index], radius, &place, &enemy);
 
-			if (spartan_link_feed_aim(&window->feeds[index], &rectangles[index], radius, &place, &enemy))
+			if (shown)
 				spartan_link_draw_reticle(white, &place, radius, enemy);
+			/* (debug.spartan_link_log: the reticle's and the health's
+			changes, and the first red's frame saved) */
+			if (spartan_link.log)
+			{
+				short state = !shown ? 0 : enemy ? 2 : 1;
+				real health = object_try_and_get(feed->unit_index) ?
+					object_get(feed->unit_index)->object.body_vitality : 0.0f;
+
+				if (state != feed->logged_state || fabsf(health - feed->logged_health) >= 0.05f)
+				{
+					platform_log("spartan link reticle: %ld local %d feed %d (player %ld) %s at %.1f %.1f of %.1f-%.1f "
+						"%.1f-%.1f, health %.2f", game_time_get(), (int)local_player_index, (int)index,
+						(long)DATUM_INDEX_TO_ABSOLUTE_INDEX(feed->player_index),
+						state == 2 ? "red" : state == 1 ? "blue" : "none", place.x, place.y, rectangles[index].x0,
+						rectangles[index].x1, rectangles[index].y0, rectangles[index].y1, health);
+					feed->logged_state = state;
+					feed->logged_health = health;
+				}
+				if (state == 2 && !spartan_link.red_saved)
+				{
+					spartan_link.red_saved = TRUE;
+					halo_screenshot_named("spartan_link_red");
+				}
+			}
 		}
 	}
 }
