@@ -2,7 +2,8 @@
 another machine (untrusted), a ping that takes the last away (the same
 object, or a point near the last), and the pings a player sends at once and
 over time; and where a ping of an object is drawn in a frame between the
-ticks. */
+ticks; and whose pings a viewer here is shown (a team's, none of a player
+this machine muted). */
 #include "harness.h"
 #include <math.h>
 #include "config.inc"
@@ -41,6 +42,27 @@ static void unit_get_head_position(long unit_index, real_point3d *head)
 	head->x = tick_middle.x + drawn_motion.i;
 	head->y = tick_middle.y + drawn_motion.j;
 	head->z = tick_middle.z + drawn_motion.k + head_above;
+}
+
+/* the game (markers_sees, markers_shown_to): a network game's connection,
+its game engine (with teams or not; none in the campaign), the players, and
+the machines this one muted (network_voice.c) */
+enum { _game_connection_local, _game_connection_network_client, _game_connection_network_server };
+static short connection;
+static boolean engine_running;
+static boolean engine_has_teams;
+static boolean machine_muted[4];
+struct player_datum
+{
+	short team_index;
+	struct { long machine_index; } network_player_data;
+};
+static short game_connection(void) { return connection; }
+static boolean game_engine_running(void) { return engine_running; }
+static boolean game_engine_has_teams(void) { return engine_has_teams; }
+static boolean network_voice_machine_muted(long machine_index)
+{
+	return machine_index >= 0 && machine_index < 4 && machine_muted[machine_index];
 }
 
 #include "under_test.inc"
@@ -121,6 +143,38 @@ int main(int argc, char **argv) {
 		for (index = 0; index < 10; index++)
 			taken += markers_rate_take(&rate, 0xFFFFFF00UL + MARKER_REFILL_MILLISECONDS + 5UL);
 		CHECK(taken == 1, "%d taken past the wrap", taken);
+	}
+	else if (!strcmp(name, "muted"))
+	{
+		/* (this machine is 0; an ally and an enemy on machine 1, another ally on 2) */
+		struct player_datum viewer = { 0, { 0 } };
+		struct player_datum split = { 0, { 0 } };
+		struct player_datum ally = { 0, { 1 } };
+		struct player_datum enemy = { 1, { 1 } };
+		struct player_datum other = { 0, { 2 } };
+
+		connection = _game_connection_network_client;
+		engine_running = TRUE;
+		engine_has_teams = TRUE;
+		CHECK(markers_shown_to(&ally, &viewer), "an ally's ping not shown");
+		CHECK(!markers_shown_to(&enemy, &viewer), "an enemy's ping shown");
+		machine_muted[1] = TRUE;
+		CHECK(!markers_shown_to(&ally, &viewer), "a muted ally's ping shown");
+		CHECK(markers_shown_to(&other, &viewer), "another machine's ally hidden by the mute");
+		CHECK(markers_shown_to(&viewer, &viewer), "the viewer's own ping hidden");
+		CHECK(markers_shown_to(&split, &viewer), "a split screen partner's ping hidden");
+		/* (the host mutes as its clients do; the campaign's co-op too) */
+		connection = _game_connection_network_server;
+		CHECK(!markers_shown_to(&ally, &viewer), "a muted ally's ping shown on the host");
+		engine_running = FALSE;
+		CHECK(!markers_shown_to(&enemy, &viewer), "a muted co-op player's ping shown");
+		/* (a game of this machine alone: no machine's mutes, as a network
+		game left them) */
+		connection = _game_connection_local;
+		CHECK(markers_shown_to(&ally, &viewer), "a local game's ping hidden by a network game's mute");
+		machine_muted[1] = FALSE;
+		connection = _game_connection_network_client;
+		CHECK(markers_shown_to(&ally, &viewer), "an unmuted ally's ping hidden");
 	}
 	else if (!strcmp(name, "object-point"))
 	{

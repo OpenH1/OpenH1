@@ -9,4 +9,9 @@
 		<on event="back" run="NULL"/>
 		<on event="deleted" run="NULL" back="true"/>
 	</behaviour>
+	<behaviour name="main_menu/settings/search_field">
+		<on event="a" run="port settings search"/>
+		<on event="start" run="port settings search"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
 </model>

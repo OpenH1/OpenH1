@@ -356,6 +356,12 @@ static const struct config_setting config_settings[] =
 		"waypoints, scopes, message icons) from the high-res assets: Aerocatia's\n"
 		"and Jessie's art from Halo PC Restored, 4x the maps' bitmaps;\n"
 		"false draws the maps' own bitmaps." },
+	{ "display.spartan_link", _config_string, "\"medium\"", "HALO_SPARTAN_LINK", _environment_value, _platform_all,
+		"The Spartan link: live feeds of your living teammates' views in the\n"
+		"HUD's top line, each with their name, shield and distance, shown and\n"
+		"hidden with controls.spartan_link (a controller's D-pad Down), off as\n"
+		"each game starts. Co-op and team games only (not Pro 2v2). \"small\",\n"
+		"\"medium\" or \"large\" feeds; \"off\": the key does nothing." },
 	{ "display.hud_button_style", _config_string, "\"classic\"", "HALO_HUD_BUTTON_STYLE", _environment_value, _platform_all,
 		"High-res gameplay controller buttons: classic uses the Xbox's stencils;\n"
 		"gems uses shaded Xbox faces; menu_gems uses the menu's button art.\n"
@@ -377,7 +383,7 @@ static const struct config_setting config_settings[] =
 	{ "display.menus", _config_string, "\"pc\"", "HALO_MENUS", _environment_value, _platform_all,
 		"The menus: \"pc\" for the PC version's main menu (port/assets/menus,\n"
 		"and a menus folder here for your own), \"xbox\" for the Xbox's." },
-	{ "display.menu_engine", _config_string, "\"classic\"", "HALO_MENU_ENGINE", _environment_value, _platform_all,
+	{ "display.menu_engine", _config_string, "\"new\"", "HALO_MENU_ENGINE", _environment_value, _platform_all,
 		"What runs the PC menus' generated screens: \"classic\" the game's\n"
 		"widgets, built from the menus' files; \"new\" the port's menu engine,\n"
 		"from the menus' model (docs/menu_engine.md), drawn the same way." },
@@ -951,6 +957,17 @@ static const struct config_setting config_settings[] =
 		"stick, walking at a crouch's speed; false: a full push stands them up,\n"
 		"as Halo did. The touch controls always stay crouched, and the keys walk\n"
 		"crouched as before." },
+	{ "input.walk", _config_string, "\"hold\"", "HALO_WALK", _environment_value, _platform_all,
+		"The keys' Walk (controls.walk): \"hold\" walks while it is held;\n"
+		"\"toggle\" walks from one press to the next. Walking, the movement keys\n"
+		"move the player at input.walk_speed, as a stick pushed part of the way\n"
+		"does: the same input as a controller's, in every game. Crouched, the\n"
+		"slower of the two. On foot only; controllers and the touch controls\n"
+		"have their sticks." },
+	{ "input.walk_speed", _config_string, "\"tracker\"", "HALO_WALK_SPEED", _environment_value, _platform_all,
+		"How fast the keys walk: \"tracker\", as fast as a player can go and\n"
+		"stay off the enemies' motion trackers (the map's threshold, the\n"
+		"player's speeds); or a percentage of the full speed, 10 to 90." },
 	{ "input.mouse_sensitivity", _config_real, "5.73", "HALO_MOUSE_SENSITIVITY", _environment_value, _platform_desktop,
 		"How far the view turns for the mouse's movement, on " CONFIG_MOUSE_MARK " scale:\n"
 		"0.022 degrees a count of the mouse times this, with no acceleration,\n"
@@ -1151,6 +1168,12 @@ static const struct config_setting config_settings[] =
 		"Ping: mark what you aim at (a spot, an enemy, a vehicle, a weapon) for\n"
 		"your allies, with a nav point and its distance; again on the same spot\n"
 		"takes it away (the controller's D-pad Right)." },
+	{ "controls.walk", _config_string, "\"Left Shift\"", "HALO_KEY_WALK", _environment_value, _platform_all,
+		"Walking: the movement keys move the player slowly while it is held\n"
+		"(input.walk, input.walk_speed)." },
+	{ "controls.spartan_link", _config_string, "\"B\"", "HALO_KEY_SPARTAN_LINK", _environment_value, _platform_all,
+		"The Spartan link: your teammates' feeds in the HUD shown or hidden\n"
+		"(display.spartan_link)." },
 
 	{ "game.console_log", _config_string, "\"important\"", "HALO_CONSOLE_LOG", _environment_value, _platform_all,
 		"What the game's console shows on screen of what it logs: \"important\"\n"
@@ -1192,6 +1215,11 @@ static const struct config_setting config_settings[] =
 		"split screen and games with bots. Network games play at the rate they\n"
 		"agreed on (a Legacy game's 30, an OpenH1 game's network.sim_rate), and\n"
 		"saved films at 30, whatever this is." },
+	{ "game.priority", _config_string, "\"normal\"", "HALO_PRIORITY", _environment_value, _platform_guest,
+		"Linux: \"normal\" runs the game at the normal priority whatever its\n"
+		"launcher's (a launcher run at a low one, as CachyOS runs Steam, left the\n"
+		"game behind every other program's work); \"inherit\" keeps the\n"
+		"launcher's. Read by the host as it starts (port/android/host/host_common.c)." },
 	{ "game.map_cache_megabytes", _config_integer, "0", "HALO_MAP_CACHE_MEGABYTES", _environment_value, _platform_all,
 		"The most the decompressed maps the game keeps (the save folder's z/)\n"
 		"may take of the disk, in MB. 0 (Settings' Instant Loading): every\n"
@@ -1438,21 +1466,27 @@ static const struct config_setting config_settings[] =
 		"milliseconds (300, 250, 150, 100 or 50); 0 lists every game. A game\n"
 		"whose ping is not known (a local network game's, a dedicated\n"
 		"server's, one still being timed) is listed." },
-	{ "network.browser_show_ctf", _config_boolean, "true", "HALO_NET_BROWSER_SHOW_CTF", _environment_value,
+	{ "network.browser_tick", _config_string, "\"any\"", "HALO_NET_BROWSER_TICK", _environment_value, _platform_all,
+		"The server browsers list only games of this tick rate (their Filters\n"
+		"page): \"any\", \"30\", \"60\" or \"120\" (OpenH1 games at that rate),\n"
+		"or \"legacy\" (OpenCE's netcode)." },
+	{ "network.browser_game_type", _config_string, "\"any\"", "HALO_NET_BROWSER_GAME_TYPE", _environment_value,
 		_platform_all,
-		"The server browsers list Capture the Flag games (their Filters page)." },
-	{ "network.browser_show_slayer", _config_boolean, "true", "HALO_NET_BROWSER_SHOW_SLAYER", _environment_value,
+		"The server browsers list only games of this type (their Filters\n"
+		"page): \"any\", \"slayer\" (free for all), \"team_slayer\", \"ctf\",\n"
+		"\"oddball\", \"king\", \"race\", OpenCE's \"swat\", \"infection\" or\n"
+		"\"gun_game\", \"coop\" (the campaign), or \"pro_2v2\" (PRO 2V2's)." },
+	{ "network.browser_tab", _config_string, "\"all\"", "HALO_NET_BROWSER_TAB", _environment_value, _platform_all,
+		"The server browsers' tab, the one shown last: \"all\", \"dedicated\",\n"
+		"\"openh1\", \"legacy\", \"coop\" or \"favorites\". The browsers write it." },
+	{ "network.browser_sort", _config_string, "\"players\"", "HALO_NET_BROWSER_SORT", _environment_value,
 		_platform_all,
-		"The server browsers list Slayer games (their Filters page)." },
-	{ "network.browser_show_oddball", _config_boolean, "true", "HALO_NET_BROWSER_SHOW_ODDBALL", _environment_value,
-		_platform_all,
-		"The server browsers list Oddball games (their Filters page)." },
-	{ "network.browser_show_king", _config_boolean, "true", "HALO_NET_BROWSER_SHOW_KING", _environment_value,
-		_platform_all,
-		"The server browsers list King of the Hill games (their Filters page)." },
-	{ "network.browser_show_race", _config_boolean, "true", "HALO_NET_BROWSER_SHOW_RACE", _environment_value,
-		_platform_all,
-		"The server browsers list Race games (their Filters page)." },
+		"The column the server browsers sort by, the one chosen last:\n"
+		"\"players\", \"ping\", \"server\", \"map\" or \"mode\". The browsers write it." },
+	{ "network.browser_sort_descending", _config_boolean, "true", "HALO_NET_BROWSER_SORT_DESCENDING",
+		_environment_value, _platform_all,
+		"The server browsers sort from the most (players, ping) or the end of\n"
+		"the alphabet down; false, the other way. The browsers write it." },
 	{ "friends.share_status", _config_boolean, "true", "HALO_FRIENDS_SHARE_STATUS", _environment_value, _platform_all,
 		"Show your friends that you are online, and where (the menus, a party,\n"
 		"a game), and let them join you (Multiplayer > FRIENDS). Only your\n"
@@ -1504,6 +1538,13 @@ static const struct config_setting config_settings[] =
 		"Hosting: the text chat: \"on\" (links in lines are refused), \"links\"\n"
 		"(links allowed) or \"off\", in either case; listed in the server\n"
 		"browser or not." },
+	{ "network.chat_channels", _config_string, "\"all\"", "HALO_NET_CHAT_CHANNELS", _environment_value,
+		_platform_all,
+		"The text chat's channel each local player chose last, which T\n"
+		"(controls.chat) and a controller's D-pad Up open the chat on: a word\n"
+		"for each player in turn, separated by commas, \"all\", \"team\" or\n"
+		"\"vehicle\" (as \"team,all\"). A team's opens to all in a game without\n"
+		"teams, a vehicle's to the team (or all) on foot. The chat writes it." },
 	{ "network.pings", _config_boolean, "true", "HALO_NET_PINGS", _environment_value, _platform_all,
 		"Hosting: let the players ping (controls.ping, a controller's D-pad\n"
 		"Right): what they aim at marked for their allies with a nav point and\n"
@@ -2011,6 +2052,15 @@ static const struct config_setting config_settings[] =
 		"empty for none." },
 	{ "debug.network_test_start", _config_real, "15.0", "HALO_NETWORK_TEST_START", _environment_value, _platform_all,
 		"Seconds after hosting that an automated test game starts." },
+	{ "debug.spartan_link_open", _config_boolean, "false", "HALO_SPARTAN_LINK_OPEN", _environment_value, _platform_all,
+		"Open every local player's Spartan link as each game starts, without the\n"
+		"key (its tests: port/linux/game/spartan_link.c)." },
+	{ "debug.spartan_link_log", _config_boolean, "false", "HALO_SPARTAN_LINK_LOG", _environment_value, _platform_all,
+		"Log each Spartan link feed's camera as it is drawn (the tick, the local\n"
+		"player, the teammate, through their eyes, where it looks from and along,\n"
+		"its field of view and the frame's place between the ticks), every\n"
+		"player's eye and aim each tick (another machine's feeds compared with\n"
+		"them), and the key's refusals, with a screenshot of the next frame." },
 	{ "debug.spectate_log", _config_boolean, "false", "HALO_SPECTATE_LOG", _environment_value, _platform_all,
 		"Log each local player's camera each tick, with whether it is dead and\n"
 		"whom it watches (game.spectate_on_death's tests:\n"
@@ -2174,7 +2224,8 @@ static const struct config_setting config_settings[] =
 		"\"menu:<buttons>\" presses menu\n"
 		"buttons one a second (a, b, x, y, up, down, left, right, start, back or\n"
 		"wait, or click:<x>:<y>, a click of the pointer there, 0 to 1 of the\n"
-		"window, type:<letters and digits> typed, or enter, the Return key,\n"
+		"window, point:<x>:<y>, the pointer moved there without a click,\n"
+		"type:<letters and digits> typed, or enter, the Return key,\n"
 		"separated by spaces or commas; \"back+x\" holds Back through its\n"
 		"second and presses X half way, hold:<button> holds it the whole\n"
 		"second), for testing the menus; \"menu:ready ...\" counts its seconds\n"
@@ -2182,7 +2233,7 @@ static const struct config_setting config_settings[] =
 		"debug.frame_time, logs where the focus is after each and quits after\n"
 		"the last (tools/menu_parity.py);\n"
 		"\"script:<second>[-<second>] <action>;...\" presses, holds and aims (\"hunt\": at the\n"
-		"nearest enemy in sight) on the\n"
+		"nearest enemy in sight; \"key=walk\": a keyboard action held) on the\n"
 		"simulation's clock in seconds from the scenario's start (tools/scorecard),\n"
 		"the same at any simulation rate; empty for none." },
 	{ "debug.trace", _config_string, "\"\"", "HALO_TRACE", _environment_value, _platform_all,
@@ -2604,6 +2655,13 @@ static const struct config_setting config_settings[] =
 		"A folder of menu files read in place of the menus folder beside\n"
 		"config.toml (a source tree's port/assets/menus, for the menu studio);\n"
 		"empty for that folder." },
+	{ "debug.menu_screens", _config_string, "\"\"", "HALO_MENU_SCREENS", _environment_value, _platform_desktop,
+		"A folder of the menus' hand-written screens (a source tree's\n"
+		"port/assets/menus/screens) watched while the game runs: a screen file\n"
+		"changed there is read again and its screen, if open, made again, a\n"
+		"file with a problem logged and the screen kept as it was\n"
+		"(docs/menu_screens.md). Empty: debug.menu_files' screens folder, if\n"
+		"that is set, else none." },
 	{ "debug.discord_socket", _config_string, "\"\"", "HALO_DISCORD_SOCKET", _environment_value, _platform_desktop,
 		"The Discord client's socket (on Windows its pipe) to connect to, and no\n"
 		"other: a test's stand-in for Discord. Empty: Discord's own." },
@@ -2971,6 +3029,13 @@ static const char *const config_retired_settings[] =
 	/* (the high-res text's letters rasterized or drawn from distance
 	fields: the fields draw them all) */
 	"display.text_renderer",
+	/* (the server browsers' game types shown or hidden one by one: one
+	GAME TYPE in their place, network.browser_game_type) */
+	"network.browser_show_ctf",
+	"network.browser_show_slayer",
+	"network.browser_show_oddball",
+	"network.browser_show_king",
+	"network.browser_show_race",
 	NULL,
 };
 
@@ -4302,6 +4367,7 @@ static const struct
 	{ "display.picture_shape", { "4:3", "16:9", NULL }, NULL },
 	{ "display.frame_style", { "plain", "halo", "xbox", NULL }, NULL },
 	{ "display.hud_button_style", { "classic", "gems", "menu_gems", NULL }, NULL },
+	{ "display.spartan_link", { "small", "medium", "large", "off", NULL }, NULL },
 	{ "display.menus", { "pc", "xbox", NULL }, NULL },
 	{ "display.menu_engine", { "classic", "new", NULL }, NULL },
 	{ "display.menu_cursor", { "off", "small", "medium", "large", "extra_large", NULL }, "medium" },
@@ -4317,6 +4383,7 @@ static const struct
 	{ "input.touch_controls", { "auto", "on", "off", NULL }, NULL },
 	{ "input.touch_crouch", { "toggle", "hold", NULL }, NULL },
 	{ "input.crouch", { "hold", "toggle", NULL }, NULL },
+	{ "input.walk", { "hold", "toggle", NULL }, NULL },
 	{ "input.gyro_aim", { "off", "on", "hold", "pause", "touch", NULL }, NULL },
 	{ "input.gyro_button", { "touchpad", "left_paddle", "right_paddle", "misc", "left_bumper", "right_bumper",
 		"left_trigger", "right_trigger", "left_stick", "right_stick", NULL }, NULL },
@@ -4325,8 +4392,14 @@ static const struct
 	{ "input.zoom_sensitivity", { "cs2", "halo", NULL }, "cs2" },
 	{ "game.console_log", { "important", "all", "none", NULL }, NULL },
 	{ "game.spectate_on_death", { "teammates", "off", NULL }, NULL },
+	{ "game.priority", { "normal", "inherit", NULL }, NULL },
 	{ "game.language", { "", "ja", "de", "fr", "es", "it", NULL }, NULL },
 	{ "network.game_mode", { "openh1", "legacy", "standard", NULL }, NULL },
+	{ "network.browser_tick", { "any", "30", "60", "120", "legacy", NULL }, "any" },
+	{ "network.browser_game_type", { "any", "slayer", "team_slayer", "ctf", "oddball", "king", "race", "swat",
+		"infection", "gun_game", "coop", "pro_2v2", NULL }, "any" },
+	{ "network.browser_tab", { "all", "dedicated", "openh1", "legacy", "coop", "favorites", NULL }, "all" },
+	{ "network.browser_sort", { "players", "ping", "server", "map", "mode", NULL }, "players" },
 	{ "server.game_mode", { "openh1_120", "openh1_60", "openh1_30", "legacy", NULL }, NULL },
 	{ "network.text_chat", { "on", "links", "off", NULL }, NULL },
 	{ "server.chat_filter", { "off", "censor", "block", NULL }, NULL },

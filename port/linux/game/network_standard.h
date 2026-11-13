@@ -32,6 +32,37 @@ void network_standard_server_created(void);
 while no other machine has joined: a game's kind holds once one has */
 void network_standard_server_mode_read(void);
 boolean network_standard_hosting(void);
+/* matchmaking's (matchmaking.c): the next server made (and while it is,
+Server Setup's reading it again) hosts an OpenH1 game at this rate (0: as
+network.game_mode and network.sim_rate say), closed to OpenCE's players,
+and, no_direct_camera, with every OpenH1 machine's views drawn as with
+display.direct_camera off (the game record's
+_network_game_no_direct_camera_bit). Set back to (0, FALSE) once its server
+is gone */
+void network_standard_set_hosting_rules(long rate, boolean no_direct_camera, boolean pro);
+/* (pro: the Pro 2v2 rules, every PRO 2V2 kind's (README, "PRO 2V2"). The
+host's own: its shield effects the stock game's (network_shield_effects.c),
+the mouse's aim assist blocked (network_aim_assist.c), weapons picked up by
+holding the action button, a joining machine with mods that replace sounds,
+bitmaps or models refused (network_distributed.c). Every OpenH1 machine's,
+by the game record's _network_game_pro_rules_bit: network_standard_pro_game.
+Whether this machine hosts so) */
+boolean network_standard_pro_hosting(void);
+/* whether the game this machine plays is a Pro 2v2 game (the host's own
+rules, or its record's word; never out of a network game), whatever its own
+settings, which stay as they are. And what that holds every OpenH1 machine
+to: display.dynamic_lights drawn "classic" (d3d8_device.c,
+render_prepared.c), and no teammates' feeds (the Spartan link's, which asks
+this before it shows one; pings and spectating on death stay). The field of
+view's cap is view_fov.c's (PRO_FIELD_OF_VIEW) */
+boolean network_standard_pro_game(void);
+boolean network_standard_enhanced_lights_allowed(void);
+boolean network_standard_teammate_feeds_allowed(void);
+/* whether this machine's views may be drawn from the newest step
+(display.direct_camera, render_interpolation.c): not in a game whose host
+says no (a 2V2 Classic game's), whatever the player's setting, which stays
+as it is; in any other game, and out of one, as the setting says */
+boolean network_standard_direct_camera_allowed(void);
 /* the game this machine hosts, as a dedicated server's status tells it: its
 OpenH1 game's rate (as last read in the lobby, then the game's), 0 for a
 Legacy game; and whether OpenCE players join it now (a Legacy game, or a

@@ -139,6 +139,18 @@ static struct
 	change in the middle of it */
 	boolean local_enhanced_animations;
 	boolean local_auto_pickup;
+	/* the rules a matchmaking playlist asks of the next server made
+	(network_standard_set_hosting_rules): an OpenH1 game at this rate (0:
+	the settings' kind and rate), and its players' views as with
+	display.direct_camera off; and the second as the server took it */
+	long rules_rate;
+	boolean rules_no_direct_camera;
+	boolean hosting_no_direct_camera;
+	/* ... and the Pro 2v2 rules (every 2V2 kind's): its players' dynamic
+	lights the classic ones, its shield effects the stock game's; as the
+	server took them */
+	boolean rules_pro;
+	boolean hosting_pro;
 } network_standard_globals = { FALSE, SIM_RATE_CLASSIC, FALSE, FALSE };
 
 /* ---------- private code */
@@ -180,7 +192,9 @@ static long network_standard_rate_setting(
 		read_at = config_changes();
 		setting = config_integer("network.sim_rate");
 	}
-	rate = setting;
+	/* (a matchmaking playlist's own rate, whatever the setting says) */
+	rate = network_standard_globals.rules_rate && sim_rate_supported(network_standard_globals.rules_rate) ?
+		network_standard_globals.rules_rate : setting;
 	return sim_rate_supported(rate) ? rate : SIM_RATE_CLASSIC;
 }
 
@@ -194,12 +208,25 @@ void network_standard_server_created(
 	/* (anything but "legacy" is the default, OpenH1's: "openh1", and
 	"standard", its first name; a dedicated server's server.game_mode,
 	"legacy" by default) */
+	boolean rules = !halo_server_mode() && network_standard_globals.rules_rate != 0;
+
 	network_standard_globals.hosting = halo_server_mode() ? network_standard_server_setting() != 0 :
-		!(mode && !csstrcmp(mode, "legacy"));
+		rules || !(mode && !csstrcmp(mode, "legacy"));
 	network_standard_globals.hosting_rate = network_standard_rate_setting();
 	network_standard_globals.hosting_hold_to_pick_up = !config_boolean("game.auto_pickup");
 	network_standard_globals.hosting_classic_turning = !config_boolean("game.enhanced_animations");
-	network_standard_globals.mixed = network_standard_globals.hosting && config_boolean("network.allow_opence");
+	/* (a matchmaking playlist's game: OpenH1's alone, every machine playing
+	by the host's word, Classic's views included) */
+	network_standard_globals.hosting_no_direct_camera = network_standard_globals.hosting && !halo_server_mode() &&
+		network_standard_globals.rules_no_direct_camera;
+	network_standard_globals.hosting_pro = network_standard_globals.hosting && !halo_server_mode() &&
+		network_standard_globals.rules_pro;
+	/* (a Pro 2v2 game's weapons picked up by holding the action button, the
+	Xbox's way, whatever game.auto_pickup) */
+	if (network_standard_globals.hosting_pro)
+		network_standard_globals.hosting_hold_to_pick_up = TRUE;
+	network_standard_globals.mixed = network_standard_globals.hosting && !rules &&
+		config_boolean("network.allow_opence");
 	network_standard_globals.mixed_since = network_standard_globals.mixed;
 	csmemset(network_standard_globals.machine_kinds, 0, sizeof(network_standard_globals.machine_kinds));
 }
@@ -217,6 +244,70 @@ boolean network_standard_hosting(
 	void)
 {
 	return network_standard_globals.hosting;
+}
+
+void network_standard_set_hosting_rules(
+	long rate,
+	boolean no_direct_camera,
+	boolean pro)
+{
+	network_standard_globals.rules_rate = rate;
+	network_standard_globals.rules_no_direct_camera = no_direct_camera;
+	network_standard_globals.rules_pro = pro;
+}
+
+boolean network_standard_pro_hosting(
+	void)
+{
+	return network_standard_globals.hosting && network_standard_globals.hosting_pro;
+}
+
+boolean network_standard_pro_game(
+	void)
+{
+	struct network_game *game;
+
+	switch (game_connection())
+	{
+	case _game_connection_network_server:
+		return network_standard_pro_hosting();
+	case _game_connection_network_client:
+		/* (the host's word, as its record brought it; a Legacy host's none) */
+		game = network_game_get_game();
+		return network_standard_globals.joined && game &&
+			TEST_FLAG(game->cooperative_flags, _network_game_pro_rules_bit);
+	}
+	return FALSE;
+}
+
+boolean network_standard_enhanced_lights_allowed(
+	void)
+{
+	return !network_standard_pro_game();
+}
+
+boolean network_standard_teammate_feeds_allowed(
+	void)
+{
+	return !network_standard_pro_game();
+}
+
+boolean network_standard_direct_camera_allowed(
+	void)
+{
+	struct network_game *game;
+
+	switch (game_connection())
+	{
+	case _game_connection_network_server:
+		return !(network_standard_globals.hosting && network_standard_globals.hosting_no_direct_camera);
+	case _game_connection_network_client:
+		/* (the host's word, as its record brought it; a Legacy host's none) */
+		game = network_game_get_game();
+		return !(network_standard_globals.joined && game &&
+			TEST_FLAG(game->cooperative_flags, _network_game_no_direct_camera_bit));
+	}
+	return TRUE;
 }
 
 long network_standard_server_hosted(
@@ -253,7 +344,8 @@ boolean network_standard_opence_joins_open(
 void network_standard_set_opence_joins(
 	boolean allowed)
 {
-	if (!network_standard_globals.hosting)
+	/* (a matchmaking playlist's game stays OpenH1's alone) */
+	if (!network_standard_globals.hosting || (allowed && network_standard_globals.rules_rate))
 		return;
 	/* (a game OpenCE's players did not join until now is mixed from now on:
 	its machines all OpenH1's, each known by its token; one closed to them
@@ -358,6 +450,8 @@ struct network_game const *network_standard_game_for_machine(
 	legacy_game.standard_rate = 0;
 	SET_FLAG(legacy_game.cooperative_flags, _network_game_hold_to_pick_up_bit, FALSE);
 	SET_FLAG(legacy_game.cooperative_flags, _network_game_classic_turning_bit, FALSE);
+	SET_FLAG(legacy_game.cooperative_flags, _network_game_no_direct_camera_bit, FALSE);
+	SET_FLAG(legacy_game.cooperative_flags, _network_game_pro_rules_bit, FALSE);
 	return &legacy_game;
 }
 
@@ -580,13 +674,17 @@ void network_standard_stamp_game(
 	/* (and how its players pick up a second weapon, read as the rate is) */
 	if (in_lobby)
 	{
-		network_standard_globals.hosting_hold_to_pick_up = !config_boolean("game.auto_pickup");
+		network_standard_globals.hosting_hold_to_pick_up = network_standard_pro_hosting() ||
+			!config_boolean("game.auto_pickup");
 		network_standard_globals.hosting_classic_turning = !config_boolean("game.enhanced_animations");
 	}
 	if (game)
 	{
 		SET_FLAG(game->cooperative_flags, _network_game_hold_to_pick_up_bit,
 			network_standard_globals.hosting && network_standard_globals.hosting_hold_to_pick_up);
+		SET_FLAG(game->cooperative_flags, _network_game_no_direct_camera_bit,
+			network_standard_globals.hosting && network_standard_globals.hosting_no_direct_camera);
+		SET_FLAG(game->cooperative_flags, _network_game_pro_rules_bit, network_standard_pro_hosting());
 		SET_FLAG(game->cooperative_flags, _network_game_classic_turning_bit,
 			network_standard_globals.hosting && network_standard_globals.hosting_classic_turning);
 	}

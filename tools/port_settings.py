@@ -13,9 +13,11 @@ settings defaults" shows the defaults. Controls Setup binds the keyboard and
 mouse's controls, by the functions the PC version names for it.
 """
 
+import contextlib
 import math
 import re
 import sys
+import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 from typing import NamedTuple
 from xml.sax.saxutils import escape, quoteattr
@@ -27,8 +29,22 @@ MOD_ROWS = 11
 # the main menu's items (ce/main_menu.xml): CAMPAIGN, MULTIPLAYER, SETTINGS
 # and QUIT, a row apart (Profile and Credits are left out: tools/ce_menus.py's
 # LEFT_OUT; its CHILD_OFFSETS move Settings and Quit up into their rows)
-SETTINGS_ITEM_PLACE = (192, 319)
-QUIT_ITEM_PLACE = (192, 355)
+# (the main menu's items: CAMPAIGN, MULTIPLAYER, PRO 2V2 (_doubles), SETTINGS
+# and QUIT, 36 apart, as the PC version's)
+DOUBLES_ITEM_PLACE = (192, 319)
+SETTINGS_ITEM_PLACE = (192, 355)
+QUIT_ITEM_PLACE = (192, 391)
+# The main menu's PRO 2V2 (port/linux/game/matchmaking_menu.inc): its screen of
+# kinds, CLASSIC and CRISPY, each a matchmaking playlist
+# (matchmaking.c's matchmaking_doubles_playlist), whose browser it opens
+DOUBLES = "main_menu/doubles"
+DOUBLES_ROWS = 2
+# the 2V2 browser's (_doubles_browser): its rows of games (the server
+# browser's), HOST GAME and FIND GAME under them, and the friends' rows in
+# its panel, their height and step, and where in the panel they begin
+DOUBLES_BROWSER_ROWS = 12
+DOUBLES_FRIEND_ROWS = 6
+DOUBLES_FRIEND_HEIGHT, DOUBLES_FRIEND_STEP, DOUBLES_FRIENDS_TOP = 18, 20, 166
 # the profile manager (the PC version's, which the main menu's Profile
 # opened): the profiles listed, the one chosen made player 1's, NEW and
 # DELETE; Settings' PROFILES tab opens it (MANAGE PROFILES)
@@ -341,6 +357,9 @@ SMALL_UI_CAPITALS = {"A": 10.33, "B": 9.94, "C": 9.10, "D": 10.21, "E": 8.98, "F
 # (the tab keys' prompts: LB's at the margin, RB's after the last tab)
 SETTINGS_TAB_PROMPT_WIDTH = 30
 SETTINGS_PANEL_X, SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_BOTTOM = 388, 224, 400
+# (its words SETTINGS_PANEL_INSET in from its sides)
+SETTINGS_PANEL_INSET = 12
+SETTINGS_PANEL_WORDS = SETTINGS_PANEL_WIDTH - 2 * SETTINGS_PANEL_INSET
 # the footer's band (bitmaps/gradient's line, at 409, over Defaults, OK and
 # Cancel): a page's rows, packed for any platform, end above it
 # (test_port_settings.py's test_settings_rows_fit). The list does not scroll
@@ -383,7 +402,9 @@ def arrows_bounds(height: int, left: int, right: int) -> tuple:
     return (f"{y} {left - ARROW_SM_WIDTH} {y + ARROW_SM_HEIGHT} {left}",
             f"{y} {right} {y + ARROW_SM_HEIGHT} {right + ARROW_SM_WIDTH}")
 # the Quality row's pictures in the panel (its stills: SETTINGS_STILLS)
-SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT = 96, 60
+# (side by side, SETTINGS_STILL_GAP apart, in the middle of the panel at its
+# narrowest, a wide screen's)
+SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT, SETTINGS_STILL_GAP = 88, 55, 6
 # (the panel's pictures' corners, rounded as their frames are: still_frame's
 # rim, SETTINGS_STILL_RIM wide, is drawn this far in, its outer edge at the
 # picture's; tools/ce_menus.py's Art.still cuts each picture's corners to
@@ -394,6 +415,8 @@ SETTINGS_BLUE = "#FF2896FF"
 SETTINGS_DIM = "#FF6F9CD0"
 SETTINGS = "main_menu/settings"
 SETTINGS_TITLE = f"{SETTINGS}/header_settings"
+# (Settings' tabs' prompts, its own: _settings_shared)
+SETTINGS_TAB_PROMPTS = f"{SETTINGS}/tabs"
 SETTINGS_FUNCTIONS = "port settings page"
 
 # ---------- the wide layout of the port's own screens (menu_tags.c's
@@ -447,11 +470,143 @@ def wide_spread(index: int, count: int) -> int:
     return round(-WIDE_HALF + index * WIDE_EXTRA / max(count - 1, 1))
 
 
-# Settings on a wide screen: the rows from the screen's left, SETTINGS_WIDE_ROWS
-# wider (the labels' column; the values at the rows' right), the panel beside
-# them to the screen's right, wider by the rest, the tabs spread across it
-SETTINGS_WIDE_ROWS = 120
-SETTINGS_WIDE_PANEL = (-WIDE_HALF + SETTINGS_WIDE_ROWS, WIDE_EXTRA - SETTINGS_WIDE_ROWS)
+def past_spread(index: int, count: int) -> int:
+    """the same past 16:9 (a past attribute's move), to a 21:9 screen's edges"""
+    return round(-PAST_HALF + index * PAST_EXTRA / max(count - 1, 1))
+
+
+# Settings on a wide screen: the panel at the screen's right, SETTINGS_WIDE_PANEL_LESS
+# narrower than the 640 have it (about a quarter of a 16:10 screen, a little
+# less of 16:9's; its help wraps to more lines: test_port_settings.py's
+# test_settings_help_fits), the rows from the screen's left to it, wider by
+# the extra width and what the panel gave up: SETTINGS_WIDE_LABELS of it the
+# labels' column's, the rest the values' (about a third and two thirds of a
+# 16:9 screen's rows); the tabs spread across it
+SETTINGS_WIDE_PANEL_LESS = 32
+SETTINGS_WIDE_ROWS = WIDE_EXTRA + SETTINGS_WIDE_PANEL_LESS
+SETTINGS_WIDE_LABELS = 20
+SETTINGS_WIDE_VALUES = SETTINGS_WIDE_ROWS - SETTINGS_WIDE_LABELS
+SETTINGS_WIDE_PANEL = (WIDE_HALF + SETTINGS_WIDE_PANEL_LESS, -SETTINGS_WIDE_PANEL_LESS)
+# a spinner at the values' column's left, SETTINGS_WIDE_SPINNER wider (not
+# the whole column: its value and arrows kept together); a slider's track the
+# whole column, its number at the column's end
+SETTINGS_WIDE_SPINNER = 120
+# a setting of two or three choices (SEGMENTED_MOST), segmented: each choice
+# a segment at the values' column's left, the one chosen lit (Settings'
+# current tab's frame), one click choosing it; left and right step them as
+# its spinner's, which holds the choice, hidden while the segments show
+# (menu_functions.c's settings_segments_show: wherever they fit in the row,
+# else the spinner). Each SEGMENT_PAD either side of the longest choice,
+# SEGMENT_LEAST wide at least, SEGMENT_GAP apart; not the settings whose
+# choices the game adds to or rewrites (menu_tags.c's spinner_expand)
+SEGMENTED_MOST = 3
+SEGMENT_PAD, SEGMENT_LEAST, SEGMENT_GAP, SEGMENT_HEIGHT = 8, 48, 4, 18
+SEGMENT_NOT = {"display.vrr", "display.resolution", "display.window_size", "display.refresh_rate",
+               "audio.output_device", "audio.input_device"}
+
+# ---------- the tall layout (the menu engine's: docs/menu_engine.md, "Deliberate differences")
+#
+# A screen the menu engine draws (display.menu_engine "new") may be laid out in a geometry of its own, which the
+# classic engine's widgets (ce/) have not: the generators write its widgets a second time in it (tall_widgets),
+# and tools/menu_look.py writes their looks from those in place of ce/'s, by the widgets' names. Its parts, for
+# any screen to use:
+# - the slim header: the top TALL_BAND units a dark band with its line under it, and the footer's line
+#   TALL_FOOTER above the bottom (TALL_BACKGROUND, in place of bitmaps/gradient, whose lines are at 70 and 409);
+#   the title in it as words (tall_title): the heading font, TALL_TITLE_SCALE larger
+# - past 16:9: a widget's past, "dx dw", moves it dx and widens it dw on a 21:9 screen past what its wide does at
+#   16:9, by its part of that on a screen between them and by more on a wider one (menu_tags.c's
+#   ui_widget_port_past_scale), so that the screen is used edge to edge; one without keeps 16:9's place, centred
+# - a text's scale, "least most" (text_scale): drawn so many times its font's size at the menus' 640 (4:3) and
+#   at 16:9 and wider, in between on a screen between them (menu_tags.c's pc_menu_text_scale); laid out in its
+#   font and drawn larger by the high-res text's distance fields (rasterizer_text_set_scale), about its box's
+#   middle
+# Settings' tabs and pages are laid out in it (SETTINGS_TALL); another screen opts in by writing its widgets in
+# it too (tall_widgets).
+TALL_BAND, TALL_FOOTER = 40, 37
+TALL_BACKGROUND = "main_menu/parts/background_tall"
+TALL_TITLE_SCALE = 1.4
+# (the words of the titles that are the PC version's pictures, not TITLES')
+TALL_TITLE_WORDS = {"main_menu/multiplayer_type_select/join_game/filters/header_filters": "FILTERS"}
+# (the extra width of a 21:9 screen past 16:9's)
+PAST_EXTRA = WIDE_SCREENS["21:9"] - WIDE_WIDTH
+PAST_HALF = PAST_EXTRA // 2
+
+
+def past(dx: float = 0, dw: float = 0):
+    """a widget's past attribute: moved dx, dw wider, on a 21:9 screen past 16:9 (None: neither)"""
+    return f"{round(dx)} {round(dw)}" if round(dx) or round(dw) else None
+
+
+def tall_title(name: str, strings: str, index: int) -> list:
+    """a screen's title in the slim header: its words (the index'th of a <strings>: a look's text is the strings
+    its widget in ce/ has, and a title's widget there has none) in the heading font (OpenCE, as the titles'
+    pictures set them, in their colour), TALL_TITLE_SCALE larger, from the screen's left margin at every width"""
+    return _widget(name, [("type", "text"), ("left", WIDE_MARGIN), ("top", 0), ("width", 640 - 2 * WIDE_MARGIN),
+                          ("height", TALL_BAND), ("string_list", strings), ("string_index", index or None),
+                          ("font", "heading"),
+                          ("color", "#FF%02X%02X%02X" % TITLE_COLOR[:3]),
+                          ("text_y", caps_text_y(TALL_BAND, large=True)),
+                          ("text_scale", f"{TALL_TITLE_SCALE:g} {TALL_TITLE_SCALE:g}"),
+                          ("wide", WIDE_LEFT), ("past", past(-PAST_HALF))], [])
+
+
+class SettingsLayout(NamedTuple):
+    """the geometry Settings' tabs and pages are laid out in: the rows' tops (a tab's, under its tabs, and a
+    page's), the tabs', a row's height and step, a section's, where the rows and the panel end, the button bar's
+    top, a segment's height; the screen's background, the rows', sections', panels' (by kind) and segments'
+    pictures; the rows' text scale (None: their font's size); whether it is laid out past 16:9; and whether its
+    titles are words (the slim header's) or pictures"""
+    name: str
+    tab_top: int
+    page_top: int
+    tabs_top: int
+    row_height: int
+    row_step: int
+    section_height: int
+    section_step: int
+    section_gap: int
+    rows_bottom: int
+    panel_bottom: int
+    bar_y: int
+    segment_height: int
+    background: str
+    row_picture: str
+    section_picture: str
+    panel_picture: str
+    segment_picture: str
+    text_scale: str = None
+    past: bool = False
+    words_title: bool = False
+    # (the labels' column's part of the rows' growth at 16:9: SETTINGS_WIDE_LABELS)
+    wide_labels: int = 20
+    # (the room either side of a segment's words: SEGMENT_PAD)
+    segment_pad: int = SEGMENT_PAD
+
+
+# (the rows' bottom the footer's band's line, bitmaps/gradient's at 409; the
+# list does not scroll)
+SETTINGS_CLASSIC = SettingsLayout("classic", 104, 80, 76, 20, 21, 18, 20, 6, 408, 400, 414, 18, "bitmaps/gradient",
+                                  "main_menu/settings/row", "main_menu/settings/section",
+                                  "main_menu/settings/{kind}_panel", "main_menu/settings/segment")
+# (the band, the tabs under it, the rows from under them to above the
+# footer's line, scrolled where they do not fit (menu_engine.c); a row
+# TALL_ROW_HEIGHT high, its words SETTINGS_TALL_TEXT larger, at 16:9 as tall
+# against it as small_ui's against the classic's 20, and its labels' column
+# the wider for them)
+TALL_ROW_HEIGHT = 24
+SETTINGS_TALL_TEXT = "1 1.2"
+SETTINGS_TALL = SettingsLayout("tall", TALL_BAND + 38, TALL_BAND + 10, TALL_BAND + 6, TALL_ROW_HEIGHT,
+                               TALL_ROW_HEIGHT + 1, 20, 22, 6, 480 - TALL_FOOTER - 5, 480 - TALL_FOOTER - 5,
+                               480 - TALL_FOOTER + 5, 20, TALL_BACKGROUND,
+                               "main_menu/settings/row_tall", "main_menu/settings/section_tall",
+                               "main_menu/settings/{kind}_panel_tall", "main_menu/settings/segment_tall",
+                               SETTINGS_TALL_TEXT, True, True, 40, 5)
+# Settings past 16:9 (SETTINGS_TALL's): the panel SETTINGS_PAST_PANEL wider (about a quarter of a 21:9 screen),
+# the rows the rest; SETTINGS_PAST_LABELS of the rows' the labels' column's, the rest the values'
+SETTINGS_PAST_PANEL = 93
+SETTINGS_PAST_ROWS = PAST_EXTRA - SETTINGS_PAST_PANEL
+SETTINGS_PAST_LABELS = 60
+SETTINGS_PAST_VALUES = SETTINGS_PAST_ROWS - SETTINGS_PAST_LABELS
 
 DISPLAY_MODES = [("FULLSCREEN", "fullscreen"), ("BORDERLESS", "borderless"), ("WINDOWED", "windowed")]
 # input.left_stick_dead_zone's and right's: the game's own (-1), or a part of
@@ -552,7 +707,7 @@ KEY_BINDINGS = ("controls_setup", "controls_settings_screen")
 # port/linux/game/menu_functions.c's table of them), and its rows for a
 # group's actions (the most a group has), each its action's two bindings
 CONTROL_GROUPS = ["MOVEMENT", "WEAPONS", "ACTIONS", "COMMUNICATION"]
-CONTROL_ROWS = 7
+CONTROL_ROWS = 8
 CONTROL_COMMAND_ROWS = {f"command_{n}" for n in range(1, CONTROL_ROWS + 1)}
 # (an action's row: its name, then its two bindings' columns, to the row's end)
 CONTROL_BINDINGS_X, CONTROL_BINDING_WIDTH = (136, 240), 104
@@ -563,8 +718,16 @@ DISCORD_ACCOUNT = ("network_setup/discord_account", "discord_account_screen")
 # browser_filters_read; its title the PC version's Filters')
 BROWSER_FILTERS = ("network_setup/browser_filters", "browser_filters_screen")
 BROWSER_FILTERS_TITLE = "main_menu/multiplayer_type_select/join_game/filters/header_filters"
-SHOW_HIDE = [("SHOW", "true"), ("HIDE", "false")]
 BROWSER_PINGS = [("ANY", "0")] + [(f"UNDER {ms} MS", str(ms)) for ms in (300, 250, 150, 100, 50)]
+# the Filters page's TICK RATE and GAME TYPE (network.browser_tick and
+# network.browser_game_type: menu_functions.c's browser_tick_words and
+# browser_type_words, in their order)
+BROWSER_TICKS = [("ANY", "any"), ("OPENH1 30", "30"), ("OPENH1 60", "60"), ("OPENH1 120", "120"),
+                 ("LEGACY", "legacy")]
+BROWSER_GAME_TYPES = [("ANY", "any"), ("SLAYER", "slayer"), ("TEAM SLAYER", "team_slayer"),
+                      ("CAPTURE THE FLAG", "ctf"), ("ODDBALL", "oddball"), ("KING OF THE HILL", "king"),
+                      ("RACE", "race"), ("SWAT", "swat"), ("INFECTION", "infection"), ("GUN GAME", "gun_game"),
+                      ("CO-OP", "coop"), ("PRO 2V2", "pro_2v2")]
 # Button Remapping's rows for a group's actions (the most a group has:
 # controller_remap_menu.inl's pad_action_groups), and what each row does: A
 # (or a click) takes the next button pressed, left and right step through
@@ -617,9 +780,9 @@ PAGES = {
         "rows": [
             (SECTION, "DISPLAY"),
             ("WINDOW", "display.mode", DISPLAY_MODES,
-             "How the game takes the screen. Fullscreen sets the display to the game's resolution; borderless covers "
-             "the screen with a window, so that other windows open over it at once; windowed is a window you can "
-             "move and resize. F11 switches between the window and the screen.", "computer"),
+             "How the game takes the screen. Fullscreen sets the display to the game's resolution. Borderless "
+             "covers it with a window that others open over. Windowed is a window to move and resize. F11 "
+             "switches between the two.", "computer"),
             # (in Window Size's place, the one the display mode shown uses:
             # SETTINGS_ROW_WHEN; port/linux/game/menu_tags.c
             # adds the display's resolutions, and puts the sizes that fit the
@@ -640,8 +803,8 @@ PAGES = {
              "VSync, variable refresh (G-SYNC, FreeSync), the most frames a second and low latency.", None),
             ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
              "How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini "
-             "Projection (First Person). Passenger seats use it too; driver and gunner: First Person.|Click the "
-             "number (or press A) to type 20 to 160.", None),
+             "Projection. Passengers use it too; driver and gunner: First Person.|Click the number (or press A) "
+             "to type 20 to 160. Capped at 110 in Pro 2v2 games.", None),
             ("ORIENTATION", "display.orientation",
              [("LANDSCAPE", "landscape"), ("PORTRAIT", "portrait"), ("AUTO", "auto")],
              "Which way up you hold the device. Portrait has a strip of buttons along the top, the picture under "
@@ -663,6 +826,9 @@ PAGES = {
              "Enhanced: smoother edges, sharper textures and shadows, smoother lighting. Classic looks as the "
              "Xbox did.|Changing one shows CUSTOM.", None),
             # (display.battery_saver: port/linux/src/battery_saver.c)
+            # (from Interface: port/linux/game/spartan_link.c's row took its place)
+            ("HIGH-RES TEXT", "display.high_res_text", ON_OFF,
+             "Draws text and titles with sharp high-resolution fonts. Off draws the game's own.", None),
             ("BATTERY SAVER", "display.battery_saver", [("OFF", "off"), ("ON", "on"), ("AUTO", "auto")],
              "Up to 60 frames a second and Classic graphics, for a longer battery and a cooler device. Auto turns "
              "it on while the device runs on its battery. Your own settings come back as it turns off.", None),
@@ -737,10 +903,12 @@ PAGES = {
              "Moving the mouse forward looks down, as a flight stick does.", None),
             ("MOUSE AIM ASSIST", "input.mouse_aim_assist", ON_OFF,
              "Slows and drags your aim along with a target while you aim with the mouse, as it does with a "
-             "controller.", None),
+             "controller.|Off in Pro 2v2 games, for everyone.", None),
+            # (off, dimmed, in a 2V2 Classic game: menu_functions.c's
+            # direct_camera_row_show)
             ("INSTANT AIM", "display.direct_camera", ON_OFF,
              "Turns the view the moment the mouse moves, not up to two of the game's updates later. Off feels as "
-             "the original did.", "computer"),
+             "the original did.|Off for everyone in a Pro 2v2 Classic game; yours again after it.", "computer"),
             # (port/linux/src/sdl_platform.c's menu_cursor_size; hidden in the
             # headset, where VR Setup's row takes its room and the menus have
             # no desktop pointer: SETTINGS_ROW_WHEN)
@@ -836,8 +1004,13 @@ PAGES = {
              [("CLASSIC", "classic"), ("GEMS", "gems"), ("DARK GEMS", "menu_gems")],
              "The buttons the HUD draws. Classic: plain Xbox buttons. Gems: shaded Xbox buttons. Dark Gems: the "
              "menus' button artwork.", None),
-            ("HIGH-RES TEXT", "display.high_res_text", ON_OFF,
-             "Draws text and titles with sharp high-resolution fonts. Off draws the game's own.", None),
+            # (port/linux/game/spartan_link.c: co-op and team games; HIGH-RES
+            # TEXT moved to Video's GRAPHICS to make room)
+            ("SPARTAN LINK", "display.spartan_link",
+             [("SMALL", "small"), ("MEDIUM", "medium"), ("LARGE", "large"), ("OFF", "off")],
+             "Your living teammates' views in the HUD's top line, with their names, shields and distances, in "
+             "co-op and team games: the SPARTAN LINK key (or D-pad Down) shows and hides them. Off: the key does "
+             "nothing.", None),
             (SECTION, "MULTIPLAYER"),
             ("PLAYER NAMES", "display.player_names",
              [("ALL", "all"), ("ALLIES", "allies"), ("ENEMIES", "enemies"), ("NONE", "none")],
@@ -893,8 +1066,8 @@ PAGES = {
             # menu_functions.c's clear_caches_show; port/linux/src/game_caches.c)
             ("CLEAR CACHES", None, None,
              "Deletes what the game keeps only to start and load faster: the unpacked maps, their prepared "
-             "draws, the menus' pictures, the ambient occlusion's volumes and the GPU's pipelines. They go at the "
-             "next start and are made again as you play.|Select it twice: the first asks, the second clears.",
+             "draws, the menus' pictures, the ambient occlusion's volumes and the GPU's pipelines, made again "
+             "as you play.|Select it twice: the first asks, the second clears.",
              None, "clear_caches", "port settings clear caches"),
             # (port/linux/src/report.c: saved at the next frame, and a GitHub
             # issue opened in the browser, filled in; the game sends nothing)
@@ -935,9 +1108,9 @@ PAGES = {
             # with any anti-aliasing, drawn at their resolution:
             # d3d8_device.c's screen_mode_choose; not iOS's)
             ("RENDER RESOLUTION", "display.render_resolution", RENDER_RESOLUTIONS,
-             "Full draws the game at your screen's resolution. Above 100% draws it larger and scales it down: finer "
-             "detail and smoother edges, with any anti-aliasing, for over twice the graphics card's work at 150%, "
-             "four times at 200%. Xbox draws the Xbox's 640x480 and scales it up: softer, and very light.",
+             "Full draws the game at your screen's resolution. Above 100% draws it larger and scales it down: "
+             "finer and smoother, for over twice the graphics card's work at 150%, four times at 200%. Xbox draws "
+             "640x480, scaled up: softer, and very light.",
              "computer"),
             ("ANTI-ALIASING", "display.anti_aliasing",
              [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x"),
@@ -969,26 +1142,27 @@ PAGES = {
              "cost.", None),
             ("DYNAMIC LIGHTS", "display.dynamic_lights", [("CLASSIC", "classic"), ("ENHANCED", "enhanced")],
              "Enhanced: plasma bolts, muzzle flashes and blasts light their surroundings smoothly, with a glow. "
-             "Classic lights them as the Xbox did.", "desktop android"),
+             "Classic lights them as the Xbox did.|Classic for everyone in a Pro 2v2 game; yours again after it.",
+             "desktop android"),
             ("AMBIENT OCCLUSION", "display.ambient_occlusion",
              [("OFF", "off"), ("WORLD", "world"), ("RAY TRACED", "ray_traced")],
-             "World: grounds characters, vehicles and scenery with soft shade where they meet the level and each "
-             "other, worked out from the level's shape. The levels keep their own lighting. Ray Traced: the shade "
-             "of characters and vehicles traced by the graphics card, where it can (else World).", "desktop android"),
+             "World: soft shade where characters, vehicles and scenery meet the level and each other, from the "
+             "level's shape; the levels keep their own lighting. Ray Traced: the shade of characters and vehicles "
+             "traced by the graphics card, where it can (else World).", "desktop android"),
             ("SHIELD GLOW", "display.shield_glow", ON_OFF,
              "Shields light their surroundings as they flare, in the shield's own color. Online: the host's "
-             "choice.", None),
+             "choice.|Off in Pro 2v2 games, for everyone.", None),
             ("GLOW INTENSITY", "display.shield_glow_intensity", [("DEFAULT", "default"), ("LIGHT SHOW", "light_show")],
-             "Light Show: the shields' glow reaches three times as far, and is brighter. Online: the host's choice.",
-             None),
+             "Light Show: the shields' glow reaches three times as far, and is brighter. Online: the host's choice."
+             "|Default in Pro 2v2 games, for everyone.", None),
             (SECTION, "GAME"),
             # (locked at ORIGINAL (30) in a game that plays at 30 whatever it
             # says, a network game of other machines, a film's playback:
             # menu_functions.c's sim_rate_row_show)
             ("TICK RATE", "game.sim_rate", [("ORIGINAL (30)", "30"), ("60", "60"), ("120", "120")],
-             "How often the world updates each second, in games on this device: the campaign, split screen and "
-             "bots. 60 and 120 respond faster and take more of the processor. Online games play at their host's "
-             "tick rate: an OpenH1 game's (OpenH1 60 Tick), a Legacy game's 30.", None),
+             "How often the world updates each second, in games on this device (campaign, split screen, bots). "
+             "60 and 120 respond faster and take more of the processor. Online games play at their host's tick "
+             "rate: an OpenH1 game's (OpenH1 60 Tick), a Legacy game's 30.", None),
             # (game.enhanced_animations: the preset's, Classic's off, as the
             # Xbox played; a network game's turning is its host's:
             # network_standard_turns_with_aim)
@@ -1188,7 +1362,8 @@ PAGES = {
              "own.", None),
             ("OVERSHIELD", "display.overshield_effect", ON_OFF,
              "An overshield stays lit for as long as it lasts, in its own color, on your body and, with Arm "
-             "Shields, your arms. Off draws it as the original did. Online: the host's choice.", None),
+             "Shields, your arms. Off draws it as the original did. Online: the host's choice.|Off in Pro 2v2 "
+             "games, for everyone.", None),
             ("OVERSHIELD COLOR", "display.overshield_layer_color", [("LAYERS", "true"), ("RED", "false")],
              "The overshield's color as its layers drain, as your shield meter shows them: green while the green "
              "layer lasts, then red. Red keeps it red throughout.", None),
@@ -1261,6 +1436,16 @@ PAGES = {
              "Which of the actions to show: movement, weapons, actions or communication.", None, "group"),
             (SECTION, "ACTIONS"),
             *[("", None, None, "", None, f"command_{n}") for n in range(1, CONTROL_ROWS + 1)],
+            # (the keys' Walk, controls.walk: port/linux/game/keyboard_walk.c;
+            # the Controls tab has no room left for them)
+            (SECTION, "WALK"),
+            ("WALK", "input.walk", [("HOLD", "hold"), ("TOGGLE", "toggle")],
+             "Hold walks while the Walk key is held; Toggle walks from one press to the next. Walking, the "
+             "movement keys move you slowly, as a stick pushed a little does.", None),
+            ("WALK SPEED", "input.walk_speed",
+             [("TRACKER", "tracker")] + [(f"{percent}%", str(percent)) for percent in range(10, 100, 10)],
+             "How fast you walk. Tracker: as fast as you can and still stay off the enemies' motion trackers. "
+             "Or a part of your full speed.", None),
         ],
     },
     GYRO[0]: {
@@ -1277,9 +1462,9 @@ PAGES = {
             ("GYRO AIMING", "input.gyro_aim",
              [("OFF", "off"), ("ALWAYS ON", "on"), ("HOLD TO AIM", "hold"), ("HOLD TO PAUSE", "pause"),
               ("THUMB ON STICK", "touch")],
-             "Aim by turning the controller, as you would a mouse; the stick still works too. Hold to Aim: only "
-             "while the gyro button is held. Hold to Pause: except while it is held, to re-center. Thumb on "
-             "Stick: while your thumb touches the right stick (a Steam Deck, a Steam Controller).|No aim assist "
+             "Aim by turning the controller, as a mouse; the stick still works. Hold to Aim: only while the "
+             "gyro button is held. Hold to Pause: except while it is held, to re-center. Thumb on Stick: while "
+             "your thumb is on the right stick (Steam Deck, Steam Controller).|No aim assist "
              "on the gyro's aim.", None),
             ("GYRO BUTTON", "input.gyro_button", GYRO_BUTTONS,
              "The button that Hold to Aim and Hold to Pause hold. It still does its own action too: Button "
@@ -1376,14 +1561,13 @@ PAGES = {
             ("PING", "network.browser_ping", BROWSER_PINGS,
              "Lists only the games whose ping is under this.|A game whose ping is not known is listed: a local "
              "network game's, a dedicated server's, one still being timed.", None),
-            (SECTION, "GAME TYPES"),
-            ("CAPTURE THE FLAG", "network.browser_show_ctf", SHOW_HIDE,
-             "Lists Capture the Flag games, OpenCE's kinds of it too.", None),
-            ("SLAYER", "network.browser_show_slayer", SHOW_HIDE,
-             "Lists Slayer games, OpenCE's kinds of it too (SWAT, Infection, Gun Game).", None),
-            ("ODDBALL", "network.browser_show_oddball", SHOW_HIDE, "Lists Oddball games.", None),
-            ("KING OF THE HILL", "network.browser_show_king", SHOW_HIDE, "Lists King of the Hill games.", None),
-            ("RACE", "network.browser_show_race", SHOW_HIDE, "Lists Race games.", None),
+            (SECTION, "GAME"),
+            ("TICK RATE", "network.browser_tick", BROWSER_TICKS,
+             "Lists only the games of this tick rate.|OpenH1 games play at 30, 60 or 120 ticks a second; Legacy "
+             "games are OpenCE's netcode.", None),
+            ("GAME TYPE", "network.browser_game_type", BROWSER_GAME_TYPES,
+             "Lists only the games of this type.|Slayer is free for all; SWAT, Infection and Gun Game are "
+             "OpenCE's. Pro 2v2 is PRO 2V2's games.", None),
         ],
     },
     DISCORD_ACCOUNT[0]: {
@@ -1424,14 +1608,15 @@ def tab_name_width(name: str) -> float:
     return sum(SMALL_UI_CAPITALS[letter] for letter in name)
 
 
-def settings_tab_places() -> list:
+def settings_tab_places(left: int = SETTINGS_TABS_X) -> list:
     """each of Settings' tabs' left and width at 4:3: as wide as its name and
     the same room either side of it, SETTINGS_TAB_GAP apart, filling the row
-    from SETTINGS_TABS_X to SETTINGS_TABS_RIGHT"""
+    from left (SETTINGS_TABS_X; the search's tabs', SETTINGS_SEARCH_TABS_X)
+    to SETTINGS_TABS_RIGHT"""
     names = [PAGES[folder]["tab"] for folder in SETTINGS_TAB_PAGES]
-    room = (SETTINGS_TABS_RIGHT - SETTINGS_TABS_X - SETTINGS_TAB_GAP * (len(names) - 1) -
+    room = (SETTINGS_TABS_RIGHT - left - SETTINGS_TAB_GAP * (len(names) - 1) -
             sum(map(tab_name_width, names))) / (2 * len(names))
-    places, x = [], float(SETTINGS_TABS_X)
+    places, x = [], float(left)
     for name in names:
         right = x + tab_name_width(name) + 2 * room
         places.append((round(x), round(right) - round(x)))
@@ -1451,6 +1636,167 @@ SETTINGS_TITLES = {SETTINGS_TITLE: "SETTINGS"}
 SETTINGS_TITLES.update({f"{PE}/{folder}/header_{page['screen'][:-len('_screen')]}": page["title"]
                         for folder, page in PAGES.items() if "title" in page})
 SETTINGS_TITLES[f"{PE}/controls_setup/header_key_bindings"] = "KEY BINDINGS"
+
+
+# ---------- Settings' search, the menu engine's alone (docs/menu_engine.md,
+# "Deliberate differences"; port/linux/game/menu_search.c ranks the rows,
+# menu_engine.c makes and lays out the rows found, menu_functions.c's
+# settings_search_* takes what is typed). A field at the left end of the
+# tabs (its magnifying glass alone at 4:3, its word too from 16:10; a
+# controller's Y in the glass's place), the tabs after it (each tab's
+# tabs_search, which the new engine shows in the place of its tabs); typing on
+# any Settings screen (or Y, Ctrl+F, /) opens a screen of the rows that match,
+# from every tab and page, each group under the way to it (its crumb), real
+# rows that change their settings there. Esc (B) clears it and goes back to
+# the row it was opened from.
+SETTINGS_SEARCH = f"{PE}/settings_search"
+SETTINGS_SEARCH_SCREEN = f"{SETTINGS_SEARCH}/settings_search_screen"
+# the field in the tabs' row: SEARCH_FIELD_WIDTH wide at 4:3, its magnifying
+# glass in it; SEARCH_FIELD_GROWTH wider at 16:9 (the tabs after it spread
+# over the rest), its word shown where it fits (SEARCH_WORD_EXTRA, the least
+# extra width that has room for it: 16:10's and wider)
+SEARCH_FIELD_WIDTH, SEARCH_FIELD_GROWTH = 20, 110
+SEARCH_ICON_X, SEARCH_WORD_X = 2, 20
+SETTINGS_SEARCH_TABS_X = SETTINGS_TABS_X + SEARCH_FIELD_WIDTH + SETTINGS_TAB_GAP
+SEARCH_WORD_EXTRA = math.ceil((SEARCH_WORD_X + tab_name_width("SEARCH") + 6 - SEARCH_FIELD_WIDTH) * WIDE_EXTRA /
+                              SEARCH_FIELD_GROWTH)
+# the most rows found that are made (those past the list's bottom are not
+# shown: the words under the last say how many more), and the most groups
+SEARCH_RESULTS, SEARCH_CRUMBS = 14, 8
+SEARCH_ABOUT = ("Finds a setting on any tab or page by its name, the words that explain it or one of its choices: "
+                "VSYNC, FOV, BORDERLESS. Change it right there. Esc, or B, goes back to where you were.|Start typing "
+                "on any Settings screen, or press Ctrl+F, / or a controller's Y.")
+SEARCH_BUTTON_HELP = ["Saves your changes, on every tab, and applies them.",
+                      "Clears the search and goes back to where you were. Your changes stay until OK."]
+# other words for rows (a search for one finds them as for their names): each
+# word's rows, by their keys ("<folder>:<key>" where two pages have the key)
+SETTINGS_SEARCH_WORDS = {
+    "fov": ["video_settings:fov", "vehicle_fov", "scale_scoped_fov", "viewmodel_fov"],
+    "sens": ["mouse_sensitivity", "mouse_vertical_sensitivity", "zoom_sensitivity", "look_sensitivity",
+             "gyro_sensitivity", "gyro_vertical_sensitivity"],
+    "dpi": ["mouse_sensitivity"],
+    "fps": ["max_fps", "show_frame_rate", "frame_rate_sync"],
+    "framerate": ["frame_rate_sync", "max_fps", "show_frame_rate"],
+    "gsync": ["vrr", "vrr_cap_margin"], "freesync": ["vrr", "vrr_cap_margin"], "vrr": ["vrr"],
+    "aa": ["anti_aliasing", "anti_aliasing_android"],
+    "shadows": ["shadow_resolution"],
+    "ao": ["ambient_occlusion"], "ssao": ["ambient_occlusion"],
+    "anisotropic": ["anisotropic_filtering"], "af": ["anisotropic_filtering"],
+    "lod": ["model_detail"],
+    "interpolation": ["interpolation"],
+    "hz": ["refresh_rate", "sim_rate"], "tickrate": ["sim_rate"],
+    "crosshair": ["lowered_reticle", "lowered_reticle_amount"],
+    "viewmodel": ["viewmodel_visible", "viewmodel_fov", "weapon_position"],
+    "gun": ["viewmodel_visible", "viewmodel_fov", "weapon_position"],
+    "deadzone": ["stick_dead_zones", "left_stick_dead_zone", "right_stick_dead_zone"],
+    "rumble": ["vibration"],
+    "keybinds": ["key_bindings"], "keys": ["key_bindings"],
+    "mic": ["input_device", "voice_chat"], "microphone": ["input_device", "voice_chat"],
+    "upnp": ["allow_upnp"],
+    "censor": ["streamer_mode", "slurs", "swearing", "insults"],
+    "profanity": ["streamer_mode", "swearing"],
+    "colour": ["color", "shield_color", "overshield_layer_color"],
+    "gamertag": ["name"], "nickname": ["name"],
+    "cache": ["map_cache_megabytes", "clear_caches"], "disk": ["map_cache_megabytes"],
+    "bug": ["report"], "crash": ["report"],
+    "intro": ["movies"],
+    "lag": ["low_latency"],
+    "monitor": ["mode", "resolution", "refresh_rate"],
+    "preset": ["graphics"],
+}
+# words that find no row but a place in the game that is not Settings': the
+# words, and what the search says for them under "No settings match"
+SETTINGS_SEARCH_ELSEWHERE = [
+    ("radar tracker motion", "The motion tracker is set for each game you host: Server Setup's INDICATOR OPTIONS."),
+]
+# a choice's words too common to find a row by (ON, OFF, a number)
+SEARCH_COMMON_CHOICES = {"on", "off", "yes", "no", "auto", "show", "hide", "default", "none", "system", "classic",
+                         "enhanced", "x", "nits", "ms", "kb", "s", "mb", "and", "worse", "to"}
+
+
+def _search_words(text: str) -> list:
+    """the words a search compares of a text, lower case: letters and digits"""
+    return [word for word in re.split(r"[^a-z0-9]+", text.lower()) if word]
+
+
+def settings_search_rows() -> dict:
+    """each Settings row's key, by "<folder>:<key>" (SETTINGS_SEARCH_WORDS' references)"""
+    rows = {}
+    for folder, page in PAGES.items():
+        for entry in page["rows"]:
+            if entry[0] == SECTION:
+                continue
+            label, setting, choices, _, _, *named = entry
+            key = named[0] if named else setting.split(".", 1)[1] if setting else \
+                re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+            rows[f"{folder}:{key}"] = key
+    return rows
+
+
+def settings_search_synonyms() -> dict:
+    """SETTINGS_SEARCH_WORDS by row: {"<folder>:<key>": [words]}, each reference found once (a key two pages
+    have needs its folder)"""
+    rows = settings_search_rows()
+    found = {}
+    for word, references in SETTINGS_SEARCH_WORDS.items():
+        for reference in references:
+            matches = [place for place in rows if place == reference or place.split(":", 1)[1] == reference]
+            if len(matches) != 1:
+                raise ValueError(f"SETTINGS_SEARCH_WORDS: {word}'s {reference} is {len(matches)} rows, not one")
+            found.setdefault(matches[0], []).append(word)
+    return found
+
+
+def settings_search_choices(choices) -> str:
+    """a row's choices' words a search finds it by (not the common ones, nor numbers), or None"""
+    if isinstance(choices, Slider):
+        shown = [stop for stop, _ in choices.stops]
+    elif isinstance(choices, list):
+        shown = [stop for stop, _ in choices]
+    else:
+        return None
+    words = []
+    for text in shown:
+        for word in _search_words(text):
+            if word not in SEARCH_COMMON_CHOICES and not word.isdigit() and word not in words and \
+                    not re.fullmatch(r"\d+(x|ms|kb|mb|s)?", word):
+                words.append(word)
+    return " ".join(words) or None
+
+
+def settings_crumbs() -> dict:
+    """the way to each Settings page, by its folder: its tab's name, then each page's link's name ("VIDEO › FRAME
+    RATE & SYNC"), as a row that opens it names it"""
+    opener = {}
+    for folder, page in PAGES.items():
+        for entry in page["rows"]:
+            if entry[0] != SECTION and entry[1] is None and isinstance(entry[2], str):
+                for other, other_page in PAGES.items():
+                    if entry[2] == _page_screen(other, other_page["screen"]) and other not in opener:
+                        opener[other] = (folder, entry[0].replace("›", "").strip())
+    crumbs = {}
+
+    def crumb(folder):
+        if folder not in crumbs:
+            page = PAGES[folder]
+            if "tab" in page:
+                crumbs[folder] = page["tab"]
+            elif folder in opener:
+                parent, name = opener[folder]
+                crumbs[folder] = f"{crumb(parent)} › {name}"
+            else:
+                raise ValueError(f"no row opens the Settings page {folder}")
+        return crumbs[folder]
+
+    for folder in PAGES:
+        crumb(folder)
+    # (no more than three names: the tab's, then the page's own, the way
+    # between them elided, so that it fits over a row at 4:3)
+    for folder, way in crumbs.items():
+        parts = way.split(" › ")
+        if len(parts) > 3:
+            crumbs[folder] = " › ".join([parts[0], "…", parts[-1]])
+    return crumbs
 
 
 # the settings whose rows have the wider spinner (a device's name)
@@ -1586,10 +1932,11 @@ def _strings(name: str, texts: list) -> list:
             *[f"\t\t<string{attributes([('text', text)])}/>" for text in texts], "\t</strings>"]
 
 
-def _button(name: str, caption: int, handlers: list, wide_layout=None) -> list:
+def _button(name: str, caption: int, handlers: list, wide_layout=None, past_layout=None) -> list:
     pairs = [("type", "text"), ("width", 128), ("height", 24), ("bitmap", "bitmaps/text_button_background"),
              ("string_list", "strings/common_button_captions"), ("string_index", caption), ("font", "ui\\small_ui"),
-             ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 2), ("wide", wide_layout)]
+             ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 2), ("wide", wide_layout),
+             ("past", past_layout)]
     return _widget(name, pairs, handlers + ['<on event="left_mouse" run="mouse emit accept event"/>'])
 
 
@@ -1889,14 +2236,33 @@ def _settings_row_when(key: str, setting, platform):
     return " ".join(f"{name}+{term}" for name in platform.split() for term in condition.split())
 
 
-def _settings_page(folder: str, page: dict) -> list:
+def segmented(setting, choices) -> bool:
+    """whether a row's setting is segmented (SEGMENTED_MOST)"""
+    return bool(setting) and isinstance(choices, list) and 2 <= len(choices) <= SEGMENTED_MOST and \
+        setting not in SEGMENT_NOT
+
+
+def segments_width(choices, scale: float = 1, pad: int = SEGMENT_PAD) -> int:
+    """the width of each of a segmented row's segments (their words drawn scale times their size: the tall
+    layout's text scale at its most; pad either side of them)"""
+    return max(SEGMENT_LEAST, math.ceil(max(small_ui_width(shown) for shown, _ in choices) * scale) + 2 * pad)
+
+
+def text_scale_most(text_scale) -> float:
+    """a text scale's ("least most") most, 1 for None"""
+    return float(text_scale.split()[1]) if text_scale else 1.0
+
+
+def _settings_page(folder: str, page: dict, g: SettingsLayout = SETTINGS_CLASSIC) -> list:
     """a tab of Settings, or a page a row opens: the title, the tabs (a
     tab's), the rows under their sections, the panel (the list's
     description), and Defaults, OK and Cancel"""
     base = f"{PE}/{folder}"
     tab = "tab" in page
     kind = "tab" if tab else "page"
-    y = SETTINGS_TOP if tab else PAGE_TOP
+    y = g.tab_top if tab else g.page_top
+    # (past 16:9: the tall layout's, past; the classic's none)
+    gp = past if g.past else (lambda dx=0, dw=0: None)
     # (a tab's title is Settings'; a page's, its own: its widget named as
     # its picture)
     header = SETTINGS_TITLE if tab else f"{base}/header_{page['screen'][:-len('_screen')]}"
@@ -1909,20 +2275,23 @@ def _settings_page(folder: str, page: dict) -> list:
             platform = _settings_platform(page["rows"], index)
             name = f"{base}/section_{index}"
             if labels:
-                y += SETTINGS_SECTION_GAP
+                y += g.section_gap
             children.append(f'<child{attributes([("widget", name), ("x", SETTINGS_ROW_X), ("y", y), ("platform", platform)])}/>')
-            extra += _widget(name, [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
-                                    ("bitmap", f"{SETTINGS}/section"), ("platform", platform),
-                                    ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS))],
+            extra += _widget(name, [("width", SETTINGS_ROW_WIDTH), ("height", g.section_height),
+                                    ("bitmap", g.section_picture), ("platform", platform),
+                                    ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS)),
+                                    ("past", gp(-PAST_HALF, SETTINGS_PAST_ROWS))],
                              [f'<child widget="{name}_title"/>'])
-            extra += _settings_text(f"{name}_title", [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
+            extra += _settings_text(f"{name}_title", [("width", SETTINGS_ROW_WIDTH), ("height", g.section_height),
                                                       ("wide", wide(0, SETTINGS_WIDE_ROWS)),
+                                                      ("past", gp(0, SETTINGS_PAST_ROWS)),
                                                       ("string_list", f"{base}/labels"),
                                                       ("string_index", len(labels) or None), ("color", SETTINGS_DIM),
-                                                      ("text_x", 2), ("text_y", 1)])
+                                                      ("text_x", 2), ("text_y", 1 + (g.section_height - SETTINGS_SECTION_HEIGHT) // 2),
+                                                      ("text_scale", g.text_scale)])
             labels.append(entry[1])
             helps.append("")
-            y += SETTINGS_SECTION_STEP
+            y += g.section_step
             continue
         label, setting, choices, help_text, platform, *named = entry
         # (a link's by its label: "ADVANCED GRAPHICS ›", advanced_graphics)
@@ -1930,9 +2299,9 @@ def _settings_page(folder: str, page: dict) -> list:
             re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
         row = f"{base}/op_{key}"
         if key in SETTINGS_SAME_PLACE or setting == "display.window_size":
-            y -= SETTINGS_ROW_STEP
+            y -= g.row_step
         children.append(f'<child{attributes([("widget", row), ("x", SETTINGS_ROW_X), ("y", y), ("platform", platform)])}/>')
-        y += SETTINGS_ROW_STEP
+        y += g.row_step
         status = key in SETTINGS_STATUS_ROWS
         # (a label menu_functions.c writes: no text of a list's, which a text
         # box draws in place of its own; wider, its value narrower and at the
@@ -1947,13 +2316,17 @@ def _settings_page(folder: str, page: dict) -> list:
         spun = bool(setting) or isinstance(choices, list)
         label_widget = _settings_text(f"{base}/{key}_label",
                                       [("width", value_x - 4 if spun or status else SETTINGS_ROW_WIDTH - 12),
-                                       ("height", SETTINGS_ROW_HEIGHT), *label_text, ("color", SETTINGS_BLUE),
-                                       ("text_x", 10), ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT)),
-                                       ("wide", wide(0, SETTINGS_WIDE_ROWS))])
-        row_pairs = [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
-                     ("flags", "pass_unhandled_to_focused_child"), ("bitmap", f"{SETTINGS}/row"),
+                                       ("height", g.row_height), *label_text, ("color", SETTINGS_BLUE),
+                                       ("text_x", 10), ("text_y", caps_text_y(g.row_height)),
+                                       ("wide", wide(0, g.wide_labels if (spun or status) and not named_row
+                                                     else SETTINGS_WIDE_ROWS)),
+                                       ("past", gp(0, SETTINGS_PAST_LABELS if (spun or status) and not named_row
+                                                   else SETTINGS_PAST_ROWS)),
+                                       ("text_scale", g.text_scale)])
+        row_pairs = [("width", SETTINGS_ROW_WIDTH), ("height", g.row_height),
+                     ("flags", "pass_unhandled_to_focused_child"), ("bitmap", g.row_picture),
                      ("color", SETTINGS_BLUE), ("platform", platform),
-                     ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS))]
+                     ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS)), ("past", gp(-PAST_HALF, SETTINGS_PAST_ROWS))]
         if key in CONTROL_COMMAND_ROWS:
             # (Key Bindings' action: its name and its two bindings, in the
             # values' column's halves, menu_functions.c's controls_update
@@ -1961,6 +2334,7 @@ def _settings_page(folder: str, page: dict) -> list:
             # binding left and right choose, or the one clicked)
             first, second = CONTROL_BINDINGS_X
             grown = SETTINGS_WIDE_ROWS // 3
+            grown_past = SETTINGS_PAST_ROWS // 3
             extra += _widget(row, row_pairs,
                              ['<on event="a" run="controls begin binding"/>',
                               '<on event="start" run="controls begin binding"/>',
@@ -1974,15 +2348,18 @@ def _settings_page(folder: str, page: dict) -> list:
                 # (on a wide screen the row's extra width shared by the
                 # name and the two bindings)
                 extra += _settings_text(f"{base}/command_label",
-                                        [("width", first - 4), ("height", SETTINGS_ROW_HEIGHT),
+                                        [("width", first - 4), ("height", g.row_height),
                                          ("color", SETTINGS_BLUE), ("text_x", 10),
-                                         ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT)), ("wide", wide(0, grown))])
-                for name, moved in (("command_binding", grown), ("command_binding_second", 2 * grown)):
+                                         ("text_y", caps_text_y(g.row_height)), ("wide", wide(0, grown)),
+                                         ("past", gp(0, grown_past)), ("text_scale", g.text_scale)])
+                for name, moved, moved_past in (("command_binding", grown, grown_past),
+                                                ("command_binding_second", 2 * grown, 2 * grown_past)):
                     extra += _settings_text(f"{base}/{name}",
-                                            [("width", CONTROL_BINDING_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
+                                            [("width", CONTROL_BINDING_WIDTH), ("height", g.row_height),
                                              ("color", SETTINGS_BLUE), ("align", "center"),
-                                             ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT)),
-                                             ("text_flags", "no_focus_test"), ("wide", wide(moved, grown))])
+                                             ("text_y", caps_text_y(g.row_height)),
+                                             ("text_flags", "no_focus_test"), ("wide", wide(moved, grown)),
+                                             ("past", gp(moved_past, grown_past)), ("text_scale", g.text_scale)])
         elif setting and isinstance(choices, Slider):
             # (a slider: its track, the thumb on it, and its number, which
             # menu_functions.c's "port slider ..." set and its page update
@@ -1995,14 +2372,15 @@ def _settings_page(folder: str, page: dict) -> list:
                               '<on event="left_mouse" run="mouse emit accept event"/>',
                               f'<child widget="{base}/{key}_label"/>',
                               f'<child widget="{base}/{key}_track" x="{SETTINGS_SPINNER_X}" '
-                              f'y="{(SETTINGS_ROW_HEIGHT - SLIDER_TRACK_HEIGHT) // 2}"/>',
+                              f'y="{(g.row_height - SLIDER_TRACK_HEIGHT) // 2}"/>',
                               f'<child widget="{base}/{key}_value" x="{SETTINGS_SPINNER_X + SLIDER_VALUE_X}" '
-                              f'y="{(SETTINGS_ROW_HEIGHT - SLIDER_VALUE_HEIGHT) // 2}"/>'])
+                              f'y="{(g.row_height - SLIDER_VALUE_HEIGHT) // 2}"/>'])
             extra += label_widget
             extra += _widget(f"{base}/{key}_track", [("controller", 1), ("width", SLIDER_TRACK_WIDTH),
                                                      ("height", SLIDER_TRACK_HEIGHT),
                                                      ("bitmap", f"{SETTINGS}/slider_track"),
-                                                     ("wide", wide(SETTINGS_WIDE_ROWS))],
+                                                     ("wide", wide(g.wide_labels, (SETTINGS_WIDE_ROWS - g.wide_labels))),
+                                                     ("past", gp(SETTINGS_PAST_LABELS, SETTINGS_PAST_VALUES))],
                              [f'<child widget="{base}/{key}_thumb"/>'])
             extra += _widget(f"{base}/{key}_thumb", [("controller", 1), ("width", SLIDER_THUMB_WIDTH),
                                                      ("height", SLIDER_TRACK_HEIGHT),
@@ -2015,23 +2393,53 @@ def _settings_page(folder: str, page: dict) -> list:
                                                             ("color", SETTINGS_BLUE), ("align", "center"),
                                                             ("text_y", caps_text_y(SLIDER_VALUE_HEIGHT)),
                                                             ("text_flags", "no_focus_test"),
-                                                            ("wide", wide(SETTINGS_WIDE_ROWS))])
+                                                            ("wide", wide(SETTINGS_WIDE_ROWS)),
+                                                            ("past", gp(SETTINGS_PAST_ROWS))])
         elif spun:
-            spinner_arrows = arrows_bounds(SETTINGS_ROW_HEIGHT, 0, SETTINGS_SPINNER_WIDTH)
-            extra += _widget(row, row_pairs, [f'<child widget="{base}/{key}_label"/>',
-                                              f'<child widget="{base}/{key}_spinner" x="{SETTINGS_SPINNER_X}"/>'])
+            spinner_arrows = arrows_bounds(g.row_height, 0, SETTINGS_SPINNER_WIDTH)
+            segments = segmented(setting, choices)
+            # (each segment as wide as the widest; in the tall layout, whose
+            # words are larger, each as wide as its own, so that they fit a
+            # 16:9 screen's row)
+            if not segments:
+                segment_widths = []
+            elif g.text_scale:
+                segment_widths = [segments_width([choice], text_scale_most(g.text_scale), g.segment_pad)
+                                  for choice in choices]
+            else:
+                segment_widths = [segments_width(choices)] * len(choices)
+            segment_xs = [SETTINGS_SPINNER_X + sum(segment_widths[:index]) + index * SEGMENT_GAP
+                          for index in range(len(segment_widths))]
+            extra += _widget(row, row_pairs, [
+                f'<child widget="{base}/{key}_label"/>',
+                f'<child widget="{base}/{key}_spinner" x="{SETTINGS_SPINNER_X}"/>',
+                *(f'<child widget="{base}/{key}_seg{index}" '
+                  f'x="{segment_xs[index]}" '
+                  f'y="{(g.row_height - g.segment_height) // 2}"/>' for index in range(len(choices) if segments else 0))])
             extra += label_widget
+            for index, (shown, _) in enumerate(choices if segments else []):
+                extra += _settings_text(f"{base}/{key}_seg{index}",
+                                        [("width", segment_widths[index]), ("height", g.segment_height),
+                                         ("flags", "keep_ends"), ("bitmap", g.segment_picture),
+                                         ("text", shown), ("color", SETTINGS_BLUE), ("align", "center"),
+                                         ("text_y", caps_text_y(g.segment_height)), ("text_flags", "no_focus_test"),
+                                         ("wide", wide(g.wide_labels)), ("past", gp(SETTINGS_PAST_LABELS)),
+                                         ("text_scale", g.text_scale)])
             extra += _widget(f"{base}/{key}_spinner",
                              [("type", "spinner"), ("top", SETTINGS_SPINNER_TOP), ("width", SETTINGS_SPINNER_WIDTH),
-                              ("height", SETTINGS_ROW_HEIGHT - 2 * SETTINGS_SPINNER_TOP),
+                              ("height", g.row_height - 2 * SETTINGS_SPINNER_TOP),
                               ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
                               ("strings", "|".join(shown for shown, _ in choices)), ("setting", setting),
                               ("values", "|".join(value for _, value in choices) if setting else None),
                               ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE), ("align", "center"), ("text_y", 0),
                               ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
                               ("header_bounds", spinner_arrows[0]), ("footer_bounds", spinner_arrows[1]),
-                              ("wide", wide(SETTINGS_WIDE_ROWS))],
-                             ['<on event="created" run="port setting load"/>'] if setting else [])
+                              ("wide", wide(g.wide_labels, SETTINGS_WIDE_SPINNER)),
+                              ("past", gp(SETTINGS_PAST_LABELS, SETTINGS_PAST_LABELS)), ("text_scale", g.text_scale)],
+                             (['<on event="created" run="port setting load"/>'] if setting else []) +
+                             # (a segmented row's A, and a click on the row, as its
+                             # spinner is hidden: a segment chosen)
+                             (['<on event="a" run="port setting segment"/>'] if segments else []))
         else:
             # (a row that opens a page, choices: its screen; run: a function
             # first; none: nothing to open)
@@ -2050,7 +2458,7 @@ def _settings_page(folder: str, page: dict) -> list:
             # side of its value, where a spinner's are)
             arrows = []
             if key in SETTINGS_STEPPED_ROWS:
-                arrow_y = int(SETTINGS_ROW_HEIGHT / 2 - ARROW_SM_MIDDLE)
+                arrow_y = int(g.row_height / 2 - ARROW_SM_MIDDLE)
                 arrows = [f'<child widget="{SETTINGS}/stepped_left" x="{SETTINGS_SPINNER_X - ARROW_SM_WIDTH}" '
                           f'y="{arrow_y}"/>',
                           f'<child widget="{SETTINGS}/stepped_right" x="{SETTINGS_SPINNER_X + SETTINGS_SPINNER_WIDTH}" '
@@ -2062,27 +2470,37 @@ def _settings_page(folder: str, page: dict) -> list:
                                                                  value_x), ("height", 16),
                                                                 ("color", SETTINGS_BLUE),
                                                                 ("align", "right" if named_row else "center"),
-                                                                ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT, 2)),
+                                                                ("text_y", caps_text_y(g.row_height, 2)),
                                                                 ("text_flags", "no_focus_test"),
-                                                                ("wide", wide(SETTINGS_WIDE_ROWS))])
+                                                                ("wide", wide(SETTINGS_WIDE_ROWS) if named_row else
+                                                                 wide(g.wide_labels, SETTINGS_WIDE_SPINNER)),
+                                                                ("past", gp(SETTINGS_PAST_ROWS) if named_row else
+                                                                 gp(SETTINGS_PAST_LABELS, SETTINGS_PAST_LABELS)),
+                                                                ("text_scale", g.text_scale)])
         labels.append(label)
         helps.append(help_text)
     lines = []
     lines += _widget(f"{base}/{page['screen']}",
                      [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child pause_game"),
-                      ("bitmap", "bitmaps/gradient")],
+                      ("bitmap", g.background)],
                      [f'<on event="b" run="{cancel}" back="true"/>',
                       f'<on event="back" run="{cancel}" back="true"/>',
                       *(['<on event="white" run="port settings tab previous"/>',
                          '<on event="black" run="port settings tab next"/>'] if tab else []),
+                      # (the search, the menu engine's: SETTINGS_SEARCH)
+                      '<on event="y" run="port settings search"/>',
                       f'<child widget="{header}"/>',
-                      *([f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" '
-                         f'y="{SETTINGS_TABS_TOP}"/>',
-                         f'<child widget="{SETTINGS}/tab_prompt_next" '
+                      *([f'<child widget="{SETTINGS_TAB_PROMPTS}/tab_prompt_previous" x="{WIDE_MARGIN}" '
+                         f'y="{g.tabs_top}"/>',
+                         f'<child widget="{SETTINGS_TAB_PROMPTS}/tab_prompt_next" '
                          f'x="{SETTINGS_TABS_RIGHT + 4}" '
-                         f'y="{SETTINGS_TABS_TOP}"/>'] if tab else []),
+                         f'y="{g.tabs_top}"/>'] if tab else []),
                       f'<child widget="{base}/options_menu"/>'])
-    if not tab:
+    if not tab and g.words_title:
+        # (its title's words, its picture's: TITLES, or the PC version's
+        # picture's)
+        lines += tall_title(header, SETTINGS_TALL_TITLES, settings_tall_titles().index(page.get("header", header)))
+    elif not tab:
         # (its title's picture its own, or one the PC version has: "header")
         lines += _widget(header, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
                                   ("bitmap", page.get("header", header)), ("wide", WIDE_LEFT)], [])
@@ -2092,8 +2510,9 @@ def _settings_page(folder: str, page: dict) -> list:
                       ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
                       ("description", f"{SETTINGS}/{kind}_panel")],
                      [f'<data input="{SETTINGS_FUNCTIONS}"/>', *children,
-                      f'<child widget="{base}/button_bar" y="414"/>',
-                      *([f'<child widget="{base}/tabs" y="{SETTINGS_TABS_TOP}"/>'] if tab else [])])
+                      f'<child widget="{base}/button_bar" y="{g.bar_y}"/>',
+                      *([f'<child widget="{base}/tabs" y="{g.tabs_top}"/>',
+                         f'<child widget="{base}/tabs_search" y="{g.tabs_top}"/>'] if tab else [])])
     lines += _widget(f"{base}/button_bar",
                      [("type", "column_list"), ("width", 640), ("height", 28),
                       ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
@@ -2110,6 +2529,7 @@ def _settings_page(folder: str, page: dict) -> list:
             lines += _settings_text(name, [("width", tab_width), ("height", SETTINGS_TAB_HEIGHT),
                                            ("flags", "keep_ends"),
                                            ("wide", wide(wide_spread(index, len(SETTINGS_TAB_PAGES)))),
+                                           ("past", gp(past_spread(index, len(SETTINGS_TAB_PAGES)))),
                                            ("bitmap", f"{SETTINGS}/{'tab_current' if current else 'tab'}"),
                                            ("string_list", f"{SETTINGS}/tab_names"), ("string_index", index or None),
                                            ("color", "#FFFFFFFF" if current else SETTINGS_BLUE),
@@ -2119,34 +2539,67 @@ def _settings_page(folder: str, page: dict) -> list:
                                      '<on event="left_mouse" run="mouse emit accept event"/>'])
         lines += _widget(f"{base}/tabs", [("type", "column_list"), ("width", 640), ("height", SETTINGS_TAB_HEIGHT),
                                           ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")], items)
+        # (the same tabs after the search's field, which the menu engine shows
+        # in their place: SETTINGS_SEARCH; the field first, at the tabs' left,
+        # SEARCH_FIELD_GROWTH wider at 16:9 and the tabs spread over the rest)
+        items = [f'<child widget="{SETTINGS}/search_field" x="{SETTINGS_TABS_X}"/>']
+        spread = (WIDE_EXTRA - SEARCH_FIELD_GROWTH) / (len(SETTINGS_TAB_PAGES) - 1)
+        for index, (other, (tab_x, tab_width)) in enumerate(zip(SETTINGS_TAB_PAGES,
+                                                                settings_tab_places(SETTINGS_SEARCH_TABS_X))):
+            current = other == folder
+            name = f"{base}/search_tab_{PAGES[other]['screen'][:-len('_screen')]}"
+            items.append(f'<child widget="{name}" x="{tab_x}"/>')
+            lines += _settings_text(name, [("width", tab_width), ("height", SETTINGS_TAB_HEIGHT),
+                                           ("flags", "keep_ends"),
+                                           ("wide", wide(SEARCH_FIELD_GROWTH - WIDE_HALF + index * spread)),
+                                           ("past", gp(past_spread(index, len(SETTINGS_TAB_PAGES)))),
+                                           ("bitmap", f"{SETTINGS}/{'tab_current' if current else 'tab'}"),
+                                           ("string_list", f"{SETTINGS}/tab_names"), ("string_index", index or None),
+                                           ("color", "#FFFFFFFF" if current else SETTINGS_BLUE),
+                                           ("align", "center"), ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))],
+                                    ['<on event="a" run="port settings tab"/>',
+                                     '<on event="start" run="port settings tab"/>',
+                                     '<on event="left_mouse" run="mouse emit accept event"/>'])
+        lines += _widget(f"{base}/tabs_search", [("type", "column_list"), ("width", 640),
+                                                 ("height", SETTINGS_TAB_HEIGHT),
+                                                 ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                         items)
     lines += _button(f"{base}/button_defaults", 3, ['<on event="a" run="port settings defaults"/>',
-                                                     '<on event="start" run="port settings defaults"/>'], WIDE_LEFT)
+                                                     '<on event="start" run="port settings defaults"/>'], WIDE_LEFT,
+                     gp(-PAST_HALF))
     ok = "port settings ok" if tab else "port settings keep"
     lines += _button(f"{base}/button_ok", 1, [f'<on event="a" run="{ok}" back="true"/>',
-                                               f'<on event="start" run="{ok}" back="true"/>'], WIDE_RIGHT)
+                                               f'<on event="start" run="{ok}" back="true"/>'], WIDE_RIGHT,
+                     gp(PAST_HALF))
     lines += _button(f"{base}/button_cancel", 2, [f'<on event="a" run="{cancel}" back="true"/>',
-                                                   f'<on event="start" run="{cancel}" back="true"/>'], WIDE_RIGHT)
+                                                   f'<on event="start" run="{cancel}" back="true"/>'], WIDE_RIGHT,
+                     gp(PAST_HALF))
     lines += extra
     lines += _strings(f"{base}/labels", labels)
     lines += _strings(f"{base}/help_strings", helps)
     return lines
 
 
-def _settings_shared() -> list:
+def _settings_shared(g: SettingsLayout = SETTINGS_CLASSIC) -> list:
     """what every page of Settings shares: its title, the panels, the tabs'
     names, the buttons' words, and the screens that make a profile"""
-    lines = _widget(SETTINGS_TITLE, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
-                                     ("bitmap", SETTINGS_TITLE), ("wide", WIDE_LEFT)], [])
-    for kind, top in (("tab", SETTINGS_TOP), ("page", PAGE_TOP)):
+    gp = past if g.past else (lambda dx=0, dw=0: None)
+    if g.words_title:
+        lines = tall_title(SETTINGS_TITLE, SETTINGS_TALL_TITLES, settings_tall_titles().index(SETTINGS_TITLE))
+    else:
+        lines = _widget(SETTINGS_TITLE, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
+                                         ("bitmap", SETTINGS_TITLE), ("wide", WIDE_LEFT)], [])
+    for kind, top in (("tab", g.tab_top), ("page", g.page_top)):
         # (menu_functions.c's settings_panel_show fills it in, and shows the
         # Quality row's pictures)
-        height = SETTINGS_PANEL_BOTTOM - top
+        height = g.panel_bottom - top
         # (a description's children are placed on the screen, not in it)
-        left, still_y = SETTINGS_PANEL_X + 14, top + 52
+        left, still_y = SETTINGS_PANEL_X + SETTINGS_PANEL_INSET, top + 52
         children = [f'<child widget="{SETTINGS}/panel_name" x="{left}" y="{top + 12}"/>',
                     f'<child widget="{SETTINGS}/panel_value" x="{left}" y="{top + 26}"/>']
         for index, still in enumerate(("classic", "enhanced")):
-            x = SETTINGS_PANEL_X + 12 + index * (SETTINGS_STILL_WIDTH + 8)
+            x = SETTINGS_PANEL_X + (SETTINGS_PANEL_WIDTH - 2 * SETTINGS_STILL_WIDTH - SETTINGS_STILL_GAP) // 2 + \
+                index * (SETTINGS_STILL_WIDTH + SETTINGS_STILL_GAP)
             children += [f'<child widget="{SETTINGS}/panel_{still}" x="{x}" y="{still_y}"/>',
                          f'<child widget="{SETTINGS}/panel_{still}_frame" x="{x}" y="{still_y}"/>',
                          f'<child widget="{SETTINGS}/panel_{still}_caption" x="{x}" y="{still_y + SETTINGS_STILL_HEIGHT + 2}"/>']
@@ -2154,38 +2607,53 @@ def _settings_shared() -> list:
                      f'x="{SETTINGS_PANEL_X + (SETTINGS_PANEL_WIDTH - SETTINGS_PICTURE_WIDTH) // 2}" y="{still_y}"/>'
                      for key in SETTINGS_VALUE_PICTURES]
         children += [f'<child widget="{SETTINGS}/panel_text" x="{left}" y="{top + 52}"/>',
-                     f'<child widget="{SETTINGS}/panel_note" x="{left}" y="{top + height - 40}"/>']
+                     f'<child widget="{SETTINGS}/panel_note" x="{left}" y="{top + height - 40}"/>',
+                     f'<child widget="{SETTINGS}/panel_facts" x="{left}" y="{top + height - 40}"/>',
+                     f'<child widget="{SETTINGS}/panel_facts_values" x="{left}" y="{top + height - 40}"/>']
         lines += _widget(f"{SETTINGS}/{kind}_panel",
                          [("controller", 1), ("left", SETTINGS_PANEL_X), ("top", top),
-                          ("width", SETTINGS_PANEL_WIDTH), ("height", height),
-                          ("bitmap", f"{SETTINGS}/{kind}_panel"), ("wide", wide(*SETTINGS_WIDE_PANEL))], children)
+                          ("width", SETTINGS_PANEL_WIDTH), ("height", height), ("flags", "keep_ends"),
+                          ("bitmap", g.panel_picture.format(kind=kind)), ("wide", wide(*SETTINGS_WIDE_PANEL)),
+                          ("past", gp(PAST_HALF - SETTINGS_PAST_PANEL, SETTINGS_PAST_PANEL))], children)
     # (in a wider panel: its words wider, its pictures in its middle)
     grown, middle = wide(0, SETTINGS_WIDE_PANEL[1]), wide(SETTINGS_WIDE_PANEL[1] / 2)
-    lines += _settings_text(f"{SETTINGS}/panel_name", [("width", 196), ("height", 18), ("color", SETTINGS_DIM),
-                                                      ("wide", grown)])
-    lines += _settings_text(f"{SETTINGS}/panel_value", [("width", 196), ("height", 24), ("font", "ui\\large_ui"),
-                                                       ("color", "#FFFFFFFF"), ("wide", grown)])
-    lines += _settings_text(f"{SETTINGS}/panel_text", [("width", 196), ("height", 220), ("color", SETTINGS_BLUE),
-                                                      ("wide", grown)])
-    lines += _settings_text(f"{SETTINGS}/panel_note", [("width", 196), ("height", 40), ("color", SETTINGS_DIM),
-                                                      ("wide", grown)])
+    grown_past, middle_past = gp(0, SETTINGS_PAST_PANEL), gp(SETTINGS_PAST_PANEL / 2)
+    # (the words' box as tall as the panel's room for them: settings_panel_show
+    # cuts them to it)
+    text_height = 220 if g is SETTINGS_CLASSIC else g.panel_bottom - g.tab_top - 52 - 6
+    lines += _settings_text(f"{SETTINGS}/panel_name", [("width", SETTINGS_PANEL_WORDS), ("height", 18), ("color", SETTINGS_DIM),
+                                                      ("wide", grown), ("past", grown_past)])
+    lines += _settings_text(f"{SETTINGS}/panel_value", [("width", SETTINGS_PANEL_WORDS), ("height", 24), ("font", "ui\\large_ui"),
+                                                       ("color", "#FFFFFFFF"), ("wide", grown), ("past", grown_past)])
+    lines += _settings_text(f"{SETTINGS}/panel_text", [("width", SETTINGS_PANEL_WORDS), ("height", text_height), ("color", SETTINGS_BLUE),
+                                                      ("wide", grown), ("past", grown_past)])
+    lines += _settings_text(f"{SETTINGS}/panel_note", [("width", SETTINGS_PANEL_WORDS), ("height", 40), ("color", SETTINGS_DIM),
+                                                      ("wide", grown), ("past", grown_past)])
+    # (what the panel's row is: its default, and whether the host decides it
+    # online; each fact's name, and its value at the panel's right:
+    # menu_functions.c's settings_facts)
+    lines += _settings_text(f"{SETTINGS}/panel_facts", [("width", SETTINGS_PANEL_WORDS), ("height", 40),
+                                                       ("color", SETTINGS_DIM), ("wide", grown), ("past", grown_past)])
+    lines += _settings_text(f"{SETTINGS}/panel_facts_values", [("width", SETTINGS_PANEL_WORDS), ("height", 40),
+                                                              ("color", "#FFFFFFFF"), ("align", "right"),
+                                                              ("wide", grown), ("past", grown_past)])
     for index, still in enumerate(("classic", "enhanced")):
         lines += _widget(f"{SETTINGS}/panel_{still}", [("controller", 1), ("width", SETTINGS_STILL_WIDTH),
                                                        ("height", SETTINGS_STILL_HEIGHT),
-                                                       ("bitmap", f"{SETTINGS}/graphics_{still}"), ("wide", middle)],
+                                                       ("bitmap", f"{SETTINGS}/graphics_{still}"), ("wide", middle), ("past", middle_past)],
                          [])
         lines += _widget(f"{SETTINGS}/panel_{still}_frame", [("controller", 1), ("width", SETTINGS_STILL_WIDTH),
                                                              ("height", SETTINGS_STILL_HEIGHT),
-                                                             ("bitmap", f"{SETTINGS}/still_frame"), ("wide", middle)],
+                                                             ("bitmap", f"{SETTINGS}/still_frame"), ("wide", middle), ("past", middle_past)],
                          [])
         lines += _settings_text(f"{SETTINGS}/panel_{still}_caption",
                                 [("width", SETTINGS_STILL_WIDTH), ("height", 18),
                                  ("string_list", f"{SETTINGS}/still_captions"), ("string_index", index or None),
-                                 ("color", SETTINGS_BLUE), ("align", "center"), ("wide", middle)])
+                                 ("color", SETTINGS_BLUE), ("align", "center"), ("wide", middle), ("past", middle_past)])
     for key in SETTINGS_VALUE_PICTURES:
         lines += _widget(f"{SETTINGS}/panel_picture_{key}",
                          [("controller", 1), ("width", SETTINGS_PICTURE_WIDTH), ("height", SETTINGS_PICTURE_HEIGHT),
-                          ("bitmap", f"{SETTINGS}/pictures_{key}"), ("wide", middle)], [])
+                          ("bitmap", f"{SETTINGS}/pictures_{key}"), ("wide", middle), ("past", middle_past)], [])
     # (making a profile, from CREATE PROFILE: its name asked, as the main
     # menu's items ask it ("new campaign chosen", settings_profile_new), the
     # profile made and edited ("new campaign decision", which edits it for
@@ -2202,24 +2670,161 @@ def _settings_shared() -> list:
                       '<child widget="error/warning_creating_player_profile_screen"/>'])
     # (LB and RB, or Q and E while the keyboard and mouse play, either side
     # of the tabs: the HUD's button pictures, display.hud_button_style, or
-    # its key caps, ui_widget.c and hud_key_prompts.c)
-    for name, icon in (("previous", "white"), ("next", "black")):
-        lines += _settings_text(f"{SETTINGS}/tab_prompt_{name}", [("width", SETTINGS_TAB_PROMPT_WIDTH),
-                                                                 ("height", SETTINGS_TAB_HEIGHT),
-                                                                 ("wide", WIDE_RIGHT if name == "next" else WIDE_LEFT),
-                                                                 ("text", f"%{icon}-button"), ("color", SETTINGS_BLUE), ("text_x", 2),
-                                                                 ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))])
+    # its key caps, ui_widget.c and hud_key_prompts.c; the server browser's
+    # and Host Controls' the same, but Settings' its own, which the tall
+    # layout moves to a 21:9 screen's edges: SETTINGS_TAB_PROMPTS)
+    for folder, moved in ((SETTINGS, False), (SETTINGS_TAB_PROMPTS, True)):
+        for name, icon in (("previous", "white"), ("next", "black")):
+            lines += _settings_text(f"{folder}/tab_prompt_{name}",
+                                    [("width", SETTINGS_TAB_PROMPT_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
+                                     ("wide", WIDE_RIGHT if name == "next" else WIDE_LEFT),
+                                     ("past", gp(PAST_HALF if name == "next" else -PAST_HALF) if moved else None),
+                                     ("text", f"%{icon}-button"), ("color", SETTINGS_BLUE), ("text_x", 2),
+                                     ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))])
     lines += _strings(f"{SETTINGS}/tab_names", [PAGES[folder]["tab"] for folder in SETTINGS_TAB_PAGES])
     lines += _strings(f"{SETTINGS}/tab_about", [PAGES[folder]["about"] for folder in SETTINGS_TAB_PAGES])
     lines += _strings(f"{SETTINGS}/button_help", SETTINGS_BUTTON_HELP["tab"] + SETTINGS_BUTTON_HELP["page"])
     lines += _strings(f"{SETTINGS}/still_captions", ["CLASSIC", "ENHANCED"])
+    # (the search's field at the left end of the tabs, the menu engine's
+    # (SETTINGS_SEARCH): its magnifying glass, or a controller's Y in its place,
+    # and its word where the field is wide enough for it, shown by
+    # menu_functions.c's settings_search_field_show; A, or a click, searches)
+    search = ['<on event="a" run="port settings search"/>', '<on event="start" run="port settings search"/>',
+              '<on event="left_mouse" run="mouse emit accept event"/>']
+    lines += _widget(f"{SETTINGS}/search_field",
+                     [("controller", 1), ("width", SEARCH_FIELD_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
+                      ("flags", "keep_ends"), ("bitmap", f"{SETTINGS}/search_field"),
+                      ("wide", wide(-WIDE_HALF, SEARCH_FIELD_GROWTH)), ("past", gp(-PAST_HALF))],
+                     search + [f'<child widget="{SETTINGS}/search_icon" x="{SEARCH_ICON_X}" '
+                               f'y="{(SETTINGS_TAB_HEIGHT - 16) // 2}"/>',
+                               f'<child widget="{SETTINGS}/search_prompt"/>',
+                               f'<child widget="{SETTINGS}/search_word"/>'])
+    lines += _widget(f"{SETTINGS}/search_icon", [("controller", 1), ("width", 16), ("height", 16),
+                                                 ("bitmap", BROWSER_SEARCH_ICON)], [])
+    lines += _settings_text(f"{SETTINGS}/search_prompt", [("width", SEARCH_FIELD_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
+                                                         ("text", "%y-button"), ("color", SETTINGS_BLUE),
+                                                         ("text_x", 3), ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT)),
+                                                         ("text_flags", "no_focus_test")])
+    lines += _settings_text(f"{SETTINGS}/search_word", [("width", SEARCH_FIELD_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
+                                                       ("text", "SEARCH"), ("color", SETTINGS_BLUE),
+                                                       ("text_x", SEARCH_WORD_X),
+                                                       ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT)),
+                                                       ("text_flags", "no_focus_test"),
+                                                       ("wide", wide(0, SEARCH_FIELD_GROWTH))])
+    # (the titles' words, for the tall layout's slim header)
+    lines += _strings(SETTINGS_TALL_TITLES, [TITLES.get(picture) or TALL_TITLE_WORDS[picture]
+                                             for picture in settings_tall_titles()])
     # (a stepped row's arrows: SETTINGS_STEPPED_ROWS; their pictures' frames
     # are 16 units square, the arrow at the top left, as a spinner draws them)
     for side in ("left", "right"):
         lines += _widget(f"{SETTINGS}/stepped_{side}", [("controller", 1), ("width", 16),
                                                         ("height", 16), ("bitmap", f"bitmaps/arrow_sm_{side}"),
-                                                        ("wide", wide(SETTINGS_WIDE_ROWS))], [])
+                                                        ("wide", wide(g.wide_labels if side == "left"
+                                                                      else g.wide_labels +
+                                                                      SETTINGS_WIDE_SPINNER)),
+                                                        ("past", gp(SETTINGS_PAST_LABELS if side == "left"
+                                                                    else 2 * SETTINGS_PAST_LABELS))], [])
     return lines
+
+
+def _settings_search(g: SettingsLayout = SETTINGS_CLASSIC) -> list:
+    """Settings' search's screen (SETTINGS_SEARCH): the title, the field typed
+    into across the tabs' row, the rows found (made by the menu engine, from
+    their own pages' widgets: none here), the groups' crumbs over them, the
+    words for none or for more, the panel, and OK and BACK (in a layout's
+    geometry: the tall one's, as its rows found are)"""
+    base = SETTINGS_SEARCH
+    gp = past if g.past else (lambda dx=0, dw=0: None)
+    back = "port settings search back"
+    lines = _widget(SETTINGS_SEARCH_SCREEN,
+                    [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child pause_game"),
+                     ("bitmap", g.background)],
+                    [f'<on event="b" run="{back}" back="true"/>', f'<on event="back" run="{back}" back="true"/>',
+                     '<on event="y" run="port settings search"/>',
+                     f'<child widget="{SETTINGS_TITLE}"/>', f'<child widget="{base}/options_menu"/>'])
+    # (the crumbs and the words placed by the engine, menu_engine.c's
+    # engine_search_layout; the rows found go before the buttons)
+    children = [f'<child widget="{base}/search_field" x="{WIDE_MARGIN}" y="{g.tabs_top}"/>',
+                *(f'<child widget="{base}/crumb_{number}" x="{SETTINGS_ROW_X}" y="{g.tab_top}"/>'
+                  for number in range(1, SEARCH_CRUMBS + 1)),
+                f'<child widget="{base}/search_note" x="{SETTINGS_ROW_X}" y="{g.tab_top}"/>',
+                f'<child widget="{base}/button_bar" y="{g.bar_y}"/>']
+    lines += _widget(f"{base}/options_menu",
+                     [("type", "column_list"), ("width", 640), ("height", 480),
+                      ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                      ("description", f"{SETTINGS}/tab_panel")],
+                     [f'<data input="{SETTINGS_FUNCTIONS}"/>', *children])
+    # (what is typed, after the magnifying glass, across the tabs' row; A, or
+    # a click, types into it again)
+    edit = ['<on event="a" run="port settings search edit"/>', '<on event="start" run="port settings search edit"/>',
+            '<on event="left_mouse" run="mouse emit accept event"/>']
+    lines += _settings_text(f"{base}/search_field",
+                            [("width", 640 - 2 * WIDE_MARGIN), ("height", SETTINGS_TAB_HEIGHT), ("flags", "keep_ends"),
+                             ("bitmap", f"{SETTINGS}/search_field"), ("color", "#FFFFFFFF"),
+                             ("text_x", SEARCH_WORD_X), ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT)),
+                             ("text_flags", "no_focus_test"), ("wide", wide(-WIDE_HALF, WIDE_EXTRA)),
+                             ("past", gp(-PAST_HALF, PAST_EXTRA))],
+                            edit + [f'<child widget="{SETTINGS}/search_icon" x="{SEARCH_ICON_X}" '
+                                    f'y="{(SETTINGS_TAB_HEIGHT - 16) // 2}"/>'])
+    for number in range(1, SEARCH_CRUMBS + 1):
+        lines += _widget(f"{base}/crumb_{number}",
+                         [("width", SETTINGS_ROW_WIDTH), ("height", g.section_height),
+                          ("bitmap", g.section_picture), ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS)),
+                          ("past", gp(-PAST_HALF, SETTINGS_PAST_ROWS))],
+                         [f'<child widget="{base}/crumb_title"/>'])
+    lines += _settings_text(f"{base}/crumb_title", [("width", SETTINGS_ROW_WIDTH), ("height", g.section_height),
+                                                   ("color", SETTINGS_DIM), ("text_x", 2),
+                                                   ("text_y", 1 + (g.section_height - SETTINGS_SECTION_HEIGHT) // 2),
+                                                   ("text_flags", "no_focus_test"),
+                                                   ("wide", wide(0, SETTINGS_WIDE_ROWS)),
+                                                   ("past", gp(0, SETTINGS_PAST_ROWS)),
+                                                   ("text_scale", g.text_scale)])
+    lines += _settings_text(f"{base}/search_note", [("width", SETTINGS_ROW_WIDTH), ("height", g.row_height),
+                                                   ("color", SETTINGS_DIM), ("text_x", 10),
+                                                   ("text_y", caps_text_y(g.row_height)),
+                                                   ("text_flags", "no_focus_test"),
+                                                   ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS)),
+                                                   ("past", gp(-PAST_HALF, SETTINGS_PAST_ROWS)),
+                                                   ("text_scale", g.text_scale)])
+    lines += _widget(f"{base}/button_bar",
+                     [("type", "column_list"), ("width", 640), ("height", 28),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     [f'<child widget="{base}/button_ok" x="{640 - WIDE_MARGIN - 2 * 128 - 2}" y="1"/>',
+                      f'<child widget="{base}/button_back" x="{640 - WIDE_MARGIN - 128}" y="1"/>'])
+    lines += _button(f"{base}/button_ok", 1, ['<on event="a" run="port settings keep" back="true"/>',
+                                               '<on event="start" run="port settings keep" back="true"/>'], WIDE_RIGHT,
+                     gp(PAST_HALF))
+    lines += _widget(f"{base}/button_back",
+                     [("type", "text"), ("width", 128), ("height", 24), ("bitmap", "bitmaps/text_button_background"),
+                      ("text", "BACK"), ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
+                      ("text_y", 2), ("wide", WIDE_RIGHT), ("past", gp(PAST_HALF))],
+                     [f'<on event="a" run="{back}" back="true"/>', f'<on event="start" run="{back}" back="true"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    return lines
+
+
+SETTINGS_TALL_TITLES = f"{SETTINGS}/tall_titles"
+
+
+def settings_tall_titles() -> list:
+    """the titles' pictures of Settings' tabs and pages, in the order of their words in SETTINGS_TALL_TITLES"""
+    pictures = [SETTINGS_TITLE]
+    for folder, page in PAGES.items():
+        if "tab" not in page:
+            picture = page.get("header", f"{PE}/{folder}/header_{page['screen'][:-len('_screen')]}")
+            pictures += [picture] if picture not in pictures else []
+    return pictures
+
+
+def tall_widgets() -> list:
+    """the widgets of the screens laid out in the tall layout, as they are there (<widget> elements, without a
+    <menus>): Settings' tabs and pages (SETTINGS_TALL) and the browsers' (BROWSER_TALL). tools/menu_look.py
+    writes their looks in place of ce/'s widgets' of the same names (docs/menu_engine.md, "The tall layout")"""
+    lines = []
+    for folder, page in PAGES.items():
+        lines += _settings_page(folder, page, SETTINGS_TALL)
+    return lines + _settings_shared(SETTINGS_TALL) + _settings_search(SETTINGS_TALL) + _browser_tall_widgets() + \
+        _missions_tall_widgets()
 
 
 def settings_files() -> dict:
@@ -2230,6 +2835,7 @@ def settings_files() -> dict:
     for folder, page in PAGES.items():
         files[f"{PE}/{folder}".replace("/", ".") + ".xml"] = _settings_page(folder, page)
     files[SETTINGS.replace("/", ".") + ".xml"] = _settings_shared()
+    files[SETTINGS_SEARCH.replace("/", ".") + ".xml"] = _settings_search()
     files[f"{PE}/vr_controls".replace("/", ".") + ".xml"] += _vr_item()
     return {name: ['<?xml version="1.0" encoding="UTF-8"?>',
                    "<!-- The port's settings screen, in the PC version's style (tools/port_settings.py) -->",
@@ -2259,6 +2865,26 @@ def _svg(width: int, height: int, body: list) -> str:
                       f'viewBox="0 0 {width} {height}">', *body, "</svg>", ""])
 
 
+def tall_background_svg() -> str:
+    """the tall layout's background (TALL_BACKGROUND), as bitmaps/gradient is drawn (4 wide, repeated across;
+    its 512 rows the screen's 480 and room under them): the slim header's band, dark, its line under it, the
+    gradient's body to the footer's line, and the footer's band, as bitmaps/gradient's are"""
+    footer = 480 - TALL_FOOTER
+    return "\n".join([
+        '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="512" viewBox="0 0 4 512">', "<defs>",
+        f'<linearGradient id="g0" gradientUnits="userSpaceOnUse" x1="0" y1="{TALL_BAND + 1}" x2="0" y2="{footer}">',
+        '  <stop offset="0.00000" stop-color="#072852" stop-opacity="0.69"/>',
+        '  <stop offset="0.20562" stop-color="#062247" stop-opacity="0.69"/>',
+        '  <stop offset="0.70562" stop-color="#030e1b" stop-opacity="0.69"/>',
+        '  <stop offset="1.00000" stop-color="#02060c" stop-opacity="0.689"/>', "</linearGradient>", "</defs>",
+        f'<rect x="0" y="0" width="4" height="{TALL_BAND}" fill="#020a16" fill-opacity="0.82"/>',
+        f'<rect x="0" y="{TALL_BAND}" width="4" height="1" fill="#36afff"/>',
+        f'<rect x="0" y="{TALL_BAND + 1}" width="4" height="{footer - TALL_BAND - 1}" fill="url(#g0)"/>',
+        f'<rect x="0" y="{footer}" width="4" height="1" fill="#2896ff"/>',
+        f'<rect x="0" y="{footer + 1}" width="4" height="{480 - footer - 1}" fill="#000000" fill-opacity="0.696"/>',
+        "</svg>", ""])
+
+
 def settings_pictures() -> list:
     """(bitmap name, [(SVG, width, height)] for its frames) of Settings'
     pictures"""
@@ -2281,7 +2907,20 @@ def settings_pictures() -> list:
         (f"{SETTINGS}/tab_current",
          [(_svg(tab_w, tab_h, [_rounded(tab_w, tab_h, 1, 8, "#0a2a5a", 0.75, "#2299ff", 2)]), tab_w, tab_h),
           (_svg(tab_w, tab_h, [_rounded(tab_w, tab_h, 1, 8, "#0d3a7a", 0.9, "#8cc8ff", 2)]), tab_w, tab_h)]),
+        # (a segmented row's segment: nothing, and the one chosen framed as the
+        # current tab is; its ends kept at the segment's width)
+        (f"{SETTINGS}/segment",
+         [(_svg(SEGMENT_LEAST, SEGMENT_HEIGHT, []), SEGMENT_LEAST, SEGMENT_HEIGHT),
+          (_svg(SEGMENT_LEAST, SEGMENT_HEIGHT, [_rounded(SEGMENT_LEAST, SEGMENT_HEIGHT, 1, 8, "#0a2a5a", 0.75,
+                                                         "#2299ff", 2)]), SEGMENT_LEAST, SEGMENT_HEIGHT)]),
     ]
+    # (the search's field: a navy field in a blue rim, as the slider's number's
+    # and the browsers' searches' are; lit while it has the focus. Its ends
+    # kept as it is drawn wider: keep_ends)
+    search_w = SEARCH_FIELD_WIDTH
+    pictures.append((f"{SETTINGS}/search_field", [
+        (_svg(search_w, tab_h, [_rounded(search_w, tab_h, 1, 8, "#000e23", 0.9, "#2995ff", 1.5)]), search_w, tab_h),
+        (_svg(search_w, tab_h, [_rounded(search_w, tab_h, 1, 8, "#0d3a7a", 0.95, "#8cc8ff", 2)]), search_w, tab_h)]))
     # (a slider's track, a groove in the redraws' navy and blue rim, and its
     # thumb, a blue tab)
     track_w, track_h, thumb_w = SLIDER_TRACK_WIDTH, SLIDER_TRACK_HEIGHT, SLIDER_THUMB_WIDTH
@@ -2304,6 +2943,27 @@ def settings_pictures() -> list:
         height = SETTINGS_PANEL_BOTTOM - top
         # (list_field's framed panel: a navy field, a blue rim)
         pictures.append((f"{SETTINGS}/{kind}_panel", [(_svg(SETTINGS_PANEL_WIDTH, height, [
+            _rounded(SETTINGS_PANEL_WIDTH, height, 1, 9.5, "#000e23", 0.88, "#2995ff", 2)]),
+            SETTINGS_PANEL_WIDTH, height)]))
+    # (the tall layout's: its rows', sections', segments' and panels' at its
+    # sizes; its background, TALL_BACKGROUND, is with the browsers' pictures)
+    tall = SETTINGS_TALL
+    tall_row, tall_section, tall_segment = tall.row_height, tall.section_height, tall.segment_height
+    pictures += [
+        (tall.row_picture, [(_svg(row_w, tall_row, []), row_w, tall_row),
+                            (_svg(row_w, tall_row, [_rounded(row_w, tall_row, 1, 8, "#002244", 0.9, "#2299ff", 2)]),
+                             row_w, tall_row)]),
+        (tall.section_picture, [(_svg(row_w, tall_section, [
+            f'  <rect x="0" y="{tall_section - 1.5:g}" width="{row_w}" height="1" fill="#2995ff" '
+            'fill-opacity="0.45"/>']), row_w, tall_section)]),
+        (tall.segment_picture,
+         [(_svg(SEGMENT_LEAST, tall_segment, []), SEGMENT_LEAST, tall_segment),
+          (_svg(SEGMENT_LEAST, tall_segment, [_rounded(SEGMENT_LEAST, tall_segment, 1, 8, "#0a2a5a", 0.75,
+                                                       "#2299ff", 2)]), SEGMENT_LEAST, tall_segment)]),
+    ]
+    for kind, top in (("tab", tall.tab_top), ("page", tall.page_top)):
+        height = tall.panel_bottom - top
+        pictures.append((tall.panel_picture.format(kind=kind), [(_svg(SETTINGS_PANEL_WIDTH, height, [
             _rounded(SETTINGS_PANEL_WIDTH, height, 1, 9.5, "#000e23", 0.88, "#2995ff", 2)]),
             SETTINGS_PANEL_WIDTH, height)]))
     pictures.append((f"{SETTINGS}/still_frame", [
@@ -2363,7 +3023,8 @@ SETTINGS_STILLS_MADE = [
     "(`port/assets/menus/stills`). They are this port's own drawing of the game: a local",
     "Slayer game on Blood Gulch (`debug.network_test = \"local:bloodgulch:slayer\"`, `debug.random_seed = 7`,",
     "four bots), the same frame of each run captured offscreen by the macOS build at 1600x1200",
-    "(`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (three times their size in the menu) and",
+    "(`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (the menus' copies 264x165, three times their",
+    "size in the menu) and",
     "reduced to 96 colors for size. The pictures of other rows' values are made the same way at the frame 12 s",
     "into the game with the setting set, 320x200 (twice their size in the menu), reduced to 64 colors: the whole",
     "view, or a part of it at 1:1 or larger. The menus ship them with their corners cut round, and the others'",
@@ -2659,10 +3320,6 @@ MULTIPLAYER_LINE_PLACE = (28, 375)
 HUB_LIST_STEP = 27
 HUB_SECTION_GAP = 6
 HUB_GAMETYPES_GAP = 6
-# (MATCHMAKING, PLAY ONLINE's first item, is left off Multiplayer's list and
-# tiles until matchmaking is decided, #813: its screen, _matchmaking, and
-# matchmaking.c stay, and True puts it back)
-HUB_MATCHMAKING = False
 # the screen's children for one platform only (tools/ce_menus.py): the
 # computer's list and its line (the hub's, in the PC version's places:
 # WIDGET_PATCHES' swap), the touchscreen's tiles in their place (_touch_hub)
@@ -2695,11 +3352,15 @@ WIDGET_PATCHES = {
     "main_menu/main_menu_item_settings": {"handlers": [
         f'<on event="{event}" run="port settings begin" open="{PE}/video_settings/video_settings_screen"/>'
         for event in ("a", "start")] + ['<on event="left_mouse" run="mouse emit accept event"/>']},
-    # (in the headset, VR TUTORIAL above the first: _training)
+    # (in the headset, VR TUTORIAL above the first: _training; 2V2 after
+    # MULTIPLAYER: _doubles)
     "main_menu/main_menu_select_list": {"insert_before": {
         "main_menu/main_menu_item_load_camp": [
             f'<child widget="main_menu/main_menu_item_training" x="{TRAINING_ITEM_PLACE[0]}" '
-            f'y="{TRAINING_ITEM_PLACE[1]}" platform="vr"/>']}},
+            f'y="{TRAINING_ITEM_PLACE[1]}" platform="vr"/>'],
+        "main_menu/main_menu_item_settings": [
+            f'<child widget="main_menu/main_menu_item_doubles" x="{DOUBLES_ITEM_PLACE[0]}" '
+            f'y="{DOUBLES_ITEM_PLACE[1]}"/>']}},
     # (Quit's game data input notes the main menu shown, over which the
     # update question opens: _update)
     "main_menu/main_menu_item_quit_game": {"inputs": ["port update question"]},
@@ -2887,12 +3548,12 @@ def pause_box_height(rows: int) -> int:
             PAUSE_BOX_LEGENDS_BOTTOM)
 
 
-# the campaign pause box, tall enough for five rows (SETTINGS added) or six
-# (network co-op's FRIENDLY FIRE too), with the prompts still under the last
-# row: the stock box is 159, and those rows need 36 and 66 more
-# (menu_tags.c's pause_campaign_patch); the mission objectives' box beside
-# it grows with it
-PAUSE_BOX_EXTRA_HEIGHTS = [pause_box_height(5), pause_box_height(6)]
+# the campaign pause box, tall enough for five rows (SETTINGS added), six
+# (network co-op's FRIENDLY FIRE too) or seven (its host's HOST CONTROLS
+# too), with the prompts still under the last row: the stock box is 159, and
+# those rows need 36, 66 and 96 more (menu_tags.c's pause_campaign_patch);
+# the mission objectives' box beside it grows with it
+PAUSE_BOX_EXTRA_HEIGHTS = [pause_box_height(5), pause_box_height(6), pause_box_height(7)]
 
 
 def pause_box_svg(piece: str, height: int, header: bool = False) -> str:
@@ -3019,8 +3680,11 @@ TITLE_LEFT, TITLE_TOP, TITLE_CAP = 30.68, 33.5, 21.5
 TITLE_COLOR = (0x29, 0x95, 0xFD, 255)
 
 
-def _header(name: str, bitmap: str, platform=None) -> list:
-    return _widget(name, [("controller", 1), ("left", 35), ("top", 11), ("width", 363), ("height", 59),
+def _header(name: str, bitmap: str, platform=None, box=(35, 11, 363, 59)) -> list:
+    """a screen's title: its picture in the PC version's titles' place (box:
+    left, top, width, height), or the browsers' (BROWSER_TITLE)"""
+    left, top, width, height = box
+    return _widget(name, [("controller", 1), ("left", left), ("top", top), ("width", width), ("height", height),
                           ("bitmap", bitmap), ("platform", platform)], [])
 
 
@@ -3084,8 +3748,8 @@ def _join_game_extras() -> list:
     password screen"""
     base = f"{MT}/join_game"
     lines = _password_screen()
-    lines += _header(f"{base}/header_server_browser", f"{base}/header_server_browser")
-    lines += _header(f"{base}/header_direct_link", f"{base}/header_direct_link")
+    lines += _browser_title(f"{base}/header_server_browser", f"{base}/header_server_browser")
+    lines += _browser_title(f"{base}/header_direct_link", f"{base}/header_direct_link")
     lines += _connect_screen()
     # (each row's star: _browser puts it in the rows)
     lines += _widget(FAVORITE_STAR_WIDGET, [("width", 16), ("height", 18), ("bitmap", FAVORITE_STAR)], [])
@@ -3479,8 +4143,10 @@ SETUP_NODE_SCREENS = [*SETUP_NODE_WHEN, f"{SS}/voice_options/voice_options_scree
 def settings_look_roles() -> dict:
     """the Settings screens' widgets that menu_functions.c finds by what they are, their role in their look
     (model/look's role=, written by tools/menu_look.py), by their names: each tab's or page's tabs and button bar,
-    and the panel's name, value, words, note and Quality's two stills (each with its frame and caption)"""
+    and the panel's name, value, words, note, facts and Quality's two stills (each with its frame and caption)"""
     roles = {f"{SETTINGS}/panel_{part}": f"panel {part}" for part in ("name", "value", "text", "note")}
+    roles[f"{SETTINGS}/panel_facts"] = "panel facts"
+    roles[f"{SETTINGS}/panel_facts_values"] = "panel facts values"
     for still in ("classic", "enhanced"):
         roles[f"{SETTINGS}/panel_{still}"] = f"still {still}"
         for part in ("frame", "caption"):
@@ -3488,7 +4154,18 @@ def settings_look_roles() -> dict:
     for folder, page in [*PAGES.items(), *SCREENS.items()]:
         if "tab" in page:
             roles[f"{PE}/{folder}/tabs"] = "tabs"
+            roles[f"{PE}/{folder}/tabs_search"] = "search tabs"
         roles[f"{PE}/{folder}/button_bar"] = "buttons"
+    # (the search's: SETTINGS_SEARCH)
+    roles[f"{SETTINGS}/search_field"] = "search field"
+    roles[f"{SETTINGS}/search_icon"] = "search icon"
+    roles[f"{SETTINGS}/search_prompt"] = "search prompt"
+    roles[f"{SETTINGS}/search_word"] = "search word"
+    roles[f"{SETTINGS_SEARCH}/search_field"] = "search field"
+    roles[f"{SETTINGS_SEARCH}/search_note"] = "search note"
+    roles[f"{SETTINGS_SEARCH}/button_bar"] = "buttons"
+    for number in range(1, SEARCH_CRUMBS + 1):
+        roles[f"{SETTINGS_SEARCH}/crumb_{number}"] = "search crumb"
     return roles
 
 
@@ -3737,7 +4414,7 @@ def _lobby_board(base: str) -> tuple:
     # (CHANGE TEAM's keys the arrows, the keyboard's and the D-pad's alike:
     # the spinners' arrows before its words)
     team_prompt = LOBBY_PROMPTS[0]
-    lines += _prompts(base, "board_prompts", LOBBY_PROMPTS, defined=(team_prompt[0],))
+    lines += _prompts(base, "board_prompts", LOBBY_PROMPTS, defined=(team_prompt[0],), lingering=True)
     _, words, x, width, handler = team_prompt
     lines += _widget(f"{base}/{team_prompt[0]}", [("type", "text"), ("width", width), ("height", PART_PROMPT_HEIGHT),
                                                   ("wide", prompt_wide(x, width)),
@@ -4455,6 +5132,14 @@ def part_button(width: int, height: int) -> str:
     return f"{PARTS}/button_{width}x{height}"
 
 
+def part_button_set(width: int, height: int) -> str:
+    """a button whose lit frame the game sets, not the engine (three frames:
+    plain, lit, lit; the engine lights only a picture of two by the focus):
+    the 2V2 browser's HOST GAME and FIND GAME, lit only while their bar has
+    the list's focus (doubles_browser.inc's doubles_actions_focus)"""
+    return f"{PARTS}/button_set_{width}x{height}"
+
+
 def part_outline(width: int, height: int) -> str:
     """a button drawn as its outline (the lobby's GAME SETTINGS), filled
     while it has the focus"""
@@ -4491,6 +5176,54 @@ BROWSER_HEADERS_TOP = 104
 # descenders of its words, centred on their capitals)
 BROWSER_ROWS_TOP, BROWSER_ROW_HEIGHT, BROWSER_ROW_STEP, BROWSER_ROWS = 124, 19, 19, 14
 BROWSER_PANEL = (440, 104, 172, 296)
+# the rest of the browsers' places down the screen: their title's (left,
+# top, width, height: the PC version's titles' place, _header's), the
+# counts', the tabs', the words for none's and the footer's
+BROWSER_TITLE = (35, 11, 363, 59)
+# (and their background, and whether their titles are words in the slim
+# header, tall_title, rather than the PC version's pictures)
+BROWSER_BACKGROUND = "bitmaps/gradient"
+BROWSER_TITLE_WORDS = False
+BROWSER_COUNTS_TOP = 46
+BROWSER_TABS_TOP = SETTINGS_TABS_TOP
+BROWSER_EMPTY_TOP = 200
+BROWSER_FOOTER_TOP = 414
+# The menu engine's own layout of the server browser and PRO 2V2's browser
+# (display.menu_engine "new" alone; the classic engine keeps the places
+# above: docs/menu_engine.md, "Deliberate differences"), the tall layout's
+# parts (TALL_BAND...): the screen's whole height, the slim header (its
+# band, the title in words and the counts in it) and the tabs under it,
+# the footer at the very bottom, the list and the panel filling what is
+# between, each row taller (BROWSER_ROWS of them, scrolling beyond); and
+# on a screen wider than 16:9 the list, the panel, the title and the counts
+# to its edges (their past, "dx dw" at 21:9 past 16:9's: menu_tags.c), the
+# tabs and the footer as 16:9 has them. The same generator writes them, its
+# places these (_browser_geometry), and tools/menu_look.py writes the looks
+# of the widgets they change (tall_widgets) in place of ce/'s
+# (the tall layout's parts, Settings' and the browsers': TALL_BAND, past,
+# tall_title and TALL_BACKGROUND, with Settings' geometry)
+
+
+BROWSER_TALL = {
+    "BROWSER_TITLE": (0, 0, 640, TALL_BAND), "BROWSER_TITLE_WORDS": True, "BROWSER_BACKGROUND": TALL_BACKGROUND,
+    "BROWSER_COUNTS_TOP": (TALL_BAND - 18) // 2, "BROWSER_TABS_TOP": TALL_BAND + 6, "BROWSER_HEADERS_TOP": 74,
+    "BROWSER_ROWS_TOP": 92, "BROWSER_ROW_HEIGHT": 24, "BROWSER_ROW_STEP": 24, "BROWSER_PANEL": (440, 74, 172, 362),
+    "BROWSER_EMPTY_TOP": 220, "BROWSER_CLEAR_TOP": 308, "BROWSER_FOOTER_TOP": 480 - TALL_FOOTER + 5,
+}
+# the browsers' titles' words in the slim header (tall_title), by their
+# titles' widgets
+BROWSER_TALL_TITLES = f"{MT}/join_game/tall_titles"
+BROWSER_TITLE_NAMES = {"header_lan": "LOCAL NETWORK", "header_direct_link": "JOIN BY LINK",
+                       "header_server_browser": "SERVER BROWSER", "header_doubles_browser": "PRO 2V2"}
+
+
+def _browser_title(name: str, bitmap: str) -> list:
+    """a browser's title (header_lan, ...): the PC version's picture in its
+    place (BROWSER_TITLE), or the tall layout's words (BROWSER_TITLE_WORDS)"""
+    short = name.rsplit("/", 1)[1]
+    if BROWSER_TITLE_WORDS:
+        return tall_title(name, BROWSER_TALL_TITLES, list(BROWSER_TITLE_NAMES).index(short))
+    return _header(name, bitmap, box=BROWSER_TITLE)
 BROWSER_COLUMNS = {
     "favorite": (6, 16), "server_name": (26, 110), "map": (140, 78), "type": (222, 60), "players": (284, 56),
     "ping": (344, 54),
@@ -4637,7 +5370,6 @@ HUB_DESCRIPTIONS = [
     "Host a game on the Internet, or for players on your local network only.",
     "Play the campaign together: online, or split screen on this computer.",
     "Group up with friends: they join with your party's link, and come with you to every game you host or join.",
-    "Pick a playlist: OpenH1 finds a game with room for you and your party, or hosts one that fills up.",
     "Your friends, who's online and where, with your friend code. Join them, invite them, or add someone you played.",
 ]
 
@@ -4665,9 +5397,11 @@ def parts_pictures() -> list:
                 (_svg(width, height, [_rounded(width, height, 0.75, 3, stroke="#2f7fff", stroke_width=1.5)]),
                  width, height)]
 
-    rows = [(part_row(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT), highlight(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT) +
-             [(framed(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT, "#0d3a7a", 0.9, "#8cc8ff"), BROWSER_LIST_WIDTH,
-               BROWSER_ROW_HEIGHT)])]
+    # (the browsers' rows and panel, and the menu engine's tall layout's:
+    # BROWSER_TALL)
+    rows = [(part_row(BROWSER_LIST_WIDTH, height), highlight(BROWSER_LIST_WIDTH, height) +
+             [(framed(BROWSER_LIST_WIDTH, height, "#0d3a7a", 0.9, "#8cc8ff"), BROWSER_LIST_WIDTH, height)])
+            for height in (BROWSER_ROW_HEIGHT, BROWSER_TALL["BROWSER_ROW_HEIGHT"])]
     prompt_widths = sorted(set(prompt_picture_widths()) | {BROWSER_CLEAR[0]})
     join_w, join_h = BROWSER_JOIN
     return [
@@ -4679,6 +5413,9 @@ def parts_pictures() -> list:
                      (framed(tab_w, tab_h, "#0d3a7a", 0.9, "#8cc8ff"), tab_w, tab_h)]),
         *rows,
         (part_highlight(*HUB_ITEM), highlight(*HUB_ITEM)),
+        # (the 2V2 browser's friends' rows: _doubles_browser)
+        (part_highlight(BROWSER_PANEL[2] - 24, DOUBLES_FRIEND_HEIGHT),
+         highlight(BROWSER_PANEL[2] - 24, DOUBLES_FRIEND_HEIGHT)),
         *((part_highlight(width, PART_PROMPT_HEIGHT), highlight(width, PART_PROMPT_HEIGHT))
           for width in prompt_widths),
         (part_line(BROWSER_LIST_WIDTH), line(BROWSER_LIST_WIDTH)),
@@ -4686,12 +5423,17 @@ def parts_pictures() -> list:
         (part_section(HUB_ITEM[0]), [(_svg(HUB_ITEM[0], PART_SECTION_HEIGHT, [
             f'  <rect x="0" y="{PART_SECTION_HEIGHT - 1.5:g}" width="{HUB_ITEM[0]}" height="1" fill="#2995ff" '
             'fill-opacity="0.45"/>']), HUB_ITEM[0], PART_SECTION_HEIGHT)]),
-        (part_panel(*BROWSER_PANEL[2:]), [(framed(*BROWSER_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5),
-                                           *BROWSER_PANEL[2:])]),
+        *((part_panel(*panel[2:]), [(framed(*panel[2:], "#000e23", 0.88, "#2995ff", 9.5), *panel[2:])])
+          for panel in (BROWSER_PANEL, BROWSER_TALL["BROWSER_PANEL"])),
+        # (the tall layout's background: BROWSER_TALL's)
+        (TALL_BACKGROUND, [(tall_background_svg(), 4, 512)]),
         (part_panel(*HUB_PANEL[2:]), [(framed(*HUB_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5), *HUB_PANEL[2:])]),
         *((part_pill(width), pill(width)) for width in (BROWSER_TICK_BADGE, BROWSER_PILL, BROWSER_WIDE_PILL)),
         (part_button(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
                                        (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h)]),
+        (part_button_set(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
+                                           (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h),
+                                           (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h)]),
         *lobby_pictures(framed, highlight),
         *touch_pictures(),
         # (the searches' fields, magnifying glass and X: Lucide's,
@@ -4784,11 +5526,11 @@ def _tab_strip(base: str, strip: str, tabs: list, handlers: list) -> list:
 _PROMPT_WIDTHS = set()
 
 
-def _prompt_fitted(prompt: tuple, text_x: int, browser: bool) -> tuple:
+def _prompt_fitted(prompt: tuple, text_x: int, browser: bool, lingering: bool = False) -> tuple:
     """a prompt as wide as its words need (prompt_fit_width): grown away
     from the screen's edge it is at, its other end where it was"""
     name, words, x, width, handler = prompt
-    fitted = prompt_fit_width(words, width, text_x, browser)
+    fitted = prompt_fit_width(words, width, text_x, browser, lingering)
     if fitted > width and x + width / 2 >= 320:
         x -= fitted - width
     _PROMPT_WIDTHS.add(fitted)
@@ -4803,13 +5545,15 @@ def prompt_picture_widths() -> list:
     return sorted(_PROMPT_WIDTHS)
 
 
-def _prompts(base: str, bar: str, prompts: list, defined: tuple = (), text_x: int = 8, browser: bool = False) -> list:
+def _prompts(base: str, bar: str, prompts: list, defined: tuple = (), text_x: int = 8, browser: bool = False,
+             lingering: bool = False) -> list:
     """a footer of key prompts, a bar of buttons: each its button's picture
     in its words (the device's, menu_functions.c's), as wide as they need
-    (_prompt_fitted; browser: a server browser's keys), highlighted while it
+    (_prompt_fitted; browser: a server browser's keys; lingering: a screen a
+    browser opens, prompt_words_end's), highlighted while it
     has the focus, and its function run by A or a click (those another
     footer has, by their names in defined, its)"""
-    prompts = [_prompt_fitted(prompt, text_x, browser) for prompt in prompts]
+    prompts = [_prompt_fitted(prompt, text_x, browser, lingering) for prompt in prompts]
     wides = prompts_wide(prompts, text_x)
     lines = _widget(f"{base}/{bar}", [("type", "column_list"), ("width", 640), ("height", PART_PROMPT_HEIGHT + 4),
                                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
@@ -4858,15 +5602,22 @@ def key_cap_advance(name: str) -> int:
     return KEY_CAP_INSET + width + KEY_CAP_GAP
 
 
-def prompt_words_end(words: str, browser: bool = False) -> int:
+def prompt_words_end(words: str, browser: bool = False, lingering: bool = False) -> int:
     """where a prompt's words ("%b-button BACK") end, from its text's left:
     its button as the key the keyboard presses it with (a server browser's:
     BROWSER_KEYS), its words after it (a button the keyboard has no key for
-    is the controller's picture, narrower than a key's cap: as a letter's)"""
+    is the controller's picture, narrower than a key's cap: as a letter's).
+    lingering: a screen a browser opens (the lobby, a game joined), whose
+    prompts are drawn with the browser's keys for a quarter of a second after
+    it was last drawn (xinput_sdl.c's BROWSER_KEYS_MILLISECONDS: X's Tab, not
+    E), the wider of the two keys (fitted to E alone, the lobby's ADD PLAYER
+    was cut to ADD PLAYEI by Tab's cap)"""
     if words.startswith("%"):
         button, _, rest = words[1:].partition(" ")
-        key = (BROWSER_KEYS if browser else MENU_KEYS).get(button, "E")
-        return key_cap_advance(key) + small_ui_width(" " + rest)
+        keys = [(BROWSER_KEYS if browser else MENU_KEYS).get(button, "E")]
+        if lingering:
+            keys.append(BROWSER_KEYS.get(button, "E"))
+        return max(key_cap_advance(key) for key in keys) + small_ui_width(" " + rest)
     return small_ui_width(words)
 
 
@@ -4927,9 +5678,9 @@ def prompts_wide(prompts: list, text_x: int) -> dict:
     return {name: wide(placed[name] - x, grown[name] - width) for name, _, x, width, _ in prompts}
 
 
-def prompt_fit_width(words: str, width: int, text_x: int, browser: bool = False) -> int:
+def prompt_fit_width(words: str, width: int, text_x: int, browser: bool = False, lingering: bool = False) -> int:
     """a prompt's width: as wide as it was laid out, or as its words need"""
-    return max(width, text_x + prompt_words_end(words, browser) + PROMPT_RIGHT_ROOM)
+    return max(width, text_x + prompt_words_end(words, browser, lingering) + PROMPT_RIGHT_ROOM)
 
 
 def prompt_wide(x: int, width: int):
@@ -4968,7 +5719,7 @@ def _browser() -> list:
     inner_left, inner_width = panel_left + 12, panel_width - 24
     lines = _widget(f"{base}/join_game_screen",
                     [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child"),
-                     ("bitmap", "bitmaps/gradient")],
+                     ("bitmap", BROWSER_BACKGROUND)],
                     ['<on event="created" run="gamespy screen init"/>',
                      '<on event="deleted" run="gamespy screen dispose"/>',
                      '<on event="b" run="gamespy back handler"/>', '<on event="back" run="gamespy back handler"/>',
@@ -4980,22 +5731,26 @@ def _browser() -> list:
                      '<on event="right_thumb" run="port browser search next"/>',
                      f'<child widget="{base}/header_join_game"/>',
                      f'<child widget="{base}/browser_counts" platform="pointer"/>',
-                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{SETTINGS_TABS_TOP}" '
+                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{BROWSER_TABS_TOP}" '
                      'platform="pointer"/>',
                      f'<child widget="{SETTINGS}/tab_prompt_next" '
                      f'x="{SETTINGS_TABS_X + (len(BROWSER_TABS) - 1) * SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4}" '
-                     f'y="{SETTINGS_TABS_TOP}" platform="pointer"/>',
+                     f'y="{BROWSER_TABS_TOP}" platform="pointer"/>',
                      f'<child widget="{base}/browser_columns_line" platform="pointer"/>',
                      f'<child widget="{base}/browser_empty" platform="pointer"/>',
                      f'<child widget="{list_name}" platform="pointer"/>',
                      *_touch_browser()[0]])
     # (the title of the mode chosen: menu_functions.c's browser_initialize)
-    lines += _widget(f"{base}/header_join_game", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
-                                                  ("height", 59), ("wide", WIDE_LEFT)],
+    lines += _widget(f"{base}/header_join_game", [("controller", 1), ("left", BROWSER_TITLE[0]),
+                                                  ("top", BROWSER_TITLE[1]), ("width", BROWSER_TITLE[2]),
+                                                  ("height", BROWSER_TITLE[3]),
+                                                  ("wide", None if BROWSER_TITLE_WORDS else WIDE_LEFT)],
                      [f'<child widget="{base}/{name}"/>' for name in
                       ("header_server_browser", "header_lan", "header_direct_link")])
-    lines += _header(f"{base}/header_lan", f"{base}/header_local_network")
-    lines += _part_text(f"{base}/browser_counts", [("left", 372), ("top", 46), ("width", 240), ("height", 18),
+    lines += _browser_title(f"{base}/header_lan", f"{base}/header_local_network")
+    lines += _strings(BROWSER_TALL_TITLES, list(BROWSER_TITLE_NAMES.values()))
+    lines += _part_text(f"{base}/browser_counts", [("left", 372), ("top", BROWSER_COUNTS_TOP), ("width", 240),
+                                                  ("height", 18),
                                                   ("font", "ui\\small_ui"), ("color", PART_DIM), ("align", "right"),
                                                   ("wide", WIDE_RIGHT)])
     lines += _widget(f"{base}/browser_columns_line", [("controller", 1), ("left", BROWSER_LIST_X),
@@ -5004,7 +5759,7 @@ def _browser() -> list:
                                                       ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))], [])
     # (the list's words while it has no rows: menu_functions.c's
     # browser_empty_text)
-    lines += _part_text(f"{base}/browser_empty", [("left", BROWSER_LIST_X + 24), ("top", 200),
+    lines += _part_text(f"{base}/browser_empty", [("left", BROWSER_LIST_X + 24), ("top", BROWSER_EMPTY_TOP),
                                                  ("width", BROWSER_LIST_WIDTH - 48), ("height", 80),
                                                  ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
                                                  ("align", "center"), ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))])
@@ -5016,12 +5771,12 @@ def _browser() -> list:
                                  ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
                                  ("description", f"{base}/browser_panel")],
                      ['<data input="gamespy screen update"/>',
-                      f'<child widget="{base}/browser_tabs" y="{SETTINGS_TABS_TOP}"/>',
+                      f'<child widget="{base}/browser_tabs" y="{BROWSER_TABS_TOP}"/>',
                       f'<child widget="{base}/join_game_header" y="{BROWSER_HEADERS_TOP}"/>',
                       *rows,
                       f'<child widget="{base}/browser_join_bar" y="{panel_top + panel_height - BROWSER_JOIN[1] - 10}"/>',
                       f'<child widget="{base}/browser_clear_bar" y="{BROWSER_CLEAR_TOP}"/>',
-                      f'<child widget="{base}/join_game_button_bar" y="414"/>'])
+                      f'<child widget="{base}/join_game_button_bar" y="{BROWSER_FOOTER_TOP}"/>'])
     lines += _tab_strip(base, "browser_tabs", BROWSER_TABS, ['<on event="a" run="port browser tab"/>',
                                                              '<on event="start" run="port browser tab"/>'])
     # (the column titles: A or a click sorts by one, again the other way;
@@ -5079,7 +5834,10 @@ def _browser() -> list:
                                                             ("bitmap", f"bitmaps/arrow_sm_{way}")], [])
     # (a row: its game's star, its name with its tick rate's badge (OpenH1's
     # games) and its lock (a password) after it, its map, its mode, its
-    # players and its ping's bars)
+    # players and its ping's bars; or, the server browser's group's heading,
+    # its words across the row: menu_functions.c's browser_heading_show; the
+    # star, badge, lock and bars, 16 tall, in its middle)
+    icon_y = (BROWSER_ROW_HEIGHT - 16) // 2
     for row in range(1, BROWSER_ROWS + 1):
         lines += _widget(f"{base}/server_item_{row}",
                          [("width", BROWSER_LIST_WIDTH), ("height", BROWSER_ROW_HEIGHT),
@@ -5088,13 +5846,20 @@ def _browser() -> list:
                          ['<on event="a" run="gamespy select item"/>', '<on event="start" run="gamespy select item"/>',
                           '<on event="left_mouse" run="mouse emit accept event"/>',
                           '<on event="double_click" run="gamespy select item"/>',
-                          f'<child widget="{FAVORITE_STAR_WIDGET}" x="{BROWSER_COLUMNS["favorite"][0]}" y="1"/>',
+                          f'<child widget="{FAVORITE_STAR_WIDGET}" x="{BROWSER_COLUMNS["favorite"][0]}" '
+                          f'y="{icon_y}"/>',
                           *(f'<child widget="{base}/server_item_{column}" x="{BROWSER_COLUMNS[column][0]}"/>'
                             for column in ("server_name", "map", "type", "players")),
-                          f'<child widget="{base}/server_item_tick" y="1"/>',
-                          f'<child widget="{base}/server_item_locked" y="1"/>',
-                          f'<child widget="{base}/server_item_ping" x="{BROWSER_COLUMNS["ping"][0]}" y="1"/>',
-                          f'<child widget="{base}/server_item_ping_ms" x="{BROWSER_COLUMNS["ping"][0]}"/>'])
+                          f'<child widget="{base}/server_item_tick" y="{icon_y}"/>',
+                          f'<child widget="{base}/server_item_locked" y="{icon_y}"/>',
+                          f'<child widget="{base}/server_item_ping" x="{BROWSER_COLUMNS["ping"][0]}" y="{icon_y}"/>',
+                          f'<child widget="{base}/server_item_ping_ms" x="{BROWSER_COLUMNS["ping"][0]}"/>',
+                          f'<child widget="{base}/server_item_heading" x="{BROWSER_COLUMNS["server_name"][0]}"/>'])
+    lines += _widget(f"{base}/server_item_heading",
+                     [("type", "text"), ("width", sum(BROWSER_COLUMNS["ping"]) - BROWSER_COLUMNS["server_name"][0]),
+                      ("height", BROWSER_ROW_HEIGHT), ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
+                      ("text_y", caps_text_y(BROWSER_ROW_HEIGHT)), ("text_flags", "no_focus_test"),
+                      ("wide", wide(0, BROWSER_WIDE_LIST))], [])
     for column in ("server_name", "map", "type", "players"):
         lines += _widget(f"{base}/server_item_{column}",
                          [("type", "text"), ("width", BROWSER_COLUMNS[column][1]), ("height", BROWSER_ROW_HEIGHT),
@@ -5182,6 +5947,60 @@ def _browser() -> list:
                       '<on event="start" run="port browser search clear"/>',
                       '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _prompts(base, "join_game_button_bar", BROWSER_PROMPTS, text_x=BROWSER_PROMPT_TEXT_X, browser=True)
+    return lines
+
+
+@contextlib.contextmanager
+def _browser_geometry(places: dict):
+    """the browsers written with these places (BROWSER_TALL's names and
+    values) in place of the module's own, which are back afterwards"""
+    saved = {name: globals()[name] for name in places}
+    globals().update(places)
+    try:
+        yield
+    finally:
+        globals().update(saved)
+
+
+def _browsers() -> list:
+    """the widgets the browsers' layout places: the server browser's (and
+    the local network's and Join by Link's, its screen), its titles, PRO
+    2V2's browser"""
+    return _browser() + _join_game_extras() + _doubles_browser()
+
+
+# the widgets of the tall layout that keep 16:9's places on a wider screen
+# (no past): the tabs, whose LB and RB prompts are Settings',
+# and the footer's prompts, spread for 16:9 (wider, they would meet)
+BROWSER_TALL_CENTRED = re.compile(r"/(browser_tabs|tab_\w+|prompt_\w+)$")
+
+
+def _past(wide_layout: str) -> str:
+    """a widget's past (menu_tags.c's: its move and growth at 21:9 past
+    16:9's) that takes its wide layout on to a wider screen's edges: as much
+    again for each unit past 16:9 as for each past the 640"""
+    dx, dw = (int(value) for value in wide_layout.split())
+    return past(dx * PAST_EXTRA / WIDE_EXTRA, dw * PAST_EXTRA / WIDE_EXTRA)
+
+
+def _browser_tall_widgets() -> list:
+    """the browsers' widgets in the tall layout (BROWSER_TALL), each that it
+    places otherwise, as <widget> elements' lines (tall_widgets)"""
+    def parsed(lines):
+        root = ElementTree.fromstring("<menus>" + "\n".join(lines) + "</menus>")
+        return {element.get("name"): element for element in root.iter("widget")}
+
+    classic = parsed(_browsers())
+    with _browser_geometry(BROWSER_TALL):
+        tall = parsed(_browsers())
+    lines = []
+    for name, element in tall.items():
+        if element.get("wide") and not element.get("past") and not BROWSER_TALL_CENTRED.search(name) and \
+                _past(element.get("wide")):
+            element.set("past", _past(element.get("wide")))
+        if ElementTree.tostring(element) != ElementTree.tostring(classic[name]):
+            element.tail = None
+            lines.append(ElementTree.tostring(element, encoding="unicode"))
     return lines
 
 
@@ -5302,9 +6121,6 @@ def _hub() -> list:
         "hub_join_internet": ("SERVER BROWSER", joins(browser), "browser_note"),
         "hub_join_lan_item": ("LOCAL NETWORK", joins(browser), "item_note"),
         "hub_join_direct": ("JOIN BY LINK", joins(browser), "invite_note"),
-        # (matchmaking's screen: _matchmaking)
-        "hub_matchmaking": ("MATCHMAKING", [f'<on event="{event}" open="{MT}/matchmaking/matchmaking_screen"/>'
-                                            for event in ("a", "start")], "matchmaking_note"),
         # (the party's screen: _party)
         "hub_party": ("PARTY", [f'<on event="{event}" open="{MT}/party/party_screen"/>' for event in ("a", "start")],
                       "party_note"),
@@ -5347,9 +6163,8 @@ def _hub() -> list:
                        ['<data input="port multiplayer status"/>', *children])
 
     # (Multiplayer's own list a unit closer, its sections closer, for its
-    # ten items, eleven with MATCHMAKING: HUB_LIST_STEP, HUB_MATCHMAKING)
-    online = ["hub_matchmaking"] * HUB_MATCHMAKING + ["hub_join_internet", "hub_join_lan_item", "hub_join_direct",
-                                                      "hub_party", "hub_friends"]
+    # ten items: HUB_LIST_STEP)
+    online = ["hub_join_internet", "hub_join_lan_item", "hub_join_direct", "hub_party", "hub_friends"]
     lines = page_list("hub_list", [("section_online", "PLAY ONLINE", online),
                                    ("section_host", "HOST", ["hub_create", "hub_coop"]),
                                    (None, None, ["hub_gametypes"])], "hub_prompts", HUB_LIST_STEP, HUB_SECTION_GAP)
@@ -5385,7 +6200,7 @@ def _hub() -> list:
     # menu_functions.c's multiplayer_status_notes)
     # (right-aligned in from the highlight's end, clear of the items' words)
     for name, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C"),
-                        ("party_note", "#FF7FB2FF"), ("matchmaking_note", "#FF5ED38C"),
+                        ("party_note", "#FF7FB2FF"),
                         ("friends_note", "#FF5ED38C")):
         lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                            ("wide", wide(0, HUB_WIDE_ITEMS)),
@@ -5488,49 +6303,183 @@ def _party() -> list:
     return lines
 
 
-# the Matchmaking screen's (_matchmaking): a row for each playlist
-# (matchmaking.c's), and its footer's prompts (menu_functions.c's
-# matchmaking_screen_update shows SEARCH or CANCEL)
-MATCHMAKING_ROWS = 5
-MATCHMAKING_PROMPTS = [
-    ("prompt_search", "%a-button SEARCH", 28, 124, '<on event="a" run="port matchmaking button"/>'),
+# the PRO 2V2 screen's footer prompts (menu_functions.c's
+# matchmaking_screen_update shows CHOOSE or, while FIND GAME searches,
+# CANCEL)
+DOUBLES_PROMPTS = [
+    ("prompt_search", "%a-button CHOOSE", 28, 124, '<on event="a" run="port matchmaking button"/>'),
     ("prompt_cancel", "%x-button CANCEL", 28, 124, '<on event="a" run="port matchmaking button"/>'),
     ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="port matchmaking button"/>'),
 ]
 
 
-def _matchmaking() -> list:
-    """the Matchmaking screen (port/linux/game/matchmaking_menu.inc), in
-    Multiplayer's look (_hub's parts): MATCHMAKING's section over a row for
-    each playlist (its name, and at its end what its search is doing), the
-    panel beside them (the playlist chosen's name and what it is, the search:
-    its time, the games it found and what it does now, and what matchmaking
-    is), and the footer's key prompts: SEARCH (A, a row's A or click: the
-    playlist searched for the whole party) or, while a search goes on, CANCEL
-    (X), and BACK. On a wide screen it is laid out as Multiplayer is
-    (HUB_WIDE_ITEMS, HUB_WIDE_PANEL)"""
-    base = f"{MT}/matchmaking"
+def _doubles() -> list:
+    """the main menu's PRO 2V2 (main_menu_item_doubles, in the redraws' letters:
+    menu_item_frames) and its screen (_matchmaking_screen), a row for each
+    kind, CLASSIC and CRISPY: A on one opens the PRO 2V2 browser of
+    its playlist (matchmaking_menu.inc), and the panel says why it cannot be
+    searched (internet play off, no maps for it)"""
+    lines = _widget("main_menu/main_menu_item_doubles",
+                    [("type", "text"), ("width", 256), ("height", 33), ("bitmap", "main_menu/menu_doubles")],
+                    [f'<on event="a" open="{DOUBLES}/doubles_screen"/>',
+                     f'<on event="start" open="{DOUBLES}/doubles_screen"/>',
+                     '<on event="left_mouse" run="mouse emit accept event"/>'])
+    lines += _header(f"{DOUBLES}/header_doubles", f"{DOUBLES}/header_doubles")
+    return lines + _matchmaking_screen(DOUBLES, "doubles", f"{DOUBLES}/header_doubles", "2 AGAINST 2", DOUBLES_ROWS,
+                                       "Pro settings on the 2v2 maps, 120 ticks. Classic: Instant Aim off, lead "
+                                       "your shots. Crispy: Instant Aim on. Each lists only its own games.",
+                                       DOUBLES_PROMPTS) + _doubles_browser()
+
+
+def _doubles_browser() -> list:
+    """the 2V2 browser (port/linux/game/doubles_browser.inc): a kind's games
+    in the server browser's own column titles and rows (join_game's widgets,
+    filled by the server browser's code, kept to the kind's games), HOST
+    GAME and FIND GAME under them, and the panel on the right: the game
+    chosen (the server browser's panel's words) over the friends online,
+    those in a 2v2 of the kind first; the friends' rows are the list's, after
+    the buttons. Its title is 2V2's, the kind and its rules on the line
+    under it"""
+    base = f"{DOUBLES}/browser"
+    browser = f"{MT}/join_game"
+    list_name = f"{base}/doubles_browser_list"
+    panel_left, panel_top, panel_width, panel_height = BROWSER_PANEL
+    inner_left, inner_width = panel_left + 12, panel_width - 24
+    panel_moved, panel_grown = BROWSER_WIDE_PANEL
+    lines = _widget(f"{base}/doubles_browser_screen",
+                    [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child"),
+                     ("bitmap", BROWSER_BACKGROUND)],
+                    ['<on event="created" run="port doubles init"/>',
+                     '<on event="deleted" run="port doubles dispose"/>',
+                     '<on event="b" run="gamespy back handler"/>', '<on event="back" run="gamespy back handler"/>',
+                     '<on event="x" run="port doubles x"/>',
+                     '<on event="right_trigger" run="port browser refresh"/>',
+                     '<on event="right_thumb" run="port browser search next"/>',
+                     f'<child widget="{base}/header_doubles_browser"/>',
+                     f'<child widget="{base}/doubles_kind"/>',
+                     f'<child widget="{browser}/browser_counts"/>',
+                     f'<child widget="{browser}/browser_columns_line"/>',
+                     f'<child widget="{browser}/browser_empty"/>',
+                     f'<child widget="{list_name}"/>'])
+    # (the kind and its rules, under the title where the server browser has
+    # its tabs: doubles_browser.inc fills it in)
+    # (its title PRO 2V2's picture, a widget of its own: the browsers' place
+    # for it, BROWSER_TITLE)
+    lines += _browser_title(f"{base}/header_doubles_browser", f"{DOUBLES}/header_doubles")
+    lines += _part_text(f"{base}/doubles_kind", [("left", BROWSER_LIST_X + 4), ("top", BROWSER_TABS_TOP + 2),
+                                                ("width", BROWSER_LIST_WIDTH), ("height", 20), ("font", "ui\\large_ui"),
+                                                ("color", "#FFFFFFFF"), ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))])
+    rows = [f'<child widget="{browser}/server_item_{row}" x="{BROWSER_LIST_X}" '
+            f'y="{BROWSER_ROWS_TOP + BROWSER_ROW_STEP * (row - 1)}"/>' for row in range(1, DOUBLES_BROWSER_ROWS + 1)]
+    friends = [f'<child widget="{base}/doubles_friend_{row}" x="{inner_left}" '
+               f'y="{panel_top + DOUBLES_FRIENDS_TOP + DOUBLES_FRIEND_STEP * (row - 1)}"/>'
+               for row in range(1, DOUBLES_FRIEND_ROWS + 1)]
+    lines += _widget(list_name, [("type", "column_list"), ("width", 640), ("height", 480),
+                                 ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                                 ("description", f"{base}/doubles_panel")],
+                     ['<data input="port doubles update"/>',
+                      f'<child widget="{browser}/join_game_header" y="{BROWSER_HEADERS_TOP}"/>',
+                      *rows,
+                      f'<child widget="{base}/doubles_actions" '
+                      f'y="{BROWSER_ROWS_TOP + BROWSER_ROW_STEP * DOUBLES_BROWSER_ROWS + 8}"/>',
+                      *friends,
+                      f'<child widget="{browser}/browser_clear_bar" y="{BROWSER_CLEAR_TOP}"/>',
+                      f'<child widget="{base}/doubles_prompts" y="{BROWSER_FOOTER_TOP}"/>'])
+    # (HOST GAME and FIND GAME, under the rows: left and right between them)
+    join_w, join_h = BROWSER_JOIN
+    lines += _widget(f"{base}/doubles_actions", [("type", "column_list"), ("width", 640), ("height", join_h),
+                                                 ("flags", "pass_unhandled_to_focused_child left_right_tabs_children")],
+                     [f'<child widget="{base}/button_doubles_host" x="{BROWSER_LIST_X}"/>',
+                      f'<child widget="{base}/button_doubles_find" x="{BROWSER_LIST_X + join_w + 8}"/>'])
+    for name, words, run in (("button_doubles_host", "HOST GAME", "port doubles host"),
+                             ("button_doubles_find", "FIND GAME", "port doubles find")):
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("width", join_w), ("height", join_h),
+                                           ("bitmap", part_button_set(join_w, join_h)), ("wide", wide(-WIDE_HALF)),
+                                           ("text", words), ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
+                                           ("align", "center"), ("text_y", caps_text_y(join_h))],
+                         [f'<on event="a" run="{run}"/>', f'<on event="start" run="{run}"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>'])
+    # (a friend's row: their name, and at its end where they are: green in
+    # a 2v2 of this kind, blue otherwise)
+    for row in range(1, DOUBLES_FRIEND_ROWS + 1):
+        lines += _widget(f"{base}/doubles_friend_{row}",
+                         [("type", "text"), ("width", inner_width), ("height", DOUBLES_FRIEND_HEIGHT),
+                          ("wide", wide(panel_moved, panel_grown)),
+                          ("bitmap", part_highlight(inner_width, DOUBLES_FRIEND_HEIGHT)),
+                          ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("text_x", 4),
+                          ("text_y", caps_text_y(DOUBLES_FRIEND_HEIGHT))],
+                         ['<on event="a" run="port doubles friend"/>', '<on event="start" run="port doubles friend"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          f'<child widget="{base}/df_note_{row}"/>', f'<child widget="{base}/df_live_{row}"/>'])
+        for note, color in ((f"df_note_{row}", "#FF7FB2FF"), (f"df_live_{row}", "#FF5ED38C")):
+            lines += _widget(f"{base}/{note}", [("type", "text"), ("width", inner_width - 6),
+                                                ("height", DOUBLES_FRIEND_HEIGHT), ("wide", wide(0, panel_grown)),
+                                                ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
+                                                ("text_y", caps_text_y(DOUBLES_FRIEND_HEIGHT)),
+                                                ("text_flags", "no_focus_test")], [])
+    # (the panel: the game chosen in the server browser's panel's words,
+    # its own widgets, then FRIENDS ONLINE over the friends' rows)
+    panel = [f'<child widget="{browser}/panel_title" x="{inner_left}" y="{panel_top + 10}"/>',
+             f'<child widget="{browser}/panel_where" x="{inner_left}" y="{panel_top + 40}"/>',
+             f'<child widget="{browser}/panel_status" x="{inner_left}" y="{panel_top + 80}"/>',
+             f'<child widget="{base}/doubles_friends_title" x="{inner_left}" y="{panel_top + DOUBLES_FRIENDS_TOP - 20}"/>',
+             f'<child widget="{base}/doubles_friends_empty" x="{inner_left}" y="{panel_top + DOUBLES_FRIENDS_TOP}"/>']
+    lines += _widget(f"{base}/doubles_friends_title",
+                     [("type", "text"), ("controller", 1), ("width", inner_width), ("height", 18),
+                      ("text", "FRIENDS ONLINE"), ("font", "ui\\small_ui"),
+                      ("color", PART_DIM), ("text_x", 4), ("wide", wide(0, panel_grown)),
+                      ("text_flags", "no_focus_test")], [])
+    lines += _part_text(f"{base}/doubles_friends_empty", [("width", inner_width), ("height", 40),
+                                                         ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE),
+                                                         ("wide", wide(0, panel_grown))])
+    lines += _widget(f"{base}/doubles_panel", [("controller", 1), ("left", panel_left), ("top", panel_top),
+                                               ("width", panel_width), ("height", panel_height),
+                                               ("bitmap", part_panel(panel_width, panel_height)),
+                                               ("wide", wide(*BROWSER_WIDE_PANEL))], panel)
+    lines += _prompts(base, "doubles_prompts", DOUBLES_BROWSER_PROMPTS, browser=True)
+    return lines
+
+
+# the 2V2 browser's footer: the server browser's REFRESH, SEARCH and SORT,
+# and BACK; for the friend chosen, in REFRESH's place what A does (JOIN, else
+# INVITE), and X INVITE in SORT's where JOIN and INVITE both are offered
+# (doubles_browser.inc's doubles_friend_prompts_show)
+DOUBLES_BROWSER_PROMPTS = [
+    ("prompt_refresh", "%right-trigger REFRESH", 24, 102, '<on event="a" run="port browser refresh"/>'),
+    ("prompt_join", "%a-button JOIN", 24, 102, '<on event="a" run="port doubles join"/>'),
+    ("prompt_invite", "%a-button INVITE", 24, 102, '<on event="a" run="port doubles invite"/>'),
+    ("prompt_search", "%right-thumb SEARCH", 238, 97, '<on event="a" run="port browser search next"/>'),
+    ("prompt_sort", "%x-button SORT", 337, 90, '<on event="a" run="port browser sort"/>'),
+    ("prompt_invite_x", "%x-button INVITE", 337, 90, '<on event="a" run="port doubles invite"/>'),
+    ("prompt_back", "%b-button BACK", 528, 88, '<on event="a" run="mouse emit back event"/>'),
+]
+
+
+def _matchmaking_screen(base: str, name: str, header: str, section: str, row_count: int, help_text: str,
+                        prompts: list) -> list:
+    """matchmaking's screen (PRO 2V2's, _doubles): its rows under section,
+    the panel, the prompts; its list <name>_list"""
     left, top, width, height = HUB_PANEL
     item_w, item_h = HUB_ITEM
     step = item_h + 2
     items_wide = wide(-WIDE_HALF, HUB_WIDE_ITEMS)
     rows = [f'<child widget="{base}/mm_row_{row}" x="{HUB_LIST_X}" y="{top + PART_SECTION_HEIGHT + 2 + step * row}"/>'
-            for row in range(MATCHMAKING_ROWS)]
-    lines = _widget(f"{base}/matchmaking_screen", [("width", 640), ("height", 480),
-                                                   ("flags", "pass_unhandled_to_focused_child"),
-                                                   ("bitmap", "bitmaps/gradient")],
+            for row in range(row_count)]
+    lines = _widget(f"{base}/{name}_screen", [("width", 640), ("height", 480),
+                                              ("flags", "pass_unhandled_to_focused_child"),
+                                              ("bitmap", "bitmaps/gradient")],
                     ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
-                     '<on event="x" run="port matchmaking x"/>', f'<child widget="{MT}/header_multiplayer"/>',
+                     '<on event="x" run="port matchmaking x"/>', f'<child widget="{header}"/>',
                      f'<child widget="{base}/section_matchmaking" x="{HUB_LIST_X}" y="{top}"/>',
-                     f'<child widget="{base}/matchmaking_panel"/>', f'<child widget="{base}/matchmaking_list"/>'])
-    lines += _section(f"{base}/section_matchmaking", "MATCHMAKING", item_w, items_wide)
-    lines += _widget(f"{base}/matchmaking_list", [("type", "column_list"), ("width", 640), ("height", 480),
-                                                  ("flags", "pass_unhandled_to_focused_child up_down_tabs_items")],
+                     f'<child widget="{base}/matchmaking_panel"/>', f'<child widget="{base}/{name}_list"/>'])
+    lines += _section(f"{base}/section_matchmaking", section, item_w, items_wide)
+    lines += _widget(f"{base}/{name}_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                             ("flags", "pass_unhandled_to_focused_child up_down_tabs_items")],
                      ['<data input="port matchmaking update"/>', *rows,
                       f'<child widget="{base}/matchmaking_prompts" y="414"/>'])
     # (a playlist's row: its name, filled in, and what its search does at
     # its end)
-    for row in range(MATCHMAKING_ROWS):
+    for row in range(row_count):
         lines += _widget(f"{base}/mm_row_{row}", [("type", "text"), ("width", item_w), ("height", item_h),
                                                   ("wide", items_wide), ("bitmap", part_highlight(item_w, item_h)),
                                                   ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("text_x", 10),
@@ -5563,14 +6512,12 @@ def _matchmaking() -> list:
     lines += text("panel_detail", 126, 84, "ui\\small_ui", SETTINGS_BLUE)
     # (wrapped in its box, as a dialog's message is: one line it ran past the
     # panel's edge; four lines tall for 4:3's narrower panel)
-    lines += text("panel_help", height - 90, 78, "ui\\small_ui", SETTINGS_BLUE,
-                  words="Matchmaking finds a game with room for your whole party, by ping, or hosts one that "
-                        "players searching the same playlist join. Your party comes with you.", flags="wrap")
+    lines += text("panel_help", height - 90, 78, "ui\\small_ui", SETTINGS_BLUE, words=help_text, flags="wrap")
     lines += _widget(f"{base}/matchmaking_panel", [("controller", 1), ("left", left), ("top", top),
                                                    ("width", width), ("height", height),
                                                    ("bitmap", part_panel(width, height)),
                                                    ("wide", wide(*HUB_WIDE_PANEL))], panel)
-    lines += _prompts(base, "matchmaking_prompts", MATCHMAKING_PROMPTS)
+    lines += _prompts(base, "matchmaking_prompts", prompts)
     return lines
 
 
@@ -5775,6 +6722,7 @@ HOST_PROMPTS = [
     ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="mouse emit back event"/>'),
 ]
 TITLES[f"{HOST_CONTROLS}/header_host_controls"] = "HOST CONTROLS"
+TITLES[f"{DOUBLES}/header_doubles"] = "PRO 2V2"
 
 
 def _host_controls() -> list:
@@ -5988,8 +6936,7 @@ TOUCH_TILE = ((TOUCH_HUB_WIDTH - TOUCH_GAP) // 2, TOUCH_TAP)
 TOUCH_HUB_PANEL = (HUB_LIST_X + TOUCH_HUB_WIDTH + 8, HUB_PANEL[1],
                    640 - HUB_LIST_X - (HUB_LIST_X + TOUCH_HUB_WIDTH + 8), HUB_PANEL[3])
 TOUCH_TILES = [
-    ("section_online", "PLAY ONLINE", [("hub_matchmaking", "MATCHMAKING", "matchmaking_note")] * HUB_MATCHMAKING + [
-                                       ("hub_join_internet", "BROWSE GAMES", "browser_note"),
+    ("section_online", "PLAY ONLINE", [("hub_join_internet", "BROWSE GAMES", "browser_note"),
                                        ("hub_join_lan_item", "LOCAL GAMES", "item_note"),
                                        ("hub_join_direct", "JOIN BY LINK", "invite_note"),
                                        ("hub_party", "PARTY", "party_note"),
@@ -6322,7 +7269,13 @@ def _touch_browser() -> tuple:
                           f'<child widget="{touch}/server_item_ping" x="{TOUCH_BROWSER_CELLS["ping"][0]}" '
                           f'y="{TOUCH_BROWSER_CELLS["ping"][1] - 1}"/>',
                           f'<child widget="{touch}/server_item_ping_ms" x="{TOUCH_BROWSER_CELLS["ping"][0]}" '
-                          f'y="{TOUCH_BROWSER_CELLS["ping"][1]}"/>'])
+                          f'y="{TOUCH_BROWSER_CELLS["ping"][1]}"/>',
+                          f'<child widget="{touch}/server_item_heading" x="{TOUCH_BROWSER_CELLS["server_name"][0]}" '
+                          f'y="{TOUCH_BROWSER_CELLS["server_name"][1]}"/>'])
+    lines += _widget(f"{touch}/server_item_heading",
+                     [("type", "text"), ("width", row_w - 2 * TOUCH_BROWSER_CELLS["server_name"][0]), ("height", 20),
+                      ("font", "ui\\large_ui"), ("color", "#FFFFFFFF"), ("text_flags", "no_focus_test"),
+                      ("wide", wide(0, BROWSER_WIDE_LIST))], [])
     for column in ("server_name", "map", "type", "players"):
         _, _, cell_w, moved, grown = TOUCH_BROWSER_CELLS[column]
         large = column in ("server_name", "players")
@@ -6397,8 +7350,6 @@ def _touch_hub() -> tuple:
                f'<on event="a" run="mp type set mode" open="{MT}/connected/connected_map_select_wrapper"/>']
     browser = f"{MT}/join_game/join_game_screen"
     handlers.update({
-        "hub_matchmaking": [f'<on event="{event}" open="{MT}/matchmaking/matchmaking_screen"/>'
-                            for event in ("a", "start")],
         "hub_join_internet": joins(browser), "hub_join_lan_item": joins(browser), "hub_join_direct": joins(browser),
         "hub_party": [f'<on event="{event}" open="{MT}/party/party_screen"/>' for event in ("a", "start")],
         "hub_friends": [f'<on event="{event}" open="{MT}/friends/friends_screen"/>' for event in ("a", "start")],
@@ -6447,7 +7398,7 @@ def _touch_hub() -> tuple:
                      ['<data input="port multiplayer status"/>', *children])
     lines += _hub_panel(touch, TOUCH_HUB_PANEL, HUB_WIDE_PANEL)
     for note, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C"),
-                        ("party_note", "#FF7FB2FF"), ("matchmaking_note", "#FF5ED38C"),
+                        ("party_note", "#FF7FB2FF"),
                         ("friends_note", "#FF5ED38C")):
         lines += _widget(f"{touch}/{note}", [("type", "text"), ("width", tile_w - 20), ("height", 16),
                                             ("wide", wide(0, half)), ("font", "ui\\small_ui"), ("color", color),
@@ -6792,6 +7743,19 @@ MISSION_ART_INSET = 6
 ART_CORNER_RADIUS = 5
 MISSION_BADGE = {MISSION_BIG: (36, 38), MISSION_SMALL: (28, 31)}
 MISSION_CARDS_TOP = 84
+# the tall layout's cards (the new engine's: _MISSIONS_TALL): three of one size, the chosen one outlined, as tall as
+# the room between the band and the footer lets them, the mission's objective in each and, at its foot, the hardest
+# difficulty it has been beaten on (campaign_menu.inc's MISSION_TALL_*)
+MISSION_TALL, MISSION_TALL_TOP = (158, 326), 78
+# Choose Mission's CONTINUE (the tall layout's, with a saved game): a bar across the row of cards over them, the
+# saved game's picture, mission and difficulty; the cards under it, lower (campaign_menu.inc's MISSION_RESUME_*)
+MISSION_RESUME = (3 * 158 + 2 * 10, 52)
+MISSION_RESUME_TOP, MISSION_RESUME_CARDS_TOP = 48, 108
+# (its picture inset from its frame as the cards' are, MISSION_ART_INSET, its corners round: as tall as the bar
+# leaves it, at the pictures' shape)
+MISSION_RESUME_ART = campaign_art_size(48)
+MISSION_TALL_BLUE = "#FF2890F8"
+MISSION_TALL_DIM = "#FF6F9CD0"
 MISSION_CARD_GAP = 10
 MISSION_ARROW = (24, 64)
 # the arrows: as far from the row's cards beside the chosen one at any width
@@ -6809,11 +7773,11 @@ MISSION_OBJECTIVE_LINES = 2
 SMALL_UI_LINE, SMALL_UI_DESCENT = 20, 3
 
 
-def mission_arrow_place(side: str) -> tuple:
+def mission_arrow_place(side: str, tall: bool = False) -> tuple:
     """an arrow's place at 4:3 and its move on a wide screen (x, dx):
     MISSION_ARROW_GAP from the row of three cards, as mission_cards_place
-    lays it out"""
-    row = MISSION_BIG[0] + 2 * MISSION_SMALL[0] + 2 * MISSION_CARD_GAP
+    lays it out (tall: the tall layout's three cards of one size)"""
+    row = (3 * MISSION_TALL[0] if tall else MISSION_BIG[0] + 2 * MISSION_SMALL[0]) + 2 * MISSION_CARD_GAP
     left = 320 - row // 2
     if side == "left":
         return left - MISSION_ARROW_GAP - MISSION_ARROW[0], -(WIDE_EXTRA // 8)
@@ -6876,13 +7840,19 @@ def campaign_pictures() -> list:
     pictures.append((f"{CAMPAIGN}/continue_{width}x{height}", [
         framed(width, height, "#0a1b2e", 0.9, "#1e3f5e", 8),
         framed(width, height, "#0f2a44", 0.95, "#4fb3ff", 8)]))
-    for size in (MISSION_BIG, MISSION_SMALL):
+    for size in (MISSION_BIG, MISSION_SMALL, MISSION_TALL):
         pictures.append((mission_card(size), [framed(*size, "#0a1b2e", 0.85, "#1e3f5e"),
                                               framed(*size, "#0f2a44", 0.95, "#4fb3ff", 10, 2.5),
                                               framed(*size, "#08131f", 0.7, "#16324d")]))
+        if size == MISSION_TALL:
+            continue
         art = campaign_art_size(size[0] - 2 * MISSION_ART_INSET)
         pictures.append((f"{CAMPAIGN}/art_back_{art[0]}x{art[1]}",
                          [framed(*art, "#12304a", 1.0, "none", ART_CORNER_RADIUS, 0)]))
+    width, height = MISSION_RESUME
+    pictures.append((f"{CAMPAIGN}/continue_{width}x{height}", [
+        framed(width, height, "#0a1b2e", 0.85, "#1e3f5e"),
+        framed(width, height, "#0f2a44", 0.95, "#4fb3ff", 10, 2.5)]))
     pictures.append((f"{CAMPAIGN}/art_back_{CAMPAIGN_ART[0]}x{CAMPAIGN_ART[1]}",
                      [framed(*CAMPAIGN_ART, "#12304a", 1.0, "none", ART_CORNER_RADIUS, 0)]))
     arrow_w, arrow_h = MISSION_ARROW
@@ -7107,29 +8077,32 @@ def _restart_question() -> list:
     return lines
 
 
-def _mission_card(size: tuple, slot: int) -> list:
+def _mission_card(size: tuple, slot: int, kind: str = None) -> list:
     """a mission card in a slot of the row, at its size: its picture (a
     level's, a Custom Edition map's, or a title card drawn for a map with
     none), MISSION 0N, its name, the four difficulties' badges (lit: finished
     on it), RESUME on the picture of the saved game's mission"""
     width, height = size
-    kind = "big" if size == MISSION_BIG else "small"
+    tall = size == MISSION_TALL
+    kind = kind or ("big" if size == MISSION_BIG else "small")
     base = f"{CAMPAIGN}/card_{kind}_{slot}"
     art_w, art_h = campaign_art_size(width - 2 * MISSION_ART_INSET)
     inset = MISSION_ART_INSET
-    badge, step = MISSION_BADGE[size]
+    # (the tall layout's in a row at the card's foot, smaller: each lit where the mission is beaten on it,
+    # campaign_menu.inc's mission_card_foot_show)
+    badge, step = MISSION_BADGE[MISSION_SMALL if tall else size]
     text_top = inset + art_h + 6
-    # (the missions' names in the menus' heading font: OpenCE, the titles' face)
-    font = CAMPAIGN_TITLE_FONT if size == MISSION_BIG else "ui\\small_ui"
+    # (the missions' names in the menus' heading font: OpenCE, the titles' face; the tall layout's every card's)
+    font = CAMPAIGN_TITLE_FONT if size == MISSION_BIG or tall else "ui\\small_ui"
     children = [f'<child widget="{CAMPAIGN}/{name}_{kind}"/>' for name in
                 ("card_art_back", "card_art", "card_custom_art", "card_card_tag",
                  "card_card_title", "card_resume",
-                 "card_number", "card_title")]
-    # (the badges in a row under the name, across the card)
+                 "card_number", "card_title", "card_objective")]
+    # (the badges in a row under the name, across the card; the tall layout's at its foot)
     badges_x = (width - 3 * step - badge) // 2
-    children += [f'<child widget="{CAMPAIGN}/card_badge_shape_{kind}" x="{badges_x + step * index}"/>'
-                 for index in range(4)]
-    children += [f'<child widget="{CAMPAIGN}/card_badge_{kind}" x="{badges_x + step * index}"/>' for index in range(4)]
+    places = [badges_x + step * index for index in range(4)]
+    children += [f'<child widget="{CAMPAIGN}/card_badge_shape_{kind}" x="{x}"/>' for x in places]
+    children += [f'<child widget="{CAMPAIGN}/card_badge_{kind}" x="{x}"/>' for x in places]
     children.append(f'<child widget="{CAMPAIGN}/card_unbeaten_{kind}"/>')
     lines = _widget(base, [("width", width), ("height", height), ("bitmap", mission_card(size))],
                     [*(f'<on event="{event}" run="port campaign choose" open="{CAMPAIGN}/difficulty_screen"/>'
@@ -7167,19 +8140,118 @@ def _mission_card(size: tuple, slot: int) -> list:
                                                         ("color", "#FFFFFFFF"), ("align", "center"),
                                                         ("text_flags", "no_focus_test")], [])
     lines += _campaign_text(f"{CAMPAIGN}/card_number_{kind}", 10, text_top, width - 20, 16, "ui\\small_ui",
-                            CAMPAIGN_DIM)
-    lines += _campaign_text(f"{CAMPAIGN}/card_title_{kind}", 10, text_top + 16, width - 20, 46, font, "#FFFFFFFF")
+                            MISSION_TALL_DIM if tall else CAMPAIGN_DIM)
+    lines += _campaign_text(f"{CAMPAIGN}/card_title_{kind}", 10, text_top + 16, width - 20, 46, font,
+                            MISSION_TALL_BLUE if tall else "#FFFFFFFF")
+    # (the tall layout's: the objective under the name, as the Xbox's level cards have it; elsewhere none)
+    objective_top = text_top + 64
+    lines += _campaign_text(f"{CAMPAIGN}/card_objective_{kind}", 10, objective_top, width - 20,
+                            max(height - objective_top - 30, 16), "ui\\small_ui", MISSION_TALL_BLUE)
     for name, bitmap in (("card_badge_shape", f"{CAMPAIGN}/badge_shape_{badge}"),
                          ("card_badge", f"{CAMPAIGN}/badges_{badge}")):
-        lines += _widget(f"{CAMPAIGN}/{name}_{kind}", [("controller", 1), ("top", text_top + 62),
+        lines += _widget(f"{CAMPAIGN}/{name}_{kind}", [("controller", 1),
+                                                        ("top", height - 8 - badge if tall else text_top + 62),
                                                         ("width", badge), ("height", badge), ("bitmap", bitmap)], [])
     # (a mission not beaten on any difficulty says so, in the badges' place,
-    # across the card, in the middle as the badges are)
-    lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", MISSION_UNBEATEN_INSET,
-                            text_top + 62 + (badge - 16) // 2, width - 2 * MISSION_UNBEATEN_INSET, 18,
-                            "ui\\small_ui", CAMPAIGN_NEW, align="center")
+    # across the card, in the middle as the badges are; in the tall layout,
+    # the hardest difficulty it is beaten on, at the card's foot, and nothing
+    # where it is beaten on none)
+    if tall:
+        # (without the map's badges: the hardest it is beaten on in words, over the badges' outlines)
+        lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", 10, height - 8 - badge - 20, width - 20, 18,
+                                "ui\\small_ui", MISSION_TALL_DIM, align="center")
+    else:
+        lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", MISSION_UNBEATEN_INSET,
+                                text_top + 62 + (badge - 16) // 2, width - 2 * MISSION_UNBEATEN_INSET, 18,
+                                "ui\\small_ui", CAMPAIGN_NEW, align="center")
     lines += _level_pictures(f"{CAMPAIGN}/art_{art_w}x{art_h}", art_w, art_h)
     lines += _badge_frames(f"{CAMPAIGN}/badges_{badge}", CAMPAIGN_BADGES_SMALL, badge)
+    return lines
+
+
+# Choose Mission in the tall layout (docs/menu_engine.md, "The tall layout"): the new engine's alone, written by
+# _missions_tall_widgets with _MISSIONS_TALL set; its title's words, a <strings> of their own
+MISSIONS_TALL_TITLES = f"{CAMPAIGN}/tall_titles"
+_MISSIONS_TALL = False
+
+
+def _missions_tall_widgets() -> list:
+    """Choose Mission's widgets in the tall layout, each that it has otherwise, as <widget> elements' lines
+    (tall_widgets): the tall background (its band and footer line edge to edge), its title as words in the band,
+    the HALO and CUSTOM tabs in the band at the right, and the footer's prompts on the bottom line, BACK at the
+    left and SELECT (and RESTART beside it) at the right"""
+    global _MISSIONS_TALL
+
+    def parsed(lines):
+        root = ElementTree.fromstring("<menus>" + "\n".join(lines) + "</menus>")
+        return {element.get("name"): element for element in root.iter("widget")}
+
+    classic = parsed(_missions() + _difficulties() + _prompts(CAMPAIGN, "campaign_prompts", [CAMPAIGN_PROMPT_BACK]))
+    _MISSIONS_TALL = True
+    try:
+        # (BACK at the left: its wide layout the left's; the Campaign menu's footer, whose BACK it is too, kept)
+        tall = parsed(_missions() + _difficulties() + _prompts(CAMPAIGN, "campaign_prompts",
+                                             [(CAMPAIGN_PROMPT_BACK[0], CAMPAIGN_PROMPT_BACK[1], WIDE_MARGIN,
+                                               *CAMPAIGN_PROMPT_BACK[3:])]))
+    finally:
+        _MISSIONS_TALL = False
+    # (past 16:9, the footer's prompts and the band's tabs to the screen's edges, as the title is)
+    for name, dx in ((f"{CAMPAIGN}/prompt_back", -PAST_HALF), (f"{CAMPAIGN}/prompt_play", PAST_HALF),
+                     (f"{CAMPAIGN}/tab_halo", PAST_HALF), (f"{CAMPAIGN}/tab_custom", PAST_HALF),
+                     (f"{CAMPAIGN}/source_prompt_previous", PAST_HALF), (f"{CAMPAIGN}/source_prompt_next", PAST_HALF),
+                     (f"{CAMPAIGN}/difficulty_mission", -PAST_HALF)):
+        if name in tall:
+            tall[name].set("past", past(dx))
+    lines = []
+    for name, element in tall.items():
+        if name == f"{CAMPAIGN}/campaign_prompts":
+            continue
+        if name not in classic or ElementTree.tostring(element) != ElementTree.tostring(classic[name]):
+            element.tail = None
+            lines.append(ElementTree.tostring(element, encoding="unicode"))
+    return lines
+
+
+def _mission_resume() -> list:
+    """Choose Mission's CONTINUE: the saved game's level's picture, CONTINUE over its mission's number and name,
+    and its difficulty's badge and name at the right, in the cards' blue; A (or a click) goes on with it, as the
+    Campaign menu's CONTINUE did. Shown in the tall layout alone, with a saved game (campaign_menu.inc)"""
+    base = CAMPAIGN
+    width, height = MISSION_RESUME
+    art_w, art_h = MISSION_RESUME_ART
+    badge = MISSION_BADGE[MISSION_SMALL][0]
+    inset = MISSION_ART_INSET
+    # (the words as far from the picture as the badge is from the frame's right)
+    margin = 12
+    text_x = inset + art_w + margin
+    # (in a list of its own, as the cards are in theirs: the pointer over it gives it the focus, lit, and a click
+    # presses A on it, as on a card)
+    lines = _widget(f"{base}/mission_resume_row", [("type", "column_list"), ("width", width), ("height", height),
+                                                   ("flags", "pass_unhandled_to_focused_child")],
+                    [f'<child widget="{base}/mission_resume"/>'])
+    lines += _widget(f"{base}/mission_resume", [("width", width), ("height", height),
+                                               ("bitmap", f"{base}/continue_{width}x{height}")],
+                    [*(f'<on event="{event}" run="port campaign continue"/>' for event in ("a", "start")),
+                     '<on event="left_mouse" run="mouse emit accept event"/>',
+                     *(f'<child widget="{base}/resume_{part}"/>'
+                       for part in ("art", "label", "title", "difficulty", "badge"))])
+    lines += _widget(f"{base}/resume_art", [("controller", 1), ("left", inset), ("top", (height - art_h) // 2),
+                                            ("width", art_w), ("height", art_h),
+                                            ("bitmap", f"{base}/art_{art_w}x{art_h}"), ("radius", ART_CORNER_RADIUS)],
+                     [])
+    lines += _level_pictures(f"{base}/art_{art_w}x{art_h}", art_w, art_h)
+    # (CONTINUE and the mission's number over its name; its difficulty's name and badge at the right)
+    difficulty_w = 84
+    lines += _campaign_text(f"{base}/resume_label", text_x, 6, 240, 16, "ui\\small_ui", MISSION_TALL_DIM,
+                            words="CONTINUE")
+    lines += _campaign_text(f"{base}/resume_title", text_x, 22,
+                            width - text_x - margin - badge - 6 - difficulty_w - 6, 24, CAMPAIGN_TITLE_FONT,
+                            MISSION_TALL_BLUE)
+    lines += _campaign_text(f"{base}/resume_difficulty", width - margin - badge - 6 - difficulty_w,
+                            (height - 18) // 2, difficulty_w, 18, "ui\\small_ui", MISSION_TALL_BLUE, align="right")
+    lines += _widget(f"{base}/resume_badge", [("controller", 1), ("left", width - margin - badge),
+                                              ("top", (height - badge) // 2), ("width", badge), ("height", badge),
+                                              ("bitmap", f"{base}/badges_{badge}")], [])
     return lines
 
 
@@ -7193,10 +8265,24 @@ def _missions() -> list:
     finished on), and the footer's key prompts; A on a card (or SELECT)
     opens the difficulties, or goes on with the saved game in it (RESUME)"""
     base = CAMPAIGN
+    tall = _MISSIONS_TALL
+    tabs_y = (TALL_BAND - SETTINGS_TAB_HEIGHT) // 2 if tall else 44
+    prompts_y = 480 - TALL_FOOTER + (TALL_FOOTER - PART_PROMPT_HEIGHT) // 2 - 1 if tall else 414
+    # (the tall layout's footer: BACK at the left margin, SELECT at the right, RESTART beside it)
+    select_x = 640 - WIDE_MARGIN - 124 if tall else 388
+    back_x = WIDE_MARGIN if tall else 516
+    restart_x = select_x - 8 - CAMPAIGN_PROMPT_RESTART[3] if tall else CAMPAIGN_PROMPT_RESTART[2]
     lines = _widget(f"{base}/mission_screen", [("width", 640), ("height", 480),
                                                ("flags", "pass_unhandled_to_focused_child"),
-                                               ("bitmap", "bitmaps/gradient")],
+                                               ("bitmap", TALL_BACKGROUND if tall else "bitmaps/gradient")],
                     ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                     # (left and right, the arrows, A and D, the stick: the row's, whatever has the focus, the
+                     # footer's prompts or the tabs the pointer passed over; up and down none)
+                     *(f'<on event="{event}" run="port campaign previous"/>' for event in ("left", "stick_left")),
+                     *(f'<on event="{event}" run="port campaign next"/>' for event in ("right", "stick_right")),
+                     # (up and down: CONTINUE, the tall layout's with a saved game, and the cards under it)
+                     *(f'<on event="{event}" run="port campaign up"/>' for event in ("up", "stick_up")),
+                     *(f'<on event="{event}" run="port campaign down"/>' for event in ("down", "stick_down")),
                      '<on event="white" run="port campaign tab previous"/>',
                      '<on event="black" run="port campaign tab next"/>',
                      f'<on event="y" run="port campaign missions restart" open="{base}/restart_screen"/>',
@@ -7204,17 +8290,24 @@ def _missions() -> list:
                      f'<child widget="{base}/header_missions"/>',
                      f'<child widget="{base}/source_prompt_previous"/>',
                      f'<child widget="{base}/source_prompt_next"/>',
-                     f'<child widget="{base}/source_tabs" x="{640 - 28 - 2 * SETTINGS_TAB_STEP - 26}" y="44"/>',
+                     f'<child widget="{base}/source_tabs" x="{640 - 28 - 2 * SETTINGS_TAB_STEP - 26}" y="{tabs_y}"/>',
                      *(f'<child widget="{base}/mission_dot_{index}"/>' for index in range(MISSION_DOTS)),
                      f'<child widget="{base}/mission_empty"/>',
-                     f'<child widget="{base}/mission_prompts" y="414"/>'])
-    lines += _widget(f"{base}/header_missions", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
-                                                 ("height", 59), ("bitmap", f"{base}/header_missions"),
-                                                 ("wide", WIDE_LEFT)], [])
+                     f'<child widget="{base}/mission_resume_row" x="{(640 - MISSION_RESUME[0]) // 2}" '
+                     f'y="{MISSION_RESUME_TOP}"/>',
+                     f'<child widget="{base}/mission_prompts" y="{prompts_y}"/>'])
+    lines += _mission_resume()
+    if tall:
+        lines += tall_title(f"{base}/header_missions", MISSIONS_TALL_TITLES, 0)
+    else:
+        lines += _widget(f"{base}/header_missions", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
+                                                     ("height", 59), ("bitmap", f"{base}/header_missions"),
+                                                     ("wide", WIDE_LEFT)], [])
+        lines += _strings(MISSIONS_TALL_TITLES, [TITLES[f"{base}/header_missions"], "CHOOSE DIFFICULTY"])
     tabs_x = 640 - 28 - 2 * SETTINGS_TAB_STEP - 26
     for name, icon, x in (("previous", "white", tabs_x - SETTINGS_TAB_PROMPT_WIDTH),
                           ("next", "black", tabs_x + SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4)):
-        lines += _campaign_text(f"{base}/source_prompt_{name}", x, 44, SETTINGS_TAB_PROMPT_WIDTH, SETTINGS_TAB_HEIGHT,
+        lines += _campaign_text(f"{base}/source_prompt_{name}", x, tabs_y, SETTINGS_TAB_PROMPT_WIDTH, SETTINGS_TAB_HEIGHT,
                                 "ui\\small_ui", SETTINGS_BLUE, words=f"%{icon}-button", wide_layout=WIDE_RIGHT,
                                 text_y=caps_text_y(SETTINGS_TAB_HEIGHT))
     lines += _widget(f"{base}/source_tabs", [("type", "column_list"), ("width", 2 * SETTINGS_TAB_STEP),
@@ -7233,8 +8326,9 @@ def _missions() -> list:
     # (the row: the arrows, then a card of each size in each of its three
     # slots, menu_functions.c showing one of each slot's and placing them)
     arrow_w, arrow_h = MISSION_ARROW
-    arrow_y = MISSION_CARDS_TOP + MISSION_BIG[1] // 2 - arrow_h // 2
-    cards = [f'<child widget="{base}/card_{kind}_{slot}" y="{MISSION_CARDS_TOP}"/>'
+    cards_top = MISSION_TALL_TOP if tall else MISSION_CARDS_TOP
+    arrow_y = cards_top + (MISSION_TALL if tall else MISSION_BIG)[1] // 2 - arrow_h // 2
+    cards = [f'<child widget="{base}/card_{kind}_{slot}" y="{cards_top}"/>'
              for slot in range(3) for kind in ("big", "small")]
     # (the mouse's wheel steps the row as left and right do, a card a notch:
     # wheel_sideways, ui_widget.c's ui_mouse_wheel_widget)
@@ -7246,17 +8340,18 @@ def _missions() -> list:
                       *(f'<on event="{event}" run="port campaign previous"/>' for event in ("left", "stick_left")),
                       *(f'<on event="{event}" run="port campaign next"/>' for event in ("right", "stick_right")),
                       *cards,
-                      f'<child widget="{base}/arrow_previous" x="{mission_arrow_place("left")[0]}" y="{arrow_y}"/>',
-                      f'<child widget="{base}/arrow_next" x="{mission_arrow_place("right")[0]}" y="{arrow_y}"/>'])
+                      f'<child widget="{base}/arrow_previous" x="{mission_arrow_place("left", tall)[0]}" '
+                      f'y="{arrow_y}"/>',
+                      f'<child widget="{base}/arrow_next" x="{mission_arrow_place("right", tall)[0]}" y="{arrow_y}"/>'])
     for name, side in (("arrow_previous", "left"), ("arrow_next", "right")):
         lines += _widget(f"{base}/{name}", [("width", arrow_w), ("height", arrow_h),
                                             ("bitmap", f"{base}/arrow_{side}"),
-                                            ("wide", wide(mission_arrow_place(side)[1]))],
+                                            ("wide", wide(mission_arrow_place(side, tall)[1]))],
                          [f'<on event="{event}" run="port campaign {name[6:]}"/>' for event in ("a", "start")] +
                          ['<on event="left_mouse" run="mouse emit accept event"/>'])
     for slot in range(3):
-        for size in (MISSION_BIG, MISSION_SMALL):
-            lines += _mission_card(size, slot)
+        for size, kind in ((MISSION_BIG, "big"), (MISSION_SMALL, "small")):
+            lines += _mission_card(MISSION_TALL if tall else size, slot, kind)
     dots_x = 320 - (MISSION_DOTS * MISSION_DOT_STEP) // 2
     for index in range(MISSION_DOTS):
         lines += _widget(f"{base}/mission_dot_{index}", [("controller", 1), ("left", dots_x + MISSION_DOT_STEP * index),
@@ -7306,11 +8401,12 @@ def _missions() -> list:
     lines += _widget(f"{base}/mission_prompts", [("type", "column_list"), ("width", 640),
                                                  ("height", PART_PROMPT_HEIGHT + 4),
                                                  ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
-                     [f'<child widget="{base}/prompt_select" x="388" y="1"/>',
-                      f'<child widget="{base}/prompt_back" x="516" y="1"/>',
-                      f'<child widget="{base}/{CAMPAIGN_PROMPT_RESTART[0]}" x="{CAMPAIGN_PROMPT_RESTART[2]}" y="1"/>'])
+                     [f'<child widget="{base}/prompt_select" x="{select_x}" y="1"/>',
+                      f'<child widget="{base}/prompt_back" x="{back_x}" y="1"/>',
+                      f'<child widget="{base}/{CAMPAIGN_PROMPT_RESTART[0]}" x="{restart_x}" y="1"/>'])
     lines += _widget(f"{base}/prompt_select", [("type", "text"), ("width", 124), ("height", PART_PROMPT_HEIGHT),
-                                               ("wide", prompt_wide(388, 124)),
+                                               ("wide", prompt_wide(select_x, 124)),
+                                               ("past", past(PAST_HALF) if tall else None),
                                                ("bitmap", part_highlight(124, PART_PROMPT_HEIGHT)),
                                                ("font", "ui\\small_ui"), ("color", PART_TEXT), ("text_x", 8),
                                                ("text_y", caps_text_y(PART_PROMPT_HEIGHT))],
@@ -7321,7 +8417,8 @@ def _missions() -> list:
     # _prompts makes one)
     name, words, x, width, handler = _prompt_fitted(CAMPAIGN_PROMPT_RESTART, 8, False)
     lines += _widget(f"{base}/{name}", [("type", "text"), ("width", width), ("height", PART_PROMPT_HEIGHT),
-                                        ("wide", prompt_wide(x, width)),
+                                        ("wide", prompt_wide(restart_x if tall else x, width)),
+                                        ("past", past(PAST_HALF) if tall else None),
                                         ("bitmap", part_highlight(width, PART_PROMPT_HEIGHT)), ("text", words),
                                         ("font", "ui\\small_ui"), ("color", PART_TEXT), ("text_x", 8),
                                         ("text_y", caps_text_y(PART_PROMPT_HEIGHT))],
@@ -7337,24 +8434,35 @@ def _difficulties() -> list:
     plays the mission on it (the old saved game, if it had another
     difficulty, gone as the Xbox's warned)"""
     base = CAMPAIGN
+    tall = _MISSIONS_TALL
     x0, top, step = DIFFICULTY_CARDS
     width, height = DIFFICULTY_CARD
     box, badge = DIFFICULTY_BADGE_BOX, DIFFICULTY_BADGE
+    # (the tall layout's, as Choose Mission's: its title's words in the band, the mission's under it, the names in
+    # the Xbox's blue, BACK at the left and PLAY at the right on the bottom line)
+    prompts_y = 480 - TALL_FOOTER + (TALL_FOOTER - PART_PROMPT_HEIGHT) // 2 - 1 if tall else 414
     lines = _widget(f"{base}/difficulty_screen", [("width", 640), ("height", 480),
                                                   ("flags", "pass_unhandled_to_focused_child"),
-                                                  ("bitmap", "bitmaps/gradient")],
+                                                  ("bitmap", TALL_BACKGROUND if tall else "bitmaps/gradient")],
                     ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                     # (left and right, the stick: the cards', whatever has the focus, as Choose Mission's)
+                     *(f'<on event="{event}" run="port campaign difficulty previous"/>'
+                       for event in ("left", "stick_left")),
+                     *(f'<on event="{event}" run="port campaign difficulty next"/>'
+                       for event in ("right", "stick_right")),
                      f'<child widget="{base}/difficulty_list"/>',
                      '<child widget="main_menu/difficulty_select/header_choose_difficulty"/>',
                      f'<child widget="{base}/difficulty_mission"/>'])
-    lines += _campaign_text(f"{base}/difficulty_mission", 44, 74, 560, 18, "ui\\small_ui", CAMPAIGN_DIM,
-                            wide_layout=WIDE_LEFT)
+    lines += _campaign_text(f"{base}/difficulty_mission", WIDE_MARGIN if tall else 44, 52 if tall else 74, 560, 18,
+                            "ui\\small_ui", MISSION_TALL_DIM if tall else CAMPAIGN_DIM, wide_layout=WIDE_LEFT)
+    if tall:
+        lines += tall_title("main_menu/difficulty_select/header_choose_difficulty", MISSIONS_TALL_TITLES, 1)
     cards = [f'<child widget="{base}/difficulty_{index}" x="{x0 + step * index}" y="{top}"/>' for index in range(4)]
     lines += _widget(f"{base}/difficulty_list", [("type", "column_list"), ("width", 640), ("height", 480),
                                                  ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
                      ['<data input="port campaign difficulty update"/>',
                       '<on event="created" run="port campaign difficulty init"/>', *cards,
-                      f'<child widget="{base}/difficulty_prompts" y="414"/>'])
+                      f'<child widget="{base}/difficulty_prompts" y="{prompts_y}"/>'])
     grown = (WIDE_EXTRA // 4)
     for index in range(4):
         lines += _widget(f"{base}/difficulty_{index}", [("width", width), ("height", height),
@@ -7386,7 +8494,8 @@ def _difficulties() -> list:
     lines += _widget(f"{base}/difficulty_name", [("type", "text"), ("controller", 1), ("left", 10),
                                                  ("top", inset + box + 10), ("width", width - 20), ("height", 24),
                                                  ("string_list", "main_menu/difficulty_select/difficulty_options"),
-                                                 ("font", "ui\\large_ui"), ("color", "#FFFFFFFF"),
+                                                 ("font", "ui\\large_ui"),
+                                                 ("color", MISSION_TALL_BLUE if tall else "#FFFFFFFF"),
                                                  ("wide", wide(0, grown)), ("text_flags", "no_focus_test")], [])
     lines += _campaign_text(f"{base}/difficulty_blurb", 10, inset + box + 36, width - 14, height - inset - box - 44,
                             "ui\\small_ui", SETTINGS_BLUE, wide_layout=wide(0, grown))
@@ -7400,8 +8509,10 @@ def _difficulties() -> list:
     lines += _badge_frames(f"{base}/difficulty_badges", CAMPAIGN_BADGES, badge, DIFFICULTY_BADGE_SPAN)
     lines += _strings(f"{base}/difficulty_blurbs", DIFFICULTY_BLURBS)
     lines += _prompts(base, "difficulty_prompts",
-                      [("prompt_play", "%a-button PLAY", 388, 124, '<on event="a" run="port campaign play"/>'),
-                       CAMPAIGN_PROMPT_BACK], defined=("prompt_back",))
+                      [("prompt_play", "%a-button PLAY", 640 - WIDE_MARGIN - 124 if tall else 388, 124,
+                        '<on event="a" run="port campaign play"/>'),
+                       (CAMPAIGN_PROMPT_BACK[0], CAMPAIGN_PROMPT_BACK[1], WIDE_MARGIN if tall else CAMPAIGN_PROMPT_BACK[2],
+                        *CAMPAIGN_PROMPT_BACK[3:])], defined=("prompt_back",))
     return lines
 
 
@@ -7457,21 +8568,28 @@ def _model_slider(choices) -> list:
 
 
 def _model_page(folder: str, page: dict) -> list:
-    """a tab's or a page's screen: its rows under their sections, its buttons"""
+    """a tab's or a page's screen: its rows under their sections, its buttons;
+    each row with the way to it (its crumb: a tab's section's, a page's own)
+    and the other words a search finds it by (SETTINGS_SEARCH)"""
     base = f"{PE}/{folder}"
     tab = "tab" in page
     kind = "tab" if tab else "page"
     inner = [f"\t\t<about>{escape(page['about'])}</about>"] if page.get("about") else []
+    crumbs, synonyms = settings_crumbs(), settings_search_synonyms()
+    crumb = crumbs[folder]
     for index, entry in enumerate(page["rows"]):
         if entry[0] == SECTION:
             inner += _model_element("section", [("key", f"section_{index}"), ("title", entry[1]),
                                                 ("when", _settings_platform(page["rows"], index))])
+            crumb = f"{crumbs[folder]} › {entry[1]}" if tab else crumbs[folder]
             continue
         label, setting, choices, help_text, platform, *named = entry
         key = named[0] if named else setting.split(".", 1)[1] if setting else \
             re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
         row_kind = _model_row_kind(key, setting, choices)
         pairs = [("key", key), ("kind", row_kind), ("setting", setting), ("label", label),
+                 ("crumb", crumb), ("search", " ".join(synonyms.get(f"{folder}:{key}", [])) or None),
+                 ("search_choices", settings_search_choices(choices)),
                  ("when", _settings_row_when(key, setting, platform)), ("enabled", SETTINGS_ROW_ENABLED.get(key)),
                  ("open", choices if isinstance(choices, str) else None),
                  ("run", named[1] if len(named) > 1 else None),
@@ -7487,6 +8605,7 @@ def _model_page(folder: str, page: dict) -> list:
         inner += _model_element("button", [("key", f"button_{button}"), ("kind", button), ("run", run),
                                            ("help", SETTINGS_BUTTON_HELP[kind][index])])
     return _model_element("screen", [("name", f"{base}/{page['screen']}"), ("kind", "settings"), ("layout", kind),
+                                     ("geometry", SETTINGS_TALL.name),
                                      ("tab", page.get("tab")), ("title", page.get("title")),
                                      ("profile", "true" if page.get("profile") else None)], inner, 1)
 
@@ -7516,20 +8635,52 @@ def _model_option_screen(folder: str, spec: dict) -> list:
                                      ("platform_places", "true" if spec.get("platform_places") else None)], inner, 1)
 
 
+def _model_search() -> list:
+    """the search's screen (SETTINGS_SEARCH): its words for the panel, the
+    places that are not Settings' that words find (each a hint row: its words,
+    and what the search says for them), and its buttons"""
+    inner = [f"\t\t<about>{escape(SEARCH_ABOUT)}</about>"]
+    for index, (words, text) in enumerate(SETTINGS_SEARCH_ELSEWHERE):
+        inner += _model_element("row", [("key", f"hint_{index}"), ("kind", "hint"), ("label", words)],
+                                [f"\t\t\t<help>{escape(text)}</help>"])
+    for index, button in enumerate(("ok", "back")):
+        inner += _model_element("button", [("key", f"button_{button}"), ("kind", button),
+                                           ("run", "port settings keep" if button == "ok" else
+                                            "port settings search back"),
+                                           ("help", SEARCH_BUTTON_HELP[index])])
+    return _model_element("screen", [("name", SETTINGS_SEARCH_SCREEN), ("kind", "settings"), ("layout", "search"),
+                                     ("geometry", SETTINGS_TALL.name), ("title", "SEARCH")], inner, 1)
+
+
 def model_files() -> dict:
     """the model's files, by their paths in port/assets/menus"""
     geometry = [("row_x", SETTINGS_ROW_X), ("row_width", SETTINGS_ROW_WIDTH), ("row_height", SETTINGS_ROW_HEIGHT),
                 ("row_step", SETTINGS_ROW_STEP), ("section_height", SETTINGS_SECTION_HEIGHT),
                 ("section_step", SETTINGS_SECTION_STEP), ("section_gap", SETTINGS_SECTION_GAP),
                 ("tab_top", SETTINGS_TOP), ("page_top", PAGE_TOP), ("rows_bottom", SETTINGS_ROWS_BOTTOM),
-                ("spinner_x", SETTINGS_SPINNER_X), ("spinner_width", SETTINGS_SPINNER_WIDTH)]
+                ("spinner_x", SETTINGS_SPINNER_X), ("spinner_width", SETTINGS_SPINNER_WIDTH),
+                ("search_word_extra", SEARCH_WORD_EXTRA), ("search_results", SEARCH_RESULTS),
+                ("search_crumbs", SEARCH_CRUMBS),
+                ("panel_bottom", SETTINGS_PANEL_BOTTOM)]
+    # (and the tall layout's, by its name, which the screens laid out in it
+    # name: SETTINGS_TALL)
+    tall = SETTINGS_TALL
+    tall_geometry = [("name", tall.name), ("row_x", SETTINGS_ROW_X), ("row_width", SETTINGS_ROW_WIDTH),
+                     ("row_height", tall.row_height), ("row_step", tall.row_step),
+                     ("section_height", tall.section_height), ("section_step", tall.section_step),
+                     ("section_gap", tall.section_gap), ("tab_top", tall.tab_top), ("page_top", tall.page_top),
+                     ("rows_bottom", tall.rows_bottom), ("spinner_x", SETTINGS_SPINNER_X),
+                     ("spinner_width", SETTINGS_SPINNER_WIDTH), ("panel_bottom", tall.panel_bottom),
+                     ("scrolls", "true"), ("search_word_extra", SEARCH_WORD_EXTRA), ("search_results", SEARCH_RESULTS),
+                     ("search_crumbs", SEARCH_CRUMBS)]
     lines = ['<?xml version="1.0" encoding="UTF-8"?>',
              "<!-- The settings screens' model, for the menu engine (docs/menu_engine.md; tools/port_settings.py) -->",
-             "<model>", f"\t<geometry{attributes(geometry)}/>"]
+             "<model>", f"\t<geometry{attributes(geometry)}/>", f"\t<geometry{attributes(tall_geometry)}/>"]
     for folder, page in PAGES.items():
         lines += _model_page(folder, page)
     for folder, spec in SCREENS.items():
         lines += _model_option_screen(folder, spec)
+    lines += _model_search()
     return {MODEL_FILE: lines + ["</model>", ""]}
 
 
@@ -7560,7 +8711,7 @@ def multiplayer_files() -> dict:
         f"{MT}/coop".replace("/", ".") + ".xml": head + _coop() + ["</menus>", ""],
         f"{MT}/bots".replace("/", ".") + ".xml": head + _bots() + ["</menus>", ""],
         f"{MT}/party".replace("/", ".") + ".xml": head + _party() + ["</menus>", ""],
-        f"{MT}/matchmaking".replace("/", ".") + ".xml": head + _matchmaking() + ["</menus>", ""],
+        DOUBLES.replace("/", ".") + ".xml": head + _doubles() + ["</menus>", ""],
         f"{MT}/party/touch".replace("/", ".") + ".xml": head + _touch_party() + ["</menus>", ""],
         f"{MT}/friends".replace("/", ".") + ".xml": head + _friends() + ["</menus>", ""],
         f"{MT}/friends/touch".replace("/", ".") + ".xml": head + _touch_friends() + ["</menus>", ""],
@@ -7614,7 +8765,10 @@ MENU_ITEM_TOP, MENU_ITEM_SCALE, MENU_ITEM_MIDDLE = 6.57, 0.9037, 130.0
 # RU, IA as EA and NA, AL as AD and AI), and a word's space as LOAD GAME's D
 # to G, less D's side
 MENU_ITEM_SPACES = {"VR": 0.3, "R ": 6.0, " T": 6.0, "TU": 2.12, "UT": 1.66, "TO": 0.75, "OR": 3.0, "RI": 3.25,
-                    "IA": 1.3, "AL": 1.58}
+                    "IA": 1.3, "AL": 1.58, "2V": 1.2, "V2": 1.2,
+                    "PR": 3.16, "RO": 1.85, "O ": 6.0, " 2": 6.0,
+                    "VE": 1.2, "ER": 3.0, "RS": 3.0, "SU": 2.0, "US": 1.7,
+                    "SO": 2.0, "OL": 2.2, "LO": 0.9, "CO": 2.0, "OO": 2.0, "OP": 2.4, "O-": 2.0, "-O": 2.0}
 # a space's own width (none: the spaces about it are its pairs')
 MENU_ITEM_SPACE_WIDTH = 0.0
 # the mods' status icons (port/assets/icons/lucide): a mod out of the order it
@@ -7628,10 +8782,15 @@ def redraw_letters(redraws: Path) -> dict:
     """the redraws' letters (their <path id="gA">s, one drawing of each
     letter in every item and header), by letter"""
     letters = {}
+    digits = {name: str(digit) for digit, name in enumerate(
+        ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"])}
     for svg in sorted(redraws.rglob("*.svg")):
         if any(part.startswith("_") for part in svg.relative_to(redraws).parts):
             continue
-        for letter, path in re.findall(r'<path id="g([A-Z])" d="([^"]+)"', svg.read_text()):
+        # (and their digits, named: a header's "gtwo")
+        for letter, path in re.findall(r'<path id="g([A-Z]|zero|one|two|three|four|five|six|seven|eight|nine)" '
+                                       r'd="([^"]+)"', svg.read_text()):
+            letter = digits.get(letter, letter)
             if letters.setdefault(letter, path) != path:
                 sys.exit(f"{svg}: the redraws draw {letter} two ways")
     return letters
@@ -7644,7 +8803,9 @@ def menu_item_frames(text: str, redraws: Path) -> list:
     from fontTools.pens.boundsPen import BoundsPen
     from fontTools.svgLib.path import parse_path
 
-    letters = redraw_letters(redraws)
+    letters = dict(redraw_letters(redraws))
+    # (a hyphen, which the redraws have none of: E's middle bar's height and thickness, half its width)
+    letters.setdefault("-", "M0,8.82L9,8.82L9,12.53L0,12.53Z")
     widths = []
     for letter in text:
         if letter == " ":

@@ -33,7 +33,9 @@
 	<look name="main_menu/difficulty_select/hard_difficulty_item" type="text" box="51 144 283 176" picture="bitmaps/list_item_bkd">
 		<text font="ui\large_ui" color="#FF0080FF" at="13 5" string_list="main_menu/difficulty_select/difficulty_options" index="2"/>
 	</look>
-	<look name="main_menu/difficulty_select/header_choose_difficulty" box="35 11 640 70" picture="main_menu/difficulty_select/header_choose_difficulty"/>
+	<look name="main_menu/difficulty_select/header_choose_difficulty" type="text" box="24 0 616 40" wide="-106 0" past="-143 0">
+		<text font="heading" color="#FF2995FD" at="0 9" string_list="main_menu/campaign/tall_titles" index="1" scale="1.4 1.4"/>
+	</look>
 	<look name="main_menu/difficulty_select/impossible_difficulty_item" type="text" box="51 177 283 209" picture="bitmaps/list_item_bkd">
 		<text font="ui\large_ui" color="#FF0080FF" at="13 5" string_list="main_menu/difficulty_select/difficulty_options" index="3"/>
 	</look>

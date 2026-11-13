@@ -169,6 +169,27 @@ boolean network_host_controls_shown_for(
 	return seat->server && ((seat->connection == _game_connection_network_server && seat->playing) || seat->lobby);
 }
 
+unsigned long network_host_controls_pause_rows_for(
+	struct host_controls_pause_view const *view)
+{
+	unsigned long rows = 0;
+
+	/* (network co-op's FRIENDLY FIRE, every machine's; then its host's
+	HOST CONTROLS, as a multiplayer game's host has it: the campaign has no
+	END GAME) */
+	if (view->coop)
+		SET_FLAG(rows, _host_controls_pause_friendly_fire, TRUE);
+	if (!view->host)
+		return rows;
+	if (!view->coop && view->training && view->training_screen)
+		SET_FLAG(rows, _host_controls_pause_chapters, TRUE);
+	else if (!view->local && view->host_controls_screen)
+		SET_FLAG(rows, _host_controls_pause_host_controls, TRUE);
+	else if (!view->coop)
+		SET_FLAG(rows, _host_controls_pause_end_game, TRUE);
+	return rows;
+}
+
 unsigned long network_host_controls_actions_for(
 	struct host_controls_player_view const *view)
 {
@@ -1134,6 +1155,7 @@ boolean network_host_controls_open(
 		console_warning("host_controls: the menus have no Host Controls (display.menus)");
 		return FALSE;
 	}
+	error(_error_log, "host controls: opened (tab %d)", (int)tab);
 	return TRUE;
 }
 

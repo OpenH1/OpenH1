@@ -5,8 +5,14 @@ This repository ports the Halo: Combat Evolved decompilation (Xbox build
 sources are the decompilation; the port adds a platform layer that
 implements the Xbox APIs the game calls, and features the Xbox game did not
 have (a new netcode, internet play, the PC version's menus, Custom Edition
-maps, touch controls). The project is published as OpenH1, a fork of OpenCE
-(OpenCommunityEdition/OpenCE), whose netcode it keeps compatible.
+maps, touch controls). The project is published as GOAT H1 (formerly
+OpenH1; goath1.com), a fork of OpenCE (OpenCommunityEdition/OpenCE), whose
+netcode it keeps compatible. The repository is `OpenH1/goath1` on GitHub
+(renamed from `OpenH1/OpenH1`, whose addresses GitHub redirects: released
+builds' self-updaters still ask for them). The rename is under way: the game,
+its files and its release names still say OpenH1. Do not rename a release's
+files (`tools/release_names.py`) or anything the self-updaters of released
+builds ask for without publishing the old names beside the new.
 
 Start with [README.md](README.md). The other documents are listed at the
 end.
@@ -175,7 +181,7 @@ python tools/ci_build.py linux_x86_64 release   # what CI builds
 | `HALO_GUEST_MACHO` | Android, Linux arm64, macOS, iOS | The guest is compiled for clang's Darwin target (`arm64_32`), whose Mach-O objects are converted afterwards |
 | `HALO_ARM64_GUEST` | Android, Linux arm64, macOS, iOS | `HALO_GUEST` on AArch64 (its name before); new code tests `HALO_GUEST` or `__aarch64__` |
 | `HALO_GUEST_BASE` | macOS, iOS, `--guest-base` | The guest's memory at a base register (`tools/guest_base_register.py`): host addresses are base plus offset (`port/android/host/host.h`) |
-| `HALO_MACOS` | macOS, iOS (the guests) | The macOS app: its folders (config.toml in the app's settings folder, not the Linux release's layout) and no self-updater; the host tests `__APPLE__` |
+| `HALO_MACOS` | macOS, iOS (the guests) | The macOS app: its folders (config.toml in the app's settings folder, not the Linux release's layout) and its self-updater, Sparkle's (`port/macos/README.md`, "Updates"), not `updater.c`'s; the host tests `__APPLE__` |
 | `HALO_IOS` | iOS (the guest) | The iOS app, with `HALO_MACOS`; the host tests `TARGET_OS_IPHONE` |
 | `HALO_WINDOWS` | Windows (the guest, `tools/windows_build.py`) | The Windows build: with `HALO_GUEST`, the platform layer's `_WIN32` choices that are behaviour, not Windows's API (the folders, config.toml's place, the self-updater's release); the game's sources' Windows choices (socket buffers, the build's label) |
 | `HALO_RELEASE` | `--release` | No assertions checked |
@@ -425,7 +431,11 @@ environment variable and a comment that `config.toml` gets. Document it in
 the settings table of `port/linux/README.md` (and the Android README for an
 Android-only one). A departure from the stock game's look or behaviour
 should be a setting, off or stock by default, unless the project decides
-otherwise.
+otherwise. A fix for what the original got wrong only because of its time's
+limits (bodies and objects clipping through walls, glitches the developers
+plainly did not intend) is not such a departure: fix it, on by default, with
+no setting, and say so in a `port:` comment. Network games must still agree:
+raise `HALO_PORT_NETWORK_VERSION` when the fix changes the simulation.
 
 ### Third-party code and licences
 
@@ -471,6 +481,8 @@ The decompilation's upstream, punpckhdq/halo, is AGPL 3.0 from 17 October
 | [port/ios/README.md](port/ios/README.md) | The iOS and iPadOS build, its signing and provisioning, the guest's code in the signed executable, the app, the Simulator |
 | [port/include/xdk/README.md](port/include/xdk/README.md) | How the SDK declarations were written and are checked |
 | [docs/custom_edition_caches.md](docs/custom_edition_caches.md) | Loading and converting Custom Edition maps, and the evidence for each layout |
+| [docs/menu_engine.md](docs/menu_engine.md) | The menu engine (`display.menu_engine`): the generators' model drawn with Halo's primitives, the parity checks |
+| [docs/menu_screens.md](docs/menu_screens.md) | The hand-written menu screens: the format, the building blocks, actions, bindings, hot reload, adding a screen |
 | [docs/hdr.md](docs/hdr.md) | HDR (`display.hdr`): the shared contract the renderers implement, which draws go past paper white, the tone map and the encodings, the tests |
 | [docs/demos.md](docs/demos.md) | Demos: every game recorded tick by tick, what a demo holds and why, its playback, the file, sizes, what is not deterministic yet |
 | [docs/dedicated_server.md](docs/dedicated_server.md) | The dedicated server: its command line, exit codes, commands, HTTP API, RCON, events and files |

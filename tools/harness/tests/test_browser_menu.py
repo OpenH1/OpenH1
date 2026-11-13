@@ -15,17 +15,51 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, ROOT, build, enum_with, function, mutated, read, run, structure  # noqa: E402
 
-CASES = ["tabs", "sort", "empty", "ellipsis", "ping", "filters", "search"]
+CASES = ["tabs", "groups", "sort", "empty", "ellipsis", "ping", "filters", "tick", "game_type", "search", "doubles",
+         "view"]
 
 NEGATIVE_CONTROLS = {
+    "doubles-by-tab": (("\tif (browser_doubles_playlist != NONE)\n\t\treturn TRUE;\n\tswitch (browser_tab)",
+                        "\tswitch (browser_tab)"), "doubles"),
+    "doubles-filtered": (("if (browser_filtering && browser_doubles_playlist == NONE &&",
+                          "if (browser_filtering &&"), "doubles"),
+    "doubles-offline": (("\tif (browser_doubles_playlist != NONE)\n\t\treturn FALSE;\n\treturn", "\treturn"),
+                        "doubles"),
     "favorites-on-every-tab": (("\tcase _browser_tab_favorites:\n\t\treturn favorite;\n", ""), "tabs"),
-    "legacy-as-openh1": (("\t\treturn !entry->openh1;", "\t\treturn entry->openh1;"), "tabs"),
+    "legacy-as-openh1": (("\tcase _browser_tab_legacy:\n\t\treturn !entry->openh1;",
+                          "\tcase _browser_tab_legacy:\n\t\treturn entry->openh1;"), "tabs"),
     "dedicated-tab-lists-all": (("\tcase _browser_tab_dedicated:\n\t\treturn entry->dedicated;\n", ""), "tabs"),
     "openh1-not-first": (("\t\tif (a->openh1 != b->openh1)", "\t\tif (a->openh1 != b->openh1 && FALSE)"), "sort"),
     "dedicated-not-first": (("\t\tif (a->dedicated != b->dedicated)",
                              "\t\tif (a->dedicated != b->dedicated && FALSE)"), "sort"),
     # (#920: the grouping before the players, as it was)
     "grouped-before-players": (("if (!difference && browser_sort_column", "if (browser_sort_column"), "sort"),
+    # (the server browser's groups: OpenH1's dedicated servers, the project's first; the games players host; the
+    # Legacy ones)
+    "groups-none": (("\tif (!browser_grouped)\n\t\treturn _browser_group_dedicated;", "\tif (TRUE)\n\t\treturn "
+                     "_browser_group_dedicated;"), "groups"),
+    "hosted-as-dedicated": (("return entry->dedicated ? _browser_group_dedicated : _browser_group_hosted;",
+                             "return _browser_group_dedicated;"), "groups"),
+    "project-not-first": (("(project != NONE && entries[index].project != project)", "FALSE"), "groups"),
+    "favorites-before-project": (("\t\tfor (project = browser_grouped ? TRUE : NONE; project >= (browser_grouped ? "
+                                  "FALSE : NONE); project--)\n\t\t{\n\t\t\twritten = browser_order_part(favorite_of, "
+                                  "entries, count, group, project, TRUE, order, written);\n\t\t\twritten = "
+                                  "browser_order_part(favorite_of, entries, count, group, project, FALSE, order, written);",
+                                  "\t\tfor (project = browser_grouped ? TRUE : NONE; project >= (browser_grouped ? "
+                                  "FALSE : NONE); project--)\n\t\t\twritten = browser_order_part(favorite_of, "
+                                  "entries, count, group, project, TRUE, order, written);\n\t\tfor (project = "
+                                  "browser_grouped ? TRUE : NONE; project >= (browser_grouped ? FALSE : NONE); "
+                                  "project--)\n\t\t{\n\t\t\twritten = browser_order_part(favorite_of, entries, "
+                                  "count, group, project, FALSE, order, written);"), "groups"),
+    "legacy-not-headed": (("return group != _browser_group_legacy || browser_tab != _browser_tab_legacy;",
+                           "return group != _browser_group_legacy;"), "groups"),
+    "legacy-tab-headed": (("return group != _browser_group_legacy || browser_tab != _browser_tab_legacy;",
+                           "return TRUE;"), "groups"),
+    "empty-group-headed": (("if (written > start && browser_grouped && browser_group_headed(group))",
+                            "if (browser_grouped && browser_group_headed(group))"), "groups"),
+    "heading-words": (('return L"Legacy (Slow) Servers";', 'return L"Legacy Servers";'), "groups"),
+    "dedicated-heading-words": (('return L"OpenH1 Dedicated Servers";', 'return L"Dedicated Servers";'), "groups"),
+    "favorites-before-groups": (("browser_group_of(&entries[index]) != group ||", "FALSE ||"), "groups"),
     "offline-on-every-tab": (("\tif (!browser_tab_lists_offline())\n\t\tbrowser_offline_count = 0;\n", ""), "tabs"),
     "lan-says-nothing-to-do": (("L\"No games on your network yet.\\r\\nHost one from Create Game.\"",
                                 "L\"No games.\""), "empty"),
@@ -39,7 +73,38 @@ NEGATIVE_CONTROLS = {
                              "filters"),
     "ping-unknown-hidden": (("entry->ping >= filters->maximum_ping)",
                              "(entry->ping < 0 || entry->ping >= filters->maximum_ping))"), "filters"),
-    "coop-hidden-by-types": (("entry->engine_type >= 1 && entry->engine_type <= 5 &&", ""), "filters"),
+    # (the TICK RATE and GAME TYPE filters: browser_tick_shows, browser_type_shows)
+    "tick-filter-ignored": (("if (!browser_tick_shows(filters->tick, entry) || ", "if ("), "tick"),
+    "tick-legacy-as-30": (("\t\treturn entry->openh1 && entry->rate == 30;", "\t\treturn entry->rate == 30;"), "tick"),
+    "tick-60-any-rate": (("\t\treturn entry->openh1 && entry->rate == 60;", "\t\treturn entry->openh1;"), "tick"),
+    "tick-legacy-lists-openh1": (("\tcase _browser_tick_legacy:\n\t\treturn !entry->openh1;",
+                                  "\tcase _browser_tick_legacy:\n\t\treturn TRUE;"), "tick"),
+    "type-filter-ignored": (("|| !browser_type_shows(filters->game_type, entry))", ")"), "game_type"),
+    "slayer-lists-teams": (("\t\treturn slayer && !entry->has_teams;", "\t\treturn slayer;"), "game_type"),
+    "team-slayer-lists-ffa": (("\t\treturn slayer && entry->has_teams;", "\t\treturn slayer;"), "game_type"),
+    "slayer-lists-modes": (("boolean slayer = entry->engine_type == 2 && mode == _game_mode_none;",
+                            "boolean slayer = entry->engine_type == 2;"), "game_type"),
+    "hardcore-not-its-mode": (("short mode = (short)(entry->kind & ~GAME_MODES_KIND_HARDCORE);",
+                               "short mode = (short)entry->kind;"), "game_type"),
+    "pro-2v2-as-team-slayer": (("\t\treturn entry->pro_2v2;", "\t\treturn entry->has_teams;"), "game_type"),
+    "coop-as-any": (("\tcase _browser_type_coop:\n\t\treturn entry->coop;",
+                     "\tcase _browser_type_coop:\n\t\treturn TRUE;"), "game_type"),
+    "types-read-shifted": (("\t\tif (!strcmp(word, words[index]))\n\t\t\treturn index;",
+                            "\t\tif (!strcmp(word, words[index]))\n\t\t\treturn (short)(index + 1);"), "filters"),
+    "unknown-word-not-any": (("\t\t\treturn index;\n\t}\n\treturn 0;", "\t\t\treturn index;\n\t}\n\treturn 1;"),
+                             "filters"),
+    # (the tab and the order kept: browser_view_read, browser_view_write)
+    "tab-not-written": (('\t\tconfig_write("network.browser_tab", browser_tab_words[browser_tab]);', "\t\t;"), "view"),
+    "sort-not-written": (('\t\tconfig_write("network.browser_sort", browser_sort_words[browser_sort_column]);',
+                          "\t\t;"), "view"),
+    "way-not-written": (('\t\tconfig_write("network.browser_sort_descending", browser_sort_descending ? "true" : '
+                         '"false");', "\t\t;"), "view"),
+    "tab-not-read": (('\tbrowser_tab = browser_word_index(config_string("network.browser_tab")',
+                      '\tbrowser_tab = 0 * browser_word_index(config_string("network.browser_tab")'), "view"),
+    "way-not-read": (('\tbrowser_sort_descending = config_boolean("network.browser_sort_descending") != 0;',
+                      "\tbrowser_sort_descending = TRUE;"), "view"),
+    "written-unchanged": (('\tif (browser_tab_visit == NONE && strcmp(config_string("network.browser_tab"), '
+                           'browser_tab_words[browser_tab]))', "\tif (browser_tab_visit == NONE)"), "view"),
     # (the column searches: browser_search_shows)
     "search-case-kept": (("*text >= 'a' && *text <= 'z' ? (wchar_t)(*text - 32) : *text;", "*text;"), "search"),
     "search-spaces-kept": (("if ((character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9') "
@@ -78,12 +143,11 @@ NEGATIVE_CONTROLS = {
     "search-server-searches-map": (("if (!browser_ascii_has(name, searches[_browser_search_server]))",
                                     "if (!browser_ascii_has(name, searches[_browser_search_server]) && "
                                     "!browser_ascii_has(map, searches[_browser_search_server]))"), "search"),
-    "search-ignores-filters": (("\t\t\telse if (browser_filtering && !browser_search_shows(",
-                                "\t\t\tif (browser_filtering && !browser_search_shows("), "search"),
-    "search-not-counted": (("\t\t\t\tbrowser_searched_count++;\n\t\t\t}", "\t\t\t}"), "search"),
+    "search-ignores-filters": (("\t\telse if (browser_filtering && !browser_search_shows(",
+                                "\t\tif (browser_filtering && !browser_search_shows("), "search"),
+    "search-not-counted": (("\t\t\tbrowser_searched_count++;\n\t\t}", "\t\t}"), "search"),
     "searched-says-filters": (("\telse if (searched > 0)", "\telse if (FALSE)"), "empty"),
-    "types-read-shifted": (("(short)(1 << index);", "(short)(1 << (index - 1));"), "filters"),
-    "hidden-not-counted": (("&entries[index]))\n\t\t\t\tbrowser_filtered_count++;", "&entries[index]))\n\t\t\t\t;"),
+    "hidden-not-counted": (("&entries[index]))\n\t\t\tbrowser_filtered_count++;", "&entries[index]))\n\t\t\t;"),
                            "filters"),
     "filtered-says-nothing": (("\telse if (filtered > 0)", "\telse if (FALSE)"), "empty"),
     "ping-unknown-as-measuring": (("\telse if (ping_state == _browser_ping_measuring)",
@@ -101,20 +165,29 @@ def generated(fault=None):
     menus = read("port/linux/game/menu_functions.c")
     config = "\n\n".join([
         enum_with(menus, "_multiplayer_mode_server_browser"), enum_with(menus, "_browser_sort_players"),
-        enum_with(menus, "_browser_tab_all"), enum_with(menus, "_browser_ping_measured"),
+        enum_with(menus, "_browser_tab_all"), enum_with(menus, "_browser_group_dedicated"),
+        "\n".join(re.findall(r"^#define BROWSER_HEADING(?:_GROUP)?\(\w+\) [^\n]+", menus, re.M)),
+        "#define BROWSER_LISTED_MAXIMUM %s" % re.search(r"#define BROWSER_LISTED_MAXIMUM (.+)", menus).group(1),
+        enum_with(menus, "_browser_ping_measured"),
         enum_with(menus, "PING_GOOD = 80"), enum_with(menus, "_browser_search_server"),
         "#define BROWSER_SEARCH_LENGTH %s" % re.search(r"#define BROWSER_SEARCH_LENGTH (\d+)", menus).group(1),
-        "#define BROWSER_ALL_ENGINES %s" % re.search(r"#define BROWSER_ALL_ENGINES (\w+)", menus).group(1),
+        enum_with(menus, "_browser_tick_any"), enum_with(menus, "_browser_type_any"),
+        enum_with(read("source/game/game_engine.h"), "_game_mode_none = 0"),
+        "#define GAME_MODES_KIND_HARDCORE %s" % re.search(r"#define GAME_MODES_KIND_HARDCORE (\w+)",
+                                                           read("port/linux/game/game_modes.h")).group(1),
         "\n".join(re.findall(r"^#define BROWSER_PING_\w+ L[^\n]+", menus, re.M)),
         "#define BROWSER_MODE_LENGTH %s" % re.search(r"#define BROWSER_MODE_LENGTH (\d+)", menus).group(1),
         "#define MENU_TEXT_ELLIPSIS_LENGTH %s" % re.search(r"#define MENU_TEXT_ELLIPSIS_LENGTH (\d+)",
                                                            menus).group(1),
-        structure(menus, "browser_sort_entry"), structure(menus, "browser_filters")]) + "\n"
+        structure(menus, "browser_sort_entry"), structure(menus, "browser_filters"),
+        *(re.search(r"^static char const \*const %s\[[^]]*\] =\n\{.*?^\};" % name, menus, re.M | re.S).group(0)
+          for name in ("browser_tick_words", "browser_type_words", "browser_tab_words", "browser_sort_words"))]) + "\n"
     code = "\n\n".join(function(menus, name) for name in (
         "settings_wide_copy", "browser_text_compare", "browser_wide_compare", "browser_sort_before",
-        "browser_tab_shows", "browser_tab_lists_offline", "browser_search_key", "browser_text_has",
-        "browser_ascii_has", "browser_search_shows", "browser_search_reads_map_shown", "browser_filters_show",
-        "browser_filters_read", "browser_favorites_order", "browser_empty_text",
+        "browser_group_of", "browser_group_headed", "browser_group_heading", "browser_tab_shows", "browser_tab_lists_offline", "browser_search_key", "browser_text_has",
+        "browser_ascii_has", "browser_search_shows", "browser_search_reads_map_shown", "browser_tick_shows",
+        "browser_type_shows", "browser_word_index", "browser_filters_show", "browser_filters_read", "browser_view_read",
+        "browser_view_write", "browser_order_part", "browser_favorites_order", "browser_empty_text",
         "menu_text_cut", "menu_text_fit", "browser_ping_cell", "browser_ping_bars"))
     if fault:
         code = mutated(code, *fault)

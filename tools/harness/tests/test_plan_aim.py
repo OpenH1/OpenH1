@@ -47,8 +47,9 @@ def generated(fault=None):
     for name in ("NEAR_PLAYER_DISTANCE", "MIDDLE_PLAYER_DISTANCE", "FAR_PLAYER_DISTANCE", "AIMED_AT_COSINE",
                  "SCOPED_AT_COSINE"):
         config += f"#define {name} " + re.search(rf"^#define {name}\s+(\S+)", source, re.M)[1] + "\n"
-    for member in ("HIDDEN_PLAYER_PERIOD_TICKS", "_distributed_unit_alive_bit", "_distributed_send_state_bit"):
+    for member in ("HIDDEN_PLAYER_PERIOD_TICKS", "_distributed_send_state_bit"):
         config += enum_with(source, member) + "\n"
+    config += enum_with(read("port/linux/game/network_legacy.h"), "_distributed_unit_alive_bit") + "\n"
     config += re.search(r"static (struct distributed_viewer\s*\{.*?\n\} distributed_viewers\[.*?\];)", source,
                         re.S)[1] + "\n"
     return (("config.inc", config), ("under_test.inc", code))

@@ -161,6 +161,11 @@ def rounded_still(png: str, width: int, height: int, rim: Optional[str]) -> str:
     from PIL import ImageChops, ImageDraw
     out = f"ce/port/stills/{Path(png).stem}{'' if rim is None else '_framed'}.png"
     image = Image.open(MENUS / png).convert("RGBA")
+    # (a whole number of pixels to the unit, as the menus read a frame: the
+    # picture scaled to the nearest whole multiple of its size in the menu)
+    multiple = max(1, round(image.width / width))
+    if image.size != (width * multiple, height * multiple):
+        image = image.resize((width * multiple, height * multiple), Image.LANCZOS)
     units = image.width / width
     big = (image.width * SCALE, image.height * SCALE)
     radius = port_settings.SETTINGS_STILL_RADIUS * units * SCALE
@@ -939,6 +944,13 @@ def main() -> None:
     # mods' status icons: Lucide's, port/assets/icons/lucide)
     lines.append(art.port_picture("main_menu/menu_training",
                                   port_settings.menu_item_frames("VR TUTORIAL", art.redraws)))
+    # (the main menu's PRO 2V2, so too: port_settings._doubles)
+    lines.append(art.port_picture("main_menu/menu_doubles", port_settings.menu_item_frames("PRO 2V2", art.redraws)))
+    # (the main menu's VERSUS: port/assets/menus/screens/main.xml)
+    lines.append(art.port_picture("main_menu/menu_versus", port_settings.menu_item_frames("VERSUS", art.redraws)))
+    # (the Campaign screen's SOLO and CO-OP: port/assets/menus/screens/campaign.xml; its hyphen menu_item_frames's)
+    lines.append(art.port_picture("main_menu/menu_solo", port_settings.menu_item_frames("SOLO", art.redraws)))
+    lines.append(art.port_picture("main_menu/menu_coop", port_settings.menu_item_frames("CO-OP", art.redraws)))
     lines.append(art.port_picture("mods/status", port_settings.mod_status_frames(ROOT / "port/assets/icons/lucide")))
     lines.append(art.port_picture("mods/status_small",
                                   port_settings.mod_status_frames(ROOT / "port/assets/icons/lucide", 16)))

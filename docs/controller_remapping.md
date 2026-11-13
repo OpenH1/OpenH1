@@ -25,10 +25,12 @@ General includes Flashlight, Zoom, Scoreboard (hold) and Screenshot (one press).
 Movement buttons use forward/backward/strafe directions independently of stick
 presets, with the keyboard controls' diagonal and crouch-walk speeds.
 
-Communication includes All Chat, Team Chat, Vehicle Chat, Push to Talk and Ping
+Communication includes Chat, Team Chat, Vehicle Chat, Push to Talk and Ping
 (port/linux/README.md, "Pings"). Ping's default is D-pad Right, the stock layouts'
 ping, which a new custom layout takes from Strafe Right (left unbound); an older
 layout keeps its D-pad Right for its strafe, and Ping starts unbound there.
+Chat opens on the channel that player chose last (`network.chat_channels`, as the
+keyboard's T does); Team Chat and Vehicle Chat open on their own channel.
 Chat opens once per press and belongs to the local player who opened it: their
 viewport, name, team and vehicle. The same controller drives the on-screen keyboard.
 Only one line can be edited at a time. A departing or disconnected owner cancels it.
@@ -134,7 +136,7 @@ New custom layouts use `v4:` followed by 27 comma-separated entries in this orde
 
 ```
 jump, grenade type, use/reload, weapon, melee, flashlight, grenade, fire, crouch,
-zoom, scoreboard, screenshot, forward, backward, left, right, all chat, team chat,
+zoom, scoreboard, screenshot, forward, backward, left, right, chat, team chat,
 vehicle chat, push to talk, camera faster, camera slower, camera/player switch,
 camera raise, camera lower, cycle camera, ping
 ```

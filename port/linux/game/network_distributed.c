@@ -77,6 +77,7 @@ machine (their datum identifiers need not be).
 #include "network_clock.h"
 #include "network_coop.h"
 #include "network_distributed.h"
+#include "network_legacy.h"
 #include "network_link.h"
 #include "network_voice.h"
 #include "network_chat.h"
@@ -265,57 +266,6 @@ enum
 	PREDICTION_SPEED_TICKS = PREDICTION_ANCHOR_TICKS + MAXIMUM_ROUND_TRIP_TICKS,
 };
 
-/* struct distributed_unit_state flags */
-enum
-{
-	/* the player has a unit that is alive */
-	_distributed_unit_alive_bit = 0,
-	/* ... and not riding (its position is its own) */
-	_distributed_unit_placed_bit,
-	/* (dead) how it died: killed by a teammate, or by an empty vehicle */
-	_distributed_unit_friendly_fire_bit,
-	_distributed_unit_killed_by_vehicle_bit,
-	/* (alive) its shields: down, charging, overcharging */
-	_distributed_unit_shield_depleted_bit,
-	_distributed_unit_shield_charging_bit,
-	_distributed_unit_shield_over_charging_bit,
-	/* (alive) the host has the unit where the client's own prediction had
-	it at the tick in predicted_time */
-	_distributed_unit_predicted_bit,
-};
-
-/* struct distributed_unit_state unit flags */
-enum
-{
-	/* (alive) camouflaged, and doubly so */
-	_distributed_unit_camouflaged_bit = 0,
-	_distributed_unit_super_camouflaged_bit,
-};
-
-/* a unit state's parts on the wire: which of those that are not always
-there it has (distributed_unit_state_write); one it has not is its default */
-enum
-{
-	/* (alive) the vehicle it rides and the seat */
-	_distributed_unit_part_riding_bit = 0,
-	/* (alive, placed) its up, when not straight up */
-	_distributed_unit_part_up_bit,
-	/* (alive) the damage its shields and body show, when any */
-	_distributed_unit_part_damage_bit,
-	/* (alive) how long its powerups have left, when any */
-	_distributed_unit_part_powerups_bit,
-	/* (alive) its camouflage, when any */
-	_distributed_unit_part_camouflage_bit,
-	/* (dead) who killed it, when anyone */
-	_distributed_unit_part_killer_bit,
-	/* (alive, placed: an OpenH1 game's client's prediction) how fast it
-	moves at full precision, after the rest: the host's tick moves the
-	player on from it, as the client's did (in 16 bits a part, a
-	1024th of a world unit a tick, the host's moves of a client's player
-	at 120 came apart from the client's in a tick of twenty) */
-	_distributed_unit_part_fine_velocity_bit,
-};
-
 /* world units: how far apart the host's run of a client's player and the
 client's may be, a tick from the same place, and agree (distributed_divergence:
 well past the last bits' rounding, well short of a player running 1% faster) */
@@ -438,45 +388,6 @@ enum
 	_unit_difference_camouflage_bit,
 };
 
-/* a player's unit, as this machine has it (its bytes on the wire are fewer:
-distributed_unit_state_write) */
-struct distributed_unit_state
-{
-	byte player_index;
-	byte flags;
-	/* (dead) the player who killed it, NO_PLAYER for none */
-	byte killing_player_index;
-	byte unit_flags;
-	/* the player's unit (the host's), NONE for none */
-	long unit_index;
-	/* the vehicle it rides and its seat, NONE for none */
-	long vehicle_index;
-	short seat_index;
-	/* how camouflaged the unit is, of 255 */
-	byte active_camouflage;
-	byte pad;
-	real_point3d position;
-	struct distributed_vector velocity;
-	struct distributed_vector forward;
-	struct distributed_vector up;
-	/* (_distributed_unit_predicted_bit) the client's tick, its low 16 bits */
-	short predicted_time;
-	/* (VITALITY_SCALE) */
-	word body_vitality;
-	word shield_vitality;
-	/* what the shields' and the HUD's effects show */
-	word current_body_damage;
-	word recent_body_damage;
-	word current_shield_damage;
-	word recent_shield_damage;
-	/* the player's powerups: how long each has left */
-	short powerup_durations[NUMBER_OF_PLAYER_POWERUPS];
-	/* (_distributed_unit_part_fine_velocity_bit) how fast it moves, at full
-	precision, and whether it is sent so */
-	real_vector3d fine_velocity;
-	boolean fine;
-};
-
 /* a client's player's input at one of its ticks, with the buttons of the
 ticks before it */
 struct distributed_player_input
@@ -528,14 +439,10 @@ typedef char distributed_relayed_action_parts_assert[DISTRIBUTED_INPUT_HISTORY -
 
 enum
 {
-	/* a unit state's bytes on the wire: its player, flags and parts, the
-	most it has, and a relayed action's (past the update each message has
-	first) */
-	DISTRIBUTED_UNIT_STATE_MINIMUM_SIZE = 3,
-	DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE = 3 + 4 + (4 + 2) + (12 + 3 * 6) + 2 + 2 * 2 + 4 * 2 +
-		2 * NUMBER_OF_PLAYER_POWERUPS + 2 + 1,
-	/* ... and an OpenH1 game's client's prediction, with its velocity at
-	full precision (_distributed_unit_part_fine_velocity_bit) */
+	/* a client's prediction's bytes on the wire: a unit state's
+	(network_legacy.h) with, in an OpenH1 game, its velocity at full
+	precision (_distributed_unit_part_fine_velocity_bit), and a relayed
+	action's (past the update each message has first) */
 	DISTRIBUTED_PREDICTION_MAXIMUM_SIZE = DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE + 12,
 	DISTRIBUTED_RELAYED_ACTION_MINIMUM_SIZE = 14,
 	DISTRIBUTED_RELAYED_ACTION_MAXIMUM_SIZE = 14 + 2 * (DISTRIBUTED_INPUT_HISTORY - 1),
@@ -2263,185 +2170,6 @@ static void distributed_state_from_player(
 		SET_FLAG(state->flags, _distributed_unit_friendly_fire_bit, death->friendly_fire);
 		SET_FLAG(state->flags, _distributed_unit_killed_by_vehicle_bit, death->killed_by_vehicle);
 	}
-}
-
-/* the state's bytes on the wire (at most DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE):
-its player, flags and parts, then (alive) its unit, the vehicle and seat it
-rides, (placed) where it is, how fast it moves and which way it faces,
-(predicted) the client's tick, its shields and health, the damage they
-show, its powerups and camouflage, or (dead) who killed it; what is its
-default is left out (distributed_unit_state_read). The predicted tick only
-where predicted: to its own client, and in an OpenH1 game of several
-sub-steps a tick to the other OpenH1 clients. */
-static word distributed_unit_state_write(
-	struct distributed_unit_state const *state,
-	boolean predicted,
-	byte *buffer)
-{
-	byte flags = state->flags;
-	byte parts = 0;
-	byte *cursor = buffer + DISTRIBUTED_UNIT_STATE_MINIMUM_SIZE;
-
-	if (!predicted)
-		SET_FLAG(flags, _distributed_unit_predicted_bit, FALSE);
-	if (TEST_FLAG(flags, _distributed_unit_alive_bit))
-	{
-		cursor = distributed_put(cursor, &state->unit_index, sizeof(state->unit_index));
-		if (state->vehicle_index != NONE)
-		{
-			SET_FLAG(parts, _distributed_unit_part_riding_bit, TRUE);
-			cursor = distributed_put(cursor, &state->vehicle_index, sizeof(state->vehicle_index));
-			cursor = distributed_put(cursor, &state->seat_index, sizeof(state->seat_index));
-		}
-		if (TEST_FLAG(flags, _distributed_unit_placed_bit))
-		{
-			cursor = distributed_put(cursor, &state->position, sizeof(state->position));
-			cursor = distributed_put(cursor, &state->velocity, sizeof(state->velocity));
-			cursor = distributed_put(cursor, &state->forward, sizeof(state->forward));
-			if (state->up.i || state->up.j || state->up.k != (short)DISTRIBUTED_UNIT_SCALE)
-			{
-				SET_FLAG(parts, _distributed_unit_part_up_bit, TRUE);
-				cursor = distributed_put(cursor, &state->up, sizeof(state->up));
-			}
-		}
-		if (TEST_FLAG(flags, _distributed_unit_predicted_bit))
-			cursor = distributed_put(cursor, &state->predicted_time, sizeof(state->predicted_time));
-		cursor = distributed_put(cursor, &state->body_vitality, sizeof(state->body_vitality));
-		cursor = distributed_put(cursor, &state->shield_vitality, sizeof(state->shield_vitality));
-		if (state->current_body_damage || state->recent_body_damage || state->current_shield_damage ||
-			state->recent_shield_damage)
-		{
-			SET_FLAG(parts, _distributed_unit_part_damage_bit, TRUE);
-			cursor = distributed_put(cursor, &state->current_body_damage, sizeof(state->current_body_damage));
-			cursor = distributed_put(cursor, &state->recent_body_damage, sizeof(state->recent_body_damage));
-			cursor = distributed_put(cursor, &state->current_shield_damage, sizeof(state->current_shield_damage));
-			cursor = distributed_put(cursor, &state->recent_shield_damage, sizeof(state->recent_shield_damage));
-		}
-		{
-			short powerup_index;
-
-			for (powerup_index = 0; powerup_index < NUMBER_OF_PLAYER_POWERUPS; powerup_index++)
-			{
-				if (state->powerup_durations[powerup_index])
-					break;
-			}
-			if (powerup_index < NUMBER_OF_PLAYER_POWERUPS)
-			{
-				SET_FLAG(parts, _distributed_unit_part_powerups_bit, TRUE);
-				cursor = distributed_put(cursor, state->powerup_durations, sizeof(state->powerup_durations));
-			}
-		}
-		if (state->unit_flags || state->active_camouflage)
-		{
-			SET_FLAG(parts, _distributed_unit_part_camouflage_bit, TRUE);
-			cursor = distributed_put(cursor, &state->unit_flags, sizeof(state->unit_flags));
-			cursor = distributed_put(cursor, &state->active_camouflage, sizeof(state->active_camouflage));
-		}
-		if (state->fine && TEST_FLAG(flags, _distributed_unit_placed_bit))
-		{
-			SET_FLAG(parts, _distributed_unit_part_fine_velocity_bit, TRUE);
-			cursor = distributed_put(cursor, &state->fine_velocity, sizeof(state->fine_velocity));
-		}
-	}
-	else if (state->killing_player_index != NO_PLAYER)
-	{
-		SET_FLAG(parts, _distributed_unit_part_killer_bit, TRUE);
-		cursor = distributed_put(cursor, &state->killing_player_index, sizeof(state->killing_player_index));
-	}
-	buffer[0] = state->player_index;
-	buffer[1] = flags;
-	buffer[2] = parts;
-	return (word)(cursor - buffer);
-}
-
-/* a state from its bytes on the wire, no further than end: the bytes it
-took, 0 for none that make one */
-static word distributed_unit_state_read(
-	byte const *buffer,
-	byte const *end,
-	struct distributed_unit_state *state)
-{
-	byte const *cursor = buffer;
-	byte parts;
-
-	csmemset(state, 0, sizeof(*state));
-	state->unit_index = NONE;
-	state->vehicle_index = NONE;
-	state->seat_index = NONE;
-	state->killing_player_index = NO_PLAYER;
-	state->up.k = (short)DISTRIBUTED_UNIT_SCALE;
-	if (!distributed_take(&cursor, end, &state->player_index, sizeof(state->player_index)) ||
-		!distributed_take(&cursor, end, &state->flags, sizeof(state->flags)) ||
-		!distributed_take(&cursor, end, &parts, sizeof(parts)))
-	{
-		return 0;
-	}
-	if (TEST_FLAG(state->flags, _distributed_unit_alive_bit))
-	{
-		if (!distributed_take(&cursor, end, &state->unit_index, sizeof(state->unit_index)))
-			return 0;
-		if (TEST_FLAG(parts, _distributed_unit_part_riding_bit) &&
-			(!distributed_take(&cursor, end, &state->vehicle_index, sizeof(state->vehicle_index)) ||
-				!distributed_take(&cursor, end, &state->seat_index, sizeof(state->seat_index))))
-		{
-			return 0;
-		}
-		if (TEST_FLAG(state->flags, _distributed_unit_placed_bit) &&
-			(!distributed_take(&cursor, end, &state->position, sizeof(state->position)) ||
-				!distributed_take(&cursor, end, &state->velocity, sizeof(state->velocity)) ||
-				!distributed_take(&cursor, end, &state->forward, sizeof(state->forward)) ||
-				(TEST_FLAG(parts, _distributed_unit_part_up_bit) &&
-					!distributed_take(&cursor, end, &state->up, sizeof(state->up)))))
-		{
-			return 0;
-		}
-		if (TEST_FLAG(state->flags, _distributed_unit_predicted_bit) &&
-			!distributed_take(&cursor, end, &state->predicted_time, sizeof(state->predicted_time)))
-		{
-			return 0;
-		}
-		if (!distributed_take(&cursor, end, &state->body_vitality, sizeof(state->body_vitality)) ||
-			!distributed_take(&cursor, end, &state->shield_vitality, sizeof(state->shield_vitality)))
-		{
-			return 0;
-		}
-		if (TEST_FLAG(parts, _distributed_unit_part_damage_bit) &&
-			(!distributed_take(&cursor, end, &state->current_body_damage, sizeof(state->current_body_damage)) ||
-				!distributed_take(&cursor, end, &state->recent_body_damage, sizeof(state->recent_body_damage)) ||
-				!distributed_take(&cursor, end, &state->current_shield_damage, sizeof(state->current_shield_damage)) ||
-				!distributed_take(&cursor, end, &state->recent_shield_damage, sizeof(state->recent_shield_damage))))
-		{
-			return 0;
-		}
-		if (TEST_FLAG(parts, _distributed_unit_part_powerups_bit) &&
-			!distributed_take(&cursor, end, state->powerup_durations, sizeof(state->powerup_durations)))
-		{
-			return 0;
-		}
-		if (TEST_FLAG(parts, _distributed_unit_part_camouflage_bit) &&
-			(!distributed_take(&cursor, end, &state->unit_flags, sizeof(state->unit_flags)) ||
-				!distributed_take(&cursor, end, &state->active_camouflage, sizeof(state->active_camouflage))))
-		{
-			return 0;
-		}
-		if (TEST_FLAG(parts, _distributed_unit_part_fine_velocity_bit))
-		{
-			if (!distributed_take(&cursor, end, &state->fine_velocity, sizeof(state->fine_velocity)))
-				return 0;
-			/* (finite, and no faster than the 16 bits' velocity can be) */
-			state->fine = TEST_FLAG(state->flags, _distributed_unit_placed_bit) &&
-				distributed_real_valid(state->fine_velocity.i) && distributed_real_valid(state->fine_velocity.j) &&
-				distributed_real_valid(state->fine_velocity.k) &&
-				fabs(state->fine_velocity.i) <= 32.0f && fabs(state->fine_velocity.j) <= 32.0f &&
-				fabs(state->fine_velocity.k) <= 32.0f;
-		}
-	}
-	else if (TEST_FLAG(parts, _distributed_unit_part_killer_bit) &&
-		!distributed_take(&cursor, end, &state->killing_player_index, sizeof(state->killing_player_index)))
-	{
-		return 0;
-	}
-	return (word)(cursor - buffer);
 }
 
 /* ---------- tick states as differences
@@ -5303,6 +5031,67 @@ static void distributed_host_plan_players(
 	}
 }
 
+/* ---------- the players' tick states to a client
+In the encoding the client takes (network_legacy_machine, the one place
+that decides): to an OpenH1 client of an OpenH1 game each state's
+difference from one the client took (_distributed_message_unit_state_differences,
+distributed_unit_difference_write), on the grid; to any other, the whole
+states as a Legacy host sends them (_distributed_message_unit_states,
+network_legacy.c's distributed_unit_state_write). */
+
+/* whether the client being sent (distributed_tick_states_begin) takes the
+Legacy encoding */
+static boolean distributed_tick_states_legacy;
+
+/* (the host) the tick's states to a client begun, in distributed_packer */
+static void distributed_tick_states_begin(
+	long machine_index)
+{
+	distributed_tick_states_legacy = network_legacy_machine(machine_index);
+	distributed_packer_begin(&distributed_packer, (short)machine_index, distributed_tick_states_legacy ?
+		_distributed_message_unit_states : _distributed_message_unit_state_differences, NULL, 0);
+}
+
+/* (the host) a player's state of the tick to the client begun, with
+(predicted) which of its client's ticks the host has the player at */
+static void distributed_tick_state_add(
+	long machine_index,
+	short player_index,
+	boolean predicted,
+	long now)
+{
+	byte entry[1 + DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE];
+	struct distributed_unit_state const *state;
+	word size;
+
+	if (distributed_tick_states_legacy)
+	{
+		state = &distributed_host_states[player_index];
+		size = distributed_unit_state_write(state, predicted, entry);
+	}
+	else
+	{
+		long *sent = distributed_unit_sent_times[machine_index][player_index];
+		short index;
+		short oldest = 0;
+
+		state = &distributed_tick_states[player_index][now & (UNIT_BASE_TICKS - 1)];
+		size = distributed_unit_difference_write(machine_index, player_index, state, predicted, entry);
+		/* (the tick it went, in place of the oldest remembered) */
+		for (index = 1; index < UNIT_SENT_TICKS; index++)
+		{
+			if (sent[index] == NONE || (sent[oldest] != NONE && sent[index] < sent[oldest]))
+				oldest = index;
+		}
+		sent[oldest] = now;
+	}
+	/* (what the client's states of the sub-steps until the next are written
+	against: distributed_substep_state_write) */
+	distributed_substep_base_from_state(state, predicted, now,
+		&distributed_sent_substep_bases[machine_index][player_index]);
+	distributed_packer_add(&distributed_packer, entry, size);
+}
+
 /* (the host) to each client what distributed_host_plan_players decided, the
 input before the units, as the host's tick had them */
 static void distributed_host_send_players(
@@ -5338,7 +5127,6 @@ static void distributed_host_send_players(
 	{
 		long machine_index = machine_indices[machine_number];
 		short player_index;
-		boolean machine_differences = differences && network_standard_machine_is_openh1(machine_index);
 
 		distributed_packer_begin(&distributed_packer, (short)machine_index, _distributed_message_relayed_actions,
 			&distributed_host_update_number, sizeof(distributed_host_update_number));
@@ -5366,12 +5154,9 @@ static void distributed_host_send_players(
 			}
 			network_substeps_host_send(machine_index, distributed_host_update_number, relayed, relayed_count);
 		}
-		distributed_packer_begin(&distributed_packer, (short)machine_index, machine_differences ?
-			_distributed_message_unit_state_differences : _distributed_message_unit_states, NULL, 0);
+		distributed_tick_states_begin(machine_index);
 		for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 		{
-			byte entry[1 + DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE];
-
 			if (TEST_FLAG(distributed_sends[machine_index][player_index], _distributed_send_state_bit))
 			{
 				/* (which of its client's ticks the host has a client's player
@@ -5381,35 +5166,8 @@ static void distributed_host_send_players(
 				distributed_correct_remote_unit) */
 				boolean predicted = distributed_player_machines[player_index] == machine_index ||
 					(network_substeps_active() && network_standard_machine_is_openh1(machine_index));
-				struct distributed_unit_state const *state = machine_differences ?
-					&distributed_tick_states[player_index][now & (UNIT_BASE_TICKS - 1)] :
-					&distributed_host_states[player_index];
-				word size;
 
-				if (machine_differences)
-				{
-					long *sent = distributed_unit_sent_times[machine_index][player_index];
-					short index;
-					short oldest = 0;
-
-					size = distributed_unit_difference_write(machine_index, player_index, state, predicted, entry);
-					/* (the tick it went, in place of the oldest remembered) */
-					for (index = 1; index < UNIT_SENT_TICKS; index++)
-					{
-						if (sent[index] == NONE || (sent[oldest] != NONE && sent[index] < sent[oldest]))
-							oldest = index;
-					}
-					sent[oldest] = now;
-				}
-				else
-				{
-					size = distributed_unit_state_write(state, predicted, entry);
-				}
-				/* (what the client's states of the sub-steps until the next
-				are written against: distributed_substep_state_write) */
-				distributed_substep_base_from_state(state, predicted, now,
-					&distributed_sent_substep_bases[machine_index][player_index]);
-				distributed_packer_add(&distributed_packer, entry, size);
+				distributed_tick_state_add(machine_index, player_index, predicted, now);
 			}
 		}
 		distributed_packer_flush(&distributed_packer);
@@ -6337,6 +6095,51 @@ static void distributed_build_text(
 	while (length > 0 && (destination[length - 1] == ' ' || destination[length - 1] == '\n'))
 		length--;
 	destination[length] = 0;
+}
+
+/* the mods of a client's build (its lines, "folder version [what it
+replaces]": port_mods_list) that a Pro 2v2 game refuses, those that replace
+sounds, bitmaps or models (text alone, a translation, is played), or that
+the list could not hold ("... [unlisted]"), or a line that does not say what
+it replaces: their folders, ", " between them, into names (cut short with
+"..." where they do not fit); how many. What a client says is all a host
+knows of its mods: a client that says less than it plays is not caught */
+static short distributed_pro_refused_mods(char const *mods, char *names, size_t size)
+{
+	short count = 0;
+	char const *line = mods;
+
+	if (size)
+		names[0] = 0;
+	while (line && *line)
+	{
+		char const *end = strchr(line, '\n');
+		size_t length = end ? (size_t)(end - line) : strlen(line);
+		char text[DISTRIBUTED_CLIENT_BUILD_MODS_SIZE];
+		char *open, *close;
+		size_t folder;
+
+		snprintf(text, sizeof(text), "%.*s", (int)length, line);
+		line = end ? end + 1 : NULL;
+		open = strrchr(text, '[');
+		close = open ? strchr(open, ']') : NULL;
+		if (open && close)
+		{
+			*close = 0;
+			if (!strstr(open, "sounds") && !strstr(open, "bitmaps") && !strstr(open, "models") &&
+				!strstr(open, "unlisted"))
+			{
+				continue;
+			}
+		}
+		count++;
+		folder = strcspn(text, " ");
+		if (size && strlen(names) + folder + 2 < size)
+			snprintf(names + strlen(names), size - strlen(names), "%s%.*s", names[0] ? ", " : "", (int)folder, text);
+		else if (size > 4 && !strstr(names, "..."))
+			snprintf(names + (strlen(names) < size - 4 ? strlen(names) : size - 4), 4, "...");
+	}
+	return count;
 }
 
 /* (a client) its build, to the host: once a machine the host takes
@@ -7458,6 +7261,22 @@ void network_distributed_handle_message(
 			platform_log("network: machine %ld (%s) plays %s, from %s; mods: %s", machine_index,
 				names[0] ? names : "no player yet", kept->version[0] ? kept->version : "a build it does not name",
 				kept->repository[0] ? kept->repository : "a repository it does not name", mods[0] ? mods : "none");
+			/* (a Pro 2v2 game's: no machine whose mods replace what the
+			players see or hear) */
+			if (network_standard_pro_hosting())
+			{
+				char refused[80], notice[MAXIMUM_NOTICE_LENGTH];
+
+				if (distributed_pro_refused_mods(kept->mods, refused, sizeof(refused)))
+				{
+					snprintf(notice, sizeof(notice), "Pro 2v2 doesn't allow mods that change what you see or hear: "
+						"%s. Turn them off in Settings > Mods to join.", refused);
+					platform_log("network: machine %ld (%s) refused for this Pro 2v2 game: its mods replace sounds, "
+						"bitmaps or models (%s)", machine_index, names[0] ? names : "no player yet", refused);
+					distributed_send_notice_to_machine(machine_index, notice);
+					network_game_server_kick_machine(machine_index, FALSE);
+				}
+			}
 		}
 		break;
 	case _distributed_message_notice:

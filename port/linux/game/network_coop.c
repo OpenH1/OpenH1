@@ -120,6 +120,7 @@ index and tag, since the map placed them at the same index everywhere.
 #include "coop_pickups.h"
 #include "coop_vehicles.h"
 #include "coop_spectate.h"
+#include "demo.h"
 #include "network_coop.h"
 #include "network_distributed.h"
 #include "../src/server_events.h" /* port: port/linux/src/server_events.c */
@@ -999,6 +1000,20 @@ static struct friendly_fire_player
 	unsigned long control_flags;
 	long idle_ticks;
 } host_friendly_fire[MAXIMUM_TRACKED_PLAYERS];
+
+/* The host's game as the ticks read it from outside the game state, for the
+demos (demo.c's G records: network_coop_port_demo_state): a demo's playback
+of the host's game reads these in its place. Each player's friendly fire as
+whether they chose to play without it and whether they are away (not the
+ticks since their last input, which change every tick), and the dedicated
+server's rules for the loading zones. */
+static struct
+{
+	struct friendly_fire_player friendly_fire[MAXIMUM_TRACKED_PLAYERS];
+	boolean dedicated;
+	boolean bsp_switch_majority;
+	long bsp_switch_cooldown_ticks;
+} coop_demo;
 
 /* host, each tick: the devices that moved or changed power (and, with the
 resent state, all that ever have) */
@@ -1934,7 +1949,7 @@ static struct friendly_fire_player *host_friendly_fire_player(
 
 	if (player_index == NONE || absolute_index >= MAXIMUM_TRACKED_PLAYERS)
 		return NULL;
-	entry = &host_friendly_fire[absolute_index];
+	entry = demo_playing() ? &coop_demo.friendly_fire[absolute_index] : &host_friendly_fire[absolute_index];
 	if (entry->player_index != player_index)
 	{
 		csmemset(entry, 0, sizeof(*entry));
@@ -2067,6 +2082,72 @@ boolean network_coop_active(
 		global_scenario && global_scenario->type == _scenario_type_solo && !game_engine_running();
 }
 
+void *network_coop_port_demo_state(
+	short part,
+	long *size)
+{
+	void *(*const others[])(short part, long *size) = {
+		players_coop_port_demo_state,
+		coop_enemies_port_demo_state,
+		coop_pickups_port_demo_state,
+		coop_vehicles_port_demo_state,
+	};
+	short index;
+
+	/* (a host recording: as the next tick reads them; a playback's are the
+	recording's, the G record's written here) */
+	if (part == 0)
+	{
+		if (!demo_playing())
+		{
+			short player;
+
+			csmemset(&coop_demo, 0, sizeof(coop_demo));
+			if (coop_host())
+			{
+				for (player = 0; player < MAXIMUM_TRACKED_PLAYERS; player++)
+				{
+					struct friendly_fire_player const *entry = &host_friendly_fire[player];
+
+					coop_demo.friendly_fire[player].player_index = entry->player_index;
+					coop_demo.friendly_fire[player].declined = entry->declined;
+					coop_demo.friendly_fire[player].idle_ticks =
+						entry->idle_ticks > FRIENDLY_FIRE_AWAY_TICKS ? FRIENDLY_FIRE_AWAY_TICKS + 1 : 0;
+				}
+				coop_demo.dedicated = halo_server_mode() != 0;
+				coop_demo.bsp_switch_majority = network_coop_bsp_switch_majority();
+				coop_demo.bsp_switch_cooldown_ticks = network_coop_bsp_switch_cooldown_ticks();
+			}
+		}
+		*size = sizeof(coop_demo);
+		return &coop_demo;
+	}
+	if (part == 1)
+	{
+		*size = sizeof(players_vitality);
+		return &players_vitality;
+	}
+	if (part == 2)
+	{
+		*size = sizeof(host_player_structure_bsps);
+		return &host_player_structure_bsps;
+	}
+	part -= 3;
+	for (index = 0; index < (short)NUMBEROF(others); index++)
+	{
+		long part_size;
+		short count = 0;
+		void *address = others[index](part, size);
+
+		if (address)
+			return address;
+		while (others[index](count, &part_size))
+			count++;
+		part -= count;
+	}
+	return NULL;
+}
+
 boolean network_coop_player_collisions(
 	void)
 {
@@ -2138,7 +2219,7 @@ boolean network_coop_host_dedicated(
 	struct network_game *game;
 
 	if (game_connection() == _game_connection_network_server)
-		return halo_server_mode() != 0;
+		return demo_playing() ? coop_demo.dedicated : halo_server_mode() != 0;
 	if (!network_coop_active() || !(game = network_game_get_game()))
 		return FALSE;
 	return TEST_FLAG(game->cooperative_flags, _network_game_cooperative_dedicated_bit);
@@ -2147,6 +2228,8 @@ boolean network_coop_host_dedicated(
 boolean network_coop_bsp_switch_majority(
 	void)
 {
+	if (demo_playing())
+		return coop_host() && coop_demo.bsp_switch_majority;
 	return coop_host() && halo_server_mode() && strcmp(config_string("server.coop_bsp_switch"), "anyone") != 0;
 }
 
@@ -2155,6 +2238,8 @@ long network_coop_bsp_switch_cooldown_ticks(
 {
 	long seconds;
 
+	if (demo_playing())
+		return coop_host() ? coop_demo.bsp_switch_cooldown_ticks : 0;
 	if (!coop_host() || !halo_server_mode())
 		return 0;
 	seconds = config_integer("server.coop_bsp_switch_cooldown_seconds");

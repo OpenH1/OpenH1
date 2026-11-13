@@ -2,10 +2,14 @@
 NETWORK_CHAT.C
 
 The text chat of network games (port/linux/NETCODE.md), as the PC version
-had it: T (controls.chat) starts a line to everyone, Y (controls.team_chat)
-one to the player's team; Tab, while typing, turns it to everyone, the team
-or the vehicle in turn; Enter sends it, Escape lets it go. A controller's
-D-pad Up (the touch controls' too) opens an on-screen keyboard instead,
+had it: T (controls.chat) starts a line to the channel its player chose
+last (network.chat_channels, each local player's: everyone at first; a
+team's in a game without teams, a vehicle's on foot, the team's or
+everyone's instead), Y (controls.team_chat) one to the player's team; Tab,
+while typing, turns it to everyone, the team or the vehicle in turn; Enter
+sends it, Escape lets it go. A controller's D-pad Up (controls.chat's button,
+the touch controls' too) opens an on-screen keyboard instead, on the channel
+chosen last as T does (the team and vehicle chat buttons on their own),
 whose keys the stick moves through and A types, a tap types (the
 touchscreen), and the controller then drives nothing else (xinput_sdl.c's
 halo_chat_pad_buttons, halo_chat_taps). The lines are
@@ -51,8 +55,9 @@ by the player's name, in either case (the host keeps players' names apart
 in either case), which then sends no line further than the host till
 the minutes are up (or the host unmutes it) and is told for how long; every
 machine is told of each mute and unmute, a line of the host's alone in the
-chat (_chat_line_notice_bit). A client's /mute is not sent: only the host
-mutes. The host's welcome to OpenCE players is a notice too
+chat (_chat_line_notice_bit). The mute silences the player's voice too
+(network_voice.c) and their pings (network_markers.c). A client's /mute is
+not sent: only the host mutes. The host's welcome to OpenCE players is a notice too
 (network_welcome.c), which an OpenH1 machine does not show.
 */
 
@@ -96,6 +101,7 @@ int platform_clipboard_get(char *text, int size);
 int config_boolean(const char *name);
 const char *config_string(const char *name);
 unsigned long config_changes(void);
+int config_write(const char *name, const char *value);
 /* server_mode.c's: a dedicated server (halo --server) */
 int halo_server_mode(void);
 void platform_log(char const *format, ...);
@@ -108,6 +114,9 @@ enum
 	CHAT_TEXT_SIZE = 64,
 	/* a player's name, with its end */
 	CHAT_NAME_SIZE = 12,
+	/* network.chat_channels's words, with its end: a channel's for each
+	local player ("vehicle," four times) */
+	CHAT_CHANNELS_TEXT_SIZE = 32,
 	/* the lines kept, and the rows of them shown at once (a line wraps) */
 	CHAT_MAXIMUM_LINES = 8,
 	CHAT_LINES_SHOWN = 6,
@@ -295,6 +304,9 @@ static struct
 	short channel, controller;
 	long player;
 	boolean physical;
+	/* the channel chosen, by the key that opened the line or by changing it,
+	and so remembered (network.chat_channels) when the line closes */
+	boolean chosen;
 	/* a report's note (port/linux/src/report.c): in any game, network or
 	not, sent to the report, not the players */
 	boolean report;
@@ -486,6 +498,105 @@ static byte chat_channel_flags(
 	if (channel == _chat_channel_vehicle)
 		return (byte)FLAG(_chat_line_vehicle_bit);
 	return channel == _chat_channel_team ? (byte)FLAG(_chat_line_team_bit) : 0;
+}
+
+/* the channels' words in network.chat_channels, in _chat_channel_* order */
+static char const *const chat_channel_words[NUMBER_OF_CHAT_CHANNELS] = { "all", "team", "vehicle" };
+
+/* the channel a local player chose last, from network.chat_channels's words
+(a word for each local player in turn, separated by commas): everyone for
+a player past the list's end or a word not known */
+static short chat_channel_remembered(
+	char const *list,
+	short local_player_index)
+{
+	short index = 0;
+	short channel;
+	short length;
+
+	while (list && *list)
+	{
+		for (length = 0; list[length] && list[length] != ','; length++)
+			;
+		if (index == local_player_index)
+		{
+			for (channel = 0; channel < NUMBER_OF_CHAT_CHANNELS; channel++)
+			{
+				if ((short)csstrlen(chat_channel_words[channel]) == length &&
+					!csstrncmp(list, chat_channel_words[channel], length))
+				{
+					return channel;
+				}
+			}
+			break;
+		}
+		list += length;
+		if (*list == ',')
+			list++;
+		index++;
+	}
+	return _chat_channel_everyone;
+}
+
+/* network.chat_channels's words with a local player's set to a channel and
+the others' kept (everyone's for those the list lacked, a word not known
+everyone's), without the "all"s at its end but the first: FALSE where a
+player or a channel is not one */
+static boolean chat_channel_list_set(
+	char *list,
+	short size,
+	char const *old_list,
+	short local_player_index,
+	short channel)
+{
+	short index;
+	short players = 1;
+	short length = 0;
+	short word;
+
+	if (local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS || channel < 0 ||
+		channel >= NUMBER_OF_CHAT_CHANNELS || size < 1)
+	{
+		return FALSE;
+	}
+	*list = 0;
+	for (index = 0; index < MAXIMUM_LOCAL_PLAYERS; index++)
+	{
+		word = index == local_player_index ? channel : chat_channel_remembered(old_list, index);
+		if (word != _chat_channel_everyone)
+			players = (short)(index + 1);
+	}
+	for (index = 0; index < players; index++)
+	{
+		char const *text;
+
+		word = index == local_player_index ? channel : chat_channel_remembered(old_list, index);
+		text = chat_channel_words[word];
+		if (length + (index ? 1 : 0) + (short)csstrlen(text) >= size)
+			return FALSE;
+		if (index)
+			list[length++] = ',';
+		while (*text)
+			list[length++] = *text++;
+		list[length] = 0;
+	}
+	return TRUE;
+}
+
+/* the channel a line opens on when its key chooses none (controls.chat, a
+controller's D-pad Up): the one the player chose last, where someone else
+hears it; a team's in a game without teams, and a vehicle's on foot, the
+team's (with teams) or everyone's instead */
+static short chat_channel_opened(
+	short remembered,
+	boolean has_teams,
+	boolean in_vehicle)
+{
+	if (remembered == _chat_channel_vehicle && !in_vehicle)
+		remembered = _chat_channel_team;
+	if (remembered == _chat_channel_team && !has_teams)
+		remembered = _chat_channel_everyone;
+	return remembered >= 0 && remembered < NUMBER_OF_CHAT_CHANNELS ? remembered : _chat_channel_everyone;
 }
 
 /* how much of a line shows at its age (milliseconds): all of it for a while,
@@ -1783,6 +1894,25 @@ void network_chat_say_unchecked(
 		chat_send(channel, text, FALSE, FALSE);
 }
 
+/* a local player's channel chosen, for the next line whose key chooses none
+(network.chat_channels: config.toml written only when it changes) */
+static void chat_channel_remember(
+	short local_player_index,
+	short channel)
+{
+	char const *old_list = config_string("network.chat_channels");
+	char list[CHAT_CHANNELS_TEXT_SIZE];
+
+	if (chat_channel_list_set(list, sizeof(list), old_list, local_player_index, channel) &&
+		csstrcmp(list, old_list ? old_list : ""))
+	{
+		config_write("network.chat_channels", list);
+	}
+}
+
+/* a line begun by a controller (NONE: the keyboard's, the first local
+player's) to a channel, or (NONE) to the one its player chose last
+(chat_channel_opened) */
 static void chat_input_begin(
 	short channel, short controller, boolean physical)
 {
@@ -1793,8 +1923,11 @@ static void chat_input_begin(
 
 	csmemset(&chat_input, 0, sizeof(chat_input));
 	chat_input.active = TRUE;
-	chat_input.channel = channel;
 	chat_input.controller = player_get(player)->local_player_index;
+	chat_input.chosen = channel != NONE;
+	chat_input.channel = channel != NONE ? channel :
+		chat_channel_opened(chat_channel_remembered(config_string("network.chat_channels"), chat_input.controller),
+			game_engine_has_teams(), chat_player_vehicle(player_get(player)) != NONE);
 	chat_input.player = player;
 	chat_input.physical = physical;
 	/* (the keys pressed before) */
@@ -1805,7 +1938,10 @@ static void chat_input_begin(
 static void chat_input_end(
 	void)
 {
+	if (chat_input.active && chat_input.chosen && !chat_input.report)
+		chat_channel_remember(chat_input.controller, chat_input.channel);
 	chat_input.active = FALSE;
+	chat_input.chosen = FALSE;
 	/* (a report's note's line is shown whatever display.text_chat says:
 	the next lines, the chat's, are not) */
 	chat_input.report = FALSE;
@@ -1887,9 +2023,15 @@ static void chat_keyboard_update(
 		return;
 	}
 	if (TEST_FLAG(pressed, HALO_CHAT_PAD_UP))
+	{
 		chat_input.channel = (short)((chat_input.channel + NUMBER_OF_CHAT_CHANNELS - 1) % NUMBER_OF_CHAT_CHANNELS);
+		chat_input.chosen = TRUE;
+	}
 	if (TEST_FLAG(pressed, HALO_CHAT_PAD_DOWN))
+	{
 		chat_input.channel = (short)((chat_input.channel + 1) % NUMBER_OF_CHAT_CHANNELS);
+		chat_input.chosen = TRUE;
+	}
 	/* (a direction pressed moves the key at once, held, again after a while
 	and then quickly) */
 	if (TEST_FLAG(held, HALO_CHAT_PAD_STICK_UP))
@@ -2065,7 +2207,7 @@ void network_chat_update(
 	unsigned long pad = chat_keyboard_buttons(halo_chat_pad_buttons());
 	unsigned long pad_pressed = pad & ~chat_keyboard.held;
 	unsigned long now = system_milliseconds();
-	short port, requested_port = NONE, requested_channel = _chat_channel_everyone;
+	short port, requested_port = NONE, requested_channel = NONE;
 	unsigned int chat_mask = (1u << PAD_CHAT) | (1u << PAD_TEAM_CHAT) | (1u << PAD_VEHICLE_CHAT);
 	struct key_stroke key;
 
@@ -2077,7 +2219,8 @@ void network_chat_update(
 		if (actions && requested_port == NONE)
 		{
 			requested_port = port;
-			requested_channel = actions & (1u << PAD_CHAT) ? _chat_channel_everyone :
+			/* (controls.chat's button: the channel chosen last) */
+			requested_channel = actions & (1u << PAD_CHAT) ? NONE :
 				actions & (1u << PAD_TEAM_CHAT) ? _chat_channel_team : _chat_channel_vehicle;
 		}
 	}
@@ -2164,7 +2307,7 @@ void network_chat_update(
 				}
 			}
 			else if (pressed)
-				chat_input_begin(TEST_FLAG(pressed, HALO_KEYBOARD_CHAT) ? _chat_channel_everyone : _chat_channel_team, NONE, FALSE);
+				chat_input_begin(TEST_FLAG(pressed, HALO_KEYBOARD_CHAT) ? NONE : _chat_channel_team, NONE, FALSE);
 			else
 			{
 				chat_input_begin(requested_channel, requested_port, requested_port != NONE);
@@ -2204,6 +2347,7 @@ void network_chat_update(
 		/* (to everyone, the team, the vehicle, in turn) */
 		case _key_tab:
 			chat_input.channel = (short)((chat_input.channel + 1) % NUMBER_OF_CHAT_CHANNELS);
+			chat_input.chosen = TRUE;
 			break;
 		case _key_backspace:
 			chat_input_delete();

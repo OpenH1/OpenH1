@@ -4,6 +4,7 @@
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/controls_settings_screen" flags="pass_unhandled_to_focused_child pause_game">
 		<on event="b" run="port settings page cancel" back="true"/>
 		<on event="back" run="port settings page cancel" back="true"/>
+		<on event="y" run="port settings search"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/options_menu" flags="pass_unhandled_to_focused_child up_down_tabs_children"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/button_bar" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
@@ -86,5 +87,23 @@
 		<on event="left_mouse" run="mouse emit accept event"/>
 		<on event="stick_left" run="controls binding slot"/>
 		<on event="stick_right" run="controls binding slot"/>
+	</behaviour>
+	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_command_8" flags="pass_unhandled_to_focused_child">
+		<on event="a" run="controls begin binding"/>
+		<on event="start" run="controls begin binding"/>
+		<on event="left" run="controls binding slot"/>
+		<on event="right" run="controls binding slot"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<on event="stick_left" run="controls binding slot"/>
+		<on event="stick_right" run="controls binding slot"/>
+	</behaviour>
+	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_walk" flags="pass_unhandled_to_focused_child"/>
+	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/walk_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
+		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
+	</behaviour>
+	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_walk_speed" flags="pass_unhandled_to_focused_child"/>
+	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/walk_speed_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
+		<on event="created" run="port setting load"/>
 	</behaviour>
 </model>

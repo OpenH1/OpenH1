@@ -1040,9 +1040,12 @@ static void menus_files_read(void)
 	{
 		size_t length = strlen(files[index].path);
 
-		/* (but the menu engine's model, menu_model.c) */
+		/* (but the menu engine's model, menu_model.c, and the hand-written
+		screens, menu_screens.c: their building blocks' widgets are read
+		here) */
 		if (length > 4 && !strcmp(files[index].path + length - 4, ".xml") &&
-			strncmp(files[index].path, HALO_MENU_MODEL_FOLDER, strlen(HALO_MENU_MODEL_FOLDER)))
+			strncmp(files[index].path, HALO_MENU_MODEL_FOLDER, strlen(HALO_MENU_MODEL_FOLDER)) &&
+			(strncmp(files[index].path, "screens/", 8) || !strcmp(files[index].path, "screens/blocks.xml")))
 			read_file(&reader, &files[index]);
 	}
 	free(reader.last_child);

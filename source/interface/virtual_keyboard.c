@@ -348,6 +348,13 @@ static rectangle2d keyboard_rect[NUMBER_OF_VIRTUAL_KEYS] =
 
 static struct virtual_keyboard_globals virtual_keyboard_globals= {0};
 
+/* port: a title and a caption of the caller's in place of ENTER NAME and
+the keyboard's own strings' (virtual_keyboard_port_launch: Settings'
+search's, port/linux/game/settings_search_menu.inc), until the keyboard is
+launched again */
+static wchar_t const *virtual_keyboard_port_title;
+static wchar_t const *virtual_keyboard_port_caption;
+
 /* port: the computer's keyboard types into the keyboard while it is up
 (port/linux/src/xinput_sdl.c), set as it opens and closes: it is processed
 only while it is up, so its processing cannot end the typing */
@@ -531,7 +538,8 @@ static void virtual_keyboard_port_render_backdrop(
 		bounds.y1 = (short)(bounds.y0 + 64);
 		draw_string_set_draw_mode(heading_font, NONE, 0, 0, &title_color);
 		rasterizer_text_set_scale(scale, (real)bounds.x0, (real)bounds.y0);
-		rasterizer_draw_unicode_string(&bounds, NULL, NULL, 0, L"ENTER NAME");
+		rasterizer_draw_unicode_string(&bounds, NULL, NULL, 0,
+			virtual_keyboard_port_title ? virtual_keyboard_port_title : L"ENTER NAME");
 		rasterizer_text_set_scale(1.0f, 0.0f, 0.0f);
 	}
 
@@ -721,6 +729,10 @@ boolean virtual_keyboard_launch(
 		419,
 		(caption_index>=FIRST_VIRTUAL_KEYBOARD_CAPTION_STRING_INDEX) && (caption_index<NUMBER_OF_VIRTUAL_KEYBOARD_STRINGS));
 
+	/* port: (the keyboard's own title and caption, unless the port's launch
+	gives them) */
+	virtual_keyboard_port_title = NULL;
+	virtual_keyboard_port_caption = NULL;
 	if (!virtual_keyboard_globals.active && virtual_keyboard_globals.keyboard)
 	{
 		event_manager_flush();
@@ -750,6 +762,26 @@ boolean virtual_keyboard_launch(
 	}
 
 	return result;
+}
+
+/* port: the keyboard launched with a title and a caption of the caller's
+(its words, kept while the keyboard is up), not ENTER NAME and one of its
+strings' */
+boolean virtual_keyboard_port_launch(
+	wchar_t *text_buffer,
+	word buffer_size,
+	wchar_t const *title,
+	wchar_t const *caption)
+{
+	boolean launched = virtual_keyboard_launch(text_buffer, buffer_size, FIRST_VIRTUAL_KEYBOARD_CAPTION_STRING_INDEX);
+
+	if (launched)
+	{
+		virtual_keyboard_port_title = title;
+		virtual_keyboard_port_caption = caption;
+	}
+
+	return launched;
 }
 
 boolean virtual_keyboard_active(
@@ -971,6 +1003,10 @@ static void virtual_keyboard_render_internal(
 		wchar_t *caption = unicode_string_list_get_string(
 			virtual_keyboard_globals.keyboard->special_key_labels_string_list_tag.index,
 			virtual_keyboard_globals.caption_index);
+
+		/* port: (the port's caller's caption: virtual_keyboard_port_launch) */
+		if (virtual_keyboard_port_caption)
+			caption = (wchar_t *)virtual_keyboard_port_caption;
 
 		bounds.y0 = 78;
 		bounds.x0 = 114;

@@ -1431,6 +1431,10 @@ short pc_menu_legend_room(
 radius attribute: port/linux/game/menu_tags.c), 0 for square */
 short pc_menu_widget_radius(
 	long definition_index);
+/* port: the scale a menu widget's text is drawn at (its look's text scale,
+the menu engine's: port/linux/game/menu_tags.c), 1 for its font's size */
+real pc_menu_text_scale(
+	long definition_index);
 /* port: the placeholder bitmap the menus draw a sprite of a high-res
 texture from, or the sheet if it has none (port/linux/game/hud_hires_tags.c) */
 struct bitmap_data const *hud_hires_sprite_bitmap(
@@ -1793,6 +1797,17 @@ static __inline real compute_offset_coordinate(
 /* port: draw_bitmap_in_rect, its texture's columns from u0 to u1 (its parts'
 of the bitmap's width) rather than from its left (u1 negative: from its
 left, as the bitmap rectangle has it) */
+/* port: the menu engine's cut (port/linux/game/menu_engine.c: a settings
+list's rows scrolled), in the screen's units, while it is set: the pictures
+drawn cut to it, their texture with them, not squeezed into it as a clip
+squeezes them; NULL none */
+static rectangle2d const *ui_widget_port_cut = NULL;
+
+void ui_widget_port_cut_set(rectangle2d const *cut)
+{
+	ui_widget_port_cut = cut;
+}
+
 static void draw_bitmap_columns_in_rect(
 	struct bitmap_data *bitmap,
 	rectangle2d *rect,
@@ -1891,6 +1906,34 @@ static void draw_bitmap_columns_in_rect(
 			vertices[vertex_index].texture_coordinates.y =
 				(vertex_index > 1) ? texture_height : 0.0f;
 			vertices[vertex_index].position = points[vertex_index];
+		}
+		/* port: cut to the menu engine's cut (its texture with it), in place
+		of the clip */
+		if (ui_widget_port_cut && rectangle_width > 0 && rectangle_height > 0)
+		{
+			real left = (real)rectangle_x0, top = (real)rectangle_y0;
+			real right = left + (real)rectangle_width, bottom = top + (real)rectangle_height;
+			real x0 = MAX(left, (real)ui_widget_port_cut->x0), x1 = MIN(right, (real)ui_widget_port_cut->x1);
+			real y0 = MAX(top, (real)ui_widget_port_cut->y0), y1 = MIN(bottom, (real)ui_widget_port_cut->y1);
+			real ua = vertices[0].texture_coordinates.x, ub = vertices[1].texture_coordinates.x;
+			real va = 0.0f, vb = texture_height;
+
+			if (x1 <= x0 || y1 <= y0)
+				return;
+			for (vertex_index = 0;
+				vertex_index < NUMBER_OF_POINTS_PER_RECTANGLE;
+				vertex_index++)
+			{
+				boolean at_right = (vertex_index % 3) != 0;
+				boolean at_bottom = vertex_index > 1;
+
+				vertices[vertex_index].position.x = at_right ? x1 : x0;
+				vertices[vertex_index].position.y = at_bottom ? y1 : y0;
+				vertices[vertex_index].texture_coordinates.x =
+					ua + (ub - ua) * ((at_right ? x1 : x0) - left) / (right - left);
+				vertices[vertex_index].texture_coordinates.y =
+					va + (vb - va) * ((at_bottom ? y1 : y0) - top) / (bottom - top);
+			}
 		}
 
 		csmemset(&parameters, 0, sizeof(parameters));
@@ -4212,6 +4255,40 @@ void ui_widget_port_go_back(
 	widget_instance_go_back_to_previous(widget);
 }
 
+/* port: a widget of a tag made a child of the parent, before the child
+before (NULL: last), its offsets the parent's (the menu engine's rows of
+Settings' search, from their own pages' widgets: port/linux/game/menu_engine.c);
+NULL if it could not be made */
+struct widget_instance *ui_widget_port_add_child(
+	struct widget_instance *parent,
+	long tag_index,
+	struct widget_instance *before)
+{
+	struct widget_instance *child = ui_widget_load_by_name_or_tag(NULL, tag_index, parent, parent->local_player_index,
+		NONE, NONE, NONE);
+
+	if (!child)
+		return NULL;
+	child->horizontal_offset = parent->horizontal_offset;
+	child->vertical_offset = parent->vertical_offset;
+	if (before && before->parent == parent)
+	{
+		child->next = before;
+		child->previous = before->previous;
+		if (before->previous)
+			before->previous->next = child;
+		else
+			parent->child = child;
+		before->previous = child;
+	}
+	else
+	{
+		ui_widget_add_child(parent, child);
+	}
+
+	return child;
+}
+
 void pc_menu_screen_shown(long tag_index); /* port: port/linux/game/menu_tags.c */
 
 struct widget_instance *ui_widget_load_by_name_or_tag(
@@ -5863,6 +5940,36 @@ map's two reasons ran past the dialog's footer). Sets the draw mode's font
 and the text's scale (rasterizer_text_set_scale) it is drawn in, and the
 bounds it is laid out in; returns the scale (1: as it was) */
 #define UI_WIDGET_PORT_TEXT_LEAST_SCALE 0.6f
+
+/* port: a widget's text drawn at its look's scale (pc_menu_text_scale): the
+bounds it is laid out in made as much the wider and taller about the box's
+middle, and its left, middle or right as justified, which the scale keeps
+where they are, and the text's scale (rasterizer_text_set_scale) set for it;
+returns the scale (1: as it was, nothing set) */
+static real ui_widget_port_text_scale_begin(
+	struct widget_instance *widget,
+	struct ui_widget_definition const *definition,
+	rectangle2d *bounds,
+	point2d offset,
+	short justification)
+{
+	real scale = pc_menu_text_scale(widget->definition_tag_index);
+	real origin_x, origin_y;
+
+	if (scale == 1.0f)
+		return 1.0f;
+	origin_x = justification == _text_justification_right ? (real)bounds->x1 :
+		justification == _text_justification_center ? (real)(bounds->x0 + bounds->x1) * 0.5f : (real)bounds->x0;
+	origin_y = (real)(definition->bounds.y0 + definition->bounds.y1) * 0.5f + (real)offset.y;
+	bounds->x0 = (short)(origin_x - (origin_x - (real)bounds->x0) / scale);
+	bounds->x1 = (short)(origin_x + ((real)bounds->x1 - origin_x) / scale);
+	bounds->y0 = (short)(origin_y - (origin_y - (real)bounds->y0) / scale);
+	bounds->y1 = (short)(origin_y + ((real)bounds->y1 - origin_y) / scale);
+	rasterizer_text_set_scale(scale, origin_x, origin_y);
+
+	return scale;
+}
+
 static real ui_widget_port_text_fit(
 	wchar_t *text,
 	rectangle2d *bounds,
@@ -6189,6 +6296,10 @@ static void widget_instance_render_text_box(
 		}
 		fit_scale = ui_widget_port_text_fit(*text, &bounds, width, height, &font_index, &color, justification);
 	}
+	/* port: or drawn at its look's scale (the menu engine's), but a field
+	typed into, whose caret is placed at its font's size */
+	else if (!caret)
+		fit_scale = ui_widget_port_text_scale_begin(widget, definition, &bounds, offset, justification);
 	/* port: the key of a button pictured beside the words in their gap
 	(ui_widget_port_key_label_text), the words left-justified moved left
 	by as much as the key's cap is wider than the gap, so that they end
@@ -6470,7 +6581,15 @@ static void widget_instance_render_spinner_list(
 					definition->justification,
 					0,
 					&color);
-				rasterizer_draw_unicode_string(&bounds, &clip, NULL, 0, item_text);
+				/* port: at its look's scale (the menu engine's) */
+				if (ui_widget_port_text_scale_begin(widget, definition, &bounds, offset,
+					definition->justification) != 1.0f)
+				{
+					rasterizer_draw_unicode_string(&bounds, &clip, NULL, 0, item_text);
+					rasterizer_text_set_scale(1.0f, 0.0f, 0.0f);
+				}
+				else
+					rasterizer_draw_unicode_string(&bounds, &clip, NULL, 0, item_text);
 			}
 		}
 		if (definition->text_label_string_list.index != NONE)
@@ -8701,6 +8820,32 @@ static void ui_widgets_process_mouse(
 	return;
 }
 
+/* port: the menu engine's (port/linux/game/menu_engine.c): how many tap
+targets this frame has noted so far, and those noted from the first on cut
+to a clip (a settings list's rows, scrolled), any wholly outside it dropped */
+long ui_widget_port_targets_noted(void)
+{
+	return ui_mouse_target_count;
+}
+
+void ui_widget_port_targets_clip(long first, rectangle2d const *clip)
+{
+	long index, kept = first;
+
+	for (index = first; index < ui_mouse_target_count; index++)
+	{
+		struct ui_mouse_target target = ui_mouse_targets[index];
+
+		target.bounds.x0 = MAX(target.bounds.x0, clip->x0);
+		target.bounds.y0 = MAX(target.bounds.y0, clip->y0);
+		target.bounds.x1 = MIN(target.bounds.x1, clip->x1);
+		target.bounds.y1 = MIN(target.bounds.y1, clip->y1);
+		if (target.bounds.x0 < target.bounds.x1 && target.bounds.y0 < target.bounds.y1)
+			ui_mouse_targets[kept++] = target;
+	}
+	ui_mouse_target_count = kept;
+}
+
 /* port: a widget drawn alone, for the menu engine
 (ui_widget_port_render_node): the widget (what it draws of others, a list's
 description, drawn whole), whether it was shown, and where and whether its
@@ -8730,10 +8875,26 @@ static void widget_instance_render_recursive(
 	/* port: (custom_edition_maps_picture) */
 	struct bitmap_data *custom_edition_picture;
 	short frame_index;
+	/* port: (a hand-written screen's item's own picture) */
+	struct ui_widget_definition pictured;
+	long picture_index;
 
 	/* port: a screen the port's menu engine draws (port/linux/game/menu_engine.c) */
 	if (!widget->parent && menu_engine_screen_draw(widget, clip_rect, offset, focus, use_nifty_plasma_fx))
 		return;
+	/* port: a hand-written screen's item drawn as its picture, in a box of
+	the picture's height (port/linux/game/menu_screen.c) */
+	pictured.bounds = definition->bounds;
+	if (menu_screen_item_picture(widget, &picture_index, &pictured.bounds))
+	{
+		rectangle2d bounds = pictured.bounds;
+
+		pictured = *definition;
+		pictured.bounds = bounds;
+		if (picture_index != NONE)
+			pictured.background_bitmap.index = picture_index;
+		definition = &pictured;
+	}
 	if (!use_nifty_plasma_fx &&
 		TEST_FLAG(definition->flags, _widget_always_render_with_nifty_fx_bit))
 	{
@@ -8831,6 +8992,10 @@ static void widget_instance_render_recursive(
 		bounds.x1 += offset.x;
 		bounds.y0 += offset.y;
 		bounds.y1 += offset.y;
+		/* port: (the menu engine's cut in place of the clip, which the
+		pictures are cut to: ui_widget_port_cut_set) */
+		if (ui_widget_port_cut)
+			clip = NULL;
 		if (clip)
 		{
 			local_clip = *clip;
@@ -9125,7 +9290,7 @@ void render_ui_widgets_postgame(
 		if (should_render)
 		{
 			/* port: (ui_widget_port_anchor_extra, as below) */
-			bounds.x0 = (short)-MAX(ui_widget_port_anchor_extra(), (ui_widget_port_wide_extra() + 1) / 2);
+			bounds.x0 = (short)-MAX(ui_widget_port_anchor_extra(), (ui_widget_port_wide_extra() + ui_widget_port_past_extra() + 1) / 2);
 			bounds.y0 = 0;
 			bounds.x1 = window_bounds->x1 - window_bounds->x0;
 			bounds.y1 = window_bounds->y1 - window_bounds->y0;
@@ -9323,6 +9488,18 @@ void ui_widget_port_focus_restore(
 	return;
 }
 
+/* port: the screens closed for one opened alone (debug.menu_open, the menu
+tour's): as if the pointer had moved nothing yet, so that a pointer resting
+over the screen before (the main menu's) does not make the next one's focus
+the pointer's (port/linux/game/menu_tour.c) */
+void ui_widget_port_pointer_forget(
+	void)
+{
+	ui_mouse_focused_last = FALSE;
+	ui_mouse_hovered_last = FALSE;
+	ui_mouse_hover_pending = FALSE;
+}
+
 /* port: the screen of a tag's name opened alone (the others closed, a
 profile being edited, as debug.menu_open opens one); NULL closes them all.
 The menu studio's (port/linux/game/menu_studio.c); FALSE where there is no
@@ -9335,6 +9512,7 @@ boolean ui_widget_port_open_screen(
 	if (virtual_keyboard_active())
 		virtual_keyboard_close();
 	ui_widgets_close_all();
+	ui_widget_port_pointer_forget();
 	if (!tag_name)
 		return TRUE;
 	pc_menu_profile_edit_begin();
@@ -9412,8 +9590,9 @@ void render_ui_widgets(
 
 				/* port: from the screen's left edge where widgets are anchored to
 				it (ui_widget_port_anchor_extra), or the wide layout's
-				(ui_widget_port_wide_extra), not the menus' 0 */
-				bounds.x0 = (short)-MAX(ui_widget_port_anchor_extra(), (ui_widget_port_wide_extra() + 1) / 2);
+				(ui_widget_port_wide_extra, and past 16:9 the menu engine's:
+				ui_widget_port_past_extra), not the menus' 0 */
+				bounds.x0 = (short)-MAX(ui_widget_port_anchor_extra(), (ui_widget_port_wide_extra() + ui_widget_port_past_extra() + 1) / 2);
 				bounds.y0 = 0;
 				bounds.x1 = window_bounds->x1 - window_bounds->x0;
 				bounds.y1 = window_bounds->y1 - window_bounds->y0;
@@ -10396,7 +10575,10 @@ void ui_widget_port_give_focus(
 	struct widget_instance *widget,
 	struct widget_instance *focus)
 {
-	widget_instance_give_focus_by_tag(widget, focus->definition_tag_index, widget->local_player_index);
+	/* (that widget, not the first of its tag: a hand-written screen's items
+	share theirs, port/linux/game/menu_screen.c; where a tag is the widget's
+	alone, as widget_instance_give_focus_by_tag gives it) */
+	widget_instance_give_focus_directly(widget_instance_get_topmost_parent(widget), focus);
 }
 
 void ui_widget_port_lists_update(

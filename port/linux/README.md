@@ -607,6 +607,7 @@ the other way side to side. Refer to
 | throw a grenade | G |
 | jump (and skip a cutscene) | space |
 | crouch | left ctrl, C |
+| walk: move slowly, off the enemies' motion trackers (hold; `input.walk`, `input.walk_speed`) | left shift |
 | melee | F, mouse button 4 |
 | reload | R |
 | action (pick up, hold to swap weapons, enter or leave a vehicle; never reloads) | E |
@@ -709,6 +710,11 @@ edition shows it: each of the PC version's texts is that `loc.map`'s
 it is English. The pictures with words in them (the screens' titles, the
 main menu's items) are drawn in English.
 
+The main menu has one item the PC version's has not, PRO 2V2, after MULTIPLAYER:
+matchmaking's two against two, CLASSIC or CRISPY (refer to "PRO 2V2"
+under "Internet play"). Its item is drawn in the redraws' own letters, as VR
+TUTORIAL is.
+
 Multiplayer > SPLIT-SCREEN CO-OP is the Xbox's cooperative play, which the PC
 version does not have: two players on this computer play the campaign in
 split screen. Player 1 is the player who chose it, on the current profile.
@@ -763,7 +769,9 @@ PLAYER then START, and JOIN GAME brings them all into the game.
 
 In a multiplayer game, the pause menu (escape) has SETTINGS, which opens
 the profile's settings while the game goes on, and for the host HOST
-CONTROLS (below; in a game of this computer alone, END GAME).
+CONTROLS (below; in a game of this computer alone, END GAME). In network
+co-op the campaign's pause menu has SETTINGS and FRIENDLY FIRE, and the
+host's HOST CONTROLS too.
 There Network Setup has only its pages that work in a game (Map Sharing,
 Multiplayer HUD with the text chat, and Streamer Mode), not INTERNET PLAY,
 which would drop the game, nor the rows for the main menu.
@@ -773,14 +781,14 @@ the carnage report the host picks the next map and gametype (PICK GAME).
 HOST CONTROLS is the host's of a network game (internet or LAN), laid out as
 the server browser is, over the game dimmed and without its HUD, and in the
 lobby too (its HOST CONTROLS, in the details panel, before the game starts),
-with six tabs (BOTS, the last, not in co-op):
+with six tabs (BOTS, the last, not in co-op, whose tabs are below):
 
 - PLAYERS: everyone in the game, with their team, score, ping and a tag
   (HOST, BOT, OPENH1 or OPENCE; in a Legacy game the host cannot tell OpenH1's
   players from OpenCE's). For the player chosen: KICK, BAN... (then BAN FOR
   AN HOUR, BAN FOR A DAY or BAN FOR GOOD, with ADD A REASON to type why
   first), MOVE TO RED or BLUE, and MUTE... (then for 10 minutes, an hour or
-  a day; their text chat and voice, for everyone) or UNMUTE. The host's own
+  a day; their text chat, voice and pings, for everyone) or UNMUTE. The host's own
   players are never kicked, banned or muted; KICK on a bot takes it out, one
   bot fewer (`bots.count`), as BOTS's REMOVE BOT does. In the lobby every player can be moved, OpenCE's
   too. In a game a team move is offered in an OpenH1 game of teams with no
@@ -876,11 +884,33 @@ sets the vehicles and `host_weapons map` or `host_weapons <primary> [<secondary>
 `plasma_pistol`, `plasma_rifle`, `needler`) the starting weapons (as RULES's rows), and
 `ban <player> [30m|2h|7d|1w|forever]
 [reason]` bans for a while and says why (the duration with its unit).
-A co-op game has none of the map changes and no playlist: its next game is
-the campaign's next level. A list of more than 512 maps leaves the rest out,
+A list of more than 512 maps leaves the rest out,
 and MAPS says how many. Nothing new goes to the other machines: a map change is the lobby's own, a
 notice OpenCE knows, so OpenCE players in a Legacy game see it all as any
 host's.
+
+A co-op game's host has HOST CONTROLS too (the campaign's pause menu's, and
+the lobby's between levels), with PLAYERS (KICK, BAN..., MUTE...; no teams),
+GAME (CHANGE LEVEL..., MAX PLAYERS and the internet game's rows), MAPS,
+PLAYLIST and BANS; no BOTS, which play no campaign, and no RULES:
+
+- MAPS: DIFFICULTY (left and right step it: Easy, Normal, Heroic,
+  Legendary; first the game's), then the campaign's levels whose maps are in
+  the maps folder, and Custom Edition's campaign maps (`custom_maps`). For
+  the level chosen: PLAY NOW (in a level, pressed twice: the level ends for
+  everyone, as a won level ends, every machine goes to the lobby, and the
+  new level starts from there by itself, at the difficulty chosen) and
+  AFTER THIS LEVEL (when the level is won, that one is set up in the lobby
+  in place of the campaign's next). In the lobby PLAY IN THIS LOBBY sets the
+  lobby's level and difficulty.
+- PLAYLIST: co-op has none; a level asked for after this one (NEXT, with
+  CANCEL CHANGE), else the campaign's next level plays.
+
+The console's `host_map <level> [difficulty]` and `host_map_next <level>
+[difficulty]` do the same in co-op (`host_map a30 heroic`, `host_map
+custom_maps\<name>`; no difficulty: the game's). Nothing new goes to the
+other machines: the level and difficulty are the lobby's own settings, sent
+as a won level's next one is.
 
 The scoreboard's player menu (a right click on a name) offers the host the
 same: Mute for everyone, Kick, Ban (picked twice), Move to the other team,
@@ -923,8 +953,12 @@ players' names over their heads fade out while it shows.
 The port's own screens use the screen's width up to 16:9: Settings,
 Multiplayer, the Server Browser (and the LAN list and Join by Link) and the
 carnage report. Their lists start at the screen's left and their panels end
-at its right, each wider by what the screen adds: Settings' rows and help
-panel, the browser's Server, Map and Mode columns and its details panel,
+at its right, each wider by what the screen adds: Settings' rows (their
+values' column most: sliders across it, spinners at its left; a setting of
+two or three choices shows them all, the one chosen framed, a click
+choosing one; its help panel a little narrower, about a quarter of a 16:10
+screen, and under a setting's words its default and, where the host
+decides it online, that), the browser's Server, Map and Mode columns and its details panel,
 Multiplayer's items and panel, the carnage report's columns, and the
 scoreboard's names. The tabs spread across the screen, and the key prompts
 keep to its edges. A wider screen (21:9 and up) has the 16:9 layout in its
@@ -1190,7 +1224,8 @@ weapons, Hardcore's restores); the clients take them from it as they take
 the rest of the game. The lobby and Server Setup name the gametype's mode.
 `debug.network_test` hosts them by name: `swat`, `infection`, `gun_game`,
 `hardcore`, `hardcore_ctf`, `hardcore_oddball` and `hardcore_king`
-(`host:bloodgulch:infection`).
+(`host:bloodgulch:infection`), and `pro_doubles`, PRO 2V2's Pro Doubles, which
+Select Gametype does not list (refer to "PRO 2V2").
 
 Three more options of OpenCE's (its pull request #467, by s3anyboy) are in
 the gametype editor's own screens:
@@ -1245,6 +1280,18 @@ needs its quotes (`menus = "pc"`, not `menus = pc`). The Settings menu (Video, M
 changes the useful settings, writes them into the file (only their lines
 change) and applies them at once, but `display.menus`, from the next main menu.
 
+The Settings menu finds a setting on any tab or page (`display.menu_engine =
+"new"`, the default): start typing on any Settings screen (the letters and
+digits, but Q and E, the tabs' keys; W, A, S, D, F, R and L are letters
+there, and the arrows move the focus), or press Ctrl+F, `/`, a controller's
+Y (the on-screen keyboard comes up) or the SEARCH field at the tabs' left.
+The rows whose names, help or choices have the words typed are listed
+under the way to each (VIDEO › FRAME RATE & SYNC), the names' first, and
+change their settings there, kept for OK as a tab's are; a few other words
+find rows too (FOV, SENS, FPS, AA: `tools/port_settings.py`'s
+`SETTINGS_SEARCH_WORDS`). Esc (B) clears it and goes back to the row it was
+opened from. Refer to `docs/menu_engine.md`, "Deliberate differences".
+
 Each setting has an environment variable. The environment variable changes
 the setting for one start of the game. It has priority over the file.
 
@@ -1270,7 +1317,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.prepare_shaders` | `true` | `HALO_PREPARE_SHADERS` | `true`: as a map loads, its first frame is drawn unseen through every shader its tags hold, in each way the game's code draws them, with its other structures' materials too, so that the renderer makes their shaders and pipelines during the loading screen, not in play nor at a load zone (a structure with materials its first could not stand in for draws those at its own first frame) (`port/assets/render/README.md`, "A map's enumeration"). `false`: each is made the first time a draw needs it, which the draw waits for. |
 | `display.interpolation` | `true` | `HALO_INTERPOLATION` | `true`: one frame for each refresh of the display. `false`: 30 frames each second, as on the Xbox. Refer to "Frame rate". |
 | `display.menu_cursor` | `"medium"` | `HALO_MENU_CURSOR` | The menus' pointer for the mouse (Settings > Controls > Menu Cursor): the game's blue arrow, `"small"`, `"medium"`, `"large"` or `"extra_large"` (18, 24, 32 or 40 of the menus' 480 lines tall, the same part of the screen at any resolution), or `"off"` for the system's pointer. Linux, Windows and macOS. Refer to "Controls". |
-| `display.direct_camera` | `true` | `HALO_DIRECT_CAMERA` | `true`: in first person, on foot, the view points where the player aims in each frame, not where the last tick left it; and (not in the VR mode) the view stands where the newest step left the player, and the gun and hands show the newest step's pose (a shot, a step, a reload seen 33 ms sooner). In a vehicle's seat (first or third person, not in the VR mode) the vehicle, its riders and the view from it are drawn as the vehicle's newest step left it, the view aimed where the player aims. On Android and iOS too, with the touch controls' swipe and gyroscope. Refer to "Frame rate". |
+| `display.direct_camera` | `true` | `HALO_DIRECT_CAMERA` | (Off for every player in a Pro 2v2 Classic game, whatever this says, as its host's word: refer to "PRO 2V2"; the setting is left as it is.) `true`: in first person, on foot, the view points where the player aims in each frame, not where the last tick left it; and (not in the VR mode) the view stands where the newest step left the player, and the gun and hands show the newest step's pose (a shot, a step, a reload seen 33 ms sooner). In a vehicle's seat (first or third person, not in the VR mode) the vehicle, its riders and the view from it are drawn as the vehicle's newest step left it, the view aimed where the player aims. On Android and iOS too, with the touch controls' swipe and gyroscope. Refer to "Frame rate". |
 | `display.fov` | `0.0` | `HALO_FOV` | The view's field of view on foot, in degrees across at 16:9, from 20 to 150, or to 160 with `display.panini` on (150 while it is off). `0`: the stock view. A seat seen in first person (a passenger's, the Shade's turret) takes it too; the third-person seats take `display.vehicle_fov`'s. Video Setup's Field of View is a slider through Default and 80 to 160, with a field to type any from 20 to 160 (Enter keeps it). Refer to "Field of view". |
 | `display.scale_scoped_fov` | `false` | `HALO_SCALE_SCOPED_FOV` | How far a scope zooms at a field of view other than the stock one (`display.fov`, `display.vehicle_fov`). `false`: as the Xbox did, every zoom level is the weapon's own angle (the stock view over its magnification), whatever the player's view is. `true`: each zoom level magnifies the player's view as much as the Xbox's magnifies the stock view: the tangent of half the zoomed angle times the tangent of half the player's angle over the stock one's, so the reticle's scale and the scope's picture keep together. Classic and Enhanced both leave it off. First Person's Scoped Field of View (XBOX or SCALED), under Vehicle Field of View. Refer to "Field of view". |
 | `display.vehicle_fov` | `"default"` | `HALO_VEHICLE_FOV` | The view's field of view in a vehicle's seat seen in third person (a driver's, a gunner's, a passenger's with `display.passenger_third_person`), and getting in and out of it. A seat seen in first person (a passenger's, the Shade's turret) takes `display.fov`'s, as on foot. `"default"`: the stock view, the reticle at its stock size. `"match"`: `display.fov`'s. A number (`110`, unquoted or quoted): degrees across at 16:9, from 20 to 160, as `display.fov` reads it (above 150 with `display.panini` on; another number, the stock view). Getting in or out, or changing between a first-person and a third-person seat, the view eases between the two in half a second. First Person's Vehicle Field of View is a slider through Default, Match and 80 to 160, with a field to type any from 20 to 160. Refer to "Field of view". |
@@ -1289,13 +1336,14 @@ the setting for one start of the game. It has priority over the file.
 | `display.viewmodel_shield` | `false` | `HALO_VIEWMODEL_SHIELD` | `true`: the energy shield's flare is drawn on the first-person arms too, as on the body, with the unit's own shield shader, kept closer to the arms than to the body. The stock game draws it on the body only. The flare is the shield's hits: it shows as the shield takes damage and fades over the next second or two (the unit's recent shield damage), so a full shield that nothing hits shows none, on the arms as on the body. An overshield stays lit on the arms with `display.overshield_effect` (OVERSHIELD, on the same screen). |
 | `display.first_person_legs` | `false` | `HALO_FIRST_PERSON_LEGS` | `true`: your own body is drawn in first person from the belly down, with its shadow, so you see your legs when you look down, moving as the body's animation moves them, its feet where they stand; its lower body stays planted as you turn and faces the way you walk, on your screen alone. Refer to "Field of view". |
 | `display.shield_color` | `default` | `HALO_SHIELD_COLOR` | Your energy shield's flare as this machine draws it: `default` (the shield's own) or a multiplayer armor color (`white`, `black`, `red`, `blue`, `gray`, `yellow`, `green`, `pink`, `purple`, `cyan`, `cobalt`, `orange`, `teal`, `sage`, `brown`, `tan`, `maroon`, `salmon`), whatever the armor's, on the body and, with `display.viewmodel_shield`, on the first-person arms. The shield's own shader is drawn with its two colors replaced at their brightness; the flare is added to what is behind it, so `black` is drawn a faint grey. Only this machine sees it. |
+| `display.spartan_link` | `"medium"` | `HALO_SPARTAN_LINK` | The Spartan link: live feeds of your living teammates' views in the HUD's top line (up to four), shown and hidden with `controls.spartan_link` (B; a controller's D-pad Down in the stock layouts), off as each game starts; co-op and team games only, not Pro 2V2. `"small"`, `"medium"` or `"large"` feeds; `"off"`: the key does nothing. SPARTAN LINK in Settings > Interface. Refer to "Spartan link". |
 | `display.high_res_hud` | `true` | `HALO_HIGH_RES_HUD` | `true`: the HUD (meters, counters, panels and their outlines, reticles, waypoints, scopes, the message icons and their pictures of the weapons, the reticle's warnings, the multiplayer icons) is drawn from the high-res assets in `port/assets/hud`, 4x the size of the maps' bitmaps: Aerocatia's and Jessie's art from Halo PC Restored (`port/assets/hud/NOTICE.md`); the motion sensor and the health meter's base, which it has no larger, from redraws at 8x. Another language's text (the message icons' words, the warnings, the seat plates) is upscaled from its maps' own pixels without changing their layout. `false`: the maps' own bitmaps. |
 | `display.hud_button_style` | `classic` | `HALO_HUD_BUTTON_STYLE` | Gameplay controller icons while High-Res HUD is on: `classic` (the Xbox's flat faces, their letters cut out: Aerocatia's and Jessie's stencils from Halo PC Restored), `gems` (shaded Xbox faces), or `menu_gems` (Dark Gems). |
 | `display.menu_pictures` | `true` | `HALO_MENU_PICTURES` | `true`: the menus' small pictures of the missions and the multiplayer maps (ui.map's 140x114 `sp_levels` and `mp_map_grafix`) are drawn again, sharp, from the player's own maps, once, as the main menu first shows ("Preparing menu pictures", about a second each), and kept in the data root's `menu_pictures/` ("Menu pictures"). `false`: the originals. |
 | `display.high_res_text` | `true` | `HALO_HIGH_RES_TEXT` | `true`: the menus', HUD's and console's text is drawn with the fonts in `port/assets/fonts` (Cyborg Interface Gothic by fizzy, in place of the maps' Interstate, Overpass for the few characters it lacks; Hack, a monospaced font, in place of the console's bitmap font) at the resolution the game draws at, laid out where the game puts it, each run of text with the font's own spacing; the menus' titles are drawn from the high-res pictures in `port/assets/titles`, and the controller button icons from those in `port/assets/buttons`. `false`: the maps' bitmap fonts, titles and button icons. |
 | `display.shadow_resolution` | `display.graphics`'s | `HALO_SHADOW_RESOLUTION` | The size of the maps that the shadows of the objects are drawn in, in pixels each way: `128`, `256`, `512` or `1024` (other values go down to one of these). The game draws the shadow of each object into a map of 128x128 pixels, blurs it and projects it onto the ground. On a large screen, the edges of these shadows show steps that move when the object moves. A larger map makes the edges smooth; the blur is made wider to match, so the shadows are as soft as on the Xbox. Each doubling adds two passes of the blur, which up to `512` are drawn once a frame for all the objects (the shadow atlas: 2048x2048 at `512`, two of them, and nine maps, 41 MB of the GPU's memory; 10 MB at `256`). `128`: as on the Xbox. Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `display.menus` | `"pc"` | `HALO_MENUS` | `"pc"`: the PC version's menus, from the files in `port/assets/menus` and a `menus` folder next to `config.toml`. Refer to "Menus". `"xbox"`: the Xbox's menus. |
-| `display.menu_engine` | `"classic"` | `HALO_MENU_ENGINE` | What runs the PC menus' generated screens (`port/assets/menus`, with `display.menus = "pc"`). `"classic"`: the game's widgets, built from the menus' files (`game/menu_tags.c`). `"new"`: the port's menu engine (`game/menu_engine.c`), from the menus' model (`port/assets/menus/model`), drawn with the same pictures, text and sounds; the in-game pause menu stays the game's. Refer to `docs/menu_engine.md`. Interface's MENU ENGINE row sets it, from the next screen opened. |
+| `display.menu_engine` | `"new"` | `HALO_MENU_ENGINE` | What runs the PC menus' generated screens (`port/assets/menus`, with `display.menus = "pc"`). `"classic"`: the game's widgets, built from the menus' files (`game/menu_tags.c`). `"new"`: the port's menu engine (`game/menu_engine.c`), from the menus' model (`port/assets/menus/model`), drawn with the same pictures, text and sounds; the in-game pause menu stays the game's. Refer to `docs/menu_engine.md`. Interface's MENU ENGINE row sets it, from the next screen opened. |
 | `display.menu_language` | `"maps"` | `HALO_MENU_LANGUAGE` | The PC menus' language. `"maps"`: the language of the Custom Edition whose `loc.map` is in `custom_maps` (English without one). `"english"`: English. The port's own lines are English. |
 | `display.player_names` | `"all"` | `HALO_PLAYER_NAMES` | In multiplayer, whose names are drawn above their heads: `"all"`, `"allies"`, `"enemies"` or `"none"`. An ally's name is drawn above the triangle the game shows over teammates. An enemy's name shows only within the motion sensor's reach, while the enemy is in sight and not camouflaged, so it never shows where an enemy hides. The gametype's motion tracker setting also applies: no names if it shows no players, only allies' if it shows only friends. |
 | `display.player_name_scale` | `0.75` | `HALO_PLAYER_NAME_SCALE` | How large the players' names are drawn: `1.0` is three quarters of the size of the HUD's text, from `0.25` to `4`. With high-res text, the letters are drawn from distance fields at any size, so they stay sharp. |
@@ -1348,6 +1396,8 @@ the setting for one start of the game. It has priority over the file.
 | `input.zoom_sensitivity` | `"cs2"` | `HALO_ZOOM_SENSITIVITY` | How the mouse turns zoomed, at every zoom level of every weapon. `"cs2"`: as CS2 turns with `zoom_sensitivity_ratio` 1, the hip turn times the zoomed field of view over the unzoomed one, each the horizontal angle across 4:3 the view is drawn at (`display.fov` widens the unzoomed one, so its zoomed turn is slower in proportion). At the stock view the pistol's and rocket launcher's 2x turn 0.488 times the hip turn, the sniper rifle's 8x 0.121 times. `"halo"`: the game's, one over the magnification (0.5 at 2x, 0.125 at 8x). Controllers, the touch controls and VR keep the game's whatever this is. Settings > Controls: ZOOM AIM SPEED (CS2 or ORIGINAL). Only this machine's: nothing of it reaches the network. |
 | `input.crouch` | `"hold"` | `HALO_CROUCH` | A controller's or the keys' Crouch: `"hold"` crouches while it is held, as Halo did; `"toggle"` crouches at a tap until Crouch is pressed again, Jump is pressed, a vehicle's seat is taken or the player dies, and still crouches while held. The touch controls' Crouch is `input.touch_crouch`. |
 | `input.crouch_walk` | `false` | `HALO_CROUCH_WALK` | `true`: a crouched player stays crouched at a full push of a controller's stick, walking at a crouch's speed (Settings > Controls: CROUCH WALK). `false`: a full push stands them up, as Halo did (it stands a grounded player up once the move is 0.98 long, which a stick's diagonal reaches at about 70% of its travel). The touch controls' stick always stays crouched, and the keys keep their own crouch walk. |
+| `input.walk` | `"hold"` | `HALO_WALK` | The keys' Walk (`controls.walk`, Left Shift): `"hold"` walks while it is held, `"toggle"` from one press to the next (Settings > Controls > Key Bindings: WALK). Walking, the movement keys push the player part of the way, as a stick pushed a little does, at `input.walk_speed`; crouched, the slower of the two (a crouch's 0.97). It is only the throttle a controller's stick gives (on the 127 steps a network game sends), so it plays in every game, OpenH1's and Legacy, with nothing new sent. On foot only; controllers and the touch controls keep their sticks. |
+| `input.walk_speed` | `"tracker"` | `HALO_WALK_SPEED` | How fast the keys walk (Key Bindings: WALK SPEED): `"tracker"`, as fast as a player can go and stay off the enemies' motion trackers (the throttle under the HUD globals' motion sensor velocity sensitivity, a velocity squared in world units a 30 Hz tick, over the fastest the player runs: forward, back or sideways, the game type's speed, a slope's; 95% of it, rounded down to a 127th: `port/linux/game/keyboard_walk.c`); or a percentage of the full push, `10` to `90`. |
 | `input.button_prompts` | `"auto"` | `HALO_BUTTON_PROMPTS` | The HUD's button prompts ("Hold X to pick up", the campaign's help text; Mouse Setup > BUTTON PROMPTS). `"auto"`: while the keyboard and mouse were played with last (a key or mouse button bound to an action, the captured mouse moved), the prompt names the key or button bound to the action (its first binding, a key or button before the wheel: `E`, `Left Click`, `Mouse 4`, `WASD` for moving), in the prompt's font in a drawn key cap, as Halo PC named the bound key; while a controller (or the touch controls) was, the controller's button, as before. Before either is used: the keys, unless a controller is connected or the touch controls are there. It follows Controls Setup's bindings as they change. `"controller"`: always the controller's buttons, as on the Xbox. `"keyboard"`: always the keys. In VR (but with `"controller"`), a prompt names what presses its button on the controllers in the hands: the input bound to it as the OpenXR runtime names it (`A Button`, `Right Hand Trigger`; the hand where the other hand has one too), or a fixed name when the runtime names none (`A`, `Right Bumper` on the Steam Frame, `Right Grip` on Touch-style controllers), the triggers and sticks' clicks as `vr.dominant_hand` and `vr.swap_sticks` place them, and `Left Hand Throw` for the grenade with `vr.grenade_throw = "gesture"` on foot; moving and looking keep the sticks' pictures. Only the first player's prompts (the keyboard's player); what the keyboard has no action for (the D-pad, the menus' accept and back) keeps the button. |
 | `input.controller_p1` | `""` | `HALO_CONTROLLER_P1` | P1 custom controller layout, including D-pad, communication, debug camera and unbound actions; empty uses the profile preset. Debug includes Cycle Camera (hold RB/Black for one second by default) to enter and leave the flying view where the game allows it. Edit in Settings > Controls > Controller > Button Remapping. See [format and behavior](../../docs/controller_remapping.md). |
 | `input.controller_p2` | `""` | `HALO_CONTROLLER_P2` | P2 custom controller layout; empty uses the profile preset. Edit in Settings > Controls > Controller > Button Remapping. See [format and behavior](../../docs/controller_remapping.md). |
@@ -1366,7 +1416,7 @@ the setting for one start of the game. It has priority over the file.
 | `input.flick_stick` | `false` | `HALO_FLICK_STICK` | The right stick as a flick stick (with the default STICK LAYOUT, whose right stick looks): pushed to its rim, you turn to face where it points, relative to the view, over a tenth of a second (right, a quarter turn right; down, about face); turned round the rim, you turn as it does. The stick no longer looks up and down: the gyroscope does. Its turn is not zoomed, and no aim assist acts on it. |
 | `input.invert_mouse` | `false` | `HALO_MOUSE_INVERT=1` sets `true` | `true`: the vertical mouse aim is inverted. |
 | `input.mouse_aim_assist` | `false` | `HALO_MOUSE_AIM_ASSIST` | `true`: the magnetism of the controller also operates for the mouse. `false`: when the mouse moved after the right stick, the view is not slowed or dragged by a target. The autoaim of the bullets operates in both cases. |
-| `controls.<action>` | (the table in "Controls") | `HALO_KEY_<ACTION>` | The keys and mouse buttons of an action, up to two, separated by a comma: `move_forward`, `move_backward`, `strafe_left`, `strafe_right`, `jump`, `crouch`, `fire`, `throw_grenade`, `melee`, `reload`, `zoom`, `switch_weapon`, `switch_grenade`, `action`, `flashlight`, `scoreboard`, `pause`, `screenshot`, `report`, `push_to_talk`, `chat`, `team_chat`, `party_accept`, `vote_yes`, `vote_no`, `ping`. Keys by their names on a US keyboard (`"W"`, `"Space"`, `"Left Ctrl"`, `"F1"`): a key is the one in that place on any keyboard, which Controls Setup shows by its own label (the US name on Android). Buttons: `"Mouse Left"`, `"Mouse Right"`, `"Mouse Middle"`, `"Mouse 4"`, `"Mouse 5"`, `"Wheel"` (either way), `"Wheel Up"`, `"Wheel Down"`. |
+| `controls.<action>` | (the table in "Controls") | `HALO_KEY_<ACTION>` | The keys and mouse buttons of an action, up to two, separated by a comma: `move_forward`, `move_backward`, `strafe_left`, `strafe_right`, `jump`, `crouch`, `walk`, `fire`, `throw_grenade`, `melee`, `reload`, `zoom`, `switch_weapon`, `switch_grenade`, `action`, `flashlight`, `scoreboard`, `pause`, `screenshot`, `report`, `push_to_talk`, `chat`, `team_chat`, `party_accept`, `vote_yes`, `vote_no`, `ping`. Keys by their names on a US keyboard (`"W"`, `"Space"`, `"Left Ctrl"`, `"F1"`): a key is the one in that place on any keyboard, which Controls Setup shows by its own label (the US name on Android). Buttons: `"Mouse Left"`, `"Mouse Right"`, `"Mouse Middle"`, `"Mouse 4"`, `"Mouse 5"`, `"Wheel"` (either way), `"Wheel Up"`, `"Wheel Down"`. |
 | `game.downloaded_maps` | `""` | `HALO_DOWNLOADED_MAPS` | Maps to play as downloaded maps, besides the maps that map sharing downloaded (it names them in `downloaded_maps.txt` in `custom_maps`): their names (`bloodgulch`, `hugeass`), separated by commas, or `"*"` for all the maps. The scripts of a downloaded map cannot change the settings of the player or the games of other players. `debug.txt` names what the game refused. |
 | `game.console_log` | `"important"` | `HALO_CONSOLE_LOG` | What the console shows on the screen. `"important"`: bans, players that the host drops for cheating, the reasons that the game refuses a command, and the asserts that stop the game. `"all"`: all the lines. `"none"`: only the asserts that stop the game. The output of a command always shows. `debug.txt` gets all the lines. |
 | `game.language` | `""` | `HALO_LANGUAGE` | The language of the menus: `ja`, `de`, `fr`, `es` or `it`. Empty: English. |
@@ -1377,6 +1427,7 @@ the setting for one start of the game. It has priority over the file.
 | `game.auto_pickup` | `false` | `HALO_AUTO_PICKUP` | Multiplayer's second weapon. `false` (the Xbox's way): a player with an empty weapon slot holds the action button over a weapon to pick it up, as the prompt says. `true` (Custom Edition's way): walking over it picks it up and readies it. The campaign always picks it up on walking over, as on the Xbox, and a player with no weapon at all picks up the first one they walk over either way. Games of this computer alone (split screen, bots) take this computer's, as their map begins; an OpenH1 network game takes its host's, as read in the lobby, which the game record carries to its OpenH1 clients so that their prompts show the host's way (`network_standard_walk_over_pickup`, OpenH1 protocol version 18). A Legacy game, and an OpenCE player in an OpenH1 game, always walk over, as OpenCE plays. WEAPON PICKUP in Settings > Online: HOLD (XBOX) or WALK OVER (CE). |
 | `game.spectate_on_death` | `"off"` | `HALO_SPECTATE_ON_DEATH` | While a player is dead and waiting to respawn in co-op (network or split screen) or a team game: `"teammates"` shows a living teammate's view through their eyes, full screen in that player's window (their eye, their aim eased over a few frames as the host sends a far player's less often, their weapon's zoom, their first-person weapon and arms, their body hidden), with WATCHING and the teammate's name and the button for the next (A, or the jump key) at the bottom; a teammate in a seat whose camera follows the vehicle is watched from behind. It is drawn from this computer's copy of the game: nothing is sent. A free-for-all game shows nobody's view (the game's death camera), nor does one with no teammate alive; when the one watched dies the view goes to the next. Respawning, a cutscene and the game's end hand the view back (`port/linux/game/dead_spectate.c`). `"off"`: the game's death camera, and network co-op's view of a teammate from behind, as before. WHILE DEAD in Settings > Interface. |
 | `game.sim_rate` | `60` | `HALO_SIM_RATE` | How many steps a second the game takes for what a player feels in their hands: their own movement and aim, projectiles, thrown items, and the VR mode's throws and grabs. `30` (as the game was made), `60` or `120`: 1, 2 or 4 steps inside each of the game's 30 ticks a second. Everything else keeps the 30 ticks: the AI, scripts, cinematics, animations, timers, vehicles, saved games and the network. Any other value is `30` (refer to "Simulation rate" in "How the port operates"). It applies to games of this computer alone: the campaign, split screen and games with bots (a split screen game runs as a network game of one computer that takes no other). Network games with other computers use the rate the game agreed on, hosting or joining: `30` in a Legacy game (OpenCE's netcode steps at 30), and the host's `network.sim_rate` in an OpenH1 game. The playback of a saved film is always `30`. TICK RATE in Video Setup > Graphics > Advanced: ORIGINAL (30), 60 or 120. A change applies from the next tick. Where the game sets the setting aside (a network game with other computers, a film's playback), the row is locked: dimmed, at the game's rate (ORIGINAL (30) in a Legacy game), passed over, and OK leaves the setting as it was. |
+| `game.priority` | `"normal"` | `HALO_PRIORITY` | Linux: the game's CPU priority as it starts. `"normal"` runs it at the normal priority (nice 0) whatever its launcher ran at: a new program takes its launcher's niceness, and a launcher may run low (CachyOS's `ananicy-cpp` runs Steam at nice 16, so the games Steam starts did too, behind every other program's work). Raising it back needs `RLIMIT_NICE` or RealtimeKit, which a desktop has; the host logs `priority: started at nice <n> (the launcher's), now 0`, or says it could not. `"inherit"` keeps the launcher's. The audio threads raise their own as before. Read by the host as it starts (`port/android/host/host_common.c`). |
 | `game.unlock_all_levels` | `false` | `HALO_UNLOCK_ALL_LEVELS` | `true`: a profile created afterward starts with all the campaign levels finished on all the difficulties. `false`: a new profile starts at The Pillar of Autumn, and each level opens when you finish the level before it, as on the Xbox. Existing profiles keep their progress. To start a profile over, type `profile_reset_campaign` in the console. |
 | `bots.count` | `0` | `HALO_BOTS` | Computer players (bots) in a game this computer hosts (any gametype but Race): `0` to `64` join its lobby with the players, as far as the game has room: a local (split screen) game, or a system link or internet one, where the host plays them and the other machines see them as players (`bots.make_room`). `0`: none, as in the stock game. The lobby's BOTS writes it (ADD n: n; FILL TO: 64). Refer to "Bots". |
 | `bots.skill` | `"normal"` | `HALO_BOT_SKILL` | How well the bots play: `"easy"`, `"normal"`, `"heroic"` or `"legendary"`: how soon they react, how far and how wide they see, how large their aim error is and how fast it settles, how fast they turn. The lobby's BOT SKILL writes it. |
@@ -1408,7 +1459,10 @@ the setting for one start of the game. It has priority over the file.
 | `network.browser_show_empty` | `true` | `HALO_NET_BROWSER_SHOW_EMPTY` | `false`: the server browser and the local network's list hide games with no player. Their Filters page. |
 | `network.browser_show_password` | `true` | `HALO_NET_BROWSER_SHOW_PASSWORD` | `false`: the server browser hides games that need a password. Their Filters page. |
 | `network.browser_ping` | `0` | `HALO_NET_BROWSER_PING` | The server browsers list only games whose ping is under this many milliseconds (300, 250, 150, 100 or 50); `0` lists every game. A game whose ping is not known (a local network game's, a dedicated server's, one still being timed) is listed. Their Filters page. |
-| `network.browser_show_ctf`, `network.browser_show_slayer`, `network.browser_show_oddball`, `network.browser_show_king`, `network.browser_show_race` | `true` | `HALO_NET_BROWSER_SHOW_CTF`, `HALO_NET_BROWSER_SHOW_SLAYER`, `HALO_NET_BROWSER_SHOW_ODDBALL`, `HALO_NET_BROWSER_SHOW_KING`, `HALO_NET_BROWSER_SHOW_RACE` | `false`: the server browsers hide the games of that game type (OpenCE's kinds of it too: SWAT is Slayer). Co-op games have none (the CO-OP tab). Their Filters page. |
+| `network.browser_tick` | `"any"` | `HALO_NET_BROWSER_TICK` | The server browsers list only games of this tick rate: `"30"`, `"60"` or `"120"` (OpenH1 games at that rate), or `"legacy"` (OpenCE's netcode). Their Filters page. |
+| `network.browser_game_type` | `"any"` | `HALO_NET_BROWSER_GAME_TYPE` | The server browsers list only games of this type: `"slayer"` (free for all), `"team_slayer"`, `"ctf"`, `"oddball"`, `"king"`, `"race"`, `"swat"`, `"infection"`, `"gun_game"`, `"coop"` or `"pro_2v2"`. Their Filters page. |
+| `network.browser_tab` | `"all"` | `HALO_NET_BROWSER_TAB` | The server browsers' tab, the one shown last: `"all"`, `"dedicated"`, `"openh1"`, `"legacy"`, `"coop"` or `"favorites"`. The browsers write it. |
+| `network.browser_sort`, `network.browser_sort_descending` | `"players"`, `true` | `HALO_NET_BROWSER_SORT`, `HALO_NET_BROWSER_SORT_DESCENDING` | The column the server browsers sort by, the one chosen last (`"players"`, `"ping"`, `"server"`, `"map"` or `"mode"`), and its way (`true`: the most first, or Z to A). The browsers write them. |
 | `friends.share_status` | `true` | `HALO_FRIENDS_SHARE_STATUS` | Show your friends that you are online, and where, and let them join you (Multiplayer > FRIENDS). Only your friends can read it. `false` appears offline: nothing is published, and you still see your friends. Refer to "Friends". |
 | `network.host_public` | `true` | `HALO_NET_HOST_PUBLIC` | `true`: a new game of Create Game > Internet starts as PUBLIC. `false`: it starts as PRIVATE. LISTING in Server Setup changes it for each game. Refer to "Server browser". |
 | `network.game_mode` | `"openh1"` | `HALO_NET_GAME_MODE` | When you host: `"openh1"`, an OpenH1 game ("OpenH1 60 Tick" and the like) at the tick rate `network.sim_rate` sets, which OpenCE players can join too, at 30, with `network.allow_opence`; `"legacy"`, OpenCE's netcode at 30 ticks a second for everyone. `"standard"` is the same as `"openh1"`. Server Setup's GAME row (OPENH1 30 TICK, OPENH1 60 TICK, OPENH1 120 TICK or LEGACY) writes it and `network.sim_rate`. Read when hosting starts, and again when the game is started from Server Setup if no one has joined yet. Refer to "OpenH1 and Legacy games" in NETCODE.md. |
@@ -1428,6 +1482,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.voice_mode` | `"team_global_enemy_proximity"` | `HALO_NET_VOICE_MODE` | When you host: who hears whom during a game. `"off"`; `"team_proximity"` (teammates who are near); `"team_enemy_proximity"` (all players who are near); `"team_global"` (all teammates); `"team_global_enemy_proximity"` (all teammates, and enemies who are near). Refer to "Voice chat". |
 | `network.voice_kbps` | `24` | `HALO_NET_VOICE_KBPS` | When you host: the voice quality in the lobby and in a game, in kilobits per second, `8` to `64`. |
 | `network.voice_proximity` | `15.0` | `HALO_NET_VOICE_PROXIMITY` | When you host: the distance in world units (1 unit is approximately 3 metres) at which players are near, for voice chat. `5` to `100`. |
+| `network.chat_channels` | `"all"` | `HALO_NET_CHAT_CHANNELS` | The text chat's channel each local player chose last (by Y, a team or vehicle chat button, Tab, or D-pad Up and Down on the on-screen keyboard), which T (`controls.chat`) and a controller's D-pad Up open the chat on: a word for each player in turn, separated by commas, `"all"`, `"team"` or `"vehicle"` (as `"team,all"`). A team's opens to all the players in a game without teams, a vehicle's to the team (or all) on foot. The chat writes it. Refer to "Text chat". |
 | `network.pings` | `true` | `HALO_NET_PINGS` | When you host (or play on one computer): let the players ping (`controls.ping`; a controller's D-pad Right), in co-op and in games with teams. PINGS in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. Refer to "Pings". |
 | `network.text_chat` | `"on"` | `HALO_NET_TEXT_CHAT` | When you host: the text chat. `"on"`, lines with links refused; `"links"`, links allowed; `"off"`, no chat (in either case). Listed in the server browser or not. TEXT CHAT in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. Refer to "Text chat". |
 | `network.host_playlist` | `""` | `HALO_NET_HOST_PLAYLIST` | When you host: the games played one after another, each after the last one's scores: `map[:gametype[+rule=value...]]`, separated by commas, as a dedicated server's `server.rotation` (`docs/dedicated_server.md`). Host Controls' PLAYLIST and MAPS write it, and the console's `host_playlist`. Empty: you pick each game. Refer to "Host Controls". |
@@ -1569,6 +1624,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.menu_tour_frames` | `12` | `HALO_MENU_TOUR_FRAMES` | The frames `debug.menu_tour` shows each screen for before it is taken. |
 | `debug.menu_studio` | `""` | `HALO_MENU_STUDIO` | The menu studio, for working on the menus: start on this screen (as `debug.menu_open` names it), reload it within a second of its files changing (`debug.menu_files`' folder, or the menus folder), keeping the screen and focus, and take F3 (input: keyboard, controller, touch), F4 (the window's shape: 16:9, 16:10, a phone's 20:9, 4:3, 21:9), F5 (every label longer), F6 (each widget's box and the layout checks' problems) and F7 (reload) (`port/linux/game/menu_studio.c`). Empty for none. |
 | `debug.menu_files` | `""` | `HALO_MENU_FILES` | A folder of menu files read in place of the menus folder beside `config.toml` (a source tree's `port/assets/menus`, for the menu studio); empty for that folder. |
+| `debug.menu_screens` | `""` | `HALO_MENU_SCREENS` | A folder of the menus' hand-written screens (a source tree's `port/assets/menus/screens`) watched while the game runs: a screen file changed there is read again and its screen, if open, made again; a file with a problem is logged and the screen kept as it was (`docs/menu_screens.md`). Empty: `debug.menu_files`' `screens` folder, if that is set, else none. |
 | `debug.menu_notes` | `""` | `HALO_MENU_NOTES` | The menu studio's notes file (F9: a note on a widget or a screen), a JSON line a note, its pictures in a `menu_notes` folder beside it. Empty: `<tree>/build/menu_notes.jsonl` where `debug.menu_files` is a tree's `port/assets/menus`, else `menu_notes.jsonl` beside `config.toml` (`tools/menu_notes.py` lists them). |
 | `debug.matchmaking`, `debug.matchmaking_host` | `""` | `HALO_MATCHMAKING`, `HALO_MATCHMAKING_HOST` | Search a matchmaking playlist (its name, `"Team Slayer"`, or its number, 1 up) once the main menu is up, and how well this machine tells its party it can host (`"strict"` or `"open"`; empty: as its network is), for a test; with either, a player without a profile plays. |
 | `debug.party` | `""` | `HALO_PARTY` | Join this party link at the start, or lead its party (`lead:` before the link): several copies of the game in one party, for a test. |
@@ -1579,7 +1635,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.dynamic_lights_look`, `debug.dynamic_lights_log` | `""`, `false` | `HALO_DYNAMIC_LIGHTS_LOOK`, `HALO_DYNAMIC_LIGHTS_LOG` | Tools for the enhanced dynamic lights: up to eight numbers in place of their look's (the lights' brightness, `1.7`; their core's inverse square in radii, `12`; the spill past white, `0.18`; the wrap on models, `0.25`; the glow's size in the light's radius, `0.22`, its brightness, `1.2`, its softness against what it meets in world units, `0.12`, and its least size, `0.035`), and a log of where the first projectile's light is drawn each frame beside where the game placed it at the tick, and once a second how many lights there are. |
 | `debug.doors_pass_light` | `false` | `HALO_DOORS_PASS_LIGHT` | The closed doors' portals left open to the dynamic lights, as the game had them (a light behind a closed door lights the near side), for comparing. |
 | `debug.training` | `""` | `HALO_TRAINING` | `"<chapter>[:<step>]"`: from the main menu, the VR Tutorial starts at that chapter (0 to 7, but 5 and 6) and step of it (0 its first), for tests and captures (`game/basic_training.c`; "Basic training" under "VR"). It runs in any build, but only the VR build offers it in its menus. |
-| `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_hitch`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_camouflage`, `debug.network_test_place`, `debug.network_test_elevator`, `debug.network_test_elevator_index`, `debug.network_test_chat`, `debug.network_test_ping`, `debug.network_test_name`, `debug.network_test_players`, `debug.network_test_most_players`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_HITCH`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CAMOUFLAGE`, `HALO_NETWORK_TEST_PLACE`, `HALO_NETWORK_TEST_ELEVATOR`, `HALO_NETWORK_TEST_ELEVATOR_INDEX`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_PING`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PLAYERS`, `HALO_NETWORK_TEST_MOST_PLAYERS`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link, or (`log`) a log of the game one machine plays (`game/network_test.c`); a `local:` game has `debug.network_test_players` players (split screen), and a hosted one takes `debug.network_test_most_players` at most (`0`: the game's own); a test game starts `debug.network_test_start` seconds (`15.0`) after the host opens it; `debug.network_test_elevator` stands every player on a campaign level's elevator (the one of `debug.network_test_elevator_index` in the list it logs) and rides it up and down, logging each frame where it and they are drawn (`tools/elevator_jitter.py`); `debug.network_test_camouflage` gives every player active camouflage that many seconds in, for 20 seconds; `debug.network_test_place = "<x> <y> <z> <yaw> <pitch>[@<seconds>]"` puts the first local player there, facing that way (degrees), that many seconds in (1 if not given), once, for pictures of one place. Refer to `NETCODE.md`. `debug.test_input = "menu:a down down a"` presses menu buttons one a second (`a`, `b`, `x`, `y`, `up`, `down`, `left`, `right`, `start`, `back` or `wait`, `screenshot`, the Screenshot key's capture, `report`, Save Report's (`controls.report`), `click:<x>:<y>`, a click of the pointer there, `x` and `y` 0 to 1 of the window, `mouse:<button>`, a click of that mouse button (SDL's numbering: `4` is the side Back button), `wheel:<notches>[*<events>]`, the wheel turned that far (away from you positive), in that many events (`1` by default; fractions, as a trackpad's), `type:<letters and digits>`, typed on the keyboard, or `enter`, the Return key; `back+x` holds Back through its second and presses X half way through it, `hold:<button>` holds it the whole second), for testing the menus; `"menu:ready ..."` counts its seconds from when the screen opened is up (on the frames' clock with `debug.frame_time`), logs where the focus is after each, and quits after the last (`tools/menu_parity.py --behaviour`); `"script:0.5 jump; 1-2 move=0,1; 2 aim=90,10"` (and `back` and `start`, the scoreboard's and the pause menu's) presses, holds and aims on the simulation's clock, in seconds from the scenario's start, the same at any simulation rate (`tools/scorecard`); its `gyro=<x>,<y>,<z>` (degrees a second about a controller's axes, SDL's: x right, y up, z toward the player), `tilt=<x>,<y>,<z>` (the accelerometer's up in those axes), `gyro_button` and `gyro_calibrate` play a controller's gyroscope on controller 1, a thousand samples a second through the code a real one's go through (`input.gyro_aim`); its `mouse=<x>,<y>` moves the mouse that many counts a second (x right, y down) on the real clock, its motion coming with the window's events as a real mouse's does (the view drawn's late reading of it too, `display.direct_camera`). |
+| `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_hitch`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_camouflage`, `debug.network_test_place`, `debug.network_test_elevator`, `debug.network_test_elevator_index`, `debug.network_test_chat`, `debug.network_test_ping`, `debug.network_test_name`, `debug.network_test_players`, `debug.network_test_most_players`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_HITCH`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CAMOUFLAGE`, `HALO_NETWORK_TEST_PLACE`, `HALO_NETWORK_TEST_ELEVATOR`, `HALO_NETWORK_TEST_ELEVATOR_INDEX`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_PING`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PLAYERS`, `HALO_NETWORK_TEST_MOST_PLAYERS`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link, or (`log`) a log of the game one machine plays (`game/network_test.c`); a `local:` game has `debug.network_test_players` players (split screen), and a hosted one takes `debug.network_test_most_players` at most (`0`: the game's own); a test game starts `debug.network_test_start` seconds (`15.0`) after the host opens it; `debug.network_test_elevator` stands every player on a campaign level's elevator (the one of `debug.network_test_elevator_index` in the list it logs) and rides it up and down, logging each frame where it and they are drawn (`tools/elevator_jitter.py`); `debug.network_test_camouflage` gives every player active camouflage that many seconds in, for 20 seconds; `debug.network_test_place = "<x> <y> <z> <yaw> <pitch>[@<seconds>]"` puts the first local player there, facing that way (degrees), that many seconds in (1 if not given), once, for pictures of one place. Refer to `NETCODE.md`. `debug.test_input = "menu:a down down a"` presses menu buttons one a second (`a`, `b`, `x`, `y`, `up`, `down`, `left`, `right`, `start`, `back` or `wait`, `screenshot`, the Screenshot key's capture, `report`, Save Report's (`controls.report`), `click:<x>:<y>`, a click of the pointer there, `x` and `y` 0 to 1 of the window, `point:<x>:<y>`, the pointer moved there without a click (a hover), `mouse:<button>`, a click of that mouse button (SDL's numbering: `4` is the side Back button), `wheel:<notches>[*<events>]`, the wheel turned that far (away from you positive), in that many events (`1` by default; fractions, as a trackpad's), `type:<letters and digits>`, typed on the keyboard, or `enter`, the Return key; `back+x` holds Back through its second and presses X half way through it, `hold:<button>` holds it the whole second), for testing the menus; `"menu:ready ..."` counts its seconds from when the screen opened is up (on the frames' clock with `debug.frame_time`), logs where the focus is after each, and quits after the last (`tools/menu_parity.py --behaviour`); `"script:0.5 jump; 1-2 move=0,1; 2 aim=90,10"` (and `back` and `start`, the scoreboard's and the pause menu's) presses, holds and aims on the simulation's clock, in seconds from the scenario's start, the same at any simulation rate (`tools/scorecard`); its `gyro=<x>,<y>,<z>` (degrees a second about a controller's axes, SDL's: x right, y up, z toward the player), `tilt=<x>,<y>,<z>` (the accelerometer's up in those axes), `gyro_button` and `gyro_calibrate` play a controller's gyroscope on controller 1, a thousand samples a second through the code a real one's go through (`input.gyro_aim`); its `mouse=<x>,<y>` moves the mouse that many counts a second (x right, y down) on the real clock, its motion coming with the window's events as a real mouse's does (the view drawn's late reading of it too, `display.direct_camera`); its `key=<action>` holds a keyboard action (its `controls.<action>` name: `key=move_forward`, `key=walk`) as its key would be. |
 | `debug.network_test_vehicle_seat` | `""` | `HALO_NETWORK_TEST_VEHICLE_SEAT` | `"<vehicle>:<seat>"`: `debug.network_test_vehicle` seats the player in the nearest vehicle whose tag name has `<vehicle>` in it, in its first free seat whose label has `<seat>` in it (`"warthog:passenger"`, `"warthog:gunner"`); empty, the nearest vehicle's driver's seat (`tools/capture.py`'s Warthog scenes). |
 | `debug.network_test_cues`, `debug.network_test_cue_players` | none, `1` | `HALO_NETWORK_TEST_CUES`, `HALO_NETWORK_TEST_CUE_PLAYERS` | Console lines a test runs at their seconds, from the first tick that many players are in (`"<second> <line>\|..."`). |
 | `debug.network_test_lobby_cues` | none | `HALO_NETWORK_TEST_LOBBY_CUES` | Console lines a test's host runs in its first lobby, at their seconds of its setup, before `debug.network_test_start` starts the game (`"<second> <line>\|..."`). |
@@ -1715,7 +1771,7 @@ game write to it.
 When GitHub has trouble (no answer, or a 5xx, 408, 425 or 429), the game
 tries each download two more times, after 1 s and then 3 s. If a file of
 the release does not come from its link
-(`github.com/OpenH1/OpenH1/releases/download/...`), the game asks GitHub's
+(`github.com/OpenH1/goath1/releases/download/...`), the game asks GitHub's
 API for the same file (`api.github.com/.../releases/assets/<id>`, the id
 from the API's answer about the release). This happens when the servers of
 GitHub's release links fail and its API does not. The checks below are the
@@ -2879,21 +2935,25 @@ through the host of a game).
 
 ### Matchmaking
 
-Multiplayer > PLAY ONLINE > MATCHMAKING finds a game for you and your party
-by playlist (`game/matchmaking.c`; the screen is `game/matchmaking_menu.inc`),
-with no server of its own: it uses the server browser's public games and
-the party's brokers.
+Matchmaking (`game/matchmaking.c`) finds a game for you and your party by
+playlist, with no server of its own: it uses the server browser's public
+games and the party's brokers. Its one way in is PRO 2V2's FIND GAME (below):
+the Matchmaking screen of every playlist is gone, and the server browser is
+the way to every other game. Its playlists stay, by their numbers, for the
+games they list (`debug.matchmaking` searches any of them, for a test).
 
 - The playlists: TEAM SLAYER (4 against 4), SLAYER (everyone for
-  themselves, 8 at most, parties of 2), CAPTURE THE FLAG (4 against 4), SWAT
-  and BIG TEAM BATTLE (8 against 8 on Blood Gulch, Sidewinder and Boarding
-  Action). Each has its gametypes, maps, players and the biggest party it
-  takes.
-- Pick a playlist and press A (or SEARCH). Your party's leader searches for
-  everyone; a member sees that its leader searches. The panel shows the time
-  searched, the games found and what the search is doing; CANCEL (X) stops
-  it. The search goes on if you go back to Multiplayer, whose MATCHMAKING
-  says SEARCHING.
+  themselves, 8 at most, parties of 2), CAPTURE THE FLAG (4 against 4), SWAT,
+  BIG TEAM BATTLE (8 against 8 on Blood Gulch, Sidewinder and Boarding
+  Action), and PRO 2V2 CRISPY and PRO 2V2 CLASSIC (the main menu's PRO 2V2,
+  below). Each has its gametypes, maps, players and the biggest party it
+  takes; PRO 2V2's have a tick rate too (120, both). A game is listed by its playlist's
+  number, so a new playlist is added after the others: an older build of the
+  same version does not show it, and passes over its games.
+- Your party's leader searches for everyone; a member sees that its leader
+  searches. The panel shows the time searched, the games found and what the
+  search is doing; CANCEL (X) stops it. The search goes on whatever screen
+  is shown.
 - The search takes an OpenH1 game hosted for the playlist with room for the
   whole party, the nearest first (then the fullest), and joins it; the party
   follows, its slots held by the host (refer to "Parties"). A game it cannot
@@ -2905,9 +2965,124 @@ the party's brokers.
   the playlist find it. It starts by itself 3 seconds after it is full, or
   after 90 seconds: with bots filling it in playlists of a gametype the bots
   play (all but Race), else with the
-  players it has (2 at least).
+  players it has (2 at least). Its bots are on both teams, evening them
+  with the players, whatever the host's `bots.teams`.
 - It never joins a Legacy game, nor an OpenH1 game of another version. OpenCE
-  players can join a game it hosts, as any OpenH1 game.
+  players can join a game it hosts, as any OpenH1 game, but for PRO 2V2's.
+- Without internet play on (`network.online`, `network.public_lobby`), or
+  without any of a playlist's maps in the maps folder, a playlist cannot be
+  searched, and the panel says why (INTERNET PLAY IS OFF, NO MULTIPLAYER
+  MAPS) as soon as its kind is chosen.
+
+### PRO 2V2
+
+The main menu's PRO 2V2 is matchmaking's two against two (until now named 2V2). It asks which kind,
+CLASSIC or CRISPY (in Multiplayer's look, a row for each;
+`game/matchmaking_menu.inc`),
+and A on one opens that kind's **PRO 2V2 browser** (`game/doubles_browser.inc`):
+
+- **Its games**: the server browser itself, kept to the kind's games: the
+  OpenH1 games listed for the kind's playlist at its tick rate (120), players'
+  and dedicated servers' alike (a server that lists the playlist), never the
+  other kind's nor a Legacy game. Its columns, groups (OpenH1 Dedicated
+  Servers, Hosted Servers), sorting, searches, pings and stars are the
+  server browser's, and so is joining: A on a game joins it, your party
+  following you. The line under the title says the kind and its rules
+  (CLASSIC · 120 TICK · INSTANT AIM OFF, CRISPY · 120 TICK · INSTANT AIM ON).
+- **HOST GAME** hosts the kind's game at once, as matchmaking hosts one: its
+  tick rate, Pro Doubles, one of its maps, listed for its playlist so that
+  others see it, OpenCE's players kept out, Classic's Instant Aim, bots
+  filling the empty places evenly once it has waited 90 seconds.
+- **FIND GAME** is matchmaking's search of the kind, as PRO 2V2 did before: a
+  game with room for you (and your party: a party of two is one team; the
+  party's leader searches), else one hosted that others find. CANCEL
+  SEARCH stops it; the panel says what it is doing.
+- **The panel** shows the game chosen, as the server browser's does, and
+  under it your friends online, those in a 2v2 of this kind first, marked IN
+  PRO 2V2 (their presence says "OpenH1 120 Tick · Classic · Pro Doubles on
+  ..." in a Classic game, "OpenH1 120 Tick · Pro Doubles on ..." in a Crispy
+  one). A
+  friend's A joins them, as the Friends screen's JOIN does, or invites them
+  to your party. Down from HOST GAME and FIND GAME reaches them. The footer
+  names what the friend chosen offers, as the Friends screen does: A JOIN,
+  with X INVITE beside it, for a friend you can join (in the menus too: JOIN
+  then joins or makes their party); A INVITE for one you can only invite;
+  neither offline. REFRESH and SORT give their places while a friend is
+  chosen.
+- With none of the kind's games, the list says so ("No Pro 2v2 Classic games
+  right now", "No Pro 2v2 Crispy games right now") and HOST GAME has the focus. Offline, or without the kind's
+  maps, it says why, and HOST GAME and FIND GAME say it again.
+
+- **CLASSIC** is an OpenH1 game at 120 ticks (OpenH1 120 Tick), with INSTANT
+  AIM off for every player, so you lead your shots: each machine draws its player's view as with
+  `display.direct_camera = false`, the view turning on the game's ticks as
+  the original's did, whatever the player's own setting. It is the host's
+  word in the game record (`_network_game_no_direct_camera_bit`), so every
+  machine of the game has it; the setting itself is not changed, and is the
+  player's again after the game. Settings' INSTANT AIM row shows OFF, dimmed,
+  during such a game, and its help says why.
+- **CRISPY** (LOWEST LATENCY before) is an OpenH1 game at 120 ticks (OpenH1
+  120 Tick), each player's INSTANT AIM their own (on by default): the modern
+  shooter's aim. (Until OpenH1 protocol version 27 Classic was at 30 ticks,
+  the Xbox's rate: a build before it does not see these games, nor these
+  builds its.)
+- **The Pro 2v2 rules**, both kinds', whatever the host's or a player's own
+  settings, which stay as they are and are theirs again after the game:
+  - The shields' effects are the stock game's: no overshield flare, no glow
+    or light show (the host's `network.shield_effects` taken as `"stock"`,
+    sent to every player as it always is).
+  - The dynamic lights are the classic ones on every machine
+    (`display.dynamic_lights` drawn as `"classic"`: no plasma, muzzle or
+    explosion light on the walls), and the map is prepared so. Per-pixel
+    lighting, the characters' own smooth shading, is left as each player
+    has it: it shows nothing more.
+  - No mouse aim assist (the host's `network.block_mouse_aim_assist` taken
+    as on); a controller's aim assist is as always.
+  - The field of view at most 110 (`display.fov` and a seat's, in their
+    degrees across 16:9): the vertical angle a 16:9 view has at 110, which
+    every shape of window keeps, as the setting always does (about 94
+    degrees across at 4:3, 104 at 16:10, 124 at 21:9).
+  - Weapons picked up by holding the action button, the Xbox's way, in both
+    kinds (the host's `game.auto_pickup` taken as off): one way for every
+    Pro game, and the one competitive play used.
+  - The players collide (as every multiplayer game's always do: only
+    co-op's PLAYER COLLISIONS lets them pass through each other).
+  - No mods that replace sounds, bitmaps or models: a player whose game
+    plays one is refused as they join, told "Pro 2v2 doesn't allow mods that
+    change what you see or hear: ...", and the host's log says why. Mods of
+    text alone (a translation) are allowed. What a player's game says of
+    its mods is all a host knows of them: a game that says less than it
+    plays is not caught.
+  - No teammates' feeds (the Spartan link's, to come: it asks
+    `network_standard_teammate_feeds_allowed`); pings and spectating on
+    death stay. A hit sounds switch, when there is one, is the host's to
+    turn off in the same way.
+  Settings' rows these hold (DYNAMIC LIGHTS, SHIELD GLOW, GLOW INTENSITY,
+  OVERSHIELD, MOUSE AIM ASSIST, and Classic's INSTANT AIM) show the value the
+  game plays at, dimmed, during such a game, and their notes say why; FIELD
+  OF VIEW's note says it is capped.
+- Only Classic's aim differs. Both play Pro
+  Doubles on the same maps: Chill Out, Hang 'Em High, Prisoner, Damnation
+  and Derelict, the Team Slayer maps of the competitive 2v2 rules below, all
+  stock multiplayer maps. Pro Doubles (`pro_doubles` for
+  `debug.network_test` and a dedicated server's gametype; `game/game_modes.c`)
+  is Team Slayer as competitive Halo 1 2v2 was played, from a 2v2 tournament's
+  published rules for the original game ("2v2 Rules Halo 1 Original"): to 50
+  kills, a respawn of 5 seconds and a suicide penalty of 5, infinite lives,
+  100% health, shields on, the normal weapons, generic starting equipment,
+  other players not on the radar, no objective indicator, friends'
+  indicators on, no death bonus, kill penalty, kill in order, odd man out or
+  respawn growth. What the rules leave unsaid is Team Slayer's: friendly fire
+  on, no time limit.
+- A kind only ever meets its own: each is a playlist of its own, listed by
+  its number, and its search takes only a game listed for that number at
+  its rate (a Classic search never a Crispy game, nor the other way, though
+  both are at 120). The machine that hosts one hosts it at the kind's rate whatever its
+  `network.game_mode` and `network.sim_rate` say, closed to OpenCE's players
+  (Host Controls cannot open it to them), and the next game it hosts is its
+  settings' again.
+- PRO 2V2 cannot be searched or hosted without internet play, or without any of
+  its maps: the browser says why.
 
 ### Friends
 
@@ -2963,16 +3138,26 @@ concerned can work out.
 ### Text chat
 
 Network games have a text chat, as the PC version had. Press T
-(`controls.chat`) to type a line to all the players, or Y
-(`controls.team_chat`) to type one to your team (in a game without teams,
-to all the players). While you type, Tab changes who the line is to, in
-turn: all the players, your team, or your vehicle (the players riding in
-the vehicle you ride in, whatever the map's vehicles are, Custom Edition
-maps' too; on foot, only you see it). Enter sends the line, Escape cancels
-it. While you type, your player does not move.
+(`controls.chat`) to type a line, or Y (`controls.team_chat`) to type one
+to your team (in a game without teams, to all the players). While you type,
+Tab changes who the line is to, in turn: all the players, your team, or your
+vehicle (the players riding in the vehicle you ride in, whatever the map's
+vehicles are, Custom Edition maps' too; on foot, only you see it). Enter
+sends the line, Escape cancels it. While you type, your player does not
+move.
+
+T starts the line to whoever you chose last, with Y or Tab (or a
+controller's buttons, below), in this game or an earlier one; all the
+players at first (`network.chat_channels`, which keeps each split-screen
+player's). Where that does not apply, it starts to the next that does: a
+team in a game without teams to all the players, a vehicle on foot to your
+team (or, without teams, all the players), and what you chose is kept for
+the next game.
 
 With a controller, D-pad Up opens an on-screen keyboard at the bottom right
-(on Android, at the bottom in the middle) for a line to all the players:
+(on Android, at the bottom in the middle) for a line to whoever you chose
+last, as T does (the team chat and vehicle chat buttons, when you give them
+buttons, open it to the team and the vehicle):
 the left stick (or D-pad Left and Right) moves between the keys, A types
 the key, X deletes, Y switches capitals, D-pad Up and Down change who the
 line is to (all the players, your team, your vehicle), Start sends the
@@ -3031,18 +3216,18 @@ Host Controls), and `display.text_chat` hides the chat on one machine.
 Pressing T where the chat
 is off says so, and a refused line tells its sender why.
 
-On the scoreboard (right-click, then click the player), Mute voice and chat
-mutes a player for you alone: you no longer see their lines or hear their
-voice, and nobody else is told. The host's scoreboard also has Mute for
-everyone: no machine sees the player's lines or hears their voice for 20
-minutes, or until the host picks Unmute for everyone, and all the players
+On the scoreboard (right-click, then click the player), Mute voice, chat
+and pings mutes a player for you alone: you no longer see their lines, hear
+their voice or see and hear their pings, and nobody else is told. The host's
+scoreboard also has Mute for everyone: no machine sees the player's lines,
+hears their voice or shows their pings for 20 minutes, or until the host picks Unmute for everyone, and all the players
 see "Milenko muted for 20 minutes". The mute holds in the lobby too. A
 machine's voice is one: muting one of two players in split screen mutes
-the other's voice too.
+the other's voice, lines and pings too.
 
 The host can also mute a player from the chat: type `/mute <player>
 <minutes>`, as `/mute Milenko 5` (20 minutes when you give none, 1440 at
-most), which mutes their voice too. The player is found as the console's `kick` finds one: the whole
+most), which mutes their voice and pings too. The player is found as the console's `kick` finds one: the whole
 name in either case, else the one player whose name begins with what you
 typed. All the players see "Milenko muted for 5 minutes". The muted
 player's lines go to no one, and they see how many minutes are left. The
@@ -3074,6 +3259,44 @@ in OpenH1 games only: a Legacy game has none, and an OpenCE player of a
 mixed game neither sends nor sees them. The host chooses with PINGS in Server
 Setup > Teamplay Options (in co-op, Voice and Voting; `network.pings`, on by
 default).
+
+A player you mute on the scoreboard (Mute voice, chat and pings, refer to
+"Text chat") has their pings neither shown nor heard on your computer, and
+nobody else is told. A player the host mutes for everyone (`/mute`, Mute for
+everyone, Host Controls' MUTE) cannot ping: the host takes none of their
+pings until the mute ends.
+
+### Spartan link
+
+B (`controls.spartan_link`, Settings > Controls > Key Bindings, COMMUNICATION),
+or a controller's D-pad Down in the stock layouts (which then does not move
+the player back), shows and hides the Spartan link: a live feed of each
+living teammate's view, up to four, in the HUD's top line between the
+ammunition's panel and the shield's. Each is the teammate's first-person
+view (their eye, aim and zoom, their weapon and arms, none of their HUD),
+framed as the HUD's panels are, tinted blue, with their name, a thin bar of
+their shield and their distance under it. A teammate in a seat whose camera
+follows the vehicle is seen from behind. A teammate who dies shows DOWN for
+a moment and drops out; with none left alive the link closes. While you are
+dead it hides (spectating fills the screen) and comes back as you respawn.
+It is off as each game starts.
+
+The link is for co-op (network and split screen; each window has its own,
+of its player's teammates) and games with teams, and shows only teammates.
+In a free-for-all game, and in Pro 2V2 (Classic and Crispy), the key
+says so on the HUD and shows nothing. `display.spartan_link` sets the
+feeds' size (small, medium, large) or turns the key off.
+
+The feeds are drawn from this computer's copy of the game, as the rest of
+the picture is: nothing is sent, and a far teammate moves as smoothly as the
+host's updates of them do. One feed is drawn a frame, in turn, each kept in
+an image of its own at the size it has on the screen (`port/linux/src/d3d8_device.c`'s
+extra views), without the anti-aliasing pass, multisampling, the world's
+ambient occlusion, the objects' shadows, lens flares or the weather, so the
+frame pays for about one small view whatever the number of feeds; with the
+link hidden, nothing. The weapon and arms are posed in their idle
+animation (not the teammate's reloads or shots). Not yet in VR, nor on the
+touch controls (`port/linux/game/spartan_link.c`).
 
 ### Voice chat
 
@@ -3107,8 +3330,9 @@ A speaker shows next to the name of a player who talks: in the lobby, on
 the scoreboard, in a list at the left of the screen during a game, and
 beside the name above their head (when names are shown there:
 `display.player_names`). To mute a player, open the scoreboard,
-right-click, click the player, and click Mute voice and chat. You no longer
-hear them or see their text chat lines, and nobody else is told. The host's
+right-click, click the player, and click Mute voice, chat and pings. You no
+longer hear them or see their text chat lines and pings, and nobody else is
+told. The host's
 Mute for everyone silences a player's voice for every machine (refer to
 "Text chat").
 
@@ -3186,7 +3410,9 @@ chosen game's kind (OPENH1 or LEGACY), its tick rate (a Legacy game's 30),
 and OPENCE CAN JOIN for one OpenCE players join too (an OpenH1 game at 30,
 the default, and every Legacy game: NETCODE.md, "OpenH1 and Legacy games").
 
-Sorting and the tabs, in all three lists, for this run of the game:
+Sorting and the tabs, in all three lists, kept for the next time the game
+starts (`network.browser_tab`, `network.browser_sort`,
+`network.browser_sort_descending`, which the browsers write as you choose):
 
 - Choosing a column's title sorts the games by it; choosing it again sorts
   the other way. Click or tap the title, or with a controller press up from
@@ -3199,6 +3425,28 @@ Sorting and the tabs, in all three lists, for this run of the game:
   Legacy ones only, co-op games, or the favorites.
 - Favorites stay at the top, sorted the same way among themselves; those
   not found stay at the bottom of All and Favorites, grey.
+- The Server Browser's list is in three groups, in this order, each under
+  its heading when it has games: "OpenH1 Dedicated Servers" (OpenH1's
+  dedicated servers, the project's own first, then the community's),
+  "Hosted Servers" (OpenH1 games a player hosts), then "Legacy (Slow)
+  Servers" (OpenCE's netcode, 30 ticks). In each group, and among the
+  project's servers and the others, favorites come first and the rest
+  are sorted the same way. Legacy games are never hidden: the LEGACY tab
+  lists only them, without the heading. A heading is not a game: the
+  D-pad, the arrow keys and the stick go past it, a click on it does
+  nothing, and the counts leave it out. The local network's list and Join
+  by Link have no groups.
+
+A server is the project's own only on the word of the project's master
+(`https://master.goath1.com`): the master's list is signed with its key,
+built into the game, and each entry names its publisher by the id that
+master gave it when it approved the publisher. A server is the project's
+when its entry in that master's list has one of the project's publisher
+ids (`project_publishers` in `port/linux/src/master_list.c`, built in). A
+server's name, its own listing, the brokers and any other master's list
+cannot make it the project's; a `masters.txt` that pins another key for
+the project's master turns this off. Nothing is sent for it: the browser
+reads what the master's list already carries.
 
 Filters, in the server browser and the local network's list (not in Join
 by Link, whose games are the invites you took): FILTERS in the footer (the
@@ -3211,14 +3459,23 @@ time the game starts; Cancel leaves them as they were.
 - PING: ANY, or only games under 300, 250, 150, 100 or 50 ms. A game whose
   ping is not known (a local network game's, a dedicated server's, one
   still being timed) stays listed.
-- GAME TYPES: CAPTURE THE FLAG, SLAYER, ODDBALL, KING OF THE HILL and RACE,
-  each SHOW or HIDE, so that any mix of them is listed. OpenCE's kinds go
-  with their game type (SWAT, Infection and Gun Game with Slayer). Co-op
-  games have no game type: the CO-OP tab lists them.
+- TICK RATE: ANY, OPENH1 30, OPENH1 60, OPENH1 120 (OpenH1 games at that
+  rate) or LEGACY (OpenCE's netcode, at 30).
+- GAME TYPE: ANY, or one of SLAYER (free for all), TEAM SLAYER, CAPTURE THE
+  FLAG, ODDBALL, KING OF THE HILL, RACE, OpenCE's SWAT, INFECTION and GUN
+  GAME, CO-OP (the campaign) and PRO 2V2 (games hosted for PRO 2V2's
+  playlists, which are Team Slayer games too). A Hardcore game goes with
+  its game type. A local network game's advertisement names no playlist,
+  so PRO 2V2 lists none of them. (The SHOW or HIDE rows of each game type
+  before it, `network.browser_show_ctf` and the others, are gone: an older
+  `config.toml`'s lines are taken out.)
+
+Both are what the games' listings already carry (their netcode and rate,
+game engine, teams, OpenCE mode and playlist): nothing new is sent.
 
 The filters apply on every tab, the favorites too. The counts above the
-list say how many games they hide (`3 HIDDEN`), and a list that they leave
-empty says so.
+list say how many games are shown of how many (`2 OF 18 GAMES`), and a
+list that they leave empty says so.
 
 Searches, in the same two lists: the SERVER and MAP column titles each have
 a magnifying glass. Click it (or choose it with the D-pad and press A) and
@@ -4287,7 +4544,7 @@ download the latest release's package, unzip it and open `install.sh` in
 it (port/linux/frame/README.md): it installs the game, asks for the maps,
 and adds it to Steam with its library artwork. From a computer with SSH to the Frame,
 the latest release's package
-([OpenH1-Steam-Frame.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Steam-Frame.zip)):
+([OpenH1-Steam-Frame.zip](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Steam-Frame.zip)):
 
 ```sh
 tools/frame_install.sh --package OpenH1-Steam-Frame.zip <frame>
@@ -7330,7 +7587,7 @@ Other changes:
 | `effects/decals.c` | A decal is made whether or not the texture cache has its bitmap yet (the bitmap is asked for; drawing the decal loads it), and its randomness takes the frames' local seed, in a tick too ("Determinism"). |
 | `interface/first_person_weapons.c` | The first-person weapon's sound's index is kept beside the game state; the weapon's state holds the sound's definition. |
 | `cseries/cseries_windows.c` | The clock's readers in a tick go to the determinism check. |
-| `main/main.c`, `interface/hud.c`, `interface/hud_unit.c`, `interface/hud_draw.c`, `game/game_engine.c` | The text chat of network games (`game/network_chat.c`): its keys are read each frame, and the debug keys are not while a line is typed; each view's HUD draws its lines, above the motion sensor, whose place the HUD notes (the left of the last picture drawn); the scoreboard's menu has Mute voice and chat, and the host's Mute for everyone. |
+| `main/main.c`, `interface/hud.c`, `interface/hud_unit.c`, `interface/hud_draw.c`, `game/game_engine.c` | The text chat of network games (`game/network_chat.c`): its keys are read each frame, and the debug keys are not while a line is typed; each view's HUD draws its lines, above the motion sensor, whose place the HUD notes (the left of the last picture drawn); the scoreboard's menu has Mute voice, chat and pings, and the host's Mute for everyone. |
 | `networking/network_server_message_handler.c`, `game/game_engine.c` | A dedicated server's admins in the game (`game/network_admin.c`): the host takes their games' key proofs and requests over their streams in the lobby too; the scoreboard's menu offers an admin the server's Kick, Ban and Move to the other team. |
 
 The x86 inline assembly of the game is replaced by C. Thus the compiler

@@ -239,18 +239,39 @@ static void model_attributes(struct model_reader *reader, char const *element, X
 
 static void model_geometry(struct model_reader *reader, XML_Char const **attributes)
 {
-	struct halo_menu_model_geometry *geometry = &reader->model.geometry;
+	struct halo_menu_model_geometry made;
+	struct halo_menu_model_geometry *geometry = &made;
 	struct model_attribute table[] =
 	{
+		{ "name", &geometry->name }, { "panel_bottom", NULL, &geometry->panel_bottom },
+		{ "scrolls", NULL, NULL, NULL, &geometry->scrolls },
 		{ "row_x", NULL, &geometry->row_x }, { "row_width", NULL, &geometry->row_width },
 		{ "row_height", NULL, &geometry->row_height }, { "row_step", NULL, &geometry->row_step },
 		{ "section_height", NULL, &geometry->section_height }, { "section_step", NULL, &geometry->section_step },
 		{ "section_gap", NULL, &geometry->section_gap }, { "tab_top", NULL, &geometry->tab_top },
 		{ "page_top", NULL, &geometry->page_top }, { "rows_bottom", NULL, &geometry->rows_bottom },
 		{ "spinner_x", NULL, &geometry->spinner_x }, { "spinner_width", NULL, &geometry->spinner_width },
+		{ "search_word_extra", NULL, &geometry->search_word_extra },
+		{ "search_results", NULL, &geometry->search_results }, { "search_crumbs", NULL, &geometry->search_crumbs },
 	};
 
+	memset(&made, 0, sizeof(made));
 	model_attributes(reader, "geometry", attributes, table, sizeof(table) / sizeof(*table));
+	if (reader->failed)
+		return;
+	if (reader->model.geometry_count >= HALO_MENU_MODEL_MAXIMUM_GEOMETRIES)
+	{
+		model_error(reader, "more than %s <geometry> elements", "4");
+		return;
+	}
+	if ((reader->model.geometry_count == 0) != !made.name)
+	{
+		model_error(reader, "the first <geometry> has no name, and every other one has%s", "");
+		return;
+	}
+	reader->model.geometries[reader->model.geometry_count++] = made;
+	if (reader->model.geometry_count == 1)
+		reader->model.geometry = made;
 }
 
 static void model_screen(struct model_reader *reader, XML_Char const **attributes)
@@ -258,7 +279,8 @@ static void model_screen(struct model_reader *reader, XML_Char const **attribute
 	struct halo_menu_model_screen screen;
 	struct model_attribute table[] =
 	{
-		{ "name", &screen.name }, { "kind", &screen.kind }, { "layout", &screen.layout }, { "tab", &screen.tab },
+		{ "name", &screen.name }, { "kind", &screen.kind }, { "layout", &screen.layout },
+		{ "geometry", &screen.geometry }, { "tab", &screen.tab },
 		{ "title", &screen.title }, { "spacing", NULL, &screen.spacing },
 		{ "platform_places", NULL, NULL, NULL, &screen.platform_places },
 		{ "profile", NULL, NULL, NULL, &screen.profile },
@@ -286,6 +308,7 @@ static void model_row(struct model_reader *reader, char const *element, XML_Char
 		{ "kind", &row.kind }, { "key", &row.key }, { "setting", &row.setting }, { "label", &row.label },
 		{ "title", &row.title }, { "when", &row.when }, { "open", &row.open }, { "run", &row.run },
 		{ "help", &row.help }, { "enabled", &row.enabled },
+		{ "crumb", &row.crumb }, { "search", &row.search }, { "search_choices", &row.search_choices },
 		{ "same_place", NULL, NULL, NULL, &row.same_place }, { "not_in_vr", NULL, NULL, NULL, &row.not_in_vr },
 		{ "named", NULL, NULL, NULL, &row.named }, { "status", NULL, NULL, NULL, &row.status },
 		{ "least", NULL, NULL, &row.least }, { "most", NULL, NULL, &row.most }, { "step", NULL, NULL, &row.step },
@@ -363,7 +386,7 @@ static void model_look(struct model_reader *reader, XML_Char const **attributes)
 	struct model_attribute table[] =
 	{
 		{ "name", &look.name }, { "role", &look.role }, { "type", &look.type }, { "box", &box },
-		{ "wide", &look.wide },
+		{ "wide", &look.wide }, { "past", &look.past },
 		{ "place", &look.place }, { "picture", &look.picture }, { "radius", NULL, &look.radius },
 		{ "effects", &look.effects }, { "list", &look.list }, { "header", &look.header },
 		{ "header_box", &header_box }, { "footer", &look.footer }, { "footer_box", &footer_box },
@@ -396,7 +419,7 @@ static void model_look_text(struct model_reader *reader, XML_Char const **attrib
 		{ "font", &look->font }, { "color", &look->color }, { "align", &look->align }, { "at", &at },
 		{ "flags", &look->text_flags }, { "string_list", &look->string_list },
 		{ "index", NULL, &look->string_index }, { "text", &look->text }, { "items", &look->items },
-		{ "replace", &look->replace },
+		{ "replace", &look->replace }, { "scale", &look->text_scale },
 	};
 
 	if (look->has_text)

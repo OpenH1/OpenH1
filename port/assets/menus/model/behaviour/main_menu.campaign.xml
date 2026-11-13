@@ -56,9 +56,23 @@
 	<behaviour name="main_menu/campaign/mission_screen" flags="pass_unhandled_to_focused_child">
 		<on event="b" back="true"/>
 		<on event="back" back="true"/>
+		<on event="left" run="port campaign previous"/>
+		<on event="stick_left" run="port campaign previous"/>
+		<on event="right" run="port campaign next"/>
+		<on event="stick_right" run="port campaign next"/>
+		<on event="up" run="port campaign up"/>
+		<on event="stick_up" run="port campaign up"/>
+		<on event="down" run="port campaign down"/>
+		<on event="stick_down" run="port campaign down"/>
 		<on event="white" run="port campaign tab previous"/>
 		<on event="black" run="port campaign tab next"/>
 		<on event="y" run="port campaign missions restart" open="main_menu/campaign/restart_screen"/>
+	</behaviour>
+	<behaviour name="main_menu/campaign/mission_resume_row" flags="pass_unhandled_to_focused_child"/>
+	<behaviour name="main_menu/campaign/mission_resume">
+		<on event="a" run="port campaign continue"/>
+		<on event="start" run="port campaign continue"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
 	</behaviour>
 	<behaviour name="main_menu/campaign/source_tabs" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
 	<behaviour name="main_menu/campaign/tab_halo">
@@ -132,6 +146,10 @@
 	<behaviour name="main_menu/campaign/difficulty_screen" flags="pass_unhandled_to_focused_child">
 		<on event="b" back="true"/>
 		<on event="back" back="true"/>
+		<on event="left" run="port campaign difficulty previous"/>
+		<on event="stick_left" run="port campaign difficulty previous"/>
+		<on event="right" run="port campaign difficulty next"/>
+		<on event="stick_right" run="port campaign difficulty next"/>
 	</behaviour>
 	<behaviour name="main_menu/campaign/difficulty_list" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port campaign difficulty init"/>

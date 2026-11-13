@@ -56,7 +56,7 @@ boot).
 | `opence-master.service` | `/etc/systemd/system/` | The master server, as a dynamic user, on 127.0.0.1:8090 |
 | `master.env.example` | `/etc/opence-master/env` | Its settings; the real file (root's, mode 0600) holds the admin token |
 | `Caddyfile` | `/etc/caddy/Caddyfile` | HTTPS for `master.goath1.com`; the admin and HTML pages for the tailnet only |
-| `install-master.sh` | | opence-master's release installed, its signature checked |
+| `install-master.sh` | | The fork's master release installed, its signature checked, the old binary kept |
 | `opence-master-cli` | `/usr/local/sbin/opence-master-cli` | The master's administration commands, as its own user |
 | `setup.sh` | | The broker and relay on a fresh Ubuntu 24.04, as root |
 | `setup-master.sh` | | The master server, after `setup.sh` |
@@ -124,8 +124,18 @@ update is needed only when that version changes.
 ## The master server
 
 [opence-master](https://github.com/OpenCommunityEdition/opence-master-server)
-(AGPL-3.0; protocol 1, `docs/master_protocol.md`), the static release binary
-in `/usr/local/bin/opence-master`, run by `opence-master.service` (the
+(AGPL-3.0; protocol 1, `docs/master_protocol.md`), as our fork releases it
+([OpenH1/opence-master-server](https://github.com/OpenH1/opence-master-server),
+`v0.1.10801`): upstream's v0.1.8 with `MASTER_GAME_NAME` (`GOAT H1`: the
+game's name in the pages', the bot's and the mails' text, in place of
+"OpenCE"), the footer's source link at the running version's tag (as the
+AGPL asks; `MASTER_PROJECT_URL` would replace it), and its updates from the
+fork's releases, signed by the fork's master release key. Nothing on the
+wire or in the database differs from upstream's. The fork's versions are
+`v<major>.<minor>.1<upstream's patch, two digits><our revision, two
+digits>`: release versions to the master, after upstream's v0.1.x and never
+one of its tags (`v0.1.10801` is upstream's v0.1.8, our first). The static binary
+is in `/usr/local/bin/opence-master`, run by `opence-master.service` (the
 upstream unit) on 127.0.0.1:8090. Caddy (Ubuntu's package) serves it at
 `https://master.goath1.com` with a Let's Encrypt certificate that it gets and
 renews itself (it needs TCP 80 and 443). Its state is
@@ -173,14 +183,27 @@ A new key would refuse every list to every game that pins this one: back up
   `list-publishers`, `suspend`, `resume`, `revoke`, `quota`.
 - **No peers**: approvals are not shared with OpenCE's master
   (`MASTER_PEERS`); that is for the maintainers to decide.
-- **Updates, by hand**: the admin pages say when opence-master has a release
-  (`MASTER_UPDATES=notify`; it never installs one by itself). Read its notes,
-  then `ssh root@goath1-net-ash sh /root/goath1-net/install-master.sh
-  v<x.y.z>`: it downloads the release's binary and `SHA256SUMS`, checks the
-  signature with opence-master's release key and the binary's sum, installs
-  it and restarts the master (a newer database is backed up by the master
-  itself, `master.db.before-<version>`). To go back: the older tag the same
-  way, with that backup copied over `master.db` while the master is stopped.
+- **Updates, by hand**: the master checks the fork's releases
+  (`MASTER_UPDATES=notify`; it never installs one by itself) and the admin
+  pages say when one is out. An upstream release is merged into the fork and
+  tagged; the fork's release workflow builds it, signs its `SHA256SUMS` with
+  the master release key and publishes it. Read its notes, then `ssh
+  root@goath1-net-ash sh /root/goath1-net/install-master.sh v<x.y.z>`: it
+  downloads the fork's release binary, `SHA256SUMS` and its signature,
+  checks the signature with the master release key and the binary's sum,
+  keeps the binary it replaces (`/usr/local/bin/opence-master.bak-<its
+  version>`), installs the new one and restarts the master, and puts the old
+  one back if the new one does not answer `/healthz`. The master backs its
+  database up itself when a newer version first opens it
+  (`master.db.before-<version>`). To go back: the older tag the same way,
+  with that backup copied over `master.db` while the master is stopped.
+- **The master release key** signs the fork's releases alone (not the
+  game's, `port/assets/release-key.pub`). Its public half is
+  `internal/update/key.go` in the fork, which the master's updater reads,
+  and `RELEASE_KEY` in `install-master.sh`:
+  `3607ccfaa3ebb0c1cbbfdb8b1578522cb281b250799f9f28b529c2bb1e6e16ca`. Its
+  private half (the seed) is the maintainer's, held privately, and the
+  fork's `RELEASE_SIGNING_KEY` Actions secret; never in a repository.
 
 Check it: `curl https://master.goath1.com/healthz`, `curl
 https://master.goath1.com/v1/master` (its name and key id), `journalctl -u
@@ -236,6 +259,7 @@ opence-master -u caddy`.
    start, a new key: put its public half (the script prints it) in
    `masters.txt` and `master_list_read_defaults`, or restore the old
    `master.key` into `/var/lib/private/opence-master/` before the first start
-   to keep the one the games pin.
+   to keep the one the games pin. It installs the fork's release
+   (`install-master.sh`).
 
 The server holds no secrets but its ssh host keys; nothing here needs any.

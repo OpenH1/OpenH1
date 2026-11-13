@@ -1099,11 +1099,55 @@ int port_mods_describe(long index, char *text, unsigned long size, const char *m
 	return 1;
 }
 
+/* what a mod's files replace (their tags' kinds, by their files' ends:
+docs/mods.md), as words: "sounds bitmaps models text", those it has */
+static void mod_replaces(long index, char *words, size_t size)
+{
+	static const struct
+	{
+		const char *word;
+		const char *const ends[4];
+	} kinds[] =
+	{
+		{ "sounds", { ".sound", NULL } },
+		{ "bitmaps", { ".bitmap", NULL } },
+		{ "models", { ".gbxmodel", ".model", NULL } },
+		{ "text", { ".unicode_string_list", ".string_list", ".hud_message_text", NULL } },
+	};
+	size_t kind;
+
+	words[0] = 0;
+	for (kind = 0; kind < sizeof(kinds) / sizeof(kinds[0]); kind++)
+	{
+		long file;
+		int found = 0;
+
+		for (file = 0; file < port_mods.file_count && !found; file++)
+		{
+			const char *key = port_mods.files[file].key;
+			size_t key_length = key ? strlen(key) : 0;
+			int end;
+
+			if (port_mods.files[file].mod != index)
+				continue;
+			for (end = 0; kinds[kind].ends[end] && !found; end++)
+			{
+				size_t end_length = strlen(kinds[kind].ends[end]);
+
+				found = key_length > end_length && !strcmp(key + key_length - end_length, kinds[kind].ends[end]);
+			}
+		}
+		if (found)
+			snprintf(words + strlen(words), size - strlen(words), "%s%s", words[0] ? " " : "", kinds[kind].word);
+	}
+}
+
 int port_mods_list(char *text, unsigned long size)
 {
 	long position;
 	int count = 0;
 	size_t length = 0;
+	int unlisted = 0;
 
 	if (!size)
 		return 0;
@@ -1119,16 +1163,39 @@ int port_mods_list(char *text, unsigned long size)
 		mod = &port_mods.mods[index];
 		if (!mod_on(mod))
 			continue;
-		written = snprintf(text + length, size - length, "%s%s%s%s", count ? "\n" : "", mod->folder,
-			mod->version[0] ? " " : "", mod->version);
-		/* (a line that does not fit is left out whole) */
+		{
+			char replaces[64];
+
+			mod_replaces(index, replaces, sizeof(replaces));
+			written = snprintf(text + length, size - length, "%s%s%s%s [%s]", count ? "\n" : "", mod->folder,
+				mod->version[0] ? " " : "", mod->version, replaces);
+		}
+		/* (a line that does not fit is left out whole, and said to be: its
+		host cannot tell what the mods left out replace) */
 		if (written < 0 || (size_t)written >= size - length)
 		{
 			text[length] = 0;
+			unlisted = 1;
 			break;
 		}
 		length += (size_t)written;
 		count++;
+	}
+	/* (the mods left out: a line of its own, if it fits where theirs did
+	not; else the last line given up for it) */
+	while (unlisted)
+	{
+		int written = snprintf(text + length, size - length, "%s... [unlisted]", count ? "\n" : "");
+
+		if ((written >= 0 && (size_t)written < size - length) || !length)
+			break;
+		{
+			char *last = strrchr(text, '\n');
+
+			length = last ? (size_t)(last - text) : 0;
+			text[length] = 0;
+			count -= count > 0;
+		}
 	}
 	return count;
 }

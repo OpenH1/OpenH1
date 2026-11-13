@@ -288,6 +288,38 @@ int master_list_read_defaults(char (*urls)[MASTER_LIST_URL_SIZE], unsigned char 
 	return count;
 }
 
+/* the publishers whose servers are the project's own
+(master_list_project_server), by the ids the project's own master gave them (the
+first of master_list_read_defaults', master.goath1.com: deploy/net). An id
+is that master's word, in its signed list: no one else's list or listing
+makes a server the project's, whatever it calls itself, and another master's
+list naming the same id is not believed. An id is added here as the
+project publishes servers (opence-master-cli list-publishers, on the
+master) */
+static const char *const project_publishers[] =
+{
+	NULL,
+};
+
+int master_list_project_server(const unsigned char *master_key, const char *publisher_id)
+{
+	char urls[1][MASTER_LIST_URL_SIZE];
+	unsigned char keys[1][MASTER_LIST_KEY_SIZE];
+	int index;
+
+	if (!master_key || !publisher_id || !publisher_id[0] || master_list_read_defaults(urls, keys, 1) != 1 ||
+		memcmp(master_key, keys[0], MASTER_LIST_KEY_SIZE))
+	{
+		return 0;
+	}
+	for (index = 0; project_publishers[index]; index++)
+	{
+		if (!strcmp(project_publishers[index], publisher_id))
+			return 1;
+	}
+	return 0;
+}
+
 int master_list_read(const char *setting, char (*urls)[MASTER_LIST_URL_SIZE],
 	unsigned char (*keys)[MASTER_LIST_KEY_SIZE], int maximum)
 {
@@ -593,9 +625,10 @@ static void read_masters(void)
 	pthread_mutex_unlock(&list.lock);
 }
 
-/* a list's servers given to the browser, as the master of that key id's
-(8 bytes): how many were taken */
-static int take_list(const char *body, unsigned long size, const unsigned char *master_key_id)
+/* a list's servers given to the browser, as the master of that key's (and
+key id's, 8 bytes): how many were taken */
+static int take_list(const char *body, unsigned long size, const unsigned char *master_key,
+	const unsigned char *master_key_id)
 {
 	struct server_json_document document;
 	int servers, index, taken = 0;
@@ -608,7 +641,7 @@ static int take_list(const char *body, unsigned long size, const unsigned char *
 		int entry = server_json_element(&document, servers, index);
 		char listing_text[600];
 		unsigned char listing[MAXIMUM_LISTING];
-		char publisher[64] = "", region[32] = "";
+		char publisher[64] = "", publisher_id[64] = "", region[32] = "";
 		double version = 0;
 		int listing_size, character, dedicated;
 
@@ -623,6 +656,8 @@ static int take_list(const char *body, unsigned long size, const unsigned char *
 			continue;
 		server_json_get_string(&document, server_json_member(&document, server_json_member(&document, entry, "publisher"),
 			"name"), publisher, sizeof(publisher));
+		server_json_get_string(&document, server_json_member(&document, server_json_member(&document, entry, "publisher"),
+			"id"), publisher_id, sizeof(publisher_id));
 		server_json_get_string(&document, server_json_member(&document, entry, "region"), region, sizeof(region));
 		server_json_get_number(&document, server_json_member(&document, entry, "network_version"), &version);
 		/* (a dedicated server's, as the entry says: a player's public game,
@@ -644,7 +679,7 @@ static int take_list(const char *body, unsigned long size, const unsigned char *
 		}
 		region[P2P_LISTING_REGION_SIZE] = 0;
 		taken += p2p_lobby_take_master_listing(listing, listing_size, publisher, region, (int)version, dedicated,
-			master_key_id);
+			master_list_project_server(master_key, publisher_id), master_key_id);
 	}
 	server_json_document_free(&document);
 	return taken;
@@ -704,7 +739,7 @@ static void *list_thread_main(void *argument)
 				int taken;
 
 				p2p_sha256(keys[index], MASTER_LIST_KEY_SIZE, digest);
-				taken = take_list(fetched.body, fetched.size, digest);
+				taken = take_list(fetched.body, fetched.size, keys[index], digest);
 
 				answered++;
 				platform_log("server browser: %s lists %d server%s", urls[index], taken, taken == 1 ? "" : "s");

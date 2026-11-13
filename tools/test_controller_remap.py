@@ -653,10 +653,19 @@ def test_chat_owner_identity_and_per_port_hold_over(tmp_path):
     code=COMMON+POLICY+INPUT+r'''
 #define NONE -1
 #define TRUE 1
+#define FALSE 0
 #define csmemset memset
 #define DATUM_INDEX_TO_ABSOLUTE_INDEX(p) ((p)&65535)
 typedef int boolean;
-static struct {boolean active,physical,report;short channel,controller;long player;char text[256];} chat_input;
+static struct {boolean active,physical,report,chosen;short channel,controller;long player;char text[256];} chat_input;
+/* the channel chosen last: player 2's the vehicle's, the others' everyone's (network_chat.c's own are chat_logic's) */
+#define config_string(name) "all,all,vehicle"
+static int game_engine_has_teams(void){return 1;}
+#define chat_player_vehicle(player) 9
+static short chat_channel_remembered(char const *list,short local){return local==2?2:0;}
+static short chat_channel_opened(short remembered,boolean teams,boolean vehicle){return remembered;}
+static short remembered_player=NONE,remembered_channel=NONE;
+static void chat_channel_remember(short local,short channel){remembered_player=local;remembered_channel=channel;}
 static struct {int open;unsigned long opening_buttons;} chat_keyboard;
 static struct {short local_player_index;} players[4]={{0},{1},{2},{3}};
 static long occupants[4]={0x10004,0x20005,0x30006,0x40007};
@@ -682,11 +691,15 @@ int main(void) {
  p0.bAnalogButtons[0]=255;p2.bAnalogButtons[0]=255;
  chat_pad_hold_over(0,&p0);chat_pad_hold_over(2,&p2);
  assert(p0.bAnalogButtons[0]==255 && !p2.bAnalogButtons[0]);
- chat_input_end();p2.bAnalogButtons[0]=255;chat_pad_hold_over(2,&p2);assert(!p2.bAnalogButtons[0]);
+ chat_input_end();assert(remembered_player==2 && remembered_channel==1); /* The owner's channel, chosen by the button. */
+ p2.bAnalogButtons[0]=255;chat_pad_hold_over(2,&p2);assert(!p2.bAnalogButtons[0]);
  chat_pad_hold_over(2,&p2);p2.bAnalogButtons[0]=255;chat_pad_hold_over(2,&p2);assert(p2.bAnalogButtons[0]==255);
  chat_input_begin(2,3,TRUE);assert(chat_speaker(TRUE)==7 && chat_input.channel==2);
  occupants[3]=0x50007;assert(chat_speaker(TRUE)==NONE); /* New player, same slot. */
  chat_input_end();chat_input_begin(0,NONE,FALSE);assert(chat_speaker(TRUE)==4 && !chat_input.physical);
+ chat_input_end();remembered_player=NONE;chat_input_begin(NONE,2,TRUE);
+ assert(chat_input.channel==2 && !chat_input.chosen); /* The channel player 2 chose last. */
+ chat_input_end();assert(remembered_player==NONE); /* Not chosen this time: nothing written. */
  return 0;
 }
 '''

@@ -4,6 +4,7 @@
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/weapon_body_screen" flags="pass_unhandled_to_focused_child pause_game">
 		<on event="b" run="port settings page cancel" back="true"/>
 		<on event="back" run="port settings page cancel" back="true"/>
+		<on event="y" run="port settings search"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/options_menu" flags="pass_unhandled_to_focused_child up_down_tabs_children"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/button_bar" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
@@ -25,6 +26,7 @@
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_viewmodel_visible" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_visible_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_viewmodel_fov" flags="pass_unhandled_to_focused_child">
 		<on event="left" run="port slider left"/>
@@ -43,10 +45,12 @@
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_first_person_legs" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/first_person_legs_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_viewmodel_shield" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_shield_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_shield_color" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/shield_color_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
@@ -55,9 +59,11 @@
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_overshield_effect" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_effect_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_overshield_layer_color" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_layer_color_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 </model>

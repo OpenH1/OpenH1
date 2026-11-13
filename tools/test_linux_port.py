@@ -208,8 +208,10 @@ def test_menus_are_well_formed():
     assert sorted(path.relative_to(MENUS).as_posix() for path in files) == \
         sorted(name for name in listed if name.endswith(".xml"))
     widgets, bitmaps, strings, references, roots = {}, {}, {}, [], []
-    # (the menu engine's model, model/, is another format: menu_model.c reads it)
-    for path in (path for path in files if path.relative_to(MENUS).parts[0] != "model"):
+    # (the menu engine's model, model/, is another format: menu_model.c reads it; and the hand-written screens,
+    # screens/, menu_screens.c, but for their blocks' widgets, screens/blocks.xml)
+    for path in (path for path in files if path.relative_to(MENUS).parts[0] != "model" and
+                 (path.relative_to(MENUS).parts[0] != "screens" or path.name == "blocks.xml")):
         tree = ElementTree.parse(path)
         assert tree.getroot().tag == "menus", path
         if tree.getroot().get("root"):
@@ -229,14 +231,14 @@ def test_menus_are_well_formed():
                 assert re.fullmatch(r"-?[0-9]+", value) and -32768 <= int(value) <= 32767, f"{where} {attribute}"
             for attribute in ("back", "branch", "if_failed"):
                 assert element.get(attribute) in (None, "true", "false"), f"{where} {attribute}"
-            # (menu_tags.c's wide layout: "dx dw", each within the extra width 16:9 has)
+            # (menu_tags.c's wide layout: "dx dw", each within twice the extra width 16:9 has)
             # (a picture's corners cut round: menu_files.c reads 0 to 64)
             if element.get("radius") is not None:
                 assert re.fullmatch(r"[0-9]+", element.get("radius")) and int(element.get("radius")) <= 64, \
                     f"{where} radius"
             if element.get("wide") is not None:
                 assert re.fullmatch(r"-?[0-9]+ -?[0-9]+", element.get("wide")) and \
-                    all(abs(int(value)) <= 212 for value in element.get("wide").split()), f"{where} wide"
+                    all(abs(int(value)) <= 2 * 212 for value in element.get("wide").split()), f"{where} wide"
             assert not (element.text or "").strip() and not (element.tail or "").strip(), where
             if element.tag == "bitmap":
                 bitmaps[element.get("name")] = element

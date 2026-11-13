@@ -95,7 +95,7 @@ takes it for a newer version and does not join. Raise it with any change to
 what a Standard game's machines send each other, and with every raise of
 HALO_PORT_NETWORK_VERSION: HALO_PORT_STANDARD_BASE_VERSION is the network
 version it was last raised for, and the build fails until they agree. */
-#define HALO_PORT_STANDARD_NETWORK_VERSION 24
+#define HALO_PORT_STANDARD_NETWORK_VERSION 27
 /* (1: the rate agreed; 2: the players' sub-steps sent, network_substeps.c;
 3: OpenCE players in the game, network_standard.c's mixed games; 4: a
 player moved to the other team by the host, network_host_controls.c; 5:
@@ -139,7 +139,21 @@ as their differences from states the client says it took, on a grid of
 1/4096 of a world unit, network_distributed.c's
 _distributed_message_unit_state_differences and the input's word on them;
 24: the actors' states without the parts at their defaults,
-network_actors.c's _distributed_message_actor_states_compact. Legacy
+network_actors.c's _distributed_message_actor_states_compact; 25: the
+host's word that its players' views are drawn as with display.direct_camera
+off in the game record (_network_game_no_direct_camera_bit, a 2V2 Classic
+game's: network_standard.c's network_standard_direct_camera_allowed); 26:
+the host's word that its game is a Pro 2v2 game in the game record
+(_network_game_pro_rules_bit: network_standard_pro_game; its players' dynamic
+lights classic, their field of view at most 110, no teammates' feeds), and a
+client's mods each marked with what they replace (sounds, bitmaps, models,
+text: distributed_client_build's mods), which a Pro host refuses a machine
+for; 27: the Pro 2v2 Classic playlist (7) at 120 ticks, as Crispy (6, Low
+Latency before) is, where it was at 30: the listing's playlist number and
+rate a search requires of a game (matchmaking.c's matchmaking_listing_of),
+which every machine must take alike, so a build of 26, whose Classic search
+and browser want 30, never sees a game of 27's Classic, and the other way
+round. Legacy
 games, and what an OpenCE
 machine sees, are unchanged) */
 #define HALO_PORT_STANDARD_BASE_VERSION 41

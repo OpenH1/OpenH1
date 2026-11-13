@@ -2879,6 +2879,20 @@ static long players_coop_respawn_unit(
 the player (players_respawn_network_coop), else NONE */
 static long players_coop_spawn_beside_index = NONE;
 
+/* port: (the demos': players.h) */
+void *players_coop_port_demo_state(
+	short part,
+	long *size)
+{
+	switch (part)
+	{
+	case 0: *size = sizeof(players_coop_state); return &players_coop_state;
+	case 1: *size = sizeof(players_checkpoint); return &players_checkpoint;
+	case 2: *size = sizeof(players_coop_spawn_beside_index); return &players_coop_spawn_beside_index;
+	}
+	return NULL;
+}
+
 /* how far behind the teammate a respawn starts (world units) past what it
 rides (its bounding sphere) */
 #define COOP_SPAWN_BEHIND_DISTANCE 0.5f
@@ -3041,10 +3055,14 @@ static boolean players_coop_unit_stranded(
 
 	if (players_coop_unit_in_structure(unit_index))
 		return FALSE;
-	/* (on foot: only while falling, not standing on something the BSP
-	doesn't hold, such as an elevator in its shaft) */
+	/* (on foot: while falling, or not airborne outside it but not on an
+	elevator in its shaft, which the BSP doesn't hold: a player a BSP switch
+	left outside it can stand there, not falling, until they move) */
 	if (vehicle_index == unit_index)
-		return !players_coop_unit_grounded_anywhere(unit_index);
+	{
+		return !players_coop_unit_grounded_anywhere(unit_index) ||
+			biped_get(unit_index)->biped.elevator_object_index == NONE;
+	}
 	driver_index = object_try_and_get_and_verify_type(vehicle_index, _object_mask_unit) ?
 		unit_get(vehicle_index)->unit.driver_object_index : NONE;
 	return driver_index == NONE || unit_get(driver_index)->unit.player_index != NONE;
@@ -3064,6 +3082,26 @@ waits for every machine to have loaded it */
 /* how often a client's player standing on a loading zone is reminded that
 the host's crossing switches the BSP */
 #define COOP_HOST_WAIT_MESSAGE_TICKS (3 * TICKS_PER_SECOND)
+
+/* port: network co-op: player_teleport where it has found no room for the
+player beside the unit, with the other players left out of the test, so the
+player may stand in them (as coop_scripts.c's teleports do; players pass
+through each other until they are apart, _biped_physics_in_pass_through_players_bit).
+Only where the alternative is a player outside the loaded structure BSP,
+where they would fall out of the world. */
+static boolean players_coop_teleport_stacked(
+	long player_index,
+	long source_unit_index,
+	real_point3d const *position)
+{
+	boolean result;
+
+	biped_fix_ignore_players(TRUE);
+	result = player_teleport(player_index, source_unit_index, position);
+	biped_fix_ignore_players(FALSE);
+
+	return result;
+}
 
 /* Co-op host, each tick: a player stranded for COOP_STRANDED_TICKS is moved
 beside a grounded teammate inside the BSP, else any teammate inside it, else
@@ -3101,6 +3139,12 @@ static void players_coop_rescue_stranded(
 		{
 			rescued = player_teleport(iterator.datum_index, teammate_index,
 				&object_get(teammate_index)->object.bounding_sphere_center);
+			/* (port: in them where there is no room beside them) */
+			if (!rescued)
+			{
+				rescued = players_coop_teleport_stacked(iterator.datum_index, teammate_index,
+					&object_get(teammate_index)->object.bounding_sphere_center);
+			}
 		}
 		else
 		{
@@ -3636,6 +3680,16 @@ static void player_teleport_on_bsp_switch(
 				crosser, so the rest go beside whoever is already in */
 				if (!teleport_succeeded && network_coop_active())
 					teleport_succeeded = player_place_beside_teammate(player_index);
+				/* port: and where nobody has room, onto the crosser,
+				standing in them (players_coop_teleport_stacked): left
+				where they were, they would be outside the new BSP */
+				if (!teleport_succeeded && network_coop_active())
+				{
+					teleport_succeeded = players_coop_teleport_stacked(
+						player_index,
+						source_unit_index,
+						&object_get(source_unit_index)->object.bounding_sphere_center);
+				}
 			}
 			else
 			{

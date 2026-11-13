@@ -98,5 +98,56 @@ char const *menu_engine_look_role(struct widget_instance const *widget);
 /* whether the engine lays out what is in the widget (a settings tab's or
 page's rows) from the model */
 boolean menu_engine_lays_out(struct widget_instance *widget);
+/* the geometry the settings screen of a widget is laid out in: its own (the
+tall layout's) where the engine runs it, else the model's first (NULL: no
+model) */
+struct halo_menu_model_geometry;
+struct halo_menu_model_geometry const *menu_engine_settings_geometry(struct widget_instance *widget);
+
+/* ---------- Settings' search, the engine's alone (menu_search.c; the menus'
+functions' settings_search_*) */
+
+/* whether the widget's screen is the search's */
+boolean menu_engine_search_screen(struct widget_instance const *widget);
+/* the rows of every tab and page that match what is typed (shown: whether
+one may be found, its conditions), made in the search's list (a widget of
+its screen) from their own pages' widgets, as many as fit, again only if what
+is typed has changed: their count */
+typedef int (*menu_engine_search_shown)(void *context, struct halo_menu_model_screen const *screen,
+	struct halo_menu_model_row const *row);
+long menu_engine_search_find(struct widget_instance *list, char const *typed, menu_engine_search_shown shown,
+	void *context);
+/* how many rows match in all (more than are made: the words under them say
+so), the index'th row made (NULL past the last), and the group'th group's
+crumb (the way to its rows, NULL past the last) */
+long menu_engine_search_matched(void);
+struct widget_instance *menu_engine_search_found(long index);
+struct halo_menu_model_screen const *menu_engine_search_found_screen(long index);
+char const *menu_engine_search_crumb(long group);
+
+/* ---------- the hand-written screens (menu_screen.c, docs/menu_screens.md) */
+
+/* a screen opened: its widgets made from the hand-written screen that takes
+its place, if one does (TRUE), in place of its own */
+boolean menu_screen_opened(struct widget_instance *screen);
+/* the screen let go of (closed) */
+void menu_screen_closed(struct widget_instance *screen);
+/* before the screen is drawn: made again if its file was read again, its
+focused item's hint shown */
+void menu_screen_frame(struct widget_instance *screen);
+/* B or Back on the screen: its back action run (TRUE), else FALSE for the
+engine to take the event */
+boolean menu_screen_back(struct widget_instance *screen, struct event_record *event, boolean *deleted);
+/* a building block's text colour, where it is not its definition's (a
+focused item's): TRUE if it is */
+boolean menu_screen_text_color(struct widget_instance const *widget, real_argb_color *color);
+/* a hand-written screen's block drawn otherwise than its definition: an
+item or a header as its file's picture (*bitmap_tag; NONE, the definition's
+own), a card and its parts scaled to fill their room; *bounds comes in as
+the definition's and goes out as the box it is drawn in. FALSE for a widget
+drawn as its definition has it */
+boolean menu_screen_item_picture(struct widget_instance const *widget, long *bitmap_tag, rectangle2d *bounds);
+/* "port screen do", an item's A: its action run */
+boolean menu_screen_do(struct widget_instance *item, struct event_record *event, boolean *deleted);
 
 #endif

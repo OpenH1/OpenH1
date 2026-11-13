@@ -317,6 +317,9 @@
 	<bitmap name="main_menu/campaign/header_missions">
 		<frame png="ce/port/main_menu/campaign/header_missions.png" width="512" height="64"/>
 	</bitmap>
+	<bitmap name="main_menu/doubles/header_doubles">
+		<frame png="ce/port/main_menu/doubles/header_doubles.png" width="512" height="64"/>
+	</bitmap>
 	<bitmap name="main_menu/host_controls/header_host_controls">
 		<frame png="ce/port/main_menu/host_controls/header_host_controls.png" width="512" height="64"/>
 	</bitmap>
@@ -412,30 +415,36 @@
 		<frame png="ce/port/pause/pausebox_left__1.png" width="16" height="256"/>
 		<frame png="ce/port/pause/pausebox_left__2.png" width="16" height="256"/>
 		<frame png="ce/port/pause/pausebox_left__3.png" width="16" height="256"/>
+		<frame png="ce/port/pause/pausebox_left__4.png" width="16" height="256"/>
 	</bitmap>
 	<bitmap name="pause/pausebox_center">
 		<frame png="ce/port/pause/pausebox_center__0.png" width="4" height="256"/>
 		<frame png="ce/port/pause/pausebox_center__1.png" width="4" height="256"/>
 		<frame png="ce/port/pause/pausebox_center__2.png" width="4" height="256"/>
 		<frame png="ce/port/pause/pausebox_center__3.png" width="4" height="256"/>
+		<frame png="ce/port/pause/pausebox_center__4.png" width="4" height="256"/>
 	</bitmap>
 	<bitmap name="pause/pausebox_right">
 		<frame png="ce/port/pause/pausebox_right__0.png" width="16" height="256"/>
 		<frame png="ce/port/pause/pausebox_right__1.png" width="16" height="256"/>
 		<frame png="ce/port/pause/pausebox_right__2.png" width="16" height="256"/>
 		<frame png="ce/port/pause/pausebox_right__3.png" width="16" height="256"/>
+		<frame png="ce/port/pause/pausebox_right__4.png" width="16" height="256"/>
 	</bitmap>
 	<bitmap name="pause/objectives_left">
 		<frame png="ce/port/pause/objectives_left__0.png" width="16" height="256"/>
 		<frame png="ce/port/pause/objectives_left__1.png" width="16" height="256"/>
+		<frame png="ce/port/pause/objectives_left__2.png" width="16" height="256"/>
 	</bitmap>
 	<bitmap name="pause/objectives_center">
 		<frame png="ce/port/pause/objectives_center__0.png" width="4" height="256"/>
 		<frame png="ce/port/pause/objectives_center__1.png" width="4" height="256"/>
+		<frame png="ce/port/pause/objectives_center__2.png" width="4" height="256"/>
 	</bitmap>
 	<bitmap name="pause/objectives_right">
 		<frame png="ce/port/pause/objectives_right__0.png" width="16" height="256"/>
 		<frame png="ce/port/pause/objectives_right__1.png" width="16" height="256"/>
+		<frame png="ce/port/pause/objectives_right__2.png" width="16" height="256"/>
 	</bitmap>
 	<bitmap name="voice/speaker">
 		<frame png="ce/port/voice/speaker__0.png" width="24" height="24"/>
@@ -444,6 +453,22 @@
 	<bitmap name="main_menu/menu_training">
 		<frame png="ce/port/main_menu/menu_training__0.png" width="256" height="64"/>
 		<frame png="ce/port/main_menu/menu_training__1.png" width="256" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/menu_doubles">
+		<frame png="ce/port/main_menu/menu_doubles__0.png" width="256" height="64"/>
+		<frame png="ce/port/main_menu/menu_doubles__1.png" width="256" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/menu_versus">
+		<frame png="ce/port/main_menu/menu_versus__0.png" width="256" height="64"/>
+		<frame png="ce/port/main_menu/menu_versus__1.png" width="256" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/menu_solo">
+		<frame png="ce/port/main_menu/menu_solo__0.png" width="256" height="64"/>
+		<frame png="ce/port/main_menu/menu_solo__1.png" width="256" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/menu_coop">
+		<frame png="ce/port/main_menu/menu_coop__0.png" width="256" height="64"/>
+		<frame png="ce/port/main_menu/menu_coop__1.png" width="256" height="64"/>
 	</bitmap>
 	<bitmap name="mods/status">
 		<frame png="ce/port/mods/status__0.png" width="24" height="24"/>
@@ -497,6 +522,14 @@
 		<frame png="ce/port/main_menu/settings/tab_current__0.png" width="90" height="22"/>
 		<frame png="ce/port/main_menu/settings/tab_current__1.png" width="90" height="22"/>
 	</bitmap>
+	<bitmap name="main_menu/settings/segment">
+		<frame png="ce/port/main_menu/settings/segment__0.png" width="48" height="18"/>
+		<frame png="ce/port/main_menu/settings/segment__1.png" width="48" height="18"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/search_field">
+		<frame png="ce/port/main_menu/settings/search_field__0.png" width="20" height="22"/>
+		<frame png="ce/port/main_menu/settings/search_field__1.png" width="20" height="22"/>
+	</bitmap>
 	<bitmap name="main_menu/settings/slider_track">
 		<frame png="ce/port/main_menu/settings/slider_track__0.png" width="62" height="14"/>
 	</bitmap>
@@ -513,15 +546,32 @@
 	<bitmap name="main_menu/settings/page_panel">
 		<frame png="ce/port/main_menu/settings/page_panel__0.png" width="224" height="320"/>
 	</bitmap>
+	<bitmap name="main_menu/settings/row_tall">
+		<frame png="ce/port/main_menu/settings/row_tall__0.png" width="344" height="24"/>
+		<frame png="ce/port/main_menu/settings/row_tall__1.png" width="344" height="24"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/section_tall">
+		<frame png="ce/port/main_menu/settings/section_tall__0.png" width="344" height="20"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/segment_tall">
+		<frame png="ce/port/main_menu/settings/segment_tall__0.png" width="48" height="20"/>
+		<frame png="ce/port/main_menu/settings/segment_tall__1.png" width="48" height="20"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/tab_panel_tall">
+		<frame png="ce/port/main_menu/settings/tab_panel_tall__0.png" width="224" height="360"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/page_panel_tall">
+		<frame png="ce/port/main_menu/settings/page_panel_tall__0.png" width="224" height="388"/>
+	</bitmap>
 	<bitmap name="main_menu/settings/still_frame">
-		<frame png="ce/port/main_menu/settings/still_frame__0.png" width="96" height="60"/>
-		<frame png="ce/port/main_menu/settings/still_frame__1.png" width="96" height="60"/>
+		<frame png="ce/port/main_menu/settings/still_frame__0.png" width="88" height="55"/>
+		<frame png="ce/port/main_menu/settings/still_frame__1.png" width="88" height="55"/>
 	</bitmap>
 	<bitmap name="main_menu/settings/graphics_classic">
-		<frame png="ce/port/stills/graphics_classic.png" width="96" height="60"/>
+		<frame png="ce/port/stills/graphics_classic.png" width="88" height="55"/>
 	</bitmap>
 	<bitmap name="main_menu/settings/graphics_enhanced">
-		<frame png="ce/port/stills/graphics_enhanced.png" width="96" height="60"/>
+		<frame png="ce/port/stills/graphics_enhanced.png" width="88" height="55"/>
 	</bitmap>
 	<bitmap name="main_menu/settings/pictures_fov">
 		<frame png="ce/port/stills/fov_default_framed.png" width="160" height="100"/>
@@ -590,9 +640,18 @@
 		<frame png="ce/port/main_menu/parts/row_404x19__1.png" width="404" height="19"/>
 		<frame png="ce/port/main_menu/parts/row_404x19__2.png" width="404" height="19"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/row_404x24">
+		<frame png="ce/port/main_menu/parts/row_404x24__0.png" width="404" height="24"/>
+		<frame png="ce/port/main_menu/parts/row_404x24__1.png" width="404" height="24"/>
+		<frame png="ce/port/main_menu/parts/row_404x24__2.png" width="404" height="24"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/item_280x26">
 		<frame png="ce/port/main_menu/parts/item_280x26__0.png" width="280" height="26"/>
 		<frame png="ce/port/main_menu/parts/item_280x26__1.png" width="280" height="26"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_148x18">
+		<frame png="ce/port/main_menu/parts/item_148x18__0.png" width="148" height="18"/>
+		<frame png="ce/port/main_menu/parts/item_148x18__1.png" width="148" height="18"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/item_88x24">
 		<frame png="ce/port/main_menu/parts/item_88x24__0.png" width="88" height="24"/>
@@ -602,6 +661,10 @@
 		<frame png="ce/port/main_menu/parts/item_90x24__0.png" width="90" height="24"/>
 		<frame png="ce/port/main_menu/parts/item_90x24__1.png" width="90" height="24"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/item_92x24">
+		<frame png="ce/port/main_menu/parts/item_92x24__0.png" width="92" height="24"/>
+		<frame png="ce/port/main_menu/parts/item_92x24__1.png" width="92" height="24"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/item_96x24">
 		<frame png="ce/port/main_menu/parts/item_96x24__0.png" width="96" height="24"/>
 		<frame png="ce/port/main_menu/parts/item_96x24__1.png" width="96" height="24"/>
@@ -610,9 +673,21 @@
 		<frame png="ce/port/main_menu/parts/item_97x24__0.png" width="97" height="24"/>
 		<frame png="ce/port/main_menu/parts/item_97x24__1.png" width="97" height="24"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/item_98x24">
+		<frame png="ce/port/main_menu/parts/item_98x24__0.png" width="98" height="24"/>
+		<frame png="ce/port/main_menu/parts/item_98x24__1.png" width="98" height="24"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_99x24">
+		<frame png="ce/port/main_menu/parts/item_99x24__0.png" width="99" height="24"/>
+		<frame png="ce/port/main_menu/parts/item_99x24__1.png" width="99" height="24"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/item_102x24">
 		<frame png="ce/port/main_menu/parts/item_102x24__0.png" width="102" height="24"/>
 		<frame png="ce/port/main_menu/parts/item_102x24__1.png" width="102" height="24"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_105x24">
+		<frame png="ce/port/main_menu/parts/item_105x24__0.png" width="105" height="24"/>
+		<frame png="ce/port/main_menu/parts/item_105x24__1.png" width="105" height="24"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/item_108x24">
 		<frame png="ce/port/main_menu/parts/item_108x24__0.png" width="108" height="24"/>
@@ -626,9 +701,9 @@
 		<frame png="ce/port/main_menu/parts/item_128x24__0.png" width="128" height="24"/>
 		<frame png="ce/port/main_menu/parts/item_128x24__1.png" width="128" height="24"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/item_132x24">
-		<frame png="ce/port/main_menu/parts/item_132x24__0.png" width="132" height="24"/>
-		<frame png="ce/port/main_menu/parts/item_132x24__1.png" width="132" height="24"/>
+	<bitmap name="main_menu/parts/item_143x24">
+		<frame png="ce/port/main_menu/parts/item_143x24__0.png" width="143" height="24"/>
+		<frame png="ce/port/main_menu/parts/item_143x24__1.png" width="143" height="24"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/item_144x24">
 		<frame png="ce/port/main_menu/parts/item_144x24__0.png" width="144" height="24"/>
@@ -662,6 +737,12 @@
 	<bitmap name="main_menu/parts/panel_172x296">
 		<frame png="ce/port/main_menu/parts/panel_172x296__0.png" width="172" height="296"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/panel_172x362">
+		<frame png="ce/port/main_menu/parts/panel_172x362__0.png" width="172" height="362"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/background_tall">
+		<frame png="ce/port/main_menu/parts/background_tall__0.png" width="4" height="512"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/panel_296x320">
 		<frame png="ce/port/main_menu/parts/panel_296x320__0.png" width="296" height="320"/>
 	</bitmap>
@@ -683,6 +764,11 @@
 	<bitmap name="main_menu/parts/button_148x24">
 		<frame png="ce/port/main_menu/parts/button_148x24__0.png" width="148" height="24"/>
 		<frame png="ce/port/main_menu/parts/button_148x24__1.png" width="148" height="24"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/button_set_148x24">
+		<frame png="ce/port/main_menu/parts/button_set_148x24__0.png" width="148" height="24"/>
+		<frame png="ce/port/main_menu/parts/button_set_148x24__1.png" width="148" height="24"/>
+		<frame png="ce/port/main_menu/parts/button_set_148x24__2.png" width="148" height="24"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/team_panel_186x320">
 		<frame png="ce/port/main_menu/parts/team_panel_186x320__0.png" width="186" height="320"/>
@@ -885,6 +971,15 @@
 	</bitmap>
 	<bitmap name="main_menu/campaign/art_back_120x98">
 		<frame png="ce/port/main_menu/campaign/art_back_120x98__0.png" width="120" height="98"/>
+	</bitmap>
+	<bitmap name="main_menu/campaign/card_158x326">
+		<frame png="ce/port/main_menu/campaign/card_158x326__0.png" width="158" height="326"/>
+		<frame png="ce/port/main_menu/campaign/card_158x326__1.png" width="158" height="326"/>
+		<frame png="ce/port/main_menu/campaign/card_158x326__2.png" width="158" height="326"/>
+	</bitmap>
+	<bitmap name="main_menu/campaign/continue_494x52">
+		<frame png="ce/port/main_menu/campaign/continue_494x52__0.png" width="494" height="52"/>
+		<frame png="ce/port/main_menu/campaign/continue_494x52__1.png" width="494" height="52"/>
 	</bitmap>
 	<bitmap name="main_menu/campaign/art_back_176x143">
 		<frame png="ce/port/main_menu/campaign/art_back_176x143__0.png" width="176" height="143"/>

@@ -71,9 +71,14 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   it brings every player to the host, however far behind, so no one
   running ahead or doubling back drags the team through the level (while
   none of the host's players are alive, anyone's crossing does); a client
-  standing on a loading zone is told it waits for the host. A player
-  outside the loaded BSP and falling for two seconds is brought back beside
-  the host, else a teammate. A dead
+  standing on a loading zone is told it waits for the host. Where there is
+  no room beside the host or a teammate who is in, the player is tried in
+  the host, the two passing through each other until they are apart. A
+  player still outside the loaded BSP after two seconds, falling or
+  standing anywhere but on an elevator (one a switch left where they were
+  stands on nothing until they move), is brought back beside the host,
+  else a teammate (in them, if there is no room), and tried again every
+  two seconds. A dead
   player watches a living teammate, through their eyes
   (`dead_spectate.c`, `game.spectate_on_death`, drawn from this machine's
   copy of the world: nothing is sent) or from behind (`coop_spectate.c`), and comes back
@@ -82,7 +87,11 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   with players still alive reverts to the last checkpoint on the host, as a
   skipped cutscene does (below); a client never reverts on its own. A level
   won ends the round as in multiplayer, and the next round is the
-  campaign's next level.
+  campaign's next level, or the one its host asked for in Host Controls'
+  MAPS (with its difficulty). The host's PLAY NOW ends the level for every
+  machine as a won one is ended, and its lobby starts the new one: the level
+  and difficulty go to the clients in the lobby's own settings, nothing new
+  (`network_host_game.c`).
 
   Cutscenes are skipped by vote: more than half the machines must press
   skip. The host then reverts as single player does, but keeps its clock
@@ -404,7 +413,7 @@ number, configuration, the label it shows ("OpenH1 Linux | build 120
 (release)", OpenCE's "OpenCE Linux | build 282 (release)"), the GitHub
 repository it is made from (owner/name, which the build scripts take from
 CI's `GITHUB_REPOSITORY` or the checkout's origin remote: OpenH1's builds
-say `OpenH1/OpenH1`) and the mods it plays, a line each ("folder version",
+say `OpenH1/goath1`) and the mods it plays, a line each ("folder version",
 in the load order); the host keeps it printable and logs it once, and a
 dedicated server shows it in `/api/players` (`client`). A host without the
 message drops it as a kind it does not know. It is below 120, so an OpenH1
@@ -571,9 +580,10 @@ client's `/mute` is never sent, and the host takes the text of a line that
 came up as a line, never a command. The host's scoreboard Mute for everyone
 is the same mute (20 minutes), and the host relays none of a muted player's
 machine's voice either (`network_voice.c`'s `voice_host_relay`, by the
-names of the network game's players, which the lobby has too). A
-machine's own scoreboard mute stays its own: it plays none of that
-machine's voice and shows none of its players' lines, and tells no one.
+names of the network game's players, which the lobby has too), nor takes
+their pings ("Pings"). A machine's own scoreboard mute stays its own: it
+plays none of that machine's voice and shows none of its players' lines or
+pings, and tells no one.
 The host's chat settings (`network.text_chat`: on, links allowed, or off,
 listed in the server browser or not) go to every client in
 `_distributed_message_chat_config` (one byte of flags), reliably, as they
@@ -1469,6 +1479,43 @@ those lines too, and with `--events` that each client reported hits and the
 host rejected none (`debug.network_test_shoot`: the OpenCE player shoots an
 OpenH1 player, an OpenH1 player the OpenCE one).
 
+### The Legacy encodings
+
+The host sends two streams each tick in either of two encodings: the
+players' tick states, and the actors' states. A Legacy game's machines, and
+an OpenCE machine of an OpenH1 game, take network version 41's (the whole
+unit states, `_distributed_message_unit_states`, and the whole 88-byte actor
+structures, `_distributed_message_actor_states`). An OpenH1 client of an
+OpenH1 game takes OpenH1's (`_distributed_message_unit_state_differences`
+and `_distributed_message_actor_states_compact`, above). One function makes
+that choice, `network_legacy_machine` (`port/linux/game/network_legacy.c`),
+and each stream asks it once a client, where it begins
+(`network_distributed.c`'s `distributed_tick_states_begin`,
+`network_actors.c`'s `actor_states_begin`). The streams' other code, which
+states go and when, is the same for both kinds.
+
+`network_legacy.c` and `network_legacy.h` hold the Legacy encodings: the
+unit state's bytes (`distributed_unit_state_write` and
+`distributed_unit_state_read`, which OpenH1's messages also carry whole: a
+difference's or a sub-step's whole form, a client's prediction), the actor
+structure and its message, and the flags and sizes they use. The OpenH1
+encodings stay beside the streams they serve, so a change to them does not
+touch these files. Nothing in them may change a byte, and two checks hold
+them to that:
+
+- `tools/harness/tests/test_legacy_golden.py` writes fixed states with the
+  sources' encoders and compares the bytes with those recorded in the test:
+  players on foot, riding, tilted, dead with a killer and without, hurt,
+  camouflaged, with powerups and with a prediction's fine velocity (with
+  the client's tick and without), and actors standing, riding, moving, with
+  an impulse, a speech or a custom animation, fleeing and camouflaged, in
+  their messages (13 whole structures a datagram). It records the OpenH1
+  encodings of the same states too, which may change with OpenH1's protocol
+  version (`GOLDEN_RECORD=1` prints them to record again). The Legacy lines
+  must never change.
+- `tools/network_format.py` holds the structures, flags and sizes to
+  `port/linux/network_format.txt`.
+
 ### The host's controls
 
 The host's HOST CONTROLS (its pause menu, the scoreboard's player menu, the
@@ -1573,6 +1620,13 @@ decides:
   in an OpenH1 game under way, of a player it has and a point inside the
   world (an object it does not have is shown at the point), and plays the
   menus' cursor sound as a ping its players see comes.
+- Mutes are those of the text chat and the voice, and nothing new is sent
+  for them. The host refuses the pings of a player it muted for everyone
+  (the chat's mute, by name: `network_chat_host_mute_minutes`), as it
+  relays none of their voice, so no machine shows them. A machine's own
+  scoreboard mute of another (`network_voice_machine_muted`) is its own: it
+  is still sent that machine's players' pings, and neither draws them nor
+  plays their sound (`markers_shown_to`).
 - The host's `network.pings` (Server Setup's PINGS: Teamplay Options, and
   co-op's VOICE AND VOTING; on by default) goes to each OpenH1 client in the
   same message every 3 seconds and as it changes. A client that has not
@@ -1654,13 +1708,60 @@ A party's leader joins a game first and its members follow it in
   fewer; the lobby's auto team balance moves a player of no party first.
 - Matchmaking (`port/linux/game/matchmaking.c`) adds nothing to the game's
   messages: a host lists the playlist it hosts for in the listing's stamp
-  (its sixth byte, the playlist's number; an OpenH1 game's alone), and a
+  (its sixth byte, the playlist's number, 1 up in `matchmaking_playlists`'
+  order: a new playlist goes last, and an older build passes over a number
+  it does not know; an OpenH1 game's alone), and a
   party picks its host among its members by a byte a member adds to its
   STATE after its name (how well it can host now: unable, strict NAT, open;
   a leader's STATE has none, and older builds read no further than the
   name) and a HOST message (`'H'`, the member's id and the playlist) that
   the member takes by taking the lead (`p2p_party.c`). An older build
   passes over the type and never sends the byte, so it is never asked.
+- PRO 2V2's kinds (README, "PRO 2V2") are two playlists, PRO 2V2 CRISPY (6,
+  PRO 2V2 LOW LATENCY before) and PRO 2V2 CLASSIC (7), both at 120 ticks:
+  Classic's host says every player's Instant Aim is off (below, protocol
+  version 25), Crispy's leaves each player's own. The host of one hosts an
+  OpenH1 game at 120 whatever its `network.game_mode` and
+  `network.sim_rate` (`network_standard_set_hosting_rules`), closed to
+  OpenCE's players, and the listing says the rate as every OpenH1 game's
+  does; a search takes only a game listed for its playlist *and* at its
+  rate (`matchmaking_game_score`). The two kinds, at one rate, are told
+  apart by the listing's playlist number alone, so a Classic search never
+  lands in a Crispy game, nor the other way. The listing carries nothing
+  new.
+- From protocol version 27 PRO 2V2 CLASSIC (7) is at 120 ticks, where it
+  was at 30. Nothing in a message changed, but a playlist's number and rate
+  are what a search and the 2V2 browser require of a listing, which every
+  machine must take alike: a build of 26 searching Classic wants 30 and
+  would pass over every Classic game of 27's, and 27's over 26's, the two
+  splitting the kind's players with neither told why. Raised, a build of
+  either hears the other's games as another version's (`p2p_lobby.c`'s
+  `version_ours`), and its player is told which is newer.
+- From protocol version 25 the host of a Pro 2v2 Classic game says in the game
+  record that every player's view is drawn as with `display.direct_camera`
+  off: bit 5 of `cooperative_flags` (`_network_game_no_direct_camera_bit`),
+  set as the record is stamped in the lobby, as the pickup's and the
+  turning's bits are. Every OpenH1 machine takes it
+  (`network_standard_direct_camera_allowed`: the host from its own rules, a
+  client from the record) and draws its views from the tick, not the newest
+  step, whatever its own setting, which stays as it is; an OpenCE machine's
+  copy of the record leaves it clear (none can be in such a game). A
+  machine of protocol 24 would ignore the bit, so the version is raised: it
+  does not join.
+- From protocol version 26 the host of a Pro 2v2 game (either kind) says so
+  in the game record: bit 6 of `cooperative_flags`
+  (`_network_game_pro_rules_bit`), set as the record is stamped. Every
+  OpenH1 machine takes it (`network_standard_pro_game`): its dynamic lights
+  drawn classic (and the map prepared so), its field of view capped at 110,
+  no teammates' feeds. The host's own Pro rules need nothing new: its shield
+  effects (`"stock"`) and its mouse aim assist policy go as they always do,
+  and its pickup way goes in bit 3. A client's build (distributed message
+  92) now says what each of its mods replaces, `"folder version [sounds
+  bitmaps models text]"` (and `"... [unlisted]"` for mods its 512 bytes
+  could not hold); a Pro host kicks a machine whose mods replace sounds,
+  bitmaps or models, or are unlisted or unsaid, after a notice to it. The
+  host trusts what a client says: a client that leaves a mod out is not
+  caught.
 - The listing's stamp says the host holds room (its fifth byte, 1). A
   Legacy host, and an older OpenH1 one (which drops 128 as a kind it does not
   know), hold nothing: the browser says there is no room guarantee and the
@@ -2399,7 +2500,11 @@ it shows them (the notices as `chat notice:`), `debug.network_test_ping`
 has each machine's first player ping what they aim at, the same again 3
 seconds on (taking it away) and again 3 more on, then each client send one
 as another machine's player (the host refuses it) and a burst of 6 past its
-own limit (the host takes 3), each machine logging every ping it shows
+own limit (the host takes 3), then the last player's machine mute an ally's
+machine for itself as the other machines ping twice (the ally's logged
+there as `(muted here)`, and not in its `pings shown`), and unmute it as the
+host mutes the last player for everyone before that machine pings (the host
+refuses it: `muted by the host`) and unmutes them, each machine logging every ping it shows
 (`pings: player <n> pinged ...`) and those it shows a second after each
 step (`network test: pings shown:`), and `debug.network_test_score`
 shortens the game, to test the next (`host:<map>:<variant>,<variant>...`

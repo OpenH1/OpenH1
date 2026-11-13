@@ -62,10 +62,6 @@
 		<text font="ui\large_ui" color="#FF2896FF" at="10 2" text="JOIN BY LINK"/>
 		<at widget="main_menu/multiplayer_type_select/hub/invite_note" x="0" y="0"/>
 	</look>
-	<look name="main_menu/multiplayer_type_select/hub/hub_matchmaking" type="text" box="0 0 280 26" wide="-106 80" picture="main_menu/parts/item_280x26">
-		<text font="ui\large_ui" color="#FF2896FF" at="10 2" text="MATCHMAKING"/>
-		<at widget="main_menu/multiplayer_type_select/hub/matchmaking_note" x="0" y="0"/>
-	</look>
 	<look name="main_menu/multiplayer_type_select/hub/hub_party" type="text" box="0 0 280 26" wide="-106 80" picture="main_menu/parts/item_280x26">
 		<text font="ui\large_ui" color="#FF2896FF" at="10 2" text="PARTY"/>
 		<at widget="main_menu/multiplayer_type_select/hub/party_note" x="0" y="0"/>
@@ -109,9 +105,6 @@
 	</look>
 	<look name="main_menu/multiplayer_type_select/hub/party_note" type="text" box="0 0 264 26" wide="0 80">
 		<text font="ui\small_ui" color="#FF7FB2FF" align="right" at="0 4" flags="no_focus_test"/>
-	</look>
-	<look name="main_menu/multiplayer_type_select/hub/matchmaking_note" type="text" box="0 0 264 26" wide="0 80">
-		<text font="ui\small_ui" color="#FF5ED38C" align="right" at="0 4" flags="no_focus_test"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/hub/friends_note" type="text" box="0 0 264 26" wide="0 80">
 		<text font="ui\small_ui" color="#FF5ED38C" align="right" at="0 4" flags="no_focus_test"/>

@@ -104,6 +104,8 @@ static char const *config_string(const char *name) { (void)name; return fake_veh
 static int config_boolean(const char *name) { (void)name; return 0; }
 static unsigned long system_milliseconds(void) { return fake_now; }
 static boolean cinematic_in_progress(void) { return FALSE; }
+/* (no Pro 2v2 game: its cap is test_pro_rules.py's) */
+static boolean network_standard_pro_game(void) { return FALSE; }
 static director_perspective director_get_perspective(short local_player_index)
 {
 	(void)local_player_index;

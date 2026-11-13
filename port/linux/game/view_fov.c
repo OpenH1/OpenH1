@@ -38,6 +38,7 @@ that draw the first-person weapon (rasterizer and render sources).
 #include "panini_projection.h"
 #include "passenger_camera.h"
 #include "zoom_fov.h"
+#include "network_standard.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -88,6 +89,12 @@ static struct
 	unsigned long start;
 } vehicle_blends[MAXIMUM_LOCAL_PLAYERS];
 
+/* the widest field of view a Pro 2v2 game draws (network_standard_pro_game),
+in display.fov's degrees across at 16:9: its vertical angle, the one every
+shape of window keeps, so a 4:3 view is about 94 degrees across, 16:10's 104
+and 21:9's 124, as at display.fov 110 outside one. The setting stays as it is */
+#define PRO_FIELD_OF_VIEW 110.0
+
 /* an angle in degrees across at 16:9 as the tangent of half the vertical
 angle, or 0 (the stock view) outside 20 to 160; above 150 only while
 display.panini is on, 150 otherwise (panini_projection.h's
@@ -96,6 +103,14 @@ static real fov_tangent(double degrees)
 {
 	degrees = panini_field_of_view(degrees, panini_strength());
 	return degrees ? (real)(tan(degrees * _pi / 360.0) * (9.0 / 16.0)) : 0.0f;
+}
+
+/* a field of view's tangent at most PRO_FIELD_OF_VIEW's */
+static real fov_pro_capped(real tangent)
+{
+	real cap = (real)(tan(PRO_FIELD_OF_VIEW * _pi / 360.0) * (9.0 / 16.0));
+
+	return tangent > cap ? cap : tangent;
 }
 
 /* display.fov's and display.vehicle_fov's tangents (0: the stock view):
@@ -295,6 +310,9 @@ static real render_fov_adjust(short local_player_index, real native_vertical_fie
 		requested_tangent = vehicle_tangent;
 	else
 		requested_tangent = foot_tangent + (vehicle_tangent - foot_tangent) * vehicle_weight;
+	/* (a Pro 2v2 game's at most PRO_FIELD_OF_VIEW, on foot and seated) */
+	if (network_standard_pro_game())
+		requested_tangent = fov_pro_capped(requested_tangent);
 	/* (the unzoomed view's scale of the reticle: a zoom leaves it as it is,
 	as the stock game draws its reticle one size at every zoom) */
 	if (requested_tangent > 0.0f)

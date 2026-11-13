@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The macOS app's appcast (port/macos/README.md, "Updates"): appcast.xml,
 which a release carries beside its OpenH1.dmg, and which the release apps
-ask for at https://github.com/OpenH1/OpenH1/releases/latest/download/appcast.xml
+ask for at https://github.com/OpenH1/goath1/releases/latest/download/appcast.xml
 (Sparkle's SUFeedURL, tools/macos_build.py's SPARKLE_FEED).
 
     python3 tools/macos_appcast.py --build 412 --url <the release's OpenH1.dmg> \\
@@ -43,7 +43,7 @@ def appcast(build: int, url: str, signature: str, length: str, notes: str, relea
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
   <channel>
     <title>OpenH1</title>
-    <link>https://github.com/OpenH1/OpenH1/releases</link>
+    <link>https://github.com/OpenH1/goath1/releases</link>
     <language>en</language>
     <item>
       <title>Build {version}</title>

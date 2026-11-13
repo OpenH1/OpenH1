@@ -71,7 +71,7 @@ SPARKLE_URL = (f"https://github.com/sparkle-project/Sparkle/releases/download/{S
 # and the public half of the key its disk images are signed with (EdDSA:
 # tools/setup_sparkle_key.sh), from the SPARKLE_PUBLIC_KEY environment
 # variable (CI's repository variable); an app without both never looks
-SPARKLE_FEED = "https://github.com/OpenH1/OpenH1/releases/latest/download/appcast.xml"
+SPARKLE_FEED = "https://github.com/OpenH1/goath1/releases/latest/download/appcast.xml"
 
 # the guest's code paths beside the architecture's: the Mac's (the base
 # register is added by generate_guest_image); Apple's clang otherwise notes

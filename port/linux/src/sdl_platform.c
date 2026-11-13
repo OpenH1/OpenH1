@@ -737,7 +737,7 @@ static BOOL data_extract(const char *image, const char *destination, BOOL instal
 	/* (waited for through extraction.finished; the Windows port's threads
 	cannot be joined) */
 	pthread_detach(thread);
-	window = SDL_CreateWindow("Halo", 640, 150, 0);
+	window = SDL_CreateWindow("GOAT H1", 640, 150, 0);
 	if (window)
 	{
 		renderer = SDL_CreateRenderer(window, NULL);
@@ -1847,7 +1847,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		(void)width;
 		(void)height;
 		platform_screen_mode(&pixel_width, &pixel_height);
-		platform_window = SDL_CreateWindow("Halo", (int)pixel_width, (int)pixel_height,
+		platform_window = SDL_CreateWindow("GOAT H1", (int)pixel_width, (int)pixel_height,
 			PLATFORM_WINDOW_DRAWING | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 	}
 #else
@@ -1865,12 +1865,12 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	game (vr.c) */
 	if (halo_vr_enabled() && host_vr_probe() != VR_BINDING_NONE)
 	{
-		platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
+		platform_window = SDL_CreateWindow("GOAT H1", (int)platform_window_width, (int)platform_window_height,
 			PLATFORM_WINDOW_DRAWING | SDL_WINDOW_HIDDEN);
 	}
 	else
 #endif
-	platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
+	platform_window = SDL_CreateWindow("GOAT H1", (int)platform_window_width, (int)platform_window_height,
 		PLATFORM_WINDOW_DRAWING | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
 		(config_boolean("debug.hidden_window") ? SDL_WINDOW_HIDDEN : 0) |
 		(platform_fullscreen_setting() ? SDL_WINDOW_FULLSCREEN : 0));
@@ -1881,7 +1881,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	if (!platform_window)
 	{
 		platform_log("SDL_CreateWindow with Vulkan failed (%s): the frames are drawn and not shown", SDL_GetError());
-		platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
+		platform_window = SDL_CreateWindow("GOAT H1", (int)platform_window_width, (int)platform_window_height,
 			SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
 			(config_boolean("debug.hidden_window") ? SDL_WINDOW_HIDDEN : 0) |
 			(platform_fullscreen_setting() ? SDL_WINDOW_FULLSCREEN : 0));
@@ -4103,13 +4103,14 @@ BOOL platform_ui_pointer_read(struct platform_ui_pointer *pointer)
 	presses alone: the mouse of whoever is at the computer moves no focus) */
 	if (test_menu_run())
 	{
-		/* (but its own clicks: "click:<x>:<y>", platform_test_menu_click;
+		/* (but its own clicks and moves: "click:<x>:<y>" and "point:<x>:<y>",
+		platform_test_menu_click;
 		and its own mouse's wheel, the others' events left out:
 		test_menu_mouse_ignored) */
 		float x, y;
 		int width, height;
 		int wheel_steps = pointer->wheel_steps;
-		BOOL clicked = active && platform_test_menu_click(&x, &y);
+		int clicked = active ? platform_test_menu_click(&x, &y) : 0;
 
 		if (!active || (!clicked && !wheel_steps))
 			return FALSE;
@@ -4121,7 +4122,7 @@ BOOL platform_ui_pointer_read(struct platform_ui_pointer *pointer)
 		pointer->x = pointer->click_x = x * width;
 		pointer->y = pointer->click_y = y * height;
 		pointer->moved = TRUE;
-		pointer->left_clicks = 1;
+		pointer->left_clicks = clicked == 1;
 		return TRUE;
 	}
 	return active;

@@ -51,6 +51,7 @@ looks", below).
 #include "menu_engine.h"
 #include "custom_edition_cache.h"
 #include "network_admin.h"
+#include "network_host_controls.h"
 #include "basic_training.h"
 #include "halo_keyboard.h"
 
@@ -95,6 +96,13 @@ boolean pc_menu_map_frame_at(unsigned long address, long width, long height, lon
 short pc_menu_widget_radius(long definition_index);
 short pc_menu_legend_room(long definition_index);
 void *pc_menu_look_definition(long tag_index);
+/* (port/linux/game/menu_screen.c: a hand-written screen's building block's
+text scale, at the wide layout's extra width) */
+boolean menu_screen_text_scale(long definition_index, short wide_extra, real *scale);
+struct widget_instance;
+struct event_record;
+void ui_widget_port_handler_run(struct widget_instance *widget, struct event_record *event, void *handler,
+	boolean *deleted);
 /* ui_widget.c: how much wider a legends' row is drawn while the keyboard
 plays than the Xbox's pictures and words were */
 short ui_widget_port_key_legend_growth(long definition_index);
@@ -109,9 +117,10 @@ adds to */
 #define CAMPAIGN_PAUSE_SCREEN "ui\\shell\\solo_game\\pause_game\\pause_game"
 /* the campaign's split screen pause screen, which shares its box */
 #define CAMPAIGN_PAUSE_SPLIT_SCREEN "ui\\shell\\solo_game\\pause_game\\pause_game_split_screen"
-/* the tags pause_patch or pause_campaign_patch adds: two buttons and their
-texts (SETTINGS, and HOST CONTROLS, END GAME or FRIENDLY FIRE) */
-#define PAUSE_PATCH_TAGS 4
+/* the tags pause_patch or pause_campaign_patch adds: three buttons at most
+and their texts (SETTINGS; HOST CONTROLS, END GAME or CHAPTERS; network
+co-op's FRIENDLY FIRE, and its host's HOST CONTROLS) */
+#define PAUSE_PATCH_TAGS 6
 /* what a frame of ui.map's is drawn as in a game map, which has not got it */
 #define BLANK_PNG "ce/port/blank__0.png"
 #define UI_WIDGET_DEFINITION_TAG 'DeLa'
@@ -293,7 +302,13 @@ struct menu_wide
 {
 	struct ui_widget_definition *definition;
 	short dx, dw;
+	/* (and past 16:9, a look's past: its move and growth at 21:9 past 16:9's,
+	ui_widget_port_past_scale) */
+	short past_dx, past_dw;
 	short x1;
+	/* a spinner's right arrow's sides (its footer's), which move with its
+	right side */
+	short footer_x0, footer_x1;
 };
 
 /* a widget of the menus' files as the menu engine draws it
@@ -307,6 +322,9 @@ struct menu_look
 	boolean made;
 	struct menu_wide wide;
 	short radius;
+	/* its text's scale at the menus' 640 and at 16:9 and wider (its text's
+	scale: pc_menu_text_scale; 1 and 1, its font's size) */
+	real text_scale_least, text_scale_most;
 };
 
 /* a spinner bound to a setting (menu_functions.c) */
@@ -535,11 +553,15 @@ static char const *const port_function_names[] =
 	"port settings ok", "port settings cancel", "port settings keep", "port settings page cancel",
 	"port settings new profile", "port settings profiles", "port settings report", "port settings weapon reset",
 	"port settings gyro calibrate", "port settings clear caches",
+	/* (Settings' search, the menu engine's: settings_search_menu.inc) */
+	"port settings search", "port settings search edit", "port settings search back",
 	/* (Online's Discord account: menu_functions.c's discord_link and
 	discord_unlink) */
 	"port discord link", "port discord unlink",
 	/* (Settings' sliders: menu_functions.c's settings_slider_*) */
 	"port slider left", "port slider right", "port slider edit",
+	/* (Settings' segmented rows: menu_functions.c's settings_segment_pick) */
+	"port setting segment",
 	/* (the server browsers' favorites: menu_functions.c's browser_favorite_toggle) */
 	"port browser favorite",
 	/* (internet play's connecting box: menu_functions.c's connect_dialog) */
@@ -555,7 +577,7 @@ static char const *const port_function_names[] =
 	"port browser filters", "port browser search", "port browser search next", "port browser search clear",
 	/* (Multiplayer's PARTY and its screen: party_menu.inc) */
 	"port party open", "port party button", "port party x", "port party y",
-	/* (Multiplayer's MATCHMAKING and its screen: matchmaking_menu.inc) */
+	/* (the main menu's PRO 2V2 screen: matchmaking_menu.inc) */
 	"port matchmaking button", "port matchmaking x",
 	/* (Multiplayer's FRIENDS and its screens: friends_menu.inc) */
 	"port friends open", "port friends button", "port friends x", "port friends y",
@@ -576,9 +598,16 @@ static char const *const port_function_names[] =
 	"port campaign init", "port campaign continue", "port campaign missions", "port campaign missions init",
 	"port campaign previous", "port campaign next", "port campaign tab", "port campaign tab previous",
 	"port campaign tab next", "port campaign choose", "port campaign difficulty init", "port campaign play",
+	"port campaign difficulty previous", "port campaign difficulty next",
+	"port campaign up", "port campaign down",
 	/* (a mission in progress started again: campaign_menu.inc's campaign_restart_*) */
 	"port campaign restart ask", "port campaign missions restart", "port campaign restart",
 	"port campaign restart cancel",
+	/* (the main menu's 2V2 browser: doubles_browser.inc) */
+	"port doubles init", "port doubles dispose", "port doubles host", "port doubles find", "port doubles friend",
+	"port doubles join", "port doubles invite", "port doubles x",
+	/* (a hand-written screen's item: its action, menu_screen.c) */
+	"port screen do",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -628,6 +657,8 @@ static char const *const port_game_data_input_names[] =
 	/* (the campaign's screens: campaign_menu.inc) */
 	"port campaign update", "port campaign missions update", "port campaign difficulty update",
 	"port campaign restart update",
+	/* (the main menu's 2V2 browser: doubles_browser.inc) */
+	"port doubles update",
 };
 
 /* a pause box made wider while the keyboard plays (pause_boxes_fit) */
@@ -665,6 +696,9 @@ static struct
 	char const **sources;
 	long source_count;
 	short wide_extra;
+	/* (and the width past 16:9's they are laid out for now:
+	ui_widget_port_past_scale) */
+	short past_extra;
 	boolean loaded;
 	char root[300];
 	/* the tags' generation they were added to (cache_files_tags_generation):
@@ -749,6 +783,18 @@ quarter has the 640's); a widget anchored on a touchscreen (anchor_left,
 anchor_right, stretch) keeps its anchor instead. */
 #define WIDE_LAYOUT_WIDTH 852
 #define WIDE_LAYOUT_EXTRA (WIDE_LAYOUT_WIDTH - 640)
+/* A look in the model (the menu engine's: tools/port_settings.py's tall
+layout) may say how it is laid out past 16:9 too: its past, "dx dw", moves
+it dx and makes it dw wider at 21:9 (WIDE_LAYOUT_PAST_WIDTH) than at 16:9,
+and by its part of that on a screen between them, and more on a wider one,
+so that its screen is used edge to edge */
+#define WIDE_LAYOUT_PAST_WIDTH 1138
+#define WIDE_LAYOUT_PAST_EXTRA (WIDE_LAYOUT_PAST_WIDTH - WIDE_LAYOUT_WIDTH)
+/* On a touchscreen a widget moved past 16:9 and not made wider (a title, a
+prompt, a tab) is moved less, to the phone's safe area's side (72, an iPhone's
+59 points: menu_layout.c's MENU_LAYOUT_PHONE_SIDE) from the screen's edge, not
+the layout's margin (24): so much less of the width past 16:9 each side */
+#define WIDE_LAYOUT_TOUCH_INSET (72 - 24)
 
 /* the extra width a view this wide lays the port's screens out in: 0 at the
 menus' 640 or less, WIDE_LAYOUT_EXTRA at 16:9 and wider */
@@ -764,6 +810,22 @@ short ui_widget_port_wide_scale(short value, short extra)
 	long scaled = (long)value * extra;
 
 	return (short)((scaled + (scaled < 0 ? -WIDE_LAYOUT_EXTRA / 2 : WIDE_LAYOUT_EXTRA / 2)) / WIDE_LAYOUT_EXTRA);
+}
+
+/* the width of a view this wide past 16:9's (none at 16:9 or narrower) */
+static short wide_past_of(long width)
+{
+	return (short)(width <= WIDE_LAYOUT_WIDTH ? 0 : MIN(width - WIDE_LAYOUT_WIDTH, 4 * WIDE_LAYOUT_PAST_EXTRA));
+}
+
+/* a past attribute's move or growth at a width past 16:9's (its 21:9
+value's part of it, or more, rounded) */
+short ui_widget_port_past_scale(short value, short past)
+{
+	long scaled = (long)value * past;
+
+	return (short)((scaled + (scaled < 0 ? -WIDE_LAYOUT_PAST_EXTRA / 2 : WIDE_LAYOUT_PAST_EXTRA / 2)) /
+		WIDE_LAYOUT_PAST_EXTRA);
 }
 
 /* whether a widget with a wide layout keeps its touchscreen's anchor */
@@ -791,13 +853,20 @@ static struct menu_wide const *wide_of(long definition_index)
 }
 
 /* a widget's definition as much wider as its wide layout says at an extra
-width */
-static void wide_apply(struct menu_wide const *wide, short extra)
+width (and past 16:9's; a spinner's right arrow with its right side) */
+static void wide_apply(struct menu_wide const *wide, short extra, short past)
 {
-	if (wide->definition && wide->dw)
+	if (wide->definition && (wide->dw || wide->past_dw))
 	{
-		wide->definition->bounds.x1 = (short)(wide->x1 +
-			(wide_anchored(wide) ? 0 : ui_widget_port_wide_scale(wide->dw, extra)));
+		short grown = wide_anchored(wide) ? 0 :
+			(short)(ui_widget_port_wide_scale(wide->dw, extra) + ui_widget_port_past_scale(wide->past_dw, past));
+
+		wide->definition->bounds.x1 = (short)(wide->x1 + grown);
+		if (wide->definition->type == _widget_type_spinner_list)
+		{
+			wide->definition->list_footer_bounds.x0 = (short)(wide->footer_x0 + grown);
+			wide->definition->list_footer_bounds.x1 = (short)(wide->footer_x1 + grown);
+		}
 	}
 }
 
@@ -807,17 +876,19 @@ ui_widget_port_wide_offset's, as it is drawn) */
 void ui_widget_port_wide_layout(long width)
 {
 	short extra = ui_widget_port_wide_extra_of(width);
+	short past = wide_past_of(width);
 	long index;
 
 	pause_boxes_fit();
-	if (extra == menu_tags.wide_extra || !menu_tags.wides)
+	if ((extra == menu_tags.wide_extra && past == menu_tags.past_extra) || !menu_tags.wides)
 		return;
 	menu_tags.wide_extra = extra;
+	menu_tags.past_extra = past;
 	for (index = 0; index < menu_tags.wide_count; index++)
-		wide_apply(&menu_tags.wides[index], extra);
+		wide_apply(&menu_tags.wides[index], extra, past);
 	/* (and the menu engine's definitions made) */
 	for (index = 0; index < menu_tags.look_count; index++)
-		wide_apply(&menu_tags.looks[index].wide, extra);
+		wide_apply(&menu_tags.looks[index].wide, extra, past);
 }
 
 /* the extra width the port's screens are laid out in now (the view's past
@@ -827,13 +898,27 @@ short ui_widget_port_wide_extra(void)
 	return menu_tags.wide_extra;
 }
 
+short ui_widget_port_past_extra(void)
+{
+	return menu_tags.past_extra;
+}
+
+/* the width past 16:9 a widget moved and not made wider is moved by: on a
+touchscreen, short of the safe area's sides (WIDE_LAYOUT_TOUCH_INSET) */
+short ui_widget_port_past_move(void)
+{
+	return ui_widget_port_touch_menus() ?
+		(short)MAX(0, menu_tags.past_extra - 2 * WIDE_LAYOUT_TOUCH_INSET) : menu_tags.past_extra;
+}
+
 /* how far a widget (and what is in it) is moved where it is drawn, in the
 layout now */
 short ui_widget_port_wide_offset(long definition_index)
 {
 	struct menu_wide const *wide = wide_of(definition_index);
 
-	return wide ? ui_widget_port_wide_scale(wide->dx, menu_tags.wide_extra) : 0;
+	return wide ? (short)(ui_widget_port_wide_scale(wide->dx, menu_tags.wide_extra) +
+		ui_widget_port_past_scale(wide->past_dx, wide->past_dw ? menu_tags.past_extra : ui_widget_port_past_move())) : 0;
 }
 
 /* how much wider than its picture a widget is drawn in the layout now: its
@@ -842,7 +927,30 @@ short ui_widget_port_wide_stretch(long definition_index)
 {
 	struct menu_wide const *wide = wide_of(definition_index);
 
-	return wide ? ui_widget_port_wide_scale(wide->dw, menu_tags.wide_extra) : 0;
+	return wide ? (short)(ui_widget_port_wide_scale(wide->dw, menu_tags.wide_extra) +
+		ui_widget_port_past_scale(wide->past_dw, menu_tags.past_extra)) : 0;
+}
+
+/* the scale a widget's text is drawn at in the layout now (its look's text
+scale, between its least at the menus' 640 and its most at 16:9 and wider;
+1 for a widget without one) */
+real pc_menu_text_scale(long definition_index)
+{
+	long index;
+	struct menu_look const *look;
+	real block_scale;
+
+	/* (a hand-written screen's building block's: menu_screen.c) */
+	if (definition_index != NONE && menu_screen_text_scale(definition_index, menu_tags.wide_extra, &block_scale))
+		return block_scale;
+	if (!menu_tags.looks || definition_index == NONE || !menu_engine_looks())
+		return 1.0f;
+	index = DATUM_INDEX_TO_ABSOLUTE_INDEX(definition_index) - menu_tags.original_count;
+	if (index < 0 || index >= menu_tags.look_count || !menu_tags.looks[index].definition)
+		return 1.0f;
+	look = &menu_tags.looks[index];
+	return look->text_scale_least + (look->text_scale_most - look->text_scale_least) *
+		(real)menu_tags.wide_extra / (real)WIDE_LAYOUT_EXTRA;
 }
 
 /* ---------- private code */
@@ -1124,6 +1232,23 @@ static long function_index(char const *name, char const *file, long line)
 			return index;
 	}
 	problem(file, line, "there is no event handler function", name);
+	return NONE;
+}
+
+/* an event handler function's index as a widget's handler of the name runs
+it (ours first, then the game's); NONE for none (menu_tour.c's setup) */
+long pc_menu_event_function_index(char const *name)
+{
+	char const *function_name;
+	long index = name_index(name, port_function_names, NUMBEROF(port_function_names));
+
+	if (index != NONE)
+		return PC_MENU_FUNCTION_BASE + index;
+	for (index = 0; (function_name = ui_widget_event_handler_function_name(index)) != NULL; index++)
+	{
+		if (!strcmp(name, function_name))
+			return index;
+	}
 	return NONE;
 }
 
@@ -1931,6 +2056,8 @@ static void *widget_build(long widget_index)
 		source->file, source->line);
 	definition->horizontal_offset = (short)source->text_x;
 	definition->vertical_offset = (short)source->text_y;
+	parse_bounds(source->header_bounds, &definition->list_header_bounds, source->file, source->line);
+	parse_bounds(source->footer_bounds, &definition->list_footer_bounds, source->file, source->line);
 	/* its wide layout: "dx dw" (ui_widget_port_wide_layout) */
 	if (source->wide)
 	{
@@ -1938,10 +2065,10 @@ static void *widget_build(long widget_index)
 		long dx, dw;
 		char end;
 
-		if (sscanf(source->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -WIDE_LAYOUT_EXTRA ||
-			dx > WIDE_LAYOUT_EXTRA || dw < -WIDE_LAYOUT_EXTRA || dw > WIDE_LAYOUT_EXTRA)
+		if (sscanf(source->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -2 * WIDE_LAYOUT_EXTRA ||
+			dx > 2 * WIDE_LAYOUT_EXTRA || dw < -2 * WIDE_LAYOUT_EXTRA || dw > 2 * WIDE_LAYOUT_EXTRA)
 		{
-			problem(source->file, source->line, "wide is \"dx dw\", each -212 to 212:", source->wide);
+			problem(source->file, source->line, "wide is \"dx dw\", each -424 to 424:", source->wide);
 		}
 		else if (index >= 0 && index < menu_tags.wide_count)
 		{
@@ -1949,6 +2076,8 @@ static void *widget_build(long widget_index)
 			menu_tags.wides[index].dx = (short)dx;
 			menu_tags.wides[index].dw = (short)dw;
 			menu_tags.wides[index].x1 = definition->bounds.x1;
+			menu_tags.wides[index].footer_x0 = definition->list_footer_bounds.x0;
+			menu_tags.wides[index].footer_x1 = definition->list_footer_bounds.x1;
 		}
 	}
 	/* the list */
@@ -1980,8 +2109,6 @@ static void *widget_build(long widget_index)
 		reference_set(&definition->list_footer_bitmap, BITMAP_GROUP_TAG,
 			tag_named(BITMAP_GROUP_TAG, source->footer_bitmap, source->file, source->line));
 	}
-	parse_bounds(source->header_bounds, &definition->list_header_bounds, source->file, source->line);
-	parse_bounds(source->footer_bounds, &definition->list_footer_bounds, source->file, source->line);
 	reference_clear(&definition->extended_description_widget, UI_WIDGET_DEFINITION_TAG);
 	if (source->description)
 	{
@@ -2523,23 +2650,50 @@ static boolean look_make(struct menu_look *made, long tag_index)
 	if (!look_children(definition, tag, model, look))
 		return FALSE;
 	/* its wide layout: "dx dw", as the menus' 640 have it, and as wide now
-	(ui_widget_port_wide_layout) */
-	if (look->wide)
+	(ui_widget_port_wide_layout); and past 16:9, "dx dw" */
+	if (look->wide || look->past)
 	{
-		long dx, dw;
+		long dx = 0, dw = 0, past_dx = 0, past_dw = 0;
 		char end;
 
-		if (sscanf(look->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -WIDE_LAYOUT_EXTRA ||
-			dx > WIDE_LAYOUT_EXTRA || dw < -WIDE_LAYOUT_EXTRA || dw > WIDE_LAYOUT_EXTRA)
+		if (look->wide && (sscanf(look->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -2 * WIDE_LAYOUT_EXTRA ||
+			dx > 2 * WIDE_LAYOUT_EXTRA || dw < -2 * WIDE_LAYOUT_EXTRA || dw > 2 * WIDE_LAYOUT_EXTRA))
 		{
-			look_missing(made->name, "its wide is not \"dx dw\", each -212 to 212:", look->wide);
+			look_missing(made->name, "its wide is not \"dx dw\", each -424 to 424:", look->wide);
+			return FALSE;
+		}
+		if (look->past && (sscanf(look->past, "%ld %ld %c", &past_dx, &past_dw, &end) != 2 ||
+			past_dx < -2 * WIDE_LAYOUT_PAST_EXTRA || past_dx > 2 * WIDE_LAYOUT_PAST_EXTRA ||
+			past_dw < -2 * WIDE_LAYOUT_PAST_EXTRA || past_dw > 2 * WIDE_LAYOUT_PAST_EXTRA))
+		{
+			look_missing(made->name, "its past is not \"dx dw\", each -572 to 572:", look->past);
 			return FALSE;
 		}
 		made->wide.definition = definition;
 		made->wide.dx = (short)dx;
 		made->wide.dw = (short)dw;
+		made->wide.past_dx = (short)past_dx;
+		made->wide.past_dw = (short)past_dw;
 		made->wide.x1 = definition->bounds.x1;
-		wide_apply(&made->wide, menu_tags.wide_extra);
+		made->wide.footer_x0 = definition->list_footer_bounds.x0;
+		made->wide.footer_x1 = definition->list_footer_bounds.x1;
+		wide_apply(&made->wide, menu_tags.wide_extra, menu_tags.past_extra);
+	}
+	/* its text's scale: "least most", each a half to three */
+	made->text_scale_least = made->text_scale_most = 1.0f;
+	if (look->text_scale)
+	{
+		float least, most;
+		char end;
+
+		if (sscanf(look->text_scale, "%f %f %c", &least, &most, &end) != 2 || least < 0.5f || least > 3.0f ||
+			most < 0.5f || most > 3.0f)
+		{
+			look_missing(made->name, "its text's scale is not \"least most\", each 0.5 to 3:", look->text_scale);
+			return FALSE;
+		}
+		made->text_scale_least = least;
+		made->text_scale_most = most;
 	}
 	made->definition = definition;
 	return TRUE;
@@ -2620,6 +2774,39 @@ void const *menu_tags_behaviour_handlers(
 		return NULL;
 	*count = menu_tags.behaviour_handler_counts[index];
 	return menu_tags.behaviour_handlers[index];
+}
+
+/* the screen of the name (the menus' files', "main_menu/campaign/campaign_screen")
+opened from the widget, as a handler's open opens it (its history, its sound):
+the hand-written screens' actions (menu_screen.c); FALSE if there is no such
+screen */
+boolean menu_tags_open(
+	struct widget_instance *widget,
+	struct event_record *event,
+	char const *screen,
+	boolean *deleted)
+{
+	struct ui_widget_event_handler_reference handler;
+	char name[256];
+	long tag_index;
+	size_t index;
+
+	*deleted = FALSE;
+	snprintf(name, sizeof(name), PC_MENU_TAG_PREFIX "%s", screen);
+	for (index = 0; name[index]; index++)
+	{
+		if (name[index] == '/')
+			name[index] = '\\';
+	}
+	tag_index = tag_loaded(UI_WIDGET_DEFINITION_TAG, name);
+	if (tag_index == NONE)
+		return FALSE;
+	memset(&handler, 0, sizeof(handler));
+	reference_clear(&handler.sound_effect, SOUND_TAG);
+	reference_set(&handler.widget_tag, UI_WIDGET_DEFINITION_TAG, tag_index);
+	SET_FLAG(handler.flags, _event_handler_open_widget_bit, TRUE);
+	ui_widget_port_handler_run(widget, event, &handler, deleted);
+	return TRUE;
 }
 
 short menu_tags_handler_event(
@@ -2789,48 +2976,81 @@ static void *pause_button(struct cache_file_tag_instance *instances, struct ui_w
 
 /* the list's buttons: SETTINGS, and network co-op's FRIENDLY FIRE (whose
 text says the machine's choice: menu_functions.c), a network game's host's
-HOST CONTROLS, or the host's END GAME, put before LEAVE GAME or REVERT TO
-SAVED (quit); returns how many were added, and how much taller the list grew
-for them (growth) */
+HOST CONTROLS (network co-op's too), or the host's END GAME, put before
+LEAVE GAME or REVERT TO SAVED (quit; network_host_controls_pause_rows_for);
+returns how many were added, and how much taller the list grew for them
+(growth) */
 static long pause_list_patch(struct cache_file_tag_instance *instances, struct ui_widget_definition *list, long quit,
 	boolean host, short *growth)
 {
 	long host_controls_widget = widget_named(PAUSE_HOST_CONTROLS_SCREEN);
-	boolean host_controls = host && !network_game_is_splitscreen_local() && host_controls_widget != NONE;
 	long training_widget = widget_named(PAUSE_TRAINING_SCREEN);
-	boolean training = host && !build.coop && basic_training_active() && training_widget != NONE;
+	struct host_controls_pause_view view;
+	unsigned long rows;
 	struct ui_widget_child_reference *children = list->child_widgets.address;
-	long count = list->child_widgets.count, added = host || build.coop ? 2 : 1, child;
-	struct ui_widget_child_reference *grown = allocate((count + added) * sizeof(struct ui_widget_child_reference));
+	long count = list->child_widgets.count, added = 1, child;
+	struct ui_widget_child_reference *grown;
 	struct ui_widget_definition const *model = tag_get(UI_WIDGET_DEFINITION_TAG, children[quit].widget_tag.index);
 	long settings_widget = widget_named(PAUSE_SETTINGS_SCREEN);
 	short spacing = count >= 2 ? (short)(children[count - 1].vertical_offset - children[count - 2].vertical_offset) :
 		PAUSE_BUTTON_SPACING;
-	char const *names[2];
-	void *buttons[2];
-	long tags[2];
+	char const *names[3];
+	void *buttons[3];
+	long tags[3];
 
+	view.host = host;
+	view.coop = build.coop;
+	view.local = network_game_is_splitscreen_local();
+	view.training = basic_training_active();
+	view.host_controls_screen = host_controls_widget != NONE;
+	view.training_screen = training_widget != NONE;
+	rows = network_host_controls_pause_rows_for(&view);
+	for (child = 0; child < NUMBER_OF_HOST_CONTROLS_PAUSE_ROWS; child++)
+		added += TEST_FLAG(rows, child) ? 1 : 0;
+	if (added > (long)NUMBEROF(names))
+		return 0;
+	grown = allocate((count + added) * sizeof(struct ui_widget_child_reference));
 	if (!grown || settings_widget == NONE || spacing <= 0)
 		return 0;
 	names[0] = "pause/settings_button";
 	tags[0] = next_tag();
 	buttons[0] = pause_button(instances, model, names[0], "SETTINGS",
 		function_index("port settings begin", "pause", 0), build.widget_tags[settings_widget], NULL, NONE);
-	names[1] = build.coop ? "pause/friendly_fire_button" : training ? "pause/training_button" :
-		host_controls ? "pause/host_controls_button" : "pause/end_game_button";
-	tags[1] = added > 1 ? next_tag() : NONE;
-	buttons[1] = build.coop ?
-		pause_button(instances, model, names[1], "FRIENDLY FIRE ON",
+	added = 1;
+	if (TEST_FLAG(rows, _host_controls_pause_friendly_fire))
+	{
+		names[added] = "pause/friendly_fire_button";
+		tags[added] = next_tag();
+		buttons[added++] = pause_button(instances, model, "pause/friendly_fire_button", "FRIENDLY FIRE ON",
 			function_index("port coop friendly fire", "pause", 0), NONE, "FRIENDLY FIRE OFF",
-			game_data_input_index("port coop friendly fire text", "pause", 0)) :
-		training ? pause_button(instances, model, names[1], "CHAPTERS",
-			function_index("port training open", "pause", 0), build.widget_tags[training_widget], NULL, NONE) :
-		host_controls ? pause_button(instances, model, names[1], "HOST CONTROLS",
-			function_index("port host open", "pause", 0), build.widget_tags[host_controls_widget], NULL, NONE) :
-		host ? pause_button(instances, model, names[1], "END GAME",
-			function_index("port pause end game", "pause", 0), NONE, NULL, NONE) : NULL;
-	if (!buttons[0] || (added > 1 && !buttons[1]))
-		return 0;
+			game_data_input_index("port coop friendly fire text", "pause", 0));
+	}
+	if (TEST_FLAG(rows, _host_controls_pause_chapters))
+	{
+		names[added] = "pause/training_button";
+		tags[added] = next_tag();
+		buttons[added++] = pause_button(instances, model, "pause/training_button", "CHAPTERS",
+			function_index("port training open", "pause", 0), build.widget_tags[training_widget], NULL, NONE);
+	}
+	if (TEST_FLAG(rows, _host_controls_pause_host_controls))
+	{
+		names[added] = "pause/host_controls_button";
+		tags[added] = next_tag();
+		buttons[added++] = pause_button(instances, model, "pause/host_controls_button", "HOST CONTROLS",
+			function_index("port host open", "pause", 0), build.widget_tags[host_controls_widget], NULL, NONE);
+	}
+	if (TEST_FLAG(rows, _host_controls_pause_end_game))
+	{
+		names[added] = "pause/end_game_button";
+		tags[added] = next_tag();
+		buttons[added++] = pause_button(instances, model, "pause/end_game_button", "END GAME",
+			function_index("port pause end game", "pause", 0), NONE, NULL, NONE);
+	}
+	for (child = 0; child < added; child++)
+	{
+		if (!buttons[child])
+			return 0;
+	}
 	for (child = 0; child < added; child++)
 		instance_set(instances, UI_WIDGET_DEFINITION_TAG, tags[child], names[child], "", buttons[child]);
 	if (quit)
@@ -3153,7 +3373,8 @@ static void pause_patch(struct cache_file_tag_instance *instances)
 /* ---------- the campaign's pause menu
 
 Its list gets the same SETTINGS (pause_list_patch) before REVERT TO SAVED, a
-copy of it, and in network co-op FRIENDLY FIRE after SETTINGS. The rows use
+copy of it, and in network co-op FRIENDLY FIRE after SETTINGS, then the
+host's HOST CONTROLS (as a multiplayer game's host has it). The rows use
 the PC version's pause menu's pitch, so a highlight sits clear of the next
 label. The prompts (B and A) stay that same gap under the last row, and the
 box beside the mission objectives grows with them, and the box is as wide as
@@ -3161,12 +3382,13 @@ the legends need (pause_campaign_widen). Settings there hides the rows that
 do not work in a game (their conditions in the model: menu_functions.c's
 settings_rows_conditions). */
 
-/* the pause box's frames from the third (pause_box_height's of five and six
-rows), and the mission objectives' box's, are the stock 159 grown by the 36
-that five rows at the PC version's pitch add (SETTINGS), then by the 66 that
-six add (network co-op's FRIENDLY FIRE too: tools/port_settings.py) */
+/* the pause box's frames from the third (pause_box_height's of five, six and
+seven rows), and the mission objectives' box's, are the stock 159 grown by
+the 36 that five rows at the PC version's pitch add (SETTINGS), by the 66
+that six add (network co-op's FRIENDLY FIRE too), then by the 96 that seven
+add (its host's HOST CONTROLS too: tools/port_settings.py) */
 #define PAUSE_CAMPAIGN_BOX_FRAME 2
-static short const pause_campaign_box_heights[] = { 195, 225 };
+static short const pause_campaign_box_heights[] = { 195, 225, 255 };
 
 /* the port box piece for one of the map's pause box pieces, else NULL */
 static char const *pause_campaign_box_bitmap(long tag_index)
@@ -3344,7 +3566,7 @@ static void pause_campaign_patch(struct cache_file_tag_instance *instances)
 		struct ui_widget_definition *list;
 		struct ui_widget_child_reference const *rows;
 		short span, top, grow, bottom;
-		long revert;
+		long revert, added;
 
 		if (children[child].widget_tag.index == NONE)
 			continue;
@@ -3364,7 +3586,11 @@ static void pause_campaign_patch(struct cache_file_tag_instance *instances)
 		span = (short)(rows[list->child_widgets.count - 1].vertical_offset - rows[0].vertical_offset);
 		top = rows[0].vertical_offset;
 		bottom = list->bounds.y1;
-		if (pause_list_patch(instances, list, revert, FALSE, &grow))
+		/* (network co-op's host's HOST CONTROLS too, as a multiplayer
+		game's host has them) */
+		added = pause_list_patch(instances, list, revert, build.coop && global_network_game_server_get() != NULL,
+			&grow);
+		if (added)
 		{
 			struct ui_widget_child_reference *placed = list->child_widgets.address;
 			struct ui_widget_definition const *button =
@@ -3398,7 +3624,8 @@ static void pause_campaign_patch(struct cache_file_tag_instance *instances)
 				pause_campaign_grow_box(definition, need);
 			}
 			pause_campaign_widen(definition);
-			platform_log("menus: the pause menu has SETTINGS%s", build.coop ? " and FRIENDLY FIRE" : "");
+			platform_log("menus: the pause menu has SETTINGS%s%s", build.coop ? " and FRIENDLY FIRE" : "",
+				added > (build.coop ? 2 : 1) ? " and HOST CONTROLS" : "");
 		}
 		return;
 	}
@@ -3591,8 +3818,10 @@ void menu_tags_loaded(
 			if (source_index >= 0 && source_index < menu_tags.source_count)
 				menu_tags.sources[source_index] = widget->source;
 			/* (its look in the model found by its name: the menus' files' are
-			kept until they are read again) */
-			if (source_index >= 0 && source_index < menu_tags.look_count)
+			kept until they are read again; but the hand-written screens'
+			building blocks, screens/..., which are drawn from their own
+			definitions: menu_screen.c) */
+			if (source_index >= 0 && source_index < menu_tags.look_count && strncmp(widget->name, "screens/", 8))
 				menu_tags.looks[source_index].name = widget->name;
 		}
 		if (widget->radius > 0)
@@ -3678,8 +3907,11 @@ char const *pc_menus_root_name(
 	{
 		static char name[300];
 		long index;
+		/* (the screen's name, and after it the functions the game runs as it
+		opens the screen, a tab before each: menu_tour_setup's) */
+		int length = (int)strcspn(open, "\t");
 
-		snprintf(name, sizeof(name), "%s%s", PC_MENU_TAG_PREFIX, open);
+		snprintf(name, sizeof(name), "%s%.*s", PC_MENU_TAG_PREFIX, length, open);
 		for (index = 0; name[index]; index++)
 		{
 			if (name[index] == '/')
@@ -3689,10 +3921,13 @@ char const *pc_menus_root_name(
 		{
 			extern boolean pc_menu_profile_edit_begin(void);
 
+			extern void menu_tour_setup(char const *functions);
+
 			pc_menu_profile_edit_begin();
+			menu_tour_setup(open + length);
 			return name;
 		}
-		platform_log("menus: debug.menu_open: there is no widget named %s", open);
+		platform_log("menus: debug.menu_open: there is no widget named %.*s", length, open);
 	}
 	return menu_tags.loaded && menu_tags.root[0] ? menu_tags.root : "ui\\shell\\main_menu\\main_menu";
 }

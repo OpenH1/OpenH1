@@ -160,6 +160,8 @@ static long scripted_camera_object_relative_to(void) { return NONE; }
 static boolean scripted_camera_object_is_first_person_camera(long index) { return FALSE; }
 static boolean cinematic_in_progress(void) { return FALSE; }
 static int config_boolean(char const *name) { return direct_camera; }
+/* (no host's word against it: network_standard.c's, instant_aim_rule.c's) */
+static boolean network_standard_direct_camera_allowed(void) { return TRUE; }
 static unsigned long config_changes_count;
 static unsigned long config_changes(void) { return config_changes_count; }
 /* the player's unit (NONE while dead) */
