@@ -370,9 +370,11 @@ struct screen_tall
 	struct screen_values values;
 	/* the screen (the parts that take no focus), and its body (the rest) */
 	struct widget_instance *owner, *body;
-	/* the header's detail and the band's button */
+	/* the header's detail and the band's button (in a bar of its own, out
+	of the body: the pointer's, its key's, not the d-pad's) */
 	struct menu_screen_block const *header;
 	struct widget_instance *detail;
+	struct widget_instance *header_bar;
 	struct screen_prompt header_button;
 	/* the tabs */
 	struct menu_screen_block const *tabs;
@@ -740,8 +742,13 @@ static void tall_build_header(struct screen_tall *tall, struct widget_instance *
 
 		if (button->kind != MENU_SCREEN_BUTTON || button->parent != header_index || !menu_screen_when(button->when))
 			continue;
-		made = tall_add(tall, screen, screens.button_tag, TALL_BUTTON_X, TALL_BUTTON_Y, 0, 0, 0, 0);
+		/* (in a bar, as the table's and the panel's buttons: the pointer
+		clicks and taps only a list's items, and the screen is none) */
+		tall->header_bar = tall_add(tall, screen, tall_tag("bar"), 0, TALL_BUTTON_Y, 0, 0, 0, 0);
+		made = tall_add(tall, tall->header_bar, screens.button_tag, TALL_BUTTON_X, TALL_BUTTON_Y, 0, 0, 0, 0);
 		tall_centred(tall, made);
+		if (made)
+			tall->header_bar->focused_child = made;
 		tall->header_button.block = button;
 		tall->header_button.widget = made;
 		snprintf(tall->header_button.key, sizeof(tall->header_button.key), "%s", button->key);
@@ -2845,8 +2852,11 @@ static void tall_bar_frame(struct screen_tall *tall)
 	{
 		char label[MENU_SCREEN_MAXIMUM_TEXT];
 		char text[MENU_SCREEN_MAXIMUM_TEXT];
+		boolean shown = tall_shown(tall, tall->header_button.block);
 
-		tall->header_button.widget->visible = tall_shown(tall, tall->header_button.block);
+		tall->header_button.widget->visible = shown;
+		tall->header_bar->visible = shown;
+		tall->header_bar->disabled = !shown;
 		tall_text(tall, tall->header_button.block->label, label, sizeof(label));
 		snprintf(text, sizeof(text), "%s %s", tall_key_picture(tall->header_button.key), label);
 		tall_text_set(tall->header_button.widget, text);
@@ -2891,8 +2901,7 @@ static void tall_frame(struct screen_open *open)
 	tall_chat_frame(tall);
 	tall_bar_frame(tall);
 	/* (the band's button: the focus back to the body once the pointer is
-	not what gave the button it, as the browser's HOST over its generated
-	screen) */
+	not what gave its bar it; the d-pad steps the body alone) */
 	if (screen->focused_child != tall->body && !ui_widget_port_pointer_focused())
 		screen->focused_child = tall->body;
 	/* (the focus off what cannot have it: the first row, else the bar) */

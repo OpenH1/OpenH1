@@ -316,7 +316,9 @@ join_game_screen`) in each of its modes, by `{browser.*}` bindings and `if`s:
   as it opens.
 
 The classic engine, PRO 2V2's browser and a refused or missing file keep the
-generated screen (and its HOST button, `screen_browser_opened`).
+generated screen. HOST & MORE sits in the band in a bar of its own (out of
+the body, which the d-pad steps): its key, a click and a tap each press it,
+as the pointer clicks only a list's items.
 
 What it lists and does is menu_functions.c's, as for the generated screen: the
 games found, their order, the groups and their headings, the filters, the
