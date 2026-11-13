@@ -21,7 +21,7 @@ LASO (Y), each pressed again to turn its skulls off. -->
 		<item id="fog" label="FOG" state="{skull.fog}" hint="No motion tracker" do="skull fog"/>
 		<item id="tilt" label="TILT" state="{skull.tilt}" hint="Strengths and weaknesses are exaggerated: plasma against shields, bullets against flesh" do="skull tilt"/>
 		<item id="blind" label="BLIND" state="{skull.blind}" hint="No HUD and no weapon in view" do="skull blind"/>
-		<item id="grunt_birthday_party" label="GRUNT BIRTHDAY PARTY" state="{skull.grunt_birthday_party}" hint="A grunt killed by a headshot bursts into confetti, with a cheer" do="skull grunt_birthday_party"/>
+		<item id="grunt_birthday_party" label="BIRTHDAY PARTY" state="{skull.grunt_birthday_party}" hint="Grunt Birthday Party: a grunt killed by a headshot bursts into confetti, with a cheer" do="skull grunt_birthday_party"/>
 	</list>
 	<space/>
 	<buttons>

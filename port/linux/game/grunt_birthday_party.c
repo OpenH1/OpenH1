@@ -202,12 +202,13 @@ static struct
 	short grunt_unit_count;
 } grunt_birthday_party = { NULL, 0, NULL, NULL, NONE, NONE, NONE, { 0 }, 0 };
 
-/* the confetti's colors: each particle's tint, at random between two */
-static real_argb_color const confetti_tints[CONFETTI_COLORS][2] =
+/* the confetti's colors: each particle's tint, at random between two (red,
+green and blue: red to yellow, green to sky blue, blue to pink) */
+static real const confetti_tints[CONFETTI_COLORS][2][3] =
 {
-	{ { 1.0f, { 1.0f, 0.12f, 0.12f } }, { 1.0f, { 1.0f, 0.9f, 0.05f } } },
-	{ { 1.0f, { 0.1f, 1.0f, 0.2f } }, { 1.0f, { 0.05f, 0.75f, 1.0f } } },
-	{ { 1.0f, { 0.3f, 0.35f, 1.0f } }, { 1.0f, { 1.0f, 0.25f, 0.8f } } },
+	{ { 1.0f, 0.12f, 0.12f }, { 1.0f, 0.9f, 0.05f } },
+	{ { 0.1f, 1.0f, 0.2f }, { 0.05f, 0.75f, 1.0f } },
+	{ { 0.3f, 0.35f, 1.0f }, { 1.0f, 0.25f, 0.8f } },
 };
 
 /* ---------- private code */
@@ -218,8 +219,11 @@ static void confetti_release(
 {
 	if (grunt_birthday_party.instances && restore)
 		cache_files_set_tag_instances(grunt_birthday_party.original_instances, grunt_birthday_party.original_count);
-	free(grunt_birthday_party.instances);
-	free(grunt_birthday_party.tags);
+	/* (the game's free takes no NULL) */
+	if (grunt_birthday_party.instances)
+		free(grunt_birthday_party.instances);
+	if (grunt_birthday_party.tags)
+		free(grunt_birthday_party.tags);
 	grunt_birthday_party.instances = NULL;
 	grunt_birthday_party.tags = NULL;
 	grunt_birthday_party.original_instances = NULL;
@@ -418,8 +422,8 @@ static void confetti_effect_make(
 		particles->runtime_direction.i = 1.0f;
 		confetti_reference(&particles->particle, PARTICLE_TAG, tags->particle_name, particle_index);
 		particles->flags = FLAG(_confetti_effect_particle_random_orientation_bit);
-		particles->count_lower_bound = 14;
-		particles->count_upper_bound = 18;
+		particles->count_lower_bound = 18;
+		particles->count_upper_bound = 24;
 		particles->distribution_radius_lower_bound = 0.02f;
 		particles->distribution_radius_upper_bound = 0.05f;
 		particles->velocity_lower_bound = 0.8f;
@@ -427,10 +431,16 @@ static void confetti_effect_make(
 		particles->velocity_cone_angle = 1.1f;
 		particles->angular_velocity_lower_bound = -3.0f * _pi;
 		particles->angular_velocity_upper_bound = 3.0f * _pi;
-		particles->radius_lower_bound = 0.016f;
-		particles->radius_upper_bound = 0.028f;
-		particles->tint_lower_bound = confetti_tints[color][0];
-		particles->tint_upper_bound = confetti_tints[color][1];
+		particles->radius_lower_bound = 0.025f;
+		particles->radius_upper_bound = 0.04f;
+		particles->tint_lower_bound.alpha = 1.0f;
+		particles->tint_lower_bound.red = confetti_tints[color][0][0];
+		particles->tint_lower_bound.green = confetti_tints[color][0][1];
+		particles->tint_lower_bound.blue = confetti_tints[color][0][2];
+		particles->tint_upper_bound.alpha = 1.0f;
+		particles->tint_upper_bound.red = confetti_tints[color][1][0];
+		particles->tint_upper_bound.green = confetti_tints[color][1][1];
+		particles->tint_upper_bound.blue = confetti_tints[color][1][2];
 	}
 }
 
