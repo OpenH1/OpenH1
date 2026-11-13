@@ -222,9 +222,8 @@ height, and the gap under it */
 #define TALL_MAXIMUM_BOXES 760
 #define TALL_MAXIMUM_TARGETS 128
 #define TALL_MAXIMUM_PROMPTS 10
-/* (an arrow's width in a key's cap, the left's or the right's: the
-fallback font's, as wide as a letter) */
-#define TALL_ARROW_LETTERS 10
+/* (an arrow's width in a key's cap, < or >: small_ui's) */
+#define TALL_ARROW_LETTERS 6
 
 /* small_ui's letters' advances (tools/port_settings.py's SMALL_UI_ADVANCES:
 ui.map's font tag's), printable ASCII from the space, for the layout's
@@ -705,8 +704,8 @@ static short tall_prompt_end(char const *key, char const *label, boolean control
 	}
 	else if (!strcmp(key, "dpad"))
 	{
-		/* (two keys' caps, the left arrow's and the right's, each as wide as
-		a key of one letter: TALL_ARROW_LETTERS) */
+		/* (two keys' caps, the left arrow's and the right's, < and >:
+		TALL_ARROW_LETTERS) */
 		short width = (short)MAX(TALL_ARROW_LETTERS + 2 * 3, 19);
 
 		width = (short)(width + (width - TALL_ARROW_LETTERS) % 2);

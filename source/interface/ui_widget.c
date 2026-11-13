@@ -1445,9 +1445,6 @@ struct bitmap_data const *hud_hires_sprite_bitmap(
 and whether a server browser's are the menus' (port/linux/src/xinput_sdl.c) */
 int halo_keyboard_browser_keys_active(
 	void);
-/* port: whether the high-res text draws the menus' text (port/linux/src/text_hires.c) */
-int text_hires_enabled(
-	void);
 boolean hud_key_prompt_draw(
 	short local_player_index,
 	short game_control,
@@ -4528,10 +4525,9 @@ favorite), LB and RB (the white and black buttons, Settings' and the
 browsers' tabs) as Q and E, the right trigger (Multiplayer's and the
 browsers' refresh) as R, the left trigger (the browsers' Filters) as L, back
 as F1, in a server browser R3 (its SEARCH) as /, the D-pad's left and right
-as the arrow keys that press them (the lobby's CHANGE TEAM: drawn in the
-high-res text's fallback font, so only while it draws the menus' text);
-NULL for the others (the D-pad's up and down, Start and the sticks), drawn
-as the controller's */
+as the arrow keys that press them, < and > (the lobby's CHANGE TEAM: the
+menus' fonts have no arrows); NULL for the others (the D-pad's up and down,
+Start and the sticks), drawn as the controller's */
 static char const *ui_widget_port_menu_key(
 	short icon_type)
 {
@@ -4558,9 +4554,9 @@ static char const *ui_widget_port_menu_key(
 	case _icon_right_thumb:
 		return halo_keyboard_browser_keys_active() ? "/" : NULL;
 	case _icon_dpad_left:
-		return text_hires_enabled() ? "\xE2\x86\x90" : NULL;
+		return "<";
 	case _icon_dpad_right:
-		return text_hires_enabled() ? "\xE2\x86\x92" : NULL;
+		return ">";
 	default:
 		return NULL;
 	}

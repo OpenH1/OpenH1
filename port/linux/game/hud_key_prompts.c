@@ -103,38 +103,6 @@ static void latin1_to_wide(char const *name, wchar_t *text, long length)
 	text[index] = 0;
 }
 
-/* a key's name, UTF-8 (SDL's names; the menus' arrows), as wide text: a
-byte that begins no whole character as its Latin-1 one */
-static void utf8_to_wide(char const *name, wchar_t *text, long length)
-{
-	unsigned char const *byte = (unsigned char const *)name;
-	long index = 0;
-
-	while (index < length - 1 && *byte)
-	{
-		unsigned long code = *byte;
-		int extra = code >= 0xF0 && code < 0xF8 ? 3 : code >= 0xE0 ? (code < 0xF0 ? 2 : 0) : code >= 0xC0 ? 1 : 0;
-		int part;
-
-		for (part = 1; part <= extra; part++)
-		{
-			if ((byte[part] & 0xC0) != 0x80)
-				break;
-		}
-		if (extra && part > extra)
-		{
-			code &= 0x3FUL >> extra;
-			for (part = 1; part <= extra; part++)
-				code = (code << 6) | (byte[part] & 0x3F);
-			byte += extra + 1;
-		}
-		else
-			byte++;
-		text[index++] = (wchar_t)code;
-	}
-	text[index] = 0;
-}
-
 /* the movement keys as one name: "WASD" for single letters, else each
 separated by a slash, one with no key as Unbound; Unbound for none */
 static void movement_name(char *name, long size)
@@ -711,6 +679,6 @@ boolean hud_key_prompt_draw_key(
 #endif
 	if (!halo_keyboard_prompts())
 		return FALSE;
-	utf8_to_wide(name, text, NUMBEROF(text));
+	latin1_to_wide(name, text, NUMBEROF(text));
 	return key_cap_draw(text, bounds, cursor, color);
 }

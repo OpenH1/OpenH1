@@ -27,7 +27,7 @@ NEGATIVE_CONTROLS = {
     # the browsers' Filters (the left trigger) drawn as L, which presses nothing
     "l-not-left-trigger": ("keyboard", ("analog(!settings && k[SDL_SCANCODE_L])", "analog(0)"), "keys"),
     # the D-pad's left drawn as the right arrow (the lobby's CHANGE TEAM)
-    "dpad-arrows-swapped": ("menu", ('"\\xE2\\x86\\x90" : NULL;\n\tcase _icon_dpad_right', '"\\xE2\\x86\\x92" : NULL;\n\tcase _icon_dpad_right'), "keys"),
+    "dpad-arrows-swapped": ("menu", ('return "<";', 'return ">";'), "keys"),
     # the browsers' SEARCH (R3) drawn as /, which presses nothing; / as R3 in every menu
     "slash-not-r3": ("keyboard", ("if (browser && k[SDL_SCANCODE_SLASH])", "if (FALSE)"), "keys"),
     "slash-everywhere": ("keyboard", ("if (browser && k[SDL_SCANCODE_SLASH])", "if (k[SDL_SCANCODE_SLASH])"),
