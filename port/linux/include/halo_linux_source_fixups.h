@@ -426,10 +426,10 @@ short halo_stick_dead_range(short stick);
 /* whether a controller's look turns the other way side to side:
 input.invert_look_horizontal (port/linux/src/xinput_sdl.c) */
 int halo_look_horizontal_inverted(void);
-/* whether a controller (a local player's gamepad) aims as Modern does
-(input.aim_style), and Modern's acceleration angle, as its tangent, and the
-push that accelerates, or -1 for the game's own (port/linux/src/xinput_sdl.c) */
-int halo_aim_modern(short gamepad_index, float *acceleration_tangent, float *acceleration_threshold);
+/* whether a local player's controller aims as Modern does (input.aim_style,
+the player's own), and Modern's acceleration angle, as its tangent, and the
+push that accelerates, or -1 for the game's own (source/game/player_control.c) */
+int player_control_aim_modern(short local_player_index, float *acceleration_tangent, float *acceleration_threshold);
 /* ... and whether a controller's right stick is the flick stick
 (input.flick_stick) */
 int halo_linux_flick_stick(void);

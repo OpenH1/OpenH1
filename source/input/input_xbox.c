@@ -429,7 +429,7 @@ void input_port_fix_stick_dead_zones(
 	float acceleration_tangent;
 	float acceleration_threshold;
 
-	if (halo_aim_modern(gamepad_index, &acceleration_tangent, &acceleration_threshold))
+	if (player_control_aim_modern(gamepad_index, &acceleration_tangent, &acceleration_threshold))
 	{
 		look_stick = input_abstraction_port_look_stick(gamepad_index);
 	}

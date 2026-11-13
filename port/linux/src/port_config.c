@@ -1084,15 +1084,15 @@ static const struct config_setting config_settings[] =
 		"enough it accelerates the turn); \"modern\", as MCC's Modern aiming:\n"
 		"the push curved as one, the same speed whichever way it points, and the\n"
 		"turn accelerated only near side to side. The mouse and the touch\n"
-		"controls are not changed." },
+		"controls are not changed.", _scope_player },
 	{ "input.modern_aim_acceleration_angle", _config_integer, "20", "HALO_MODERN_AIM_ACCELERATION_ANGLE",
 		_environment_value, _platform_all,
 		"Modern aim: how far from side to side, in degrees (0 to 45), the look\n"
-		"stick can point and still accelerate the turn when pushed fully." },
+		"stick can point and still accelerate the turn when pushed fully.", _scope_player },
 	{ "input.modern_aim_acceleration_threshold", _config_integer, "-1", "HALO_MODERN_AIM_ACCELERATION_THRESHOLD",
 		_environment_value, _platform_all,
 		"Modern aim: how far the look stick is pushed, in percent of its travel\n"
-		"(0 to 100), before the turn accelerates; -1 for the game's own." },
+		"(0 to 100), before the turn accelerates; -1 for the game's own.", _scope_player },
 	{ "input.gyro_aim", _config_string, "\"off\"", "HALO_GYRO_AIM", _environment_value, _platform_all,
 		"Aiming by turning a controller that has a gyroscope (a DualSense, a\n"
 		"DualShock 4, a Switch Pro Controller or Joy-Cons, a Steam Deck with\n"

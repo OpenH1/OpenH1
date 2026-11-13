@@ -1373,6 +1373,60 @@ static boolean player_control_stick_aim(
 	return push >= pegging_threshold && absolute_pitch <= absolute_yaw * aim->acceleration_tangent;
 }
 
+/* port: Modern aim's acceleration angle, in degrees, at its widest */
+#define AIM_ACCELERATION_ANGLE_MAXIMUM 45
+
+/* port: whether a local player's controller aims as Modern does
+(input.aim_style "modern": player_control_stick_aim), and Modern's tunables:
+the tangent of the widest angle from side to side at which the stick
+accelerates (input.modern_aim_acceleration_angle, degrees) and the push at
+which it does, of the stick's travel, or -1 for the game's own
+look_pegging_threshold (input.modern_aim_acceleration_threshold, percent).
+Each the player's own (port_config.c's _scope_player), read again as the
+settings change (the local player's gamepad is theirs: input_xbox.c asks by
+it too) */
+int player_control_aim_modern(
+	short local_player_index,
+	float *acceleration_tangent,
+	float *acceleration_threshold)
+{
+	extern unsigned long config_changes(void);
+	extern long config_player_integer(int local_player, const char *name);
+	extern const char *config_player_string(int local_player, const char *name);
+	static struct
+	{
+		boolean modern;
+		float tangent;
+		float threshold;
+	} aims[MAXIMUM_NUMBER_OF_LOCAL_PLAYERS];
+	static unsigned long read_at = (unsigned long)-1;
+
+	if (read_at != config_changes())
+	{
+		short player;
+
+		read_at = config_changes();
+		for (player = 0; player < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; player++)
+		{
+			long angle = config_player_integer(player, "input.modern_aim_acceleration_angle");
+			long threshold = config_player_integer(player, "input.modern_aim_acceleration_threshold");
+
+			aims[player].modern = !strcmp(config_player_string(player, "input.aim_style"), "modern");
+			angle = PIN(angle, 0, AIM_ACCELERATION_ANGLE_MAXIMUM);
+			aims[player].tangent = (float)tan((double)angle * M_PI / 180.0);
+			aims[player].threshold = threshold < 0 || threshold > 100 ? -1.f : (float)threshold / 100.f;
+		}
+	}
+	if (local_player_index < 0 || local_player_index >= MAXIMUM_NUMBER_OF_LOCAL_PLAYERS ||
+		!aims[local_player_index].modern)
+	{
+		return FALSE;
+	}
+	*acceleration_tangent = aims[local_player_index].tangent;
+	*acceleration_threshold = aims[local_player_index].threshold;
+	return TRUE;
+}
+
 /* port: how much the look's acceleration has turned the side to side up,
 by the globals' ramp: its scale reached over its time
 (get_local_player_input_blob's, and a sub-step's) */
@@ -1436,7 +1490,7 @@ static boolean player_control_stick_look(
 		float acceleration_tangent;
 		float acceleration_threshold;
 
-		aim.modern = halo_aim_modern(gamepad_index, &acceleration_tangent, &acceleration_threshold) != 0;
+		aim.modern = player_control_aim_modern(gamepad_index, &acceleration_tangent, &acceleration_threshold) != 0;
 		aim.acceleration_tangent = aim.modern ? acceleration_tangent : 0.f;
 		aim.acceleration_threshold = aim.modern ? acceleration_threshold : -1.f;
 	}
@@ -1660,7 +1714,7 @@ static void get_local_player_input_blob(
 						float acceleration_threshold;
 
 						input_trace_aim(gamepad_index,
-							halo_aim_modern(gamepad_index, &acceleration_tangent, &acceleration_threshold),
+							player_control_aim_modern(gamepad_index, &acceleration_tangent, &acceleration_threshold),
 							accelerating, control->look_acceleration_time);
 					}
 

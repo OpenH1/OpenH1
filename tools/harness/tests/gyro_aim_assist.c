@@ -70,7 +70,7 @@ static int halo_linux_touch_look(short gamepad_index, real *yaw, real *pitch, re
 	return 0;
 }
 static int halo_linux_mouse_aiming(short gamepad_index) { return 0; }
-static int halo_aim_modern(short gamepad_index, float *acceleration_tangent, float *acceleration_threshold)
+static int player_control_aim_modern(short local_player_index, float *acceleration_tangent, float *acceleration_threshold)
 {
 	return 0;
 }
