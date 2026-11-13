@@ -189,28 +189,28 @@
 		<child widget="main_menu/campaign/resume_difficulty"/>
 		<child widget="main_menu/campaign/resume_badge"/>
 	</widget>
-	<widget name="main_menu/campaign/resume_art" controller="1" left="6" top="0" width="64" height="52" bitmap="main_menu/campaign/art_64x52" radius="5" source="tools/port_settings.py campaign_files/_missions/_mission_resume">
+	<widget name="main_menu/campaign/resume_art" controller="1" left="6" top="6" width="48" height="39" bitmap="main_menu/campaign/art_48x39" radius="5" source="tools/port_settings.py campaign_files/_missions/_mission_resume">
 	</widget>
-	<bitmap name="main_menu/campaign/art_64x52">
-		<frame map="ui\shell\bitmaps\sp_levels" index="0" width="117" height="58"/>
-		<frame map="ui\shell\bitmaps\sp_levels" index="1" width="117" height="58"/>
-		<frame map="ui\shell\bitmaps\sp_levels" index="2" width="117" height="58"/>
-		<frame map="ui\shell\bitmaps\sp_levels" index="3" width="117" height="58"/>
-		<frame map="ui\shell\bitmaps\sp_levels" index="4" width="117" height="58"/>
-		<frame map="ui\shell\bitmaps\sp_levels" index="5" width="117" height="58"/>
-		<frame map="ui\shell\bitmaps\sp_levels" index="6" width="117" height="58"/>
-		<frame map="ui\shell\bitmaps\sp_levels" index="7" width="117" height="58"/>
-		<frame map="ui\shell\bitmaps\sp_levels" index="8" width="117" height="58"/>
-		<frame map="ui\shell\bitmaps\sp_levels" index="9" width="117" height="58"/>
-		<frame map="ui\shell\bitmaps\sp_levels" index="10" width="117" height="58"/>
+	<bitmap name="main_menu/campaign/art_48x39">
+		<frame map="ui\shell\bitmaps\sp_levels" index="0" width="88" height="44"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="1" width="88" height="44"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="2" width="88" height="44"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="3" width="88" height="44"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="4" width="88" height="44"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="5" width="88" height="44"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="6" width="88" height="44"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="7" width="88" height="44"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="8" width="88" height="44"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="9" width="88" height="44"/>
+		<frame map="ui\shell\bitmaps\sp_levels" index="10" width="88" height="44"/>
 	</bitmap>
-	<widget name="main_menu/campaign/resume_label" type="text" controller="1" left="82" top="6" width="240" height="16" font="ui\small_ui" color="#FF6F9CD0" text="CONTINUE" text_flags="no_focus_test" source="tools/port_settings.py _missions/_mission_resume/_campaign_text">
+	<widget name="main_menu/campaign/resume_label" type="text" controller="1" left="66" top="6" width="240" height="16" font="ui\small_ui" color="#FF6F9CD0" text="CONTINUE" text_flags="no_focus_test" source="tools/port_settings.py _missions/_mission_resume/_campaign_text">
 	</widget>
-	<widget name="main_menu/campaign/resume_title" type="text" controller="1" left="82" top="22" width="278" height="24" font="ui\large_ui" color="#FF2890F8" text_flags="no_focus_test" source="tools/port_settings.py _mission_resume/_campaign_text/_part_text">
+	<widget name="main_menu/campaign/resume_title" type="text" controller="1" left="66" top="22" width="292" height="24" font="ui\large_ui" color="#FF2890F8" text_flags="no_focus_test" source="tools/port_settings.py _mission_resume/_campaign_text/_part_text">
 	</widget>
-	<widget name="main_menu/campaign/resume_difficulty" type="text" controller="1" left="366" top="17" width="84" height="18" font="ui\small_ui" color="#FF2890F8" align="right" text_flags="no_focus_test" source="tools/port_settings.py _mission_resume/_campaign_text/_part_text">
+	<widget name="main_menu/campaign/resume_difficulty" type="text" controller="1" left="364" top="17" width="84" height="18" font="ui\small_ui" color="#FF2890F8" align="right" text_flags="no_focus_test" source="tools/port_settings.py _mission_resume/_campaign_text/_part_text">
 	</widget>
-	<widget name="main_menu/campaign/resume_badge" controller="1" left="456" top="12" width="28" height="28" bitmap="main_menu/campaign/badges_28" source="tools/port_settings.py campaign_files/_missions/_mission_resume">
+	<widget name="main_menu/campaign/resume_badge" controller="1" left="454" top="12" width="28" height="28" bitmap="main_menu/campaign/badges_28" source="tools/port_settings.py campaign_files/_missions/_mission_resume">
 	</widget>
 	<widget name="main_menu/campaign/header_missions" controller="1" left="35" top="11" width="363" height="59" bitmap="main_menu/campaign/header_missions" wide="-106 0" source="tools/port_settings.py campaign_files/_missions">
 	</widget>

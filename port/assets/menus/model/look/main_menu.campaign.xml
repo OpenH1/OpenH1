@@ -121,17 +121,17 @@
 		<at widget="main_menu/campaign/resume_difficulty" x="0" y="0"/>
 		<at widget="main_menu/campaign/resume_badge" x="0" y="0"/>
 	</look>
-	<look name="main_menu/campaign/resume_art" box="6 0 70 52" picture="main_menu/campaign/art_64x52" radius="5"/>
-	<look name="main_menu/campaign/resume_label" type="text" box="82 6 322 22">
+	<look name="main_menu/campaign/resume_art" box="6 6 54 45" picture="main_menu/campaign/art_48x39" radius="5"/>
+	<look name="main_menu/campaign/resume_label" type="text" box="66 6 306 22">
 		<text font="ui\small_ui" color="#FF6F9CD0" flags="no_focus_test" text="CONTINUE"/>
 	</look>
-	<look name="main_menu/campaign/resume_title" type="text" box="82 22 360 46">
+	<look name="main_menu/campaign/resume_title" type="text" box="66 22 358 46">
 		<text font="ui\large_ui" color="#FF2890F8" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/campaign/resume_difficulty" type="text" box="366 17 450 35">
+	<look name="main_menu/campaign/resume_difficulty" type="text" box="364 17 448 35">
 		<text font="ui\small_ui" color="#FF2890F8" align="right" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/campaign/resume_badge" box="456 12 484 40" picture="main_menu/campaign/badges_28"/>
+	<look name="main_menu/campaign/resume_badge" box="454 12 482 40" picture="main_menu/campaign/badges_28"/>
 	<look name="main_menu/campaign/header_missions" type="text" box="24 0 616 40" wide="-106 0" past="-143 0">
 		<text font="heading" color="#FF2995FD" at="0 9" string_list="main_menu/campaign/tall_titles" scale="1.4 1.4"/>
 	</look>

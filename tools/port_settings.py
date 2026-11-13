@@ -7751,7 +7751,9 @@ MISSION_TALL, MISSION_TALL_TOP = (158, 326), 78
 # saved game's picture, mission and difficulty; the cards under it, lower (campaign_menu.inc's MISSION_RESUME_*)
 MISSION_RESUME = (3 * 158 + 2 * 10, 52)
 MISSION_RESUME_TOP, MISSION_RESUME_CARDS_TOP = 48, 108
-MISSION_RESUME_ART = campaign_art_size(64)
+# (its picture inset from its frame as the cards' are, MISSION_ART_INSET, its corners round: as tall as the bar
+# leaves it, at the pictures' shape)
+MISSION_RESUME_ART = campaign_art_size(48)
 MISSION_TALL_BLUE = "#FF2890F8"
 MISSION_TALL_DIM = "#FF6F9CD0"
 MISSION_CARD_GAP = 10
@@ -8218,14 +8220,17 @@ def _mission_resume() -> list:
     width, height = MISSION_RESUME
     art_w, art_h = MISSION_RESUME_ART
     badge = MISSION_BADGE[MISSION_SMALL][0]
-    text_x = 6 + art_w + 12
+    inset = MISSION_ART_INSET
+    # (the words as far from the picture as the badge is from the frame's right)
+    margin = 12
+    text_x = inset + art_w + margin
     lines = _widget(f"{base}/mission_resume", [("width", width), ("height", height),
                                                ("bitmap", f"{base}/continue_{width}x{height}")],
                     [*(f'<on event="{event}" run="port campaign continue"/>' for event in ("a", "start")),
                      '<on event="left_mouse" run="mouse emit accept event"/>',
                      *(f'<child widget="{base}/resume_{part}"/>'
                        for part in ("art", "label", "title", "difficulty", "badge"))])
-    lines += _widget(f"{base}/resume_art", [("controller", 1), ("left", 6), ("top", (height - art_h) // 2),
+    lines += _widget(f"{base}/resume_art", [("controller", 1), ("left", inset), ("top", (height - art_h) // 2),
                                             ("width", art_w), ("height", art_h),
                                             ("bitmap", f"{base}/art_{art_w}x{art_h}"), ("radius", ART_CORNER_RADIUS)],
                      [])
@@ -8234,11 +8239,12 @@ def _mission_resume() -> list:
     difficulty_w = 84
     lines += _campaign_text(f"{base}/resume_label", text_x, 6, 240, 16, "ui\\small_ui", MISSION_TALL_DIM,
                             words="CONTINUE")
-    lines += _campaign_text(f"{base}/resume_title", text_x, 22, width - text_x - 10 - badge - 6 - difficulty_w - 6,
-                            24, CAMPAIGN_TITLE_FONT, MISSION_TALL_BLUE)
-    lines += _campaign_text(f"{base}/resume_difficulty", width - 10 - badge - 6 - difficulty_w, (height - 18) // 2,
-                            difficulty_w, 18, "ui\\small_ui", MISSION_TALL_BLUE, align="right")
-    lines += _widget(f"{base}/resume_badge", [("controller", 1), ("left", width - 10 - badge),
+    lines += _campaign_text(f"{base}/resume_title", text_x, 22,
+                            width - text_x - margin - badge - 6 - difficulty_w - 6, 24, CAMPAIGN_TITLE_FONT,
+                            MISSION_TALL_BLUE)
+    lines += _campaign_text(f"{base}/resume_difficulty", width - margin - badge - 6 - difficulty_w,
+                            (height - 18) // 2, difficulty_w, 18, "ui\\small_ui", MISSION_TALL_BLUE, align="right")
+    lines += _widget(f"{base}/resume_badge", [("controller", 1), ("left", width - margin - badge),
                                               ("top", (height - badge) // 2), ("width", badge), ("height", badge),
                                               ("bitmap", f"{base}/badges_{badge}")], [])
     return lines
