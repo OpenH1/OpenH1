@@ -382,6 +382,7 @@ These files are in the data root:
 | `init.txt` | Console commands that the game does at start-up. For example, `map_name levels\a10\a10` starts the first campaign level. |
 | `tags/` | Sound tag files that replace the sounds of the maps (`audio.loose_sounds`). |
 | `menu_pictures/` | The menus' pictures of the missions and the multiplayer maps, drawn again from these maps (`display.menu_pictures`): a PNG and a note of each. Deleting it draws them again. |
+| `menu_models/` | The menus' Spartan, its tags taken from a multiplayer map (`spartan.bin`, and a note, `spartan.txt`; "Menu pictures"). Deleting it makes it again. |
 | `reports/` | The reports saved for the developers (F8, or Settings > Profiles > Report a Problem): a zip each. Refer to "Reports". |
 | `mods/` | Mods: folders of Halo PC tag files whose sounds, bitmaps, text and models play over the maps' on this machine, in the order of Settings > Mods > Manage Mods (`load_order.toml`). Refer to [docs/mods.md](../../docs/mods.md). |
 
@@ -1039,6 +1040,19 @@ until it is ready. Not in runs nobody watches (tests: `debug.hidden_window`,
 `exit_after`, `fixed_step`, `test_input`, `network_test`, `menu_open`,
 `telnet_console`, `screenshot_every` or `load_trace`; `debug.menu_pictures`
 draws them there too), in VR, or with `display.menu_pictures = false`.
+
+The same pass gives the menus their Spartan, which the game draws in the
+menus' scene (`port/linux/game/menu_models.h`): while a stock multiplayer map
+is loaded (Blood Gulch, else the first other one the player has; one more
+item of the caption), the multiplayer cyborg's and the assault rifle's
+models, the cyborg's animation graph, their shaders and the shaders'
+bitmaps with their pixels are copied through their tags' schemas into one
+file, `menu_models/spartan.bin` in the data root (about 2 MB), with a note
+beside it (`spartan.txt`), and two scenery definitions made for them. It is
+made again when it is missing, its map another or its format another; ui.map
+reads it as its tags load, and the tag validator checks its tags as it
+checks a map's. A file that is damaged or refused is deleted, made again at
+the next start, and meanwhile the menus draw their pictures.
 
 ## Bots
 

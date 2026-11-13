@@ -1094,11 +1094,13 @@ static boolean texture_cache_start_loading_bitmap(
 		}
 		texture_cache_initialize_hardware_format(bitmap, &texture->hardware_format);
 		/* port: or, the bitmap of a mod played over the map's, from its
-		file, at once (port/linux/game/mod_bitmaps.c) */
+		file, at once (port/linux/game/mod_bitmaps.c); or one of the
+		menus' models', from theirs (port/linux/game/menu_models.c) */
 		{
 			extern boolean mod_bitmaps_read(struct bitmap_data *bitmap, void *buffer);
+			extern int menu_models_bitmap_read(void *bitmap, void *buffer);
 
-			if (mod_bitmaps_read(bitmap, base_address))
+			if (mod_bitmaps_read(bitmap, base_address) || menu_models_bitmap_read(bitmap, base_address))
 			{
 				texture->loaded = TRUE;
 				texture->read_request_handle = NONE;
