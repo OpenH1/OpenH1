@@ -386,6 +386,24 @@ read `xbox/include`. To add a name, follow `port/include/xdk/README.md`.
   by hand: change the generator and run it (the command is in
   `port/assets/menus/README.md`, "Writing them again"), then check that
   `git status` shows only the screens meant to change.
+- The new menu engine (`display.menu_engine = "new"`, the default) draws
+  some screens from hand-written files instead: `port/assets/menus/screens/`
+  (`docs/menu_screens.md`): the main menu, Campaign (Solo, Co-op), and,
+  in the tall layout, Choose Mission and Choose Difficulty. Edit those files
+  by hand; `debug.menu_screens` (`HALO_MENU_SCREENS=<tree>/port/assets/menus/screens`)
+  reloads them within a second. Their actions and bindings are C
+  (`port/linux/game/menu_screen.c`). Parts of Choose Mission and Choose
+  Difficulty (the cards, CONTINUE, the difficulty icons) are still the
+  generators' (`tools/port_settings.py`'s tall layout, `menu_functions.c`'s
+  campaign cards): change the generator for those. Move a screen to a
+  hand-written file rather than growing the generators for the new engine.
+  The classic engine (`"classic"`) keeps the PC version's screens: change
+  it only to fix it.
+- The new engine's look follows the original Xbox version's menus, not the
+  PC version's: compare with them (`display.menus = "xbox"` draws them).
+  The tall layout's screens put BACK at the bottom left and the action at
+  the bottom right; the mouse's hover gives the focus, as the keys and
+  sticks do, and a click is A.
 - Functions the menus call but the port has not wired are listed in
   `port/assets/menus/UNWIRED.md`.
 
