@@ -1423,18 +1423,9 @@ PAGES = {
             ("INVERT LOOK", "profile.invert_look", YES_NO, "Pushing the right stick up looks down.", None),
             ("INVERT TURNING", "input.invert_look_horizontal", YES_NO,
              "Pushing the right stick right turns the view left. For every controller on this device.", None),
-            ("AIM STYLE", "input.aim_style", [("CLASSIC", "classic"), ("MODERN", "modern")],
-             "Classic aims as the original: a diagonal turns faster, and can speed up the turn as a full push "
-             "does. Modern aims as MCC's: the same speed whichever way you push, and only a push straight to the "
-             "side speeds up the turn.|The mouse and touch controls are not changed.", None),
-            ("ACCELERATION ANGLE", "input.modern_aim_acceleration_angle", MODERN_AIM_ANGLES,
-             "Modern aim: how far from straight to the side, in degrees, a full push still speeds up the turn. "
-             "Lower keeps more diagonals from speeding it up.", None),
-            ("ACCELERATION START", "input.modern_aim_acceleration_threshold", MODERN_AIM_THRESHOLDS,
-             "Modern aim: how far you push the stick before the turn speeds up. Default is the game's own, as "
-             "Classic's.", None),
             ("GYRO & FLICK STICK ›", None, _page_screen(*GYRO),
-             "Aim by turning a controller that has a gyroscope, and the right stick as a flick stick.", None),
+             "Aim by turning a controller that has a gyroscope; the right stick's aim style (Classic or "
+             "Modern), and the right stick as a flick stick.", None),
             ("INVERT FLIGHT", "profile.flight_inversion", YES_NO,
              "Flying vehicles pitch as aircraft do: pushing up flies down.", None),
             ("AUTO-CENTER LOOK", "profile.autocenter", YES_NO, "Levels the view while you walk.", None),
@@ -1541,6 +1532,16 @@ PAGES = {
              "for a second and a half.|It also does so whenever it is held still.", None,
              "gyro_calibrate", "port settings gyro calibrate"),
             (SECTION, "RIGHT STICK"),
+            ("AIM STYLE", "input.aim_style", [("CLASSIC", "classic"), ("MODERN", "modern")],
+             "Classic aims as the original: a diagonal turns faster, and can speed up the turn as a full push "
+             "does. Modern aims as MCC's: the same speed whichever way you push, and only a push straight to the "
+             "side speeds up the turn.|The mouse and touch controls are not changed.", None),
+            ("ACCELERATION ANGLE", "input.modern_aim_acceleration_angle", MODERN_AIM_ANGLES,
+             "Modern aim: how far from straight to the side, in degrees, a full push still speeds up the turn. "
+             "Lower keeps more diagonals from speeding it up.", None),
+            ("ACCELERATION START", "input.modern_aim_acceleration_threshold", MODERN_AIM_THRESHOLDS,
+             "Modern aim: how far you push the stick before the turn speeds up. Default is the game's own, as "
+             "Classic's.", None),
             ("FLICK STICK", "input.flick_stick", ON_OFF,
              "Point the right stick and you turn at once to face that way: right, a quarter turn; down, about "
              "face. Turn it round its rim and you turn with it. Aim up and down with the gyro.|With the default "
