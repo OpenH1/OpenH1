@@ -12534,7 +12534,7 @@ int pc_menu_color_value(char const *name, char *value, unsigned long size)
 	else if (!strcmp(name, "color.about"))
 	{
 		snprintf(value, size, "%s", chosen == COLOR_RANDOM_ROW ?
-			"Each game gives you a color no one else in it has." : "Your Spartan's armor in multiplayer games.");
+			"Each game picks a color no one else has." : "Your armor in multiplayer games.");
 	}
 	else
 		return FALSE;
