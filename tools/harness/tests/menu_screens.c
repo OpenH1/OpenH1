@@ -162,7 +162,7 @@ int main(int argc, char **argv)
 	if (!strcmp(name, "main"))
 	{
 		struct menu_screen_block const *campaign, *versus, *list;
-		int index, items = 0, buttons = 0, kinds[6] = { 0 };
+		int index, items = 0, buttons = 0, kinds[16] = { 0 };
 
 		CHECK(read_text(main_xml, &screen, problem), "the main menu's file is refused: %s", problem);
 		CHECK(!strcmp(screen.name, "main"), "its name is %s", screen.name);
@@ -174,6 +174,7 @@ int main(int argc, char **argv)
 			buttons += screen.blocks[index].kind == MENU_SCREEN_BUTTON;
 		}
 		CHECK(kinds[MENU_SCREEN_TITLE_ART] == 1 && kinds[MENU_SCREEN_LIST] == 1, "not one title art and list");
+		CHECK(kinds[MENU_SCREEN_FRIENDS] == 1, "no FRIENDS panel");
 		campaign = block_of(&screen, "campaign");
 		versus = block_of(&screen, "multiplayer");
 		CHECK(campaign && versus && block_of(&screen, "settings") && block_of(&screen, "quit"),
@@ -243,6 +244,9 @@ int main(int argc, char **argv)
 		refused("<screen name=\"main\"/>", "nothing in it");
 		refused("<screen name=\"main\"><list/></screen>", "has no <item>");
 		refused("<screen name=\"main\"><title-art/><title-art/></screen>", "one <title-art>");
+		refused("<screen name=\"main\"><friends/><friends/></screen>", "one <friends>");
+		refused("<screen name=\"main\"><friends rows=\"3\"/></screen>", "has no attribute rows");
+		refused("<screen name=\"main\"><list><friends/></list></screen>", "<friends> is not one of");
 	}
 	else if (!strcmp(name, "items"))
 	{

@@ -28,6 +28,7 @@ kept on the item of the same id.
 #include "text/draw_string.h"
 #include "tag_files/tag_groups.h"
 
+#include "friends_panel.h"
 #include "halo_menus.h"
 #include "menu_engine.h"
 #include "menu_screens.h"
@@ -51,6 +52,7 @@ void pc_menu_main_menu_shown(struct widget_instance *screen);
 int halo_keyboard_prompts(void);
 long ui_widget_port_text_box_font(struct widget_instance *widget, short *width);
 short ui_widget_port_past_move(void);
+short ui_widget_port_wide_extra(void);
 boolean ui_widget_port_pointer_focused(void);
 
 /* ---------- constants */
@@ -163,6 +165,9 @@ static struct screen_action const screen_actions[] =
 	{ "open settings", NULL, NULL, "port settings begin", NULL,
 		"main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen", NULL },
 	{ "open training", NULL, NULL, NULL, NULL, "main_menu/training/training_screen", NULL },
+	/* (the Friends screen, as Multiplayer's FRIENDS opens it: the FRIENDS
+	panel's header, and its rows but a friend's party joined) */
+	{ "open friends", NULL, NULL, NULL, NULL, "main_menu/multiplayer_type_select/friends/friends_screen", NULL },
 	/* (the quit question, as QUIT and B on the main menu open it) */
 	{ "quit", NULL, NULL, NULL, NULL, "main_menu/quit_select/quit_screen", NULL },
 };
@@ -170,7 +175,7 @@ static struct screen_action const screen_actions[] =
 static char const *const screen_action_names[] =
 {
 	"open campaign", "open solo", "open multiplayer", "open coop", "open host", "open host coop", "open settings",
-	"open training", "quit",
+	"open training", "open friends", "quit",
 };
 
 /* a binding's value: the saved game's mission and difficulty (player 1's
@@ -271,6 +276,10 @@ struct screen_open
 	char right_keys[SCREEN_MAXIMUM_BUTTONS][SCREEN_ID_LENGTH];
 	char right_labels[SCREEN_MAXIMUM_BUTTONS][SCREEN_ID_LENGTH];
 	long right_count;
+	/* (its list's top, which the FRIENDS panel's is level with) */
+	short list_top;
+	/* (its FRIENDS panel, if it has one: the section "the FRIENDS panel") */
+	struct screen_friends *friends;
 };
 
 static struct
@@ -438,6 +447,323 @@ static void screen_buttons_text(struct menu_screen const *screen, long buttons, 
 	}
 }
 
+/* ---------- the FRIENDS panel (<friends/>, friends_panel.h) */
+
+/* the panel at the right of the list: the friends online and what each is
+doing, under a header (FRIENDS, and the count) that opens the Friends
+screen. Its widgets are blocks.xml's screens/friends*, made once and
+placed each frame: its list (wide "106 0": 24 units from a 16:9 screen's
+right edge, and where 16:9's is on a wider one, inside a phone's safe area),
+level with the screen's list; on a screen narrower than 16:10's layout
+(FRIENDS_COMPACT_EXTRA) the header alone, in the foot's right corner, as a
+button. Its words are friends_menu.inc's, read every FRIENDS_READ_INTERVAL
+and set only where they changed, the focus kept on the friend it was on as
+the list moves. Right moves the focus from the list into it, left and B
+back. */
+
+#define FRIENDS_LEFT 452
+#define FRIENDS_HEADER_STEP 30
+#define FRIENDS_MESSAGE_STEP 20
+#define FRIENDS_ROW_STEP 26
+#define FRIENDS_COMPACT_EXTRA 96
+#define FRIENDS_COMPACT_TOP (SCREEN_HEIGHT - 48)
+#define FRIENDS_READ_INTERVAL 250
+#define SCREEN_SOUND_CURSOR 1
+#define SCREEN_EVENT_LEFT_STICK 1
+
+struct screen_friends
+{
+	struct widget_instance *list, *header, *count, *message;
+	struct widget_instance *rows[FRIENDS_PANEL_ROWS];
+	/* (what is shown: the last read, whether one was) */
+	struct friends_panel shown;
+	boolean read;
+	unsigned long read_time;
+	boolean compact;
+};
+
+/* (one screen has the panel at a time: the main menu) */
+static struct screen_friends screen_friends;
+
+static struct
+{
+	long list, header, count, line, message, row, note;
+} friends_tags;
+
+/* the panel's blocks' tags found: FALSE (logged) if one is not there */
+static boolean screen_friends_tags(void)
+{
+	friends_tags.list = screen_block_tag("pc\\screens\\friends");
+	friends_tags.header = screen_block_tag("pc\\screens\\friends_header");
+	friends_tags.count = screen_block_tag("pc\\screens\\friends_count");
+	friends_tags.line = screen_block_tag("pc\\screens\\friends_line");
+	friends_tags.message = screen_block_tag("pc\\screens\\friends_message");
+	friends_tags.row = screen_block_tag("pc\\screens\\friend");
+	friends_tags.note = screen_block_tag("pc\\screens\\friend_note");
+	if (friends_tags.list == NONE || friends_tags.header == NONE || friends_tags.count == NONE ||
+		friends_tags.line == NONE || friends_tags.message == NONE || friends_tags.row == NONE ||
+		friends_tags.note == NONE)
+	{
+		platform_log("menus: the FRIENDS panel's blocks (screens/blocks.xml) are not all there");
+		return FALSE;
+	}
+	return TRUE;
+}
+
+/* the panel made in the screen (its words set as it is first placed) */
+static void screen_friends_build(struct screen_open *open)
+{
+	struct screen_friends *friends = &screen_friends;
+	long index;
+
+	if (!screen_friends_tags())
+		return;
+	csmemset(friends, 0, sizeof(*friends));
+	friends->list = screen_widget_add(open->widget, friends_tags.list, 0, 0);
+	if (!friends->list)
+		return;
+	friends->header = ui_widget_port_add_child(friends->list, friends_tags.header, NULL);
+	friends->message = ui_widget_port_add_child(friends->list, friends_tags.message, NULL);
+	for (index = 0; index < FRIENDS_PANEL_ROWS; index++)
+		friends->rows[index] = ui_widget_port_add_child(friends->list, friends_tags.row, NULL);
+	if (friends->header)
+	{
+		struct widget_instance *child;
+
+		screen_text_set(friends->header, "FRIENDS");
+		for (child = friends->header->child; child; child = child->next)
+		{
+			if (child->definition_tag_index == friends_tags.count)
+				friends->count = child;
+		}
+	}
+	friends->list->focused_child = friends->header;
+	open->friends = friends;
+}
+
+static struct screen_friends *screen_friends_of(struct screen_open const *open)
+{
+	return open && open->friends == &screen_friends && screen_friends.list ? &screen_friends : NULL;
+}
+
+/* the row (0 up) a widget of the panel is, NONE for none */
+static long screen_friends_row(struct screen_friends const *friends, struct widget_instance const *widget)
+{
+	long index;
+
+	for (index = 0; widget && index < FRIENDS_PANEL_ROWS; index++)
+	{
+		if (friends->rows[index] == widget)
+			return index;
+	}
+	return NONE;
+}
+
+/* a widget of the panel given the focus (the list's too) */
+static void screen_friends_focus(struct screen_friends *friends, struct widget_instance *widget)
+{
+	struct widget_instance *child;
+	short index = 0;
+
+	for (child = friends->list->child; child && child != widget; child = child->next)
+		index++;
+	if (!child)
+		return;
+	friends->list->focused_child = child;
+	friends->list->parameters.list.selected_index = index;
+}
+
+/* the panel's widgets placed, shown or hidden, at the screen's width now */
+static void screen_friends_place(struct screen_open *open, struct screen_friends *friends)
+{
+	short extra = (short)MIN(ui_widget_port_wide_extra(), WIDE_LAYOUT_EXTRA);
+	short x = (short)(open->widget->horizontal_offset + FRIENDS_LEFT);
+	short y = (short)(open->widget->vertical_offset + (extra < FRIENDS_COMPACT_EXTRA ? FRIENDS_COMPACT_TOP :
+		open->list_top));
+	long index;
+
+	friends->compact = extra < FRIENDS_COMPACT_EXTRA;
+	/* (each widget's parts are where it is: their offsets are its) */
+	if (friends->header)
+	{
+		friends->header->horizontal_offset = x;
+		friends->header->vertical_offset = y;
+	}
+	y = (short)(y + FRIENDS_HEADER_STEP);
+	if (friends->message)
+	{
+		friends->message->visible = !friends->compact && friends->shown.message[0];
+		friends->message->horizontal_offset = x;
+		friends->message->vertical_offset = y;
+		if (friends->message->visible)
+			y = (short)(y + FRIENDS_MESSAGE_STEP);
+	}
+	for (index = 0; index < FRIENDS_PANEL_ROWS; index++)
+	{
+		struct widget_instance *row = friends->rows[index];
+
+		if (!row)
+			continue;
+		row->visible = !friends->compact && index < friends->shown.row_count;
+		row->horizontal_offset = x;
+		row->vertical_offset = y;
+		y = (short)(y + FRIENDS_ROW_STEP);
+	}
+	/* (the focus off a row hidden: on the last row shown, else the
+	header) */
+	if (friends->list->focused_child && !friends->list->focused_child->visible)
+	{
+		long last = friends->compact ? 0 : friends->shown.row_count;
+
+		screen_friends_focus(friends, last > 0 ? friends->rows[last - 1] : friends->header);
+	}
+}
+
+/* the panel's words read again (each FRIENDS_READ_INTERVAL) and set where
+they changed; the focus kept on the friend it was on */
+static void screen_friends_update(struct screen_friends *friends)
+{
+	unsigned long now = ui_widget_port_milliseconds();
+	struct friends_panel read;
+	long focused = screen_friends_row(friends, friends->list->focused_child);
+	long index;
+
+	if (friends->read && now - friends->read_time < FRIENDS_READ_INTERVAL)
+		return;
+	friends->read_time = now;
+	friends_panel_read(&read, FRIENDS_PANEL_ROWS);
+	if (friends->read && !memcmp(&read, &friends->shown, sizeof(read)))
+		return;
+	if (!friends->read || strcmp(read.count, friends->shown.count))
+	{
+		if (friends->count)
+			screen_text_set(friends->count, read.count);
+	}
+	if ((!friends->read || strcmp(read.message, friends->shown.message)) && friends->message)
+		screen_text_set(friends->message, read.message);
+	for (index = 0; index < FRIENDS_PANEL_ROWS; index++)
+	{
+		struct friends_panel_row const *row = &read.rows[index];
+		struct friends_panel_row const *was = &friends->shown.rows[index];
+		struct widget_instance *widget = friends->rows[index];
+
+		if (!widget || (friends->read && !strcmp(row->name, was->name) && !strcmp(row->note, was->note)))
+			continue;
+		screen_text_set(widget, row->name);
+		if (widget->child)
+			screen_text_set(widget->child, row->note);
+	}
+	/* (the friend focused followed to their row) */
+	if (focused != NONE && friends->read && friends->shown.rows[focused].kind == _friends_panel_friend)
+	{
+		for (index = 0; index < read.row_count; index++)
+		{
+			if (read.rows[index].kind == _friends_panel_friend &&
+				!memcmp(read.rows[index].code, friends->shown.rows[focused].code, FRIENDS_PANEL_CODE_BYTES))
+			{
+				screen_friends_focus(friends, friends->rows[index]);
+				break;
+			}
+		}
+	}
+	friends->shown = read;
+	friends->read = TRUE;
+}
+
+/* each frame: read, placed, its parts lit while focused */
+static void screen_friends_frame(struct screen_open *open)
+{
+	struct screen_friends *friends = screen_friends_of(open);
+	boolean on = friends && open->widget->focused_child == friends->list;
+	long index;
+
+	if (!friends)
+		return;
+	screen_friends_update(friends);
+	screen_friends_place(open, friends);
+	if (friends->header)
+		friends->header->animation.current_frame_index = (short)(on && friends->list->focused_child == friends->header);
+	for (index = 0; index < FRIENDS_PANEL_ROWS; index++)
+	{
+		if (friends->rows[index])
+		{
+			friends->rows[index]->animation.current_frame_index =
+				(short)(on && friends->list->focused_child == friends->rows[index]);
+		}
+	}
+}
+
+/* left and right (the D-pad, the stick, the arrow keys) between the list
+and the panel, and B in the panel back to the list: TRUE if it was one */
+static boolean screen_friends_move(struct screen_open *open, struct event_record const *event)
+{
+	struct screen_friends *friends = screen_friends_of(open);
+	struct widget_instance *screen = open ? open->widget : NULL;
+	short horizontal = 0;
+
+	if (!friends || !open->list)
+		return FALSE;
+	if (event->type == SCREEN_EVENT_BUTTON && event->data.button.value == 1)
+	{
+		if (event->data.button.index == _gamepad_binary_button_dpad_left ||
+			(event->data.button.index == _gamepad_analog_button_b && screen->focused_child == friends->list))
+		{
+			horizontal = -1;
+		}
+		else if (event->data.button.index == _gamepad_binary_button_dpad_right)
+			horizontal = 1;
+	}
+	else if (event->type == SCREEN_EVENT_LEFT_STICK)
+		horizontal = (short)(event->data.stick.x == SHORT_MIN ? -1 : event->data.stick.x == SHORT_MAX ? 1 : 0);
+	if (horizontal > 0 && screen->focused_child == open->list)
+	{
+		if (!friends->list->focused_child || !friends->list->focused_child->visible)
+			screen_friends_focus(friends, friends->header);
+		screen->focused_child = friends->list;
+	}
+	else if (horizontal < 0 && screen->focused_child == friends->list)
+		screen->focused_child = open->list;
+	else
+		return FALSE;
+	ui_widget_port_pointer_not_last();
+	ui_play_audio_feedback_sound(SCREEN_SOUND_CURSOR);
+	return TRUE;
+}
+
+/* a block's text colour in the panel: a row's by what it is (a friend's
+name light, the folded rows dim), white while focused; FALSE for one not
+the panel's */
+static boolean screen_friends_text_color(struct widget_instance const *widget, real_argb_color *color)
+{
+	struct screen_friends const *friends = screen_friends.list ? &screen_friends : NULL;
+	long row;
+	boolean focused;
+
+	if (!friends || (widget->definition_tag_index != friends_tags.row &&
+		widget->definition_tag_index != friends_tags.header))
+	{
+		return FALSE;
+	}
+	focused = widget->parent == friends->list && friends->list->focused_child == widget && friends->list->parent &&
+		friends->list->parent->focused_child == friends->list;
+	if (focused)
+	{
+		color->red = color->green = color->blue = 1.0f;
+		return TRUE;
+	}
+	row = screen_friends_row(friends, widget);
+	if (row == NONE || friends->shown.rows[row].kind == _friends_panel_friend ||
+		friends->shown.rows[row].kind == _friends_panel_add)
+	{
+		return FALSE;
+	}
+	/* (the folded rows: the hints' blue) */
+	color->red = 0x6F / 255.0f;
+	color->green = 0x9C / 255.0f;
+	color->blue = 0xD0 / 255.0f;
+	return TRUE;
+}
+
 /* the screen's widgets made from the hand-written screen, in place of
 whatever it had: FALSE (nothing changed) if they cannot be */
 static boolean screen_build(struct screen_open *open, struct menu_screen const *screen)
@@ -509,6 +835,9 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 	while (widget->child)
 		ui_widget_delete(widget->child);
 	open->list = NULL;
+	if (screen_friends_of(open))
+		csmemset(&screen_friends, 0, sizeof(screen_friends));
+	open->friends = NULL;
 	open->item_count = 0;
 	focus_id = screens.focused[place_index][0] ? screens.focused[place_index] : NULL;
 	top = 0;
@@ -625,6 +954,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 			short y = top;
 
 			open->list = screen_widget_add(widget, screens.list_tag, 0, 0);
+			open->list_top = top;
 			if (!open->list)
 				break;
 			if (!focus_id)
@@ -711,6 +1041,10 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 			}
 			break;
 		}
+		case MENU_SCREEN_FRIENDS:
+			/* (beside the list, taking no room of its own) */
+			screen_friends_build(open);
+			break;
 		}
 		top = (short)(top + height);
 	}
@@ -803,6 +1137,8 @@ void menu_screen_closed(struct widget_instance *widget)
 {
 	struct screen_open *open = screen_open_of(widget);
 
+	if (screen_friends_of(open))
+		csmemset(&screen_friends, 0, sizeof(screen_friends));
 	if (open)
 		memset(open, 0, sizeof(*open));
 }
@@ -905,6 +1241,11 @@ void menu_screen_frame(struct widget_instance *widget)
 	if (open->buttons_left)
 		open->buttons_left->horizontal_offset = (short)(widget->horizontal_offset - ui_widget_port_past_move() / 2);
 	focused = screen_focused(open);
+	/* (the FRIENDS panel's, and the list's item not lit while the panel has
+	the focus) */
+	screen_friends_frame(open);
+	if (open->friends && widget->focused_child != open->list)
+		focused = NONE;
 	for (index = 0; index < open->item_count; index++)
 	{
 		if (open->hints[index])
@@ -979,6 +1320,21 @@ boolean menu_screen_do(struct widget_instance *item, struct event_record *event,
 	long index;
 
 	*deleted = FALSE;
+	/* (the FRIENDS panel's header: the Friends screen; a row: its friend
+	joined, else the Friends screen, on them) */
+	if (screen_friends_of(open))
+	{
+		long row = screen_friends_row(open->friends, item);
+
+		if (item == open->friends->header ||
+			(row != NONE && row < open->friends->shown.row_count &&
+				!friends_panel_do(&open->friends->shown.rows[row])))
+		{
+			return screen_action_run(item, event, "open friends", deleted);
+		}
+		if (row != NONE)
+			return TRUE;
+	}
 	for (index = 0; open && index < open->item_count; index++)
 	{
 		if (open->items[index] == item)
@@ -996,6 +1352,9 @@ boolean menu_screen_back(struct widget_instance *widget, struct event_record *ev
 	struct screen_open *open = screen_open_of(widget);
 
 	*deleted = FALSE;
+	/* (left and right between the list and the FRIENDS panel) */
+	if (screen_friends_move(open, event))
+		return TRUE;
 	if (open && open->extra)
 	{
 		if (event->type != SCREEN_EVENT_BUTTON || event->data.button.value != 1 ||
@@ -1050,8 +1409,13 @@ boolean menu_screen_text_scale(long definition_index, short wide_extra, real *sc
 item's label white, as the main menu's lit pictures were */
 boolean menu_screen_text_color(struct widget_instance const *widget, real_argb_color *color)
 {
+	if (screen_friends_text_color(widget, color))
+		return TRUE;
+	/* (the item focused in its list, while its list has the screen's focus:
+	not while the FRIENDS panel has it) */
 	if (!screens.blocks_found || widget->definition_tag_index != screens.item_tag || !widget->parent ||
-		widget->parent->focused_child != widget)
+		widget->parent->focused_child != widget ||
+		(widget->parent->parent && widget->parent->parent->focused_child != widget->parent))
 	{
 		return FALSE;
 	}

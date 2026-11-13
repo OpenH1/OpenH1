@@ -2683,9 +2683,11 @@ static const struct config_setting config_settings[] =
 		"\"<second> <action> [<friend code>]|...\", the actions add, accept\n"
 		"(every request), ignore (every request), remove, block, invite, join\n"
 		"(the code's friend), accept_invite, share and hide (friends.share_status),\n"
-		"list (the list logged) and show (the Friends screen's row of this number\n"
-		"chosen); a code is its text, or \"@\" and another's friends.txt; empty for\n"
-		"none." },
+		"list (the list logged), show (the Friends screen's row of this number\n"
+		"chosen) and fake (\"fake <name>:<doing>[:join]\": a made-up friend for\n"
+		"the main menu's FRIENDS panel, doing menu, party, joining, game, coop,\n"
+		"hosting, invites or offline; \"fake clear\" none); a code is its text,\n"
+		"or \"@\" and another's friends.txt; empty for none." },
 	{ "debug.party", _config_string, "\"\"", "HALO_PARTY", _environment_value, _platform_all,
 		"Join this party's link at the start, or lead its party (\"lead:\" before\n"
 		"the link): several copies of the game in one party, in a test; empty\n"

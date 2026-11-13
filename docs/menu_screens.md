@@ -65,6 +65,7 @@ centred, and the bar's wide layout reaches the screen's edges up to 16:9.
 | `<space/>` | | Takes the height left over (several spaces share it) |
 | `<buttons>` | | The button-hint bar |
 | `<button>` | `key` (`accept`, `back`, `x`, `y`), `label` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word |
+| `<friends/>` | | The FRIENDS panel at the right of the list (below, "The FRIENDS panel"). It takes no room of its own; a screen has one |
 
 The reader checks each file whole. A file is refused if it has any of these
 problems: bad XML; an element where it may not be; an attribute an element
@@ -111,6 +112,7 @@ sounds and the fades are the game's.
 | `open versus` | The server browser (the full-height one), as Multiplayer's SERVER BROWSER opens it |
 | `open settings` | Settings, as the main menu's SETTINGS opens it |
 | `open training` | The VR tutorial (Basic Training's chapters) |
+| `open friends` | The Friends screen, as Multiplayer's FRIENDS opens it |
 | `quit` | The quit question, as the main menu's QUIT and B open it |
 
 A file is checked against `screen_action_names` as it is read, and
@@ -182,6 +184,46 @@ studio's reload (`debug.menu_studio`, F7) reads them again.
 5. If it replaces a screen that `tools/menu_parity.py` compares, add the
    screen to `HAND_WRITTEN` there. The classic engine still draws the old
    screen; the new engine's side must have drawn the hand-written blocks.
+
+## The FRIENDS panel
+
+`<friends/>` (the main menu's) puts a slim panel at the right of the list,
+level with its top: a header, FRIENDS and the count online ("2 ONLINE", or
+"1 REQUEST"), then a row for each friend online, their name and what they
+are doing in green ("Co-op", "In a game", "In menu", "In a party",
+"Hosting", "Invites you"). The friends offline are folded into one dim row
+("3 OFFLINE"), and friends online past its six rows into "+N MORE". With no
+friend online it says why ("No friends online", "Add friends to see them
+here", "Internet play is off", "No player profile yet") and offers ADD A
+FRIEND.
+
+- The header, the folded rows and ADD A FRIEND open the Friends screen
+  (`open friends`). A friend's row joins their party where their presence
+  offers it or their invite waits, as the Friends screen's JOIN does (the
+  Party screen then opens over the main menu); otherwise it opens the
+  Friends screen on their entry.
+- Right (the D-pad, the stick, the arrow keys) moves the focus from the list
+  into the panel, left or B back. Up and down step its rows. The pointer's
+  hover focuses a row and a click or a tap uses it.
+- It is placed 24 units from a 16:9 screen's right edge (`wide="106 0"`)
+  and stays where 16:9's edge is on a wider screen, so at 21:9 and 32:9 it
+  stays beside the list and inside a phone's safe area. Narrower than about
+  3:2 (4:3, 5:4) there is no room beside the list's lettered items, so the
+  panel collapses to its header alone, a button in the foot's right corner
+  that opens the Friends screen.
+- Its words are read from the friends' list every quarter second and set
+  only where they changed; the focus stays on the friend it was on as the
+  list moves.
+
+The data and the join are the Friends screen's (`friends_menu.inc`:
+`friends_panel_read`, `friends_panel_fill`, `friends_activity`,
+`friends_panel_do`; `friends_panel.h`); the widgets are `menu_screen.c`'s
+(its section "the FRIENDS panel") and `blocks.xml`'s `screens/friends*`.
+`debug.friends` with `"0 fake <name>:<doing>[:join]"` (doing: `menu`,
+`party`, `joining`, `game`, `coop`, `hosting`, `invites`, `offline`; `fake
+clear` for none) gives the panel made-up friends in place of the list, for a
+test or a screenshot; a fake friend's join is logged (`friends: panel: join
+<name>`) and fails, since no broker knows them.
 
 ## The main menu: four doors
 

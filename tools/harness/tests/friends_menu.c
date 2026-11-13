@@ -6,7 +6,10 @@ each row's note and whether it is green (a friend online, a request), the
 prompts a row offers (JOIN only when a friend's presence offers its party or
 its invite waits, and only with internet play on; ADD FRIEND only for a
 player of a code who is no friend yet; never two of one key at once), the
-panel's words, and the game's words decoded from UTF-8.
+panel's words, and the game's words decoded from UTF-8; the main menu's
+FRIENDS panel: what each friend online is doing (co-op, a game, the menus)
+and its rows (the friends online, the rest folded into one row, the way to
+add some when none is online).
 test_friends_menu.py takes the code (under_test.inc) and the definitions
 (config.inc).
 */
@@ -18,6 +21,11 @@ test_friends_menu.py takes the code (under_test.inc) and the definitions
 
 #define NUMBEROF(array) ((long)(sizeof(array) / sizeof((array)[0])))
 #define SET_FLAG(flags, bit, value) ((value) ? ((flags) |= FLAG(bit)) : ((flags) &= ~FLAG(bit)))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define PIN(value, least, most) MIN(MAX(value, least), most)
+#define csmemset memset
+#define csmemcpy memcpy
 
 #include "config.inc"
 
@@ -273,6 +281,91 @@ static void case_panel(void)
 	}
 }
 
+/* the panel's rows from a list of friends: each "<name>:<kind>[:<game>]",
+kind o (online, in the menus), c (in a co-op game), g (in a game), x (offline) */
+static void panel_of(char const *const *friends, short count, short rows, boolean identity, boolean online,
+	struct friends_panel *panel)
+{
+	static struct p2p_friend entries[16];
+	struct p2p_friends_state state;
+	short index;
+
+	memset(&state, 0, sizeof(state));
+	state.identity = identity;
+	state.friends = count;
+	for (index = 0; index < count; index++)
+	{
+		char const *colon = strchr(friends[index], ':');
+
+		entries[index] = entry_of(colon[1] == 'x' ? _p2p_friend_offline : _p2p_friend_online);
+		snprintf(entries[index].name, sizeof(entries[index].name), "%.*s", (int)(colon - friends[index]),
+			friends[index]);
+		entries[index].code[0] = (unsigned char)index;
+		entries[index].joinable = colon[1] != 'x';
+		if (colon[1] == 'c' || colon[1] == 'g')
+			entries[index].place = _p2p_party_place_game;
+		if (colon[1] == 'c')
+			snprintf(entries[index].game, sizeof(entries[index].game), "Campaign on Halo");
+		else if (colon[1] == 'g')
+			snprintf(entries[index].game, sizeof(entries[index].game), "OpenH1 120 Tick \xC2\xB7 Slayer on Wizard");
+	}
+	friends_panel_fill(entries, count, &state, online, panel, rows);
+}
+
+static void case_friends_panel(void)
+{
+	static char const *const three[] = { "NovaFox:c", "Rook7:o", "Glitchwing:x" };
+	static char const *const many[] = { "A1:o", "B2:g", "C3:o", "D4:o", "E5:o", "F6:o", "G7:o", "H8:x" };
+	static char const *const away[] = { "Glitchwing:x", "Zed:x" };
+	struct friends_panel panel;
+	struct p2p_friend entry = entry_of(_p2p_friend_online);
+
+	/* (what a friend is doing) */
+	CHECK(!strcmp(friends_activity(&entry), "In menu"), "in the menus");
+	entry.place = _p2p_party_place_game;
+	snprintf(entry.game, sizeof(entry.game), "Campaign on The Maw");
+	CHECK(!strcmp(friends_activity(&entry), "Co-op"), "a co-op game: %s", friends_activity(&entry));
+	snprintf(entry.game, sizeof(entry.game), "OpenH1 60 Tick \xC2\xB7 CTF on Sidewinder");
+	CHECK(!strcmp(friends_activity(&entry), "In a game"), "a game");
+	entry.hosting = 1;
+	CHECK(!strcmp(friends_activity(&entry), "Hosting"), "hosting");
+	entry.inviting = 1;
+	CHECK(!strcmp(friends_activity(&entry), "Invites you"), "an invite waits");
+	entry = entry_of(_p2p_friend_online);
+	entry.party_count = 3;
+	CHECK(!strcmp(friends_activity(&entry), "In a party"), "in a party");
+	/* (two online, one offline: the two, then the one folded) */
+	panel_of(three, 3, 6, TRUE, TRUE, &panel);
+	CHECK(panel.row_count == 3, "%d rows", panel.row_count);
+	CHECK(!strcmp(panel.count, "2 ONLINE") && !panel.message[0], "the count: %s", panel.count);
+	CHECK(panel.rows[0].kind == _friends_panel_friend && !strcmp(panel.rows[0].name, "NovaFox") &&
+		!strcmp(panel.rows[0].note, "Co-op") && panel.rows[0].joinable, "the first friend");
+	CHECK(!strcmp(panel.rows[1].note, "In menu"), "the second friend: %s", panel.rows[1].note);
+	CHECK(panel.rows[2].kind == _friends_panel_offline && !strcmp(panel.rows[2].name, "1 OFFLINE"),
+		"the friends offline not folded: %s", panel.rows[2].name);
+	/* (internet play off: no JOIN) */
+	panel_of(three, 3, 6, TRUE, FALSE, &panel);
+	CHECK(!panel.rows[0].joinable, "joinable with internet play off");
+	/* (more online than rows: the last row says how many more; none
+	offline shown) */
+	panel_of(many, 8, 6, TRUE, TRUE, &panel);
+	CHECK(panel.row_count == 6 && panel.rows[5].kind == _friends_panel_more && !strcmp(panel.rows[5].name, "+2 MORE"),
+		"%d rows, the last %s", panel.row_count, panel.rows[5].name);
+	CHECK(!strcmp(panel.rows[1].note, "In a game"), "a game: %s", panel.rows[1].note);
+	/* (none online: why, the offline row and the way to add some) */
+	panel_of(away, 2, 6, TRUE, TRUE, &panel);
+	CHECK(!strcmp(panel.message, "No friends online") && !panel.count[0], "none online: %s", panel.message);
+	CHECK(panel.row_count == 2 && panel.rows[0].kind == _friends_panel_offline &&
+		panel.rows[1].kind == _friends_panel_add, "none online: %d rows", panel.row_count);
+	panel_of(away, 0, 6, TRUE, TRUE, &panel);
+	CHECK(!strcmp(panel.message, "Add friends to see them here") && panel.row_count == 1 &&
+		panel.rows[0].kind == _friends_panel_add, "no friends: %s", panel.message);
+	panel_of(away, 0, 6, FALSE, TRUE, &panel);
+	CHECK(!strcmp(panel.message, "No player profile yet") && !panel.row_count, "no profile");
+	panel_of(away, 0, 6, TRUE, FALSE, &panel);
+	CHECK(!strcmp(panel.message, "Internet play is off"), "internet play off: %s", panel.message);
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
@@ -280,6 +373,7 @@ int main(int argc, char **argv)
 	CASE("notes") case_notes();
 	else CASE("prompts") case_prompts();
 	else CASE("panel") case_panel();
+	else CASE("friends_panel") case_friends_panel();
 	else
 	{
 		fprintf(stderr, "no case %s\n", case_name);

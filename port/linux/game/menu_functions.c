@@ -120,6 +120,7 @@ their handlers open opens.
 #include "text/draw_string.h"
 #include "halo_keyboard.h"
 #include "menu_search.h"
+#include "friends_panel.h"
 /* (internet play's server browser: the platform layer's) */
 #include "../src/p2p.h"
 #include "../src/browser_favorites.h"

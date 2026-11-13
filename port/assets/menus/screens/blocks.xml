@@ -51,4 +51,33 @@ screen file's, set on each widget as the screen is made. -->
 	<widget name="screens/buttons" type="text" left="24" width="400" height="20" font="ui\small_ui" color="#FFCCCCCC" wide="-106 0" text_flags="no_focus_test"/>
 	<!-- the bar's right side (accept): placed to end at the screen's right margin (menu_screen.c) -->
 	<widget name="screens/buttons_right" type="text" width="400" height="20" font="ui\small_ui" color="#FFCCCCCC" wide="106 0" text_flags="no_focus_test"/>
+	<!-- the FRIENDS panel (<friends/>): its list, at the right of the screen's
+	list, 24 units from a 16:9 screen's right edge and kept where 16:9's is on
+	a wider one (inside a phone's safe area); its parts are placed and filled
+	by menu_screen.c, with friends_menu.inc's words. The d-pad, the stick and
+	the wheel step its rows; right and left move between it and the list -->
+	<widget name="screens/friends" type="column_list" width="640" height="480" wide="106 0" flags="pass_unhandled_to_focused_child up_down_tabs_items"/>
+	<!-- its header: FRIENDS, the count online at its right, a line under it; A opens the Friends screen -->
+	<widget name="screens/friends_header" type="text" width="164" height="24" bitmap="main_menu/parts/item_164x24" font="ui\small_ui" color="#FF8DB6E6" text_x="8" text_y="4">
+		<on event="a" run="port screen do"/>
+		<on event="start" run="port screen do"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="screens/friends_count"/>
+		<child widget="screens/friends_line"/>
+	</widget>
+	<widget name="screens/friends_count" type="text" width="156" height="24" font="ui\small_ui" color="#FF5ED38C" align="right" text_y="4" text_flags="no_focus_test"/>
+	<widget name="screens/friends_line" top="6" width="164" height="20" bitmap="main_menu/parts/section_164"/>
+	<!-- the line under it when no friend is online ("No friends online") -->
+	<widget name="screens/friends_message" type="text" width="164" height="18" font="ui\small_ui" color="#FF6F9CD0" text_x="8" text_flags="no_focus_test"/>
+	<!-- a row: a friend's name and, at its right, what they are doing (green,
+	as the Friends screen's friends online); or a folded row (2 OFFLINE, +3
+	MORE, ADD A FRIEND). Its frame lit while focused; A, a click or a tap
+	joins the friend, or opens the Friends screen -->
+	<widget name="screens/friend" type="text" width="164" height="24" bitmap="main_menu/parts/item_164x24" font="ui\small_ui" color="#FFE0ECFA" text_x="8" text_y="4">
+		<on event="a" run="port screen do"/>
+		<on event="start" run="port screen do"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="screens/friend_note"/>
+	</widget>
+	<widget name="screens/friend_note" type="text" width="156" height="24" font="ui\small_ui" color="#FF5ED38C" align="right" text_y="4" text_flags="no_focus_test"/>
 </menus>
