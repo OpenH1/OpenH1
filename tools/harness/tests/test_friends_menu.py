@@ -2,7 +2,9 @@
 online and a request), the prompts each row offers (JOIN only when a friend's presence offers its party or its invite
 waits, with internet play on; ADD FRIEND only for a player of a code who is no friend yet, never an OpenCE player;
 never two prompts of one key at once), the panel's words (a friend's game in UTF-8, a request's code, why an OpenCE
-player cannot be added, appearing offline). The protocol under them is tools/p2p_friends_check.c's."""
+player cannot be added, appearing offline); the main menu's FRIENDS panel (friends_panel.h): what a friend online is
+doing (co-op, a game, the menus), its rows (the friends online, those past its rows or offline folded into one, the way
+to add some when none is online, why none is shown). The protocol under them is tools/p2p_friends_check.c's."""
 
 import sys
 from pathlib import Path
@@ -12,9 +14,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, constant, enum_with, function, mutated, read, run, structure  # noqa: E402
 
-CASES = ["notes", "prompts", "panel"]
+CASES = ["notes", "prompts", "panel", "friends_panel"]
 FUNCTIONS = ["friends_wide", "friends_wide_utf8", "friends_where", "friends_row_note", "friends_prompts_of",
-             "friends_panel_text"]
+             "friends_panel_text", "friends_activity", "friends_panel_fill"]
 
 # a fault in friends_menu.inc, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -31,6 +33,10 @@ NEGATIVE_CONTROLS = {
                            "\t\tusnprintf(text, size - 1, L\"Wants to be friends\");"), "notes"),
     "invite-not-told": (("\tif (entry->inviting)\n\t\treturn L\"Invites you\";\n", ""), "notes"),
     "utf8-read-as-bytes": (("character = character << 6 | (*bytes++ & 0x3F);", "character = *bytes++;"), "panel"),
+    "coop-as-a-game": (("return coop ? \"Co-op\" : \"In a game\";", "return \"In a game\";"), "friends_panel"),
+    "offline-not-folded": (("\telse if (panel->row_count < rows && offline_count)", "\telse if (0)"), "friends_panel"),
+    "join-offline": (("row->joinable = (unsigned char)(online && ", "row->joinable = (unsigned char)(1 && "),
+                     "friends_panel"),
     "players-left-out": (("L\"%s (%d of %d).\", game, entry->players, entry->maximum_players);",
                           "L\"%s.\", game);"), "panel"),
 }
@@ -42,7 +48,9 @@ def generated(fault=None):
     config = "".join(f"#define {name} {constant(p2p, name)}\n" for name in (
         "P2P_FRIEND_CODE_BYTES", "P2P_FRIEND_CODE_TEXT_SIZE", "P2P_FRIEND_NAME_SIZE", "P2P_FRIEND_GAME_SIZE"))
     config += enum_with(p2p, "\t_p2p_friend_request,") + "\n" + enum_with(p2p, "_p2p_party_place_menus") + "\n"
-    config += structure(p2p, "p2p_friend") + "\n" + enum_with(menu, "_friends_prompt_copy") + "\n"
+    config += structure(p2p, "p2p_friend") + "\n" + structure(p2p, "p2p_friends_state") + "\n"
+    config += enum_with(menu, "_friends_prompt_copy") + "\n"
+    config += read("port/linux/game/friends_panel.h").replace("boolean friends_panel_do", "int friends_panel_do") + "\n"
     code = "\n\n".join(function(menu, name) for name in FUNCTIONS)
     if fault:
         code = mutated(code, *fault)

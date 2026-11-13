@@ -55,7 +55,8 @@ enum reader_element
 	_element_button,
 	_element_cards,
 	_element_card,
-	_element_header
+	_element_header,
+	_element_friends
 };
 
 struct reader
@@ -406,6 +407,17 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			if (!reader->failed && card->when)
 				when_check(reader, card->when);
 		}
+	}
+	else if (parent_element == _element_screen && !strcmp(name, "friends"))
+	{
+		static char const *const names[] = { NULL };
+
+		/* (the friends online, beside the list: menu_screen.c's panel) */
+		element = _element_friends;
+		attributes_read(reader, name, attributes, names, values);
+		if (!reader->failed && kind_count(screen, MENU_SCREEN_FRIENDS))
+			reader_problem(reader, "a screen has one <friends>", NULL);
+		block = block_add(reader, MENU_SCREEN_FRIENDS, -1);
 	}
 	else if (parent_element == _element_screen && !strcmp(name, "buttons"))
 	{

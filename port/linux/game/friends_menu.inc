@@ -23,9 +23,17 @@ scroll at their ends, as the server browser's. JOIN joins the friend's party
 (the Party screen then opens over this one, and follows its leader into its
 games as any party does).
 
+The main menu's FRIENDS panel (friends_panel.h; its widgets are
+menu_screen.c's): the friends online and what each is doing
+(friends_activity), the rest folded into a row (friends_panel_fill, from
+the list friends_panel_read reads); a friend's row joins them as JOIN does
+(friends_panel_do), else opens their entry on the Friends screen.
+
 debug.friends takes the screen's actions at seconds after the start, for a
-test's copies of the game, which have no player to press them. The rows' and
-the panel's words (friends_row_note, friends_panel_text) and which prompts
+test's copies of the game, which have no player to press them; its "fake"
+gives the panel made-up friends in place of the list (a test's, with no
+broker). The rows' and the panel's words (friends_row_note,
+friends_panel_text, friends_activity, friends_panel_fill) and which prompts
 a row has (friends_prompts_of) are tools/harness/tests/test_friends_menu.py's.
 */
 
@@ -116,6 +124,11 @@ static struct
 	short debug_next;
 	unsigned long debug_start;
 	short debug_show;
+	/* debug.friends' "fake" friends, the panel's in place of the list's
+	(fake_on: some were given, though cleared since) */
+	struct p2p_friend fakes[FRIENDS_PANEL_ROWS + 2];
+	short fake_count;
+	boolean fake_on;
 } friends_menu;
 
 /* the platform layer's (platform.h) */
@@ -188,6 +201,55 @@ static void friends_debug_list(void)
 	}
 }
 
+/* debug.friends' "fake <name>:<doing>[:join]" (doing: menu, party,
+joining, game, coop, hosting, invites or offline): a made-up friend for the
+panel, or the one of that name changed; "fake clear": none */
+static void friends_debug_fake(char const *argument)
+{
+	char name[P2P_FRIEND_NAME_SIZE], doing[16] = "menu";
+	char const *colon = strchr(argument, ':');
+	struct p2p_friend *fake = NULL;
+	short index;
+
+	friends_menu.fake_on = TRUE;
+	if (!strcmp(argument, "clear"))
+	{
+		friends_menu.fake_count = 0;
+		return;
+	}
+	snprintf(name, sizeof(name), "%.*s", (int)(colon ? colon - argument : (long)strlen(argument)), argument);
+	if (colon)
+		snprintf(doing, sizeof(doing), "%.*s", (int)strcspn(colon + 1, ":"), colon + 1);
+	for (index = 0; index < friends_menu.fake_count && !fake; index++)
+	{
+		if (!strcmp(friends_menu.fakes[index].name, name))
+			fake = &friends_menu.fakes[index];
+	}
+	if (!fake && friends_menu.fake_count < (short)NUMBEROF(friends_menu.fakes))
+	{
+		fake = &friends_menu.fakes[friends_menu.fake_count++];
+		csmemset(fake, 0, sizeof(*fake));
+		snprintf(fake->name, sizeof(fake->name), "%s", name);
+		/* (its code made from its name: a test's, which no broker knows) */
+		for (index = 0; name[index]; index++)
+		{
+			fake->code[index % P2P_FRIEND_CODE_BYTES] =
+				(byte)(fake->code[index % P2P_FRIEND_CODE_BYTES] * 31 + (byte)name[index]);
+		}
+	}
+	if (!fake)
+		return;
+	fake->kind = !strcmp(doing, "offline") ? _p2p_friend_offline : _p2p_friend_online;
+	fake->place = (unsigned char)(!strcmp(doing, "game") || !strcmp(doing, "coop") ? _p2p_party_place_game :
+		!strcmp(doing, "joining") ? _p2p_party_place_joining : _p2p_party_place_menus);
+	fake->hosting = !strcmp(doing, "hosting");
+	fake->inviting = !strcmp(doing, "invites");
+	fake->party_count = (unsigned char)(!strcmp(doing, "party") ? 2 : 0);
+	fake->joinable = colon && strstr(colon, ":join") != NULL;
+	snprintf(fake->game, sizeof(fake->game), "%s", !strcmp(doing, "coop") ? "Campaign on The Silent Cartographer" :
+		!strcmp(doing, "game") ? "OpenH1 120 Tick \xC2\xB7 Slayer on Blood Gulch" : "");
+}
+
 /* one of debug.friends' actions ("<second> <action> [<code>]") */
 static void friends_debug_action(char const *action)
 {
@@ -253,6 +315,8 @@ static void friends_debug_action(char const *action)
 		friends_debug_list();
 	else if (!strcmp(verb, "show"))
 		friends_menu.debug_show = (short)(atoi(argument) + 1);
+	else if (!strcmp(verb, "fake"))
+		friends_debug_fake(argument);
 }
 
 /* debug.friends' actions due ("<second> <action>|...") */
@@ -1082,4 +1146,158 @@ static void friends_hub_status(wchar_t *headline, short headline_size, wchar_t *
 			usnprintf(detail, detail_size - 1, L"Your code: %s", code);
 	}
 	headline[headline_size - 1] = detail[detail_size - 1] = 0;
+}
+
+/* ---------- the main menu's FRIENDS panel (friends_panel.h) */
+
+/* what a friend online is doing, in a word or two (the panel's note) */
+static char const *friends_activity(struct p2p_friend const *entry)
+{
+	boolean coop = strstr(entry->game, "Campaign") || strstr(entry->game, "Co-op") || strstr(entry->game, "co-op");
+
+	if (entry->inviting)
+		return "Invites you";
+	if (entry->hosting)
+		return coop ? "Hosting co-op" : "Hosting";
+	switch (entry->place)
+	{
+	case _p2p_party_place_joining:
+		return "Joining";
+	case _p2p_party_place_game:
+	case _p2p_party_place_local_game:
+		return coop ? "Co-op" : "In a game";
+	}
+	return entry->party_count > 1 ? "In a party" : "In menu";
+}
+
+/* the panel's contents from the list (in its order: the friends online
+first), in at most rows rows: the friends online, then the rest of them
+(+N MORE) where there is no room for all, else the friends offline folded
+into one row (N OFFLINE); with no friend online, a line that says why and
+the way to add some. online: internet play on */
+static void friends_panel_fill(struct p2p_friend const *entries, short count, struct p2p_friends_state const *state,
+	boolean online, struct friends_panel *panel, short rows)
+{
+	short index, online_count = 0, offline_count = 0, shown;
+
+	csmemset(panel, 0, sizeof(*panel));
+	rows = (short)PIN(rows, 0, FRIENDS_PANEL_ROWS);
+	for (index = 0; index < count; index++)
+	{
+		online_count += entries[index].kind == _p2p_friend_online;
+		offline_count += entries[index].kind == _p2p_friend_offline;
+	}
+	if (state->requests)
+	{
+		snprintf(panel->count, sizeof(panel->count), state->requests == 1 ? "1 REQUEST" : "%d REQUESTS",
+			state->requests);
+	}
+	else if (online_count)
+		snprintf(panel->count, sizeof(panel->count), "%d ONLINE", online_count);
+	if (!online_count)
+	{
+		snprintf(panel->message, sizeof(panel->message), "%s", !state->identity ? "No player profile yet" :
+			!online ? "Internet play is off" : !state->friends ? "No friends yet" :
+			"No friends online");
+	}
+	/* (the friends online, less a row for what follows them where they do
+	not all fit) */
+	shown = online_count;
+	if (online_count + (offline_count ? 1 : 0) > rows)
+		shown = (short)MAX(0, rows - 1);
+	for (index = 0; index < count && panel->row_count < shown; index++)
+	{
+		struct friends_panel_row *row = &panel->rows[panel->row_count];
+
+		if (entries[index].kind != _p2p_friend_online)
+			continue;
+		row->kind = _friends_panel_friend;
+		csmemcpy(row->code, entries[index].code, FRIENDS_PANEL_CODE_BYTES);
+		row->joinable = (unsigned char)(online && (entries[index].joinable || entries[index].inviting));
+		snprintf(row->name, sizeof(row->name), "%s", entries[index].name[0] ? entries[index].name : "Player");
+		snprintf(row->note, sizeof(row->note), "%s", friends_activity(&entries[index]));
+		panel->row_count++;
+	}
+	if (panel->row_count < rows && shown < online_count)
+	{
+		panel->rows[panel->row_count].kind = _friends_panel_more;
+		snprintf(panel->rows[panel->row_count].name, FRIENDS_PANEL_NAME_SIZE, "+%d MORE", online_count - shown);
+		panel->row_count++;
+	}
+	else if (panel->row_count < rows && offline_count)
+	{
+		panel->rows[panel->row_count].kind = _friends_panel_offline;
+		snprintf(panel->rows[panel->row_count].name, FRIENDS_PANEL_NAME_SIZE, "%d OFFLINE", offline_count);
+		panel->row_count++;
+	}
+	if (panel->row_count < rows && !online_count && state->identity)
+	{
+		panel->rows[panel->row_count].kind = _friends_panel_add;
+		snprintf(panel->rows[panel->row_count].name, FRIENDS_PANEL_NAME_SIZE, "ADD A FRIEND");
+		panel->row_count++;
+	}
+}
+
+void friends_panel_read(struct friends_panel *panel, short rows)
+{
+	static struct p2p_friend entries[P2P_FRIENDS_LIST_MAXIMUM];
+	struct p2p_friends_state state;
+	short count, index;
+
+	p2p_friends_state(&state);
+	if (!friends_menu.fake_on)
+	{
+		count = (short)p2p_friends_list(entries, P2P_FRIENDS_LIST_MAXIMUM);
+		friends_panel_fill(entries, count, &state, config_boolean("network.online"), panel, rows);
+		return;
+	}
+	/* (debug.friends' made-up friends: a profile's, online, none waiting;
+	in the list's order, the friends online first) */
+	count = friends_menu.fake_count;
+	state.identity = TRUE;
+	state.requests = 0;
+	state.friends = count;
+	for (index = 0; index < count; index++)
+	{
+		struct p2p_friend moved = friends_menu.fakes[index];
+		short at = index;
+
+		while (at > 0 && entries[at - 1].kind > moved.kind)
+		{
+			entries[at] = entries[at - 1];
+			at--;
+		}
+		entries[at] = moved;
+	}
+	friends_panel_fill(entries, count, &state, TRUE, panel, rows);
+}
+
+boolean friends_panel_do(struct friends_panel_row const *row)
+{
+	char name[P2P_FRIEND_NAME_SIZE];
+
+	if (row->kind != _friends_panel_friend || !row->joinable)
+	{
+		/* (the Friends screen, on their entry: kept chosen by its code as the
+		screen reads the list, friends_screen_update) */
+		if (row->kind == _friends_panel_friend)
+		{
+			friends_menu.chosen = 1;
+			csmemcpy(friends_menu.chosen_code, row->code, P2P_FRIEND_CODE_BYTES);
+		}
+		return FALSE;
+	}
+	/* (JOIN, as the Friends screen's: the Party screen then opens over the
+	main menu, pc_menu_main_menu_shown) */
+	snprintf(name, sizeof(name), "%s", row->name);
+	platform_log("friends: panel: join %s", name);
+	if (!p2p_friends_join(row->code))
+	{
+		platform_log("friends: panel: %s's party is not reachable", name);
+		campaign_fail();
+		return TRUE;
+	}
+	friends_done(L"Joining %s's party...", name);
+	ui_play_audio_feedback_sound(SOUND_FORWARD);
+	return TRUE;
 }
