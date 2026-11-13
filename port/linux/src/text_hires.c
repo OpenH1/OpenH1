@@ -703,8 +703,9 @@ unsigned char *text_hires_line(char const *tag_name, char const *text, float cap
 	const unsigned char *data = NULL;
 	unsigned char *pixels;
 	unsigned int index;
-	int x0, y0, x1, y1, pass, w = 0, h, pen, baseline;
-	float scale;
+	int x0, y0, x1, y1, pass, w = 0, h, pen, baseline, digits = 0, run = 0, digit;
+	float scale, cell = 0.0f;
+	const char *c;
 
 	*width = *height = 0;
 	if (!tag_name || !text || cap_pixels <= 0.0f || cap_pixels > 512.0f)
@@ -717,6 +718,20 @@ unsigned char *text_hires_line(char const *tag_name, char const *text, float cap
 		!stbtt_GetCodepointBox(&info, 'H', &x0, &y0, &x1, &y1) || y1 <= y0)
 		return NULL;
 	scale = cap_pixels / (float)(y1 - y0);
+	/* (a number's cells: the widest digit's advance, as many as the line's
+	longest number has digits) */
+	for (digit = '0'; digit <= '9'; digit++)
+	{
+		int advance, bearing;
+
+		stbtt_GetCodepointHMetrics(&info, digit, &advance, &bearing);
+		cell = (float)advance * scale > cell ? (float)advance * scale : cell;
+	}
+	for (c = text; *c; c++)
+	{
+		run = *c >= '0' && *c <= '9' ? run + 1 : 0;
+		digits = run > digits ? run : digits;
+	}
 	/* (room above the capitals for accents, below the baseline for
 	descenders: the font's own ascent and descent are not to be trusted
 	for it, OpenCE's being smaller than its capitals) */
@@ -732,7 +747,8 @@ unsigned char *text_hires_line(char const *tag_name, char const *text, float cap
 
 		while (*p)
 		{
-			int code = *p++, advance, bearing;
+			int code = *p++, advance, bearing, number = code >= '0' && code <= '9';
+			float place;
 
 			/* (UTF-8's two- and three-byte letters; others as Latin-1) */
 			if ((code & 0xe0) == 0xc0 && (p[0] & 0xc0) == 0x80)
@@ -742,18 +758,29 @@ unsigned char *text_hires_line(char const *tag_name, char const *text, float cap
 				code = ((code & 0x0f) << 12) | ((p[0] & 0x3f) << 6) | (p[1] & 0x3f);
 				p += 2;
 			}
-			if (previous)
+			/* (a number's first digit: the cells its number has not, before
+			it; no kerning into a digit or out of one) */
+			if (number && !(previous >= '0' && previous <= '9'))
+			{
+				const unsigned char *q = p;
+
+				for (run = 1; *q >= '0' && *q <= '9'; q++)
+					run++;
+				x += (float)(digits - run) * cell;
+			}
+			if (previous && !number && !(previous >= '0' && previous <= '9'))
 				x += (float)stbtt_GetCodepointKernAdvance(&info, previous, code) * scale;
 			stbtt_GetCodepointHMetrics(&info, code, &advance, &bearing);
+			place = number ? x + (cell - (float)advance * scale) * 0.5f : x;
 			if (pass)
 			{
 				int left, top, right, bottom;
-				float shift = x - floorf(x);
+				float shift = place - floorf(place);
 
 				unsigned char *glyph;
 
 				stbtt_GetCodepointBitmapBoxSubpixel(&info, code, scale, scale, shift, 0.0f, &left, &top, &right, &bottom);
-				pen = (int)floorf(x) + left;
+				pen = (int)floorf(place) + left;
 				glyph = right > left && bottom > top ? calloc((size_t)(right - left) * (bottom - top), 1) : NULL;
 				if (glyph)
 				{
@@ -775,7 +802,7 @@ unsigned char *text_hires_line(char const *tag_name, char const *text, float cap
 					free(glyph);
 				}
 			}
-			x += (float)advance * scale;
+			x += number ? cell : (float)advance * scale;
 			previous = code;
 		}
 		if (!pass)

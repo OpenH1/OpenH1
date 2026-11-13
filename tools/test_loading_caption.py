@@ -115,6 +115,32 @@ int main(int argc, char **argv) {
     assert(inked_columns > width / 2);
     assert(bottom - top >= 114);
     assert(sum > (long)width * height * 255 / 10);
+    /* (a count that changes moves nothing: from 1 of 23 to 23 of 23, the
+    line as wide, its first ink at the same column, its words after the
+    count the same pixels) */
+    {
+        int count, count_width, count_height, first = -1, words = -1;
+        for (count = 1; count <= 23; count++) {
+            char text[64];
+            unsigned char *other;
+            int left = -1;
+            snprintf(text, sizeof(text), "PREPARING MENU PICTURES \xb7 %d OF 23", count);
+            other = text_hires_line("pc\\heading", text, 15.0f * LOADING_PRESENTATION_CAPTION_SCALE,
+                &count_width, &count_height);
+            assert(other && count_width == width && count_height == height);
+            for (x = 0; x < count_width && left < 0; x++)
+                for (y = 0; y < count_height; y++)
+                    if (other[y * count_width + x] > 128) { left = x; break; }
+            if (first < 0) first = left;
+            assert(left == first);
+            /* ("OF 23": its last eighth) */
+            if (words < 0) words = count_width * 7 / 8;
+            for (y = 0; y < count_height; y++)
+                assert(!memcmp(other + y * count_width + words, line + y * width + words,
+                    (size_t)(count_width - words)));
+            free(other);
+        }
+    }
 
     /* a load on a 3840x2160 screen, the sweep following its progress, with
     and without the caption (its sharp frame 1916x1080, as on one) */
