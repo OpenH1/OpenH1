@@ -30,6 +30,8 @@ CONTROLS = [
     ("else if (history->frame + 1 == world_scene.frame)", "else if (1)", "follows"),
     # another object's history taken over by the one made in its slot
     ("if (history->id != id)\n", "if (0)\n", "ids"),
+    # the menus' Spartan, drawn in a view of its own, and the rifle it holds, listed as the scene's
+    ("menu_spartan_object(object_get_ultimate_parent(object_index))", "0", "ids"),
     # an instance found by its slot alone
     ("&& world_scene.instances[slot].id == id ?", "?", "ids"),
     # the bounding sphere left where the tick has it

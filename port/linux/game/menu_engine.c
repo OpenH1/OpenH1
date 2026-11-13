@@ -789,6 +789,9 @@ static void engine_draw(struct engine_screen *screen, struct widget_instance *wi
 	boolean children;
 	boolean rows;
 
+	/* (a hand-written screen's own draws in a widget's place: menu_screen.c) */
+	if (screen->hand_written)
+		menu_screen_widget_drawing(widget, offset);
 	if (!ui_widget_port_render_node(widget, clip, offset, focus, nifty, &children_offset, &children))
 		return;
 	engine_layout(screen, widget);

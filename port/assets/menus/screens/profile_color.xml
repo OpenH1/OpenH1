@@ -2,7 +2,7 @@
 <!-- The profile's color (docs/menu_screens.md), in place of Settings' COLOR
 screen: its title in the band at the top, the game's colors one under
 another at the left, each its name in its color, and beside them the
-Spartan in the color focused, drawn by the game in the menus' scene (its
+Spartan in the color focused, drawn by the game in a view of its own (its
 original picture where it cannot be). A chooses the color, and B goes
 back without one. -->
 <screen name="profile_color">

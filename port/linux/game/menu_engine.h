@@ -139,6 +139,10 @@ void menu_screen_closed(struct widget_instance *screen);
 /* before the screen is drawn: made again if its file was read again, its
 focused item's hint shown */
 void menu_screen_frame(struct widget_instance *screen);
+/* a widget of a hand-written screen about to be drawn (at offset, its
+parent's place), shown or not: what the screen draws in its place in the
+widgets' order (its <spartan>'s Spartans' view, in the picture's) */
+void menu_screen_widget_drawing(struct widget_instance const *widget, point2d offset);
 /* B or Back on the screen: its back action run (TRUE), else FALSE for the
 engine to take the event */
 boolean menu_screen_back(struct widget_instance *screen, struct event_record *event, boolean *deleted);
