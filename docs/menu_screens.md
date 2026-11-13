@@ -202,10 +202,19 @@ entry in `screen_actions`.
 
 `screens/browser.xml` is the server browser of the new engine: it takes the
 place of Join Game's screen (`main_menu/multiplayer_type_select/join_game/
-join_game_screen`) while it is the server browser's (`screen_places`'
-`takes`: menu_functions.c's `pc_menu_browser_visit_kind`). The classic engine,
-PRO 2V2's browser and a refused or missing file keep the generated screen
-(and its HOST button, `screen_browser_opened`).
+join_game_screen`) in each of its modes, by `{browser.*}` bindings and `if`s:
+
+- the server browser (the main menu's MULTIPLAYER), with its HOST & MORE;
+- on its CO-OP tab (Campaign's CO-OP, `open coop`: the tab this visit, not
+  the player's own kept), with HOST CO-OP;
+- LOCAL NETWORK (Multiplayer's hub, which HOST & MORE opens): the games on
+  this network, its favorites offline after them; no REFRESH nor HOST;
+- JOIN BY LINK (the hub): the invites taken; no tabs, searches, FILTERS nor
+  SEARCH, PASTE LINK in REFRESH's place, and an invite link copied joined
+  as it opens.
+
+The classic engine, PRO 2V2's browser and a refused or missing file keep the
+generated screen (and its HOST button, `screen_browser_opened`).
 
 What it lists and does is menu_functions.c's, as for the generated screen: the
 games found, their order, the groups and their headings, the filters, the

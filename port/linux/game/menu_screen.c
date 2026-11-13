@@ -325,19 +325,13 @@ struct screen_place
 	int (*takes)(void);
 };
 
-/* (the server browser's screen is Join Game's, which the local network's
-list and Join by Link have too: the hand-written browser takes the server
-browser's place alone, menu_functions.c's pc_menu_browser_visit_kind) */
-static int screen_browser_takes(void)
-{
-	return pc_menu_browser_visit_kind() != 0;
-}
-
 static struct screen_place const screen_places[] =
 {
 	{ "main", "main_menu\\main_menu", pc_menu_main_menu_shown, NULL },
 	{ "campaign", "screens\\campaign", NULL, NULL },
-	{ "browser", "main_menu\\multiplayer_type_select\\join_game\\join_game_screen", NULL, screen_browser_takes },
+	/* (Join Game's, in each of its modes: the server browser, the local
+	network's list, Join by Link) */
+	{ "browser", "main_menu\\multiplayer_type_select\\join_game\\join_game_screen", NULL, NULL },
 };
 
 /* the server browser, whose screen gets a button of the hand-written
