@@ -1041,8 +1041,9 @@ until it is ready. Not in runs nobody watches (tests: `debug.hidden_window`,
 `telnet_console`, `screenshot_every` or `load_trace`; `debug.menu_pictures`
 draws them there too), in VR, or with `display.menu_pictures = false`.
 
-The same pass gives the menus their Spartan, which the game draws in the
-menus' scene (`port/linux/game/menu_models.h`): while a stock multiplayer map
+The same pass gives the menus their Spartan, which the game draws in a view
+of its own among the menus' widgets (`port/linux/game/menu_spartan.c`,
+from `port/linux/game/menu_models.h`'s tags): while a stock multiplayer map
 is loaded (Blood Gulch, else the first other one the player has; one more
 item of the caption), the multiplayer cyborg's and the assault rifle's
 models, the cyborg's animation graph, their shaders and the shaders'
