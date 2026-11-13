@@ -446,10 +446,10 @@ real_rgb_color menu_spartan_color(
 		return *global_real_rgb_blue;
 	if (color_index != MENU_SPARTAN_RANDOM || count <= 0)
 		return player_profile_get_rgb_color(color_index);
-	/* (where in the round of the colors it is, each Spartan side by side a
-	quarter of the round on) */
+	/* (where in the round of the colors it is, each Spartan side by side an
+	eighth of the round on) */
 	round = (unsigned long)count * step;
-	at = (milliseconds % round + round * (unsigned long)(index & 3) / 4) % round;
+	at = (milliseconds % round + round * (unsigned long)(index & 7) / 8) % round;
 	color = (long)(at / step);
 	from = player_profile_get_rgb_color(color);
 	to = player_profile_get_rgb_color((color + 1) % count);

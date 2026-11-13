@@ -1433,7 +1433,8 @@ static void tall_build_panel(struct screen_tall *tall, struct screen_open *open,
 		if (block->kind == MENU_SCREEN_PILLS)
 		{
 			long pill_index;
-			short x = 0;
+			short x = 0, row = 0;
+			boolean row_first = TRUE;
 
 			for (pill_index = 0; pill_index < file->block_count && tall->line_count < TALL_MAXIMUM_LINES; pill_index++)
 			{
@@ -1445,10 +1446,17 @@ static void tall_build_panel(struct screen_tall *tall, struct screen_open *open,
 				{
 					x = 0;
 					y = (short)(y + PANEL_PILL_STEP);
+					row++;
+					row_first = TRUE;
 				}
 				line = &tall->lines[tall->line_count++];
 				memset(line, 0, sizeof(*line));
 				line->block = pill;
+				/* (a row's room its first pill's: gone with a row whose pills
+				all have no words) */
+				line->most = row;
+				line->room = (short)(row_first ? PANEL_PILL_STEP : 0);
+				row_first = FALSE;
 				line->panel = (short)(tall->panel_count - 1);
 				line->spartan = NONE;
 				line->y = y;
@@ -2506,6 +2514,24 @@ static boolean tall_line_shown(struct screen_tall *tall, struct screen_line cons
 
 	if (line->block->condition && !tall_shown(tall, line->block))
 		return FALSE;
+	/* (a pill: while a pill of its row has words) */
+	if (line->block->kind == MENU_SCREEN_PILL)
+	{
+		long index;
+
+		for (index = 0; index < tall->line_count; index++)
+		{
+			struct screen_line const *other = &tall->lines[index];
+
+			if (other->panel == line->panel && other->block->kind == MENU_SCREEN_PILL &&
+				other->block->parent == line->block->parent && other->most == line->most &&
+				tall_text(tall, other->block->label, value, sizeof(value)) && value[0])
+			{
+				return TRUE;
+			}
+		}
+		return FALSE;
+	}
 	return line->block->kind != MENU_SCREEN_PICTURE || tall_binding(tall, line->block->value, value, sizeof(value))[0];
 }
 

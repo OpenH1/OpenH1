@@ -737,7 +737,7 @@ int main(int argc, char **argv)
 			panel_buttons += block->kind == MENU_SCREEN_BUTTON && screen.blocks[block->parent].kind == MENU_SCREEN_PANEL;
 			rights += block->kind == MENU_SCREEN_BUTTON && block->side && !strcmp(block->side, "right");
 		}
-		CHECK(choices == 4 && panel_buttons == 7, "%d choices, %d panel buttons", choices, panel_buttons);
+		CHECK(choices == 4 && panel_buttons == 8, "%d choices, %d panel buttons", choices, panel_buttons);
 		CHECK(rights == 6, "%d buttons at the bar's right", rights);
 		CHECK(kind_first(&screen, MENU_SCREEN_CHAT) >= 0 &&
 			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_CHAT)].source, "lobby.chat"), "the lobby's chat");

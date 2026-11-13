@@ -8,13 +8,14 @@ one list, PLAYERS, down both), each a row of its dot, name and tag (HOST,
 BOT and the bots' skill, PARTY, GOAT H1, OPENCE), this machine's own
 framed. Beside them a panel, one of three: the next game (its map's
 picture, its gametype and what wins it, the map and limits, the host's bots
-(BOTS, SKILL, TEAMS), how the game is, and GAME SETTINGS and START GAME, a
-player's WAITING FOR THE HOST); a player's card (A, a click
+(BOTS, SKILL, TEAMS), how the game is, and HOST CONTROLS, GAME SETTINGS and
+START GAME, a player's WAITING FOR THE HOST); a player's card (A, a click
 or a tap on their row: their Spartan, name, ping, platform and party, and
 ADD FRIEND, MUTE and the host's KICK); or INVITE FRIENDS (the friends
 online, the one chosen invited, and the invite link copied). BACK (LEAVE,
 or BACK while a card or the invite is open) at the bar's left, CHANGE TEAM,
-INVITE FRIENDS, ADD PLAYER, CHAT and HOST CONTROLS at its right. What it
+INVITE FRIENDS, ADD PLAYER and CHAT at its right (a touchscreen's HOST
+CONTROLS too). What it
 shows and does is menu_functions.c's lobby_menu.inc, as for the generated
 screen (the row source lobby.players, the lobby.* bindings and actions):
 left and right on the players change this player's team, Start starts the
@@ -49,6 +50,7 @@ touchscreen; the host's LOBBY TEXT CHAT has it on or off for everyone. -->
 		<choice label="TEAMS" value="{lobby.teams}" left="lobby teams left" right="lobby teams right" if="lobby.bots.some" dim="lobby.bots.locked"/>
 		<text text="{lobby.status}" lines="2"/>
 		<heading text="{lobby.waiting}" if="lobby.waiting"/>
+		<button key="accept" label="HOST CONTROLS" if="lobby.controls" do="lobby host" when="pointer"/>
 		<button key="accept" label="GAME SETTINGS" if="lobby.settings" do="lobby settings"/>
 		<button key="accept" label="{lobby.start}" if="lobby.host" do="lobby start"/>
 	</panel>
@@ -82,6 +84,6 @@ touchscreen; the host's LOBBY TEXT CHAT has it on or off for everyone. -->
 		<button key="rb" label="INVITE" side="right" if="lobby.invite" do="lobby friends" touch-width="80" when="touch"/>
 		<button key="x" label="ADD PLAYER" side="right" if="lobby.add" touch-width="106"/>
 		<button key="lb" label="CHAT" side="right" if="lobby.chat" do="lobby chat" when="pointer"/>
-		<button key="rt" label="HOST CONTROLS" side="right" if="lobby.controls" do="lobby host" touch-width="130"/>
+		<button key="rt" label="HOST CONTROLS" side="right" if="lobby.controls" do="lobby host" touch-width="130" when="touch"/>
 	</buttons>
 </screen>
