@@ -179,6 +179,9 @@ struct spartan_link_feed
 	the health last logged) */
 	short logged_state;
 	real logged_health;
+	/* their aim as the game has it, this frame (spartan_link_feed_aim_update) */
+	boolean aim_shown, aim_enemy;
+	real_point3d aim_target;
 };
 
 struct spartan_link_window
@@ -741,58 +744,67 @@ static real spartan_link_aim_range(
 		weapon_get_zoom_magnification(weapon_index, zoom_level);
 }
 
-/* the teammate's reticle on their feed (bounds): where, in the window's
-units, and whether red. FALSE for none: down, no aim (a seat without a
-weapon), or their aim off the feed's picture. Through their eyes it is the
-feed's middle (the feed looks along the aim); from behind them, the point
-the aim stops at, seen through the feed's camera */
-static boolean spartan_link_feed_aim(
-	struct spartan_link_feed const *feed,
-	real_rectangle2d const *bounds,
-	real margin,
-	real_point2d *place,
-	boolean *enemy)
+/* the teammate's aim as the game has it (spartan_link_update's, outside
+the frame's drawing, whose objects are posed between ticks): whether they
+have one to show (not down, nor in a seat without a weapon), the point it
+stops at, and whether that is an enemy the reticle turns red for */
+static void spartan_link_feed_aim_update(
+	struct spartan_link_feed *feed)
 {
 	struct player_datum *teammate = player_try_and_get(feed->player_index);
-	struct render_camera camera;
 	struct camera_command command;
 	struct collision_result collision;
 	real_vector3d forward;
-	real_point3d target;
 	real range, reach;
-	boolean hit;
 
-	*enemy = FALSE;
+	feed->aim_shown = FALSE;
+	feed->aim_enemy = FALSE;
 	if (!teammate || feed->down_at || !object_try_and_get_and_verify_type(feed->unit_index, _object_mask_unit) ||
 		TEST_FLAG(object_get(feed->unit_index)->object.damage_flags, _object_dead_bit) ||
 		!spartan_link_aims(feed->unit_index))
 	{
-		return FALSE;
+		return;
 	}
 	first_person_camera_fake(feed->unit_index, &command);
 	forward = command.forward;
 	if (normalize3d(&forward) == 0.0f)
-		return FALSE;
+		return;
 	range = spartan_link_aim_range(feed->unit_index);
 	reach = MAX(range, SPARTAN_LINK_AIM_REACH);
-	hit = spartan_link_aim_ray(feed->unit_index, &command.position, &forward, reach, &collision);
-	if (hit)
+	if (spartan_link_aim_ray(feed->unit_index, &command.position, &forward, reach, &collision))
 	{
-		target = collision.point;
-		*enemy = collision.type == _collision_result_object && spartan_link_aim_enemy((short)teammate->team_index,
-			collision.object_index, distance3d(&command.position, &collision.point), range);
+		feed->aim_target = collision.point;
+		feed->aim_enemy = collision.type == _collision_result_object && spartan_link_aim_enemy(
+			(short)teammate->team_index, collision.object_index, distance3d(&command.position, &collision.point), range);
 	}
 	else
 	{
-		point_from_line3d(&command.position, &forward, reach, &target);
+		point_from_line3d(&command.position, &forward, reach, &feed->aim_target);
 	}
+	feed->aim_shown = TRUE;
+}
+
+/* the teammate's reticle on their feed (bounds), in the window's units:
+FALSE for none (no aim to show, or off the feed's picture). Through their
+eyes it is the feed's middle (the feed looks along the aim); from behind
+them, the point the aim stops at, seen through the feed's camera */
+static boolean spartan_link_feed_aim_place(
+	struct spartan_link_feed const *feed,
+	real_rectangle2d const *bounds,
+	real margin,
+	real_point2d *place)
+{
+	struct render_camera camera;
+
+	if (!feed->aim_shown || feed->down_at || !object_try_and_get_and_verify_type(feed->unit_index, _object_mask_unit))
+		return FALSE;
 	if (spartan_link_feed_view(feed->unit_index, &camera))
 	{
 		place->x = (bounds->x0 + bounds->x1) * 0.5f;
 		place->y = (bounds->y0 + bounds->y1) * 0.5f;
 		return TRUE;
 	}
-	return spartan_link_aim_place(&camera, bounds, margin, &target, place);
+	return spartan_link_aim_place(&camera, bounds, margin, &feed->aim_target, place);
 }
 
 /* ---------- the drawing's pieces */
@@ -1289,6 +1301,14 @@ void spartan_link_update(
 			spartan_link_window_update(local_player_index, now);
 		else if (window->open && !spartan_link_game())
 			window->open = FALSE;
+		/* (the teammates' aims, while the link is shown) */
+		if (spartan_link_shown(local_player_index))
+		{
+			short feed;
+
+			for (feed = 0; feed < window->count; feed++)
+				spartan_link_feed_aim_update(&window->feeds[feed]);
+		}
 	}
 	spartan_link_schedule();
 }
@@ -1447,8 +1467,8 @@ void spartan_link_draw(
 			struct spartan_link_feed *feed = &window->feeds[index];
 			real radius = spartan_link_reticle_radius(&rectangles[index]);
 			real_point2d place;
-			boolean enemy;
-			boolean shown = spartan_link_feed_aim(feed, &rectangles[index], radius, &place, &enemy);
+			boolean enemy = feed->aim_enemy;
+			boolean shown = spartan_link_feed_aim_place(feed, &rectangles[index], radius, &place);
 
 			if (shown)
 				spartan_link_draw_reticle(white, &place, radius, enemy);

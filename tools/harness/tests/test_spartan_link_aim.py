@@ -50,7 +50,7 @@ def test_drawn_on_the_shown_link_only():
     code = read("port/linux/game/spartan_link.c")
     draw = function(code, "spartan_link_draw")
     # (nothing drawn while the link is hidden: the reticle after the link's check, on a feed's drawn picture)
-    assert draw.index("if (!spartan_link_shown(local_player_index))\n\t\treturn;") < draw.index("spartan_link_feed_aim(")
+    assert draw.index("if (!spartan_link_shown(local_player_index))\n\t\treturn;") < draw.index("spartan_link_feed_aim_place(")
     assert "if (halo_view_drawn(SPARTAN_LINK_VIEW(local_player_index, index)))" in draw
     # the aim read from the world only: a collision test, no seed, no effect
     aim = code[code.index("/* ---------- the teammate's aim */"):code.index("/* ---------- the drawing's pieces */")]
@@ -61,3 +61,12 @@ def test_drawn_on_the_shown_link_only():
     assert "collision_test_vector" in called
     # and none of it sent: the network's code never asks
     assert "spartan_link" not in read("port/linux/game/network_distributed.c")
+
+
+def test_aim_read_outside_the_drawing():
+    # the line along the aim meets the objects as the game has them (spartan_link_update), not as the frame poses
+    # them between ticks: in the drawing it flickered red and blue frame by frame within one tick
+    code = read("port/linux/game/spartan_link.c")
+    assert "spartan_link_feed_aim_update(" in function(code, "spartan_link_update")
+    assert "spartan_link_feed_aim_update(" not in function(code, "spartan_link_draw")
+    assert "spartan_link_aim_ray(" not in function(code, "spartan_link_feed_aim_place")
