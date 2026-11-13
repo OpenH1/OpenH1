@@ -1091,6 +1091,27 @@ a row; its panel and bar the lobby.* bindings; its actions the generated
 screen's functions, or these */
 
 static void lobby_utf8(wchar_t const *wide, char *text, short size);
+/* (host_controls_menu.inc's: Host Controls' KICK, the host's or a
+dedicated server's admin's) */
+static boolean host_kick(struct host_controls_player const *player, boolean ban, long seconds, char const *reason);
+/* (network_distributed.c's: a client's ping to its host; the host's of a
+client's machine) */
+long distributed_own_ping(void);
+long distributed_machine_ping(long machine_index);
+
+/* the panel the hand-written lobby shows: the next game's, a player's card,
+the friends to invite (lobby.details, lobby.card, lobby.inviting) */
+enum
+{
+	_lobby_panel_details,
+	_lobby_panel_card,
+	_lobby_panel_invite,
+};
+
+/* how long a card's or the invite's words of what was done are shown */
+#define LOBBY_SAID_TIME 5000
+/* ui.map's mp_map_grafix's picture of a map it has none of (custom_edition_maps.c's UNKNOWN_LEVEL_FRAME) */
+#define LOBBY_UNKNOWN_MAP_FRAME 13
 
 static struct
 {
@@ -1100,10 +1121,24 @@ static struct
 	unsigned long made_at;
 	boolean made;
 	short rows;
+	/* the panel shown (_lobby_panel_*); a card's player: its slot of the
+	game's record, its machine and name (another there: the card closes) */
+	short panel;
+	short card_slot;
+	long card_machine;
+	wchar_t card_name[12];
+	/* the friend chosen to invite (its code); what was done, and when */
+	unsigned char friend_code[P2P_FRIEND_CODE_BYTES];
+	boolean friend_chosen;
+	wchar_t said[SETTINGS_PANEL_TEXT_LENGTH];
+	unsigned long said_time;
 } lobby_screen;
 
 /* the model as this frame has it (made again once a frame: the bindings and
 the table read it in turn) */
+static struct network_player *lobby_card_player(void);
+static short lobby_screen_entry(short index, boolean *more);
+
 static struct lobby_board_model *lobby_screen_model(void)
 {
 	unsigned long now = system_milliseconds();
@@ -1113,8 +1148,459 @@ static struct lobby_board_model *lobby_screen_model(void)
 		lobby_board_model_make(&lobby_screen.model, lobby_screen.rows ? lobby_screen.rows : LOBBY_LAYOUT_ROWS);
 		lobby_screen.made = TRUE;
 		lobby_screen.made_at = now;
+		/* (a card's player gone: its card closed) */
+		if (lobby_screen.panel == _lobby_panel_card && !lobby_card_player())
+			lobby_screen.panel = _lobby_panel_details;
 	}
 	return &lobby_screen.model;
+}
+
+/* ---- the panels: a player's card, the friends to invite */
+
+/* the card's player, NULL if it is not in the game now (its slot another's) */
+static struct network_player *lobby_card_player(void)
+{
+	struct lobby_board_model *model = &lobby_screen.model;
+	struct network_player *player;
+
+	if (!model->game || lobby_screen.card_slot < 0 || lobby_screen.card_slot >= HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
+		return NULL;
+	player = &model->game->players[lobby_screen.card_slot];
+	if (!network_player_is_valid(player) || player->machine_index != lobby_screen.card_machine ||
+		!lobby_board_names_equal(player->name, NUMBEROF(player->name), lobby_screen.card_name))
+	{
+		return NULL;
+	}
+	return player;
+}
+
+/* ... its entry of the model's (NULL: none) */
+static struct lobby_board_entry const *lobby_card_entry(void)
+{
+	struct lobby_board_model *model = lobby_screen_model();
+	struct network_player *player = lobby_card_player();
+	short index;
+
+	for (index = 0; player && index < model->count; index++)
+	{
+		if (model->players[index] == player)
+			return &model->entries[index];
+	}
+	return NULL;
+}
+
+/* what was done, said in the panel a while */
+static void lobby_say(wchar_t const *format, wchar_t const *name)
+{
+	usnprintf(lobby_screen.said, NUMBEROF(lobby_screen.said) - 1, format, name ? name : L"");
+	lobby_screen.said[NUMBEROF(lobby_screen.said) - 1] = 0;
+	lobby_screen.said_time = system_milliseconds() | 1;
+}
+
+static boolean lobby_said(void)
+{
+	return lobby_screen.said_time && system_milliseconds() - lobby_screen.said_time < LOBBY_SAID_TIME;
+}
+
+/* a player's color as the game gives it (game_engine_player_get_change_color),
+as a <spartan>'s binding's word: a team game's its team's, else its own */
+static void lobby_color_word(struct lobby_board_model const *model, struct network_player const *player, char *word,
+	unsigned long size)
+{
+	if (model->game && model->game->variant.universal_variant.teams)
+		snprintf(word, size, "%s", player->team_index == 1 ? "blue" : "red");
+	else if (player->primary_color_index >= 0 && player->primary_color_index < 18)
+		snprintf(word, size, "%d", (int)player->primary_color_index);
+	else
+		snprintf(word, size, "random");
+}
+
+/* a map's frame of ui.map's mp_map_grafix: an Xbox map's, else its display
+index (a Custom Edition map's, a campaign level's: custom_edition_maps.c
+draws its picture), else the unknown map's */
+static short lobby_map_frame(char const *map_name)
+{
+	char const *const *names;
+	short count = xbox_multiplayer_map_count(ui_widget_port_multiplayer_maps(&names, NULL)), index;
+	short shown = custom_edition_maps_display_index(map_name);
+
+	if (shown != NONE)
+		return shown;
+	for (index = 0; index < count; index++)
+	{
+		if (!_stricmp(names[index], map_name))
+			return index;
+	}
+	return LOBBY_UNKNOWN_MAP_FRAME;
+}
+
+/* the next game's gametype said in a few words: what wins it */
+static void lobby_gametype_description(struct network_game const *game, wchar_t *text, short size)
+{
+	short mode = game_modes_variant_mode(&game->variant, &game->variant_options);
+	boolean teams = game->variant.universal_variant.teams;
+	wchar_t const *words = L"";
+
+	switch (game->variant.game_engine_index)
+	{
+	case 0:
+		words = L"The campaign, played together.";
+		break;
+	case 1:
+		words = L"Take the other team's flag to your base. The most captures wins.";
+		break;
+	case 2:
+		words = teams ? L"Kill the other team's players. The team with the most kills wins." :
+			L"Kill every other player. The most kills wins.";
+		break;
+	case 3:
+		words = L"Hold the skull. The longest held wins.";
+		break;
+	case 4:
+		words = L"Hold the hill. The longest held wins.";
+		break;
+	case 5:
+		words = L"Drive through every checkpoint. The first around wins.";
+		break;
+	}
+	if (mode == _game_mode_infection)
+		words = L"The zombies infect everyone they kill. Survive to win.";
+	else if (mode == _game_mode_gun_game)
+		words = L"A new weapon with every kill. The first through them all wins.";
+	else if (mode == _game_mode_swat)
+		words = teams ? L"No shields, no radar, one headshot kills. The team with the most kills wins." :
+			L"No shields, no radar, one headshot kills. The most kills wins.";
+	usnprintf(text, size - 1, L"%s", words);
+	text[size - 1] = 0;
+}
+
+/* the friends online (p2p_friends.c's list's), into entries: their count */
+static short lobby_friends_online(struct p2p_friend *entries, short maximum)
+{
+	static struct p2p_friend list[P2P_FRIENDS_LIST_MAXIMUM];
+	int count = p2p_friends_list(list, P2P_FRIENDS_LIST_MAXIMUM), index;
+	short online = 0;
+
+	for (index = 0; index < count && online < maximum; index++)
+	{
+		if (list[index].kind == _p2p_friend_online)
+			entries[online++] = list[index];
+	}
+	return online;
+}
+
+/* the friend chosen to invite among those online (its index; the first if
+none is, or it is gone), NONE if none is online */
+static short lobby_friend_chosen(struct p2p_friend const *entries, short count)
+{
+	short index;
+
+	for (index = 0; lobby_screen.friend_chosen && index < count; index++)
+	{
+		if (!csmemcmp(entries[index].code, lobby_screen.friend_code, P2P_FRIEND_CODE_BYTES))
+			return index;
+	}
+	return count ? 0 : NONE;
+}
+
+/* whether INVITE FRIENDS is offered: a game with an invite link, on the
+Internet (network.online) */
+static boolean lobby_friends_offered(struct lobby_board_model const *model)
+{
+	return model->controls.invite && config_boolean("network.online");
+}
+
+/* the card's player's actions: ADD FRIEND (a code the host told, of no
+friend, request or block yet: network_party.c), MUTE (another machine's
+player's voice, lines and pings on this machine: network_voice.c), KICK
+(Host Controls' own, for its player: the host's) */
+static boolean lobby_card_friend(void)
+{
+	struct lobby_board_entry const *entry = lobby_card_entry();
+	int relation;
+
+	if (!entry || entry->bot || entry->own)
+		return FALSE;
+	relation = network_party_slot_friend(lobby_screen.card_slot);
+	return relation == _p2p_friend_none || relation == _p2p_friend_request;
+}
+
+static boolean lobby_card_mutable(void)
+{
+	struct lobby_board_entry const *entry = lobby_card_entry();
+
+	return entry && !entry->bot && !entry->own && !lobby_screen.model.local;
+}
+
+/* the card's player's entry of Host Controls' players (FALSE: none, or it
+cannot be kicked) */
+static boolean lobby_card_host_entry(struct host_controls_player *found)
+{
+	struct host_controls_player players[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	struct lobby_board_entry const *entry = lobby_card_entry();
+	short count, index;
+
+	if (!entry || entry->own || !lobby_screen.model.host_controls)
+		return FALSE;
+	count = network_host_controls_players(players, NUMBEROF(players));
+	for (index = 0; index < count; index++)
+	{
+		if (players[index].slot == lobby_screen.card_slot && players[index].machine_index == lobby_screen.card_machine &&
+			TEST_FLAG(players[index].actions, _host_controls_kick))
+		{
+			*found = players[index];
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+/* a card's binding's value ("lobby.card.<name>": nonzero if it has one) */
+static int lobby_card_value(char const *name, wchar_t *text, short size)
+{
+	struct lobby_board_model *model = lobby_screen_model();
+	struct network_player *player = lobby_card_player();
+	struct lobby_board_entry const *entry = lobby_card_entry();
+	struct host_controls_player kickable;
+
+	text[0] = 0;
+	if (!player || !entry)
+		return FALSE;
+	if (!strcmp(name, "lobby.card.name"))
+	{
+		ustrncpy(text, player->name, MIN(size, (short)NUMBEROF(player->name) + 1) - 1);
+		text[MIN(size, (short)NUMBEROF(player->name) + 1) - 1] = 0;
+	}
+	else if (!strcmp(name, "lobby.card.color"))
+	{
+		char word[16];
+		short letter;
+
+		lobby_color_word(model, player, word, sizeof(word));
+		for (letter = 0; word[letter] && letter < size - 1; letter++)
+			text[letter] = (wchar_t)word[letter];
+		text[letter] = 0;
+	}
+	else if (!strcmp(name, "lobby.card.ping") || !strcmp(name, "lobby.card.facts"))
+	{
+		long ping = NONE;
+		wchar_t platform[32], party[32], ping_text[32];
+
+		/* (the host's own players none; a client the host's machine's, its
+		own round trip; the host each client's, as a game measured it) */
+		if (entry->bot)
+			usnprintf(ping_text, NUMBEROF(ping_text) - 1, L"Bot");
+		else if ((model->host && entry->own) || (model->local))
+			usnprintf(ping_text, NUMBEROF(ping_text) - 1, L"Host");
+		else
+		{
+			ping = model->host ? distributed_machine_ping(player->machine_index) :
+				entry->host || entry->own ? distributed_own_ping() : NONE;
+			if (ping == NONE)
+				usnprintf(ping_text, NUMBEROF(ping_text) - 1, L"Not yet");
+			else
+				usnprintf(ping_text, NUMBEROF(ping_text) - 1, L"%ld ms", ping);
+		}
+		ping_text[NUMBEROF(ping_text) - 1] = 0;
+		if (!strcmp(name, "lobby.card.ping"))
+		{
+			ustrncpy(text, ping_text, size - 1);
+			text[size - 1] = 0;
+			return text[0] != 0;
+		}
+		lobby_card_value("lobby.card.platform", platform, NUMBEROF(platform));
+		lobby_card_value("lobby.card.party", party, NUMBEROF(party));
+		usnprintf(text, size - 1, L"%s \x00B7 %s \x00B7 %s", ping_text, platform, party);
+	}
+	else if (!strcmp(name, "lobby.card.platform"))
+	{
+		/* (a player of a machine whose code the host told: OpenH1's; the
+		host of a GOAT H1 game) */
+		usnprintf(text, size - 1, entry->bot ? L"Bot" : entry->kind == _lobby_kind_opence ? L"OpenCE" :
+			entry->kind == _lobby_kind_openh1 || (entry->host && model->standard) ||
+			network_party_slot_friend(lobby_screen.card_slot) != NONE ? L"GOAT H1" : L"Unknown");
+	}
+	else if (!strcmp(name, "lobby.card.party"))
+		usnprintf(text, size - 1, entry->bot ? L"None" : entry->party ? L"Your party" : entry->own ? L"You" : L"None");
+	/* (what was just done, else what the player is to this profile) */
+	else if (!strcmp(name, "lobby.card.note") && lobby_said())
+		ustrncpy(text, lobby_screen.said, size - 1);
+	else if (!strcmp(name, "lobby.card.note"))
+	{
+		int relation = entry->bot || entry->own ? NONE : network_party_slot_friend(lobby_screen.card_slot);
+
+		usnprintf(text, size - 1, relation == _p2p_friend_online ? L"A friend of yours." : relation == _p2p_friend_sent ?
+			L"Friend request sent." : relation == _p2p_friend_request ? L"Wants to be your friend." :
+			relation == _p2p_friend_blocked ? L"Blocked." : L"");
+	}
+	else if (!strcmp(name, "lobby.card.friend") && lobby_card_friend())
+		usnprintf(text, size - 1, L"1");
+	else if (!strcmp(name, "lobby.card.mutable") && lobby_card_mutable())
+		usnprintf(text, size - 1, L"1");
+	else if (!strcmp(name, "lobby.card.mute") && lobby_card_mutable())
+		usnprintf(text, size - 1, network_voice_machine_muted(player->machine_index) ? L"UNMUTE" : L"MUTE");
+	else if (!strcmp(name, "lobby.card.kick") && lobby_card_host_entry(&kickable))
+		usnprintf(text, size - 1, L"1");
+	text[size - 1] = 0;
+	return text[0] != 0;
+}
+
+/* the friends' invite's binding's value ("lobby.friend...": nonzero if it
+has one) */
+static int lobby_friends_value(char const *name, wchar_t *text, short size)
+{
+	static struct p2p_friend online[P2P_FRIENDS_MAXIMUM];
+	short count = lobby_friends_online(online, NUMBEROF(online));
+	short chosen = lobby_friend_chosen(online, count);
+
+	text[0] = 0;
+	if (!strcmp(name, "lobby.friends.count"))
+	{
+		struct p2p_friends_state state;
+
+		p2p_friends_state(&state);
+		if (!config_boolean("network.online"))
+			usnprintf(text, size - 1, L"Turn on Internet play to see your friends online.");
+		else if (!state.identity)
+			usnprintf(text, size - 1, L"Make a profile to have friends.");
+		else if (!state.connected)
+			usnprintf(text, size - 1, L"Reaching your friends...");
+		else
+			usnprintf(text, size - 1, count == 1 ? L"1 friend online" : count ? L"%d friends online" :
+				L"No friends online. Copy the invite link for anyone else.", count);
+	}
+	else if (!strcmp(name, "lobby.friend") && chosen != NONE)
+		friends_wide(online[chosen].name, text, size);
+	else if (!strcmp(name, "lobby.friend.where") && chosen != NONE)
+		usnprintf(text, size - 1, L"%s", friends_where(&online[chosen]));
+	else if (!strcmp(name, "lobby.friends.said") && lobby_said())
+		ustrncpy(text, lobby_screen.said, size - 1);
+	text[size - 1] = 0;
+	return text[0] != 0;
+}
+
+/* the lobby's panels' actions: a player's card opened (A, a click or a
+tap on its row: again, closed), the card or the invite closed (B, BACK),
+the card's ADD FRIEND, MUTE and KICK, INVITE FRIENDS opened, its friend
+stepped and invited (as the Friends screen's INVITE: to this machine's
+party, which follows its leader into the game). FALSE: not one of them, or
+nothing done */
+static int lobby_panel_action(struct widget_instance *widget, char const *name, short row, int *deleted)
+{
+	struct lobby_board_model *model = lobby_screen_model();
+
+	*deleted = FALSE;
+	if (!strcmp(name, "lobby card"))
+	{
+		boolean more;
+		short shown = lobby_screen_entry(row, &more);
+		struct network_player *player = shown != NONE ? model->players[shown] : NULL;
+
+		if (!player || !model->game)
+			return FALSE;
+		/* (the card shown already: closed) */
+		if (lobby_screen.panel == _lobby_panel_card && lobby_card_player() == player)
+		{
+			lobby_screen.panel = _lobby_panel_details;
+			ui_play_audio_feedback_sound(SOUND_BACK);
+			return TRUE;
+		}
+		lobby_screen.panel = _lobby_panel_card;
+		lobby_screen.card_slot = (short)(player - model->game->players);
+		lobby_screen.card_machine = player->machine_index;
+		ustrncpy(lobby_screen.card_name, player->name, NUMBEROF(lobby_screen.card_name) - 1);
+		lobby_screen.card_name[NUMBEROF(lobby_screen.card_name) - 1] = 0;
+		lobby_screen.said_time = 0;
+		platform_log("menus: the lobby's card of player %d (machine %ld) opened", (int)lobby_screen.card_slot,
+			lobby_screen.card_machine);
+		ui_play_audio_feedback_sound(SOUND_FORWARD);
+		return TRUE;
+	}
+	if (!strcmp(name, "lobby close"))
+	{
+		if (lobby_screen.panel == _lobby_panel_details)
+			return FALSE;
+		platform_log("menus: the lobby's %s closed", lobby_screen.panel == _lobby_panel_card ? "card" : "invite");
+		lobby_screen.panel = _lobby_panel_details;
+		ui_play_audio_feedback_sound(SOUND_BACK);
+		return TRUE;
+	}
+	if (!strcmp(name, "lobby friends"))
+	{
+		if (!model->controls.invite)
+			return FALSE;
+		lobby_screen.panel = lobby_screen.panel == _lobby_panel_invite ? _lobby_panel_details : _lobby_panel_invite;
+		lobby_screen.said_time = 0;
+		platform_log("menus: the lobby's invite %s", lobby_screen.panel == _lobby_panel_invite ? "opened" : "closed");
+		ui_play_audio_feedback_sound(SOUND_FORWARD);
+		return TRUE;
+	}
+	if (!strncmp(name, "lobby friend ", 13))
+	{
+		static struct p2p_friend online[P2P_FRIENDS_MAXIMUM];
+		short count = lobby_friends_online(online, NUMBEROF(online));
+		short chosen = lobby_friend_chosen(online, count);
+		wchar_t friend_name[P2P_FRIEND_NAME_SIZE];
+
+		if (chosen == NONE || lobby_screen.panel != _lobby_panel_invite)
+			return FALSE;
+		if (!strcmp(name, "lobby friend invite"))
+		{
+			friends_wide(online[chosen].name, friend_name, NUMBEROF(friend_name));
+			if (!p2p_friends_invite(online[chosen].code))
+			{
+				lobby_say(L"%s could not be invited. Try again in a moment.", friend_name);
+				return campaign_fail();
+			}
+			lobby_say(L"Invited %s to your party: they follow you into this game.", friend_name);
+			ui_play_audio_feedback_sound(SOUND_FORWARD);
+			return TRUE;
+		}
+		chosen = (short)((chosen + (strstr(name, " left") ? count - 1 : 1)) % count);
+		csmemcpy(lobby_screen.friend_code, online[chosen].code, P2P_FRIEND_CODE_BYTES);
+		lobby_screen.friend_chosen = TRUE;
+		return TRUE;
+	}
+	if (!strncmp(name, "lobby card ", 11) && lobby_screen.panel == _lobby_panel_card)
+	{
+		struct network_player *player = lobby_card_player();
+		struct host_controls_player kickable;
+
+		if (!player)
+			return FALSE;
+		if (!strcmp(name, "lobby card friend"))
+		{
+			if (!lobby_card_friend() || !network_party_slot_add_friend(lobby_screen.card_slot, player->name))
+				return campaign_fail();
+			lobby_say(L"Friend request sent to %s.", lobby_screen.card_name);
+			platform_log("menus: the lobby's card: a friend request sent to player %d", (int)lobby_screen.card_slot);
+		}
+		else if (!strcmp(name, "lobby card mute"))
+		{
+			boolean muted = network_voice_machine_muted(player->machine_index);
+
+			if (!lobby_card_mutable())
+				return FALSE;
+			network_voice_mute_machine(player->machine_index, !muted);
+			platform_log("menus: the lobby's card: machine %ld %s", lobby_screen.card_machine, muted ? "unmuted" :
+				"muted");
+			lobby_say(muted ? L"%s unmuted." : L"%s muted: you no longer hear their voice, lines or pings.",
+				lobby_screen.card_name);
+		}
+		else if (!strcmp(name, "lobby card kick"))
+		{
+			if (!lobby_card_host_entry(&kickable) || !host_kick(&kickable, FALSE, 0, NULL))
+				return campaign_fail();
+			platform_log("menus: the lobby's card: player %d kicked", (int)lobby_screen.card_slot);
+			lobby_screen.panel = _lobby_panel_details;
+		}
+		else
+			return FALSE;
+		ui_play_audio_feedback_sound(SOUND_FORWARD);
+		return TRUE;
+	}
+	(void)widget;
+	return FALSE;
 }
 
 /* a lane's place's player (index: the lane's rows in turn), NONE for none,
@@ -1256,7 +1742,7 @@ int pc_menu_lobby_value(char const *name, char *value, unsigned long size)
 {
 	struct lobby_board_model *model = lobby_screen_model();
 	struct lobby_board_controls const *controls = &model->controls;
-	wchar_t text[ROW_TEXT_LENGTH];
+	wchar_t text[SETTINGS_PANEL_TEXT_LENGTH / 4];
 	boolean yes = FALSE;
 
 	if (!size)
@@ -1291,6 +1777,44 @@ int pc_menu_lobby_value(char const *name, char *value, unsigned long size)
 	{
 		return 0;
 	}
+	/* (which panel is shown: the next game's, a player's card, the friends
+	to invite; the card's and the invite's words) */
+	else if (!strcmp(name, "lobby.details"))
+		yes = lobby_screen.panel == _lobby_panel_details;
+	else if (!strcmp(name, "lobby.card"))
+		yes = lobby_screen.panel == _lobby_panel_card;
+	else if (!strcmp(name, "lobby.inviting"))
+		yes = lobby_screen.panel == _lobby_panel_invite;
+	else if (!strcmp(name, "lobby.panel.open"))
+		yes = lobby_screen.panel != _lobby_panel_details;
+	else if (!strncmp(name, "lobby.card.", 11))
+	{
+		if (lobby_screen.panel != _lobby_panel_card || !lobby_card_value(name, text, NUMBEROF(text)))
+			return 0;
+		return lobby_screen_words(text, value, size);
+	}
+	else if (!strcmp(name, "lobby.friends"))
+		yes = lobby_friends_offered(model);
+	else if (!strncmp(name, "lobby.friend", 12))
+	{
+		if (lobby_screen.panel != _lobby_panel_invite || !lobby_friends_value(name, text, NUMBEROF(text)))
+			return 0;
+		return lobby_screen_words(text, value, size);
+	}
+	/* (the next game's map's picture, its gametype's words, its map and
+	limits on a line) */
+	else if (!strcmp(name, "lobby.map.picture"))
+		usnprintf(text, NUMBEROF(text) - 1, L"%d", (int)lobby_map_frame(model->game->map.name));
+	else if (!strcmp(name, "lobby.description"))
+		lobby_gametype_description(model->game, text, NUMBEROF(text));
+	else if (!strcmp(name, "lobby.where"))
+	{
+		if (model->limits[0])
+			usnprintf(text, NUMBEROF(text) - 1, L"%s \x00B7 %s", model->map, model->limits);
+		else
+			ustrncpy(text, model->map, NUMBEROF(text) - 1);
+	}
+
 	else if (!strcmp(name, "lobby.gametype"))
 		return lobby_screen_words(model->gametype, value, size);
 	else if (!strcmp(name, "lobby.map"))
@@ -1321,6 +1845,14 @@ int pc_menu_lobby_value(char const *name, char *value, unsigned long size)
 		usnprintf(text, NUMBEROF(text) - 1, bots_teams() == _bots_teams_against ? L"AGAINST YOU" : L"EVEN");
 	else if (!strcmp(name, "lobby.bots.shown"))
 		yes = controls->bots;
+	/* (SKILL and TEAMS while BOTS adds some) */
+	else if (!strcmp(name, "lobby.bots.some"))
+	{
+		long number;
+
+		yes = controls->bots &&
+			network_host_controls_bot_choice(network_host_controls_bots_chosen(), &number) != _host_bots_none;
+	}
 	else if (!strcmp(name, "lobby.bots.locked"))
 		yes = controls->bots_locked;
 	else if (!strcmp(name, "lobby.bots.count.locked"))
@@ -1381,6 +1913,11 @@ int pc_menu_lobby_action(struct widget_instance *widget, struct event_record *ev
 			return FALSE;
 		ui_play_audio_feedback_sound(SOUND_FORWARD);
 		return TRUE;
+	}
+	if (!strcmp(name, "lobby card") || !strcmp(name, "lobby close") || !strncmp(name, "lobby card ", 11) ||
+		!strncmp(name, "lobby friend", 12))
+	{
+		return lobby_panel_action(widget, name, row, deleted);
 	}
 	if (!strcmp(name, "lobby row"))
 	{

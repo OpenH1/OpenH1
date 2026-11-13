@@ -9,22 +9,25 @@ color gives it. Set dressing: no unit, player, physics or AI.
 
 The engine draws them through its own renderer (render_object_alone, as
 the scene draws an object), but not in ui.map's scene: the scene's view
-leaves them out (menu_spartan_object, render_objects.c), and they are drawn
-in a view of their own (rasterizer_view_begin) when the menus draw the
-screen's <spartan>, in the widgets' order: over the screen's background and
-what is drawn before it, under the widgets drawn after. That view has its
-own camera, fixed on the Spartans' stage (where the first was made,
-never moved by the scene's camera), its own depth (cleared in its
-rectangle: nothing of the scene's, the ring or the sky, can cut it), no
-fog, and a fixed light (spartan_lighting) in place of the scene's.
+leaves them out (menu_spartan_object, render_objects.c), and each is drawn
+in a view of its own (rasterizer_view_begin) when the menus draw the
+screen's <spartan> it stands in, in the widgets' order: over the screen's
+background and what is drawn before it, under the widgets drawn after. Each
+view has its own camera, fixed on that Spartan's place on the stage (the
+stage where the first was made, never moved by the scene's camera; each
+Spartan a step along it from the one before), looking straight at it, so
+that a Spartan at a screen's edge is drawn as one in its middle is, not
+seen from the side; its own depth (cleared in its rectangle: nothing of the
+scene's, the ring or the sky, can cut it), no fog, and a fixed light
+(spartan_lighting) in place of the scene's.
 
 A screen asks for a Spartan each frame it draws one (menu_spartan_place:
 where in the menus' 640 by 480, how tall, which color). menu_spartan_frame,
 at the start of each frame the menus draw, makes the Spartans asked for in
 the frame before, stands each on the stage where its view shows it in its
-place, and deletes those no screen asked for (a screen closed). The view's
-rectangle is the asked Spartans' boxes, grown so that a rifle or an arm
-reaching out of its box is not cut. Without ui.map's Spartan tags (no
+place, and deletes those no screen asked for (a screen closed). A view's
+rectangle is its Spartan's box, grown so that a rifle or an arm reaching
+out of it is not cut. Without ui.map's Spartan tags (no
 file, or one refused: menu_models.c), nothing is made, and the screens draw
 the original pictures (menu_spartan_available).
 */
@@ -91,6 +94,9 @@ and the arms reach out of the box at the sides, the helmet a little above */
 #define SPARTAN_VIEW_FOOT 0.04f
 #define SPARTAN_VIEW_NEAR 0.05f
 #define SPARTAN_VIEW_FAR 100.0f
+/* how far apart, in world units, the Spartans stand on the stage (each its
+own view's: apart, so that nothing of one is in another's) */
+#define SPARTAN_STAGE_STEP 1.0f
 
 /* a random color's Spartan: each color held, then blended into the next,
 in all a color's step (milliseconds) */
@@ -106,6 +112,8 @@ struct menu_spartan
 	long asked_frame;
 	real x, bottom, height;
 	short color_index;
+	/* its view's rectangle, in the menus' 640 by 480 of its screen */
+	real view[4];
 	/* made: its objects, and where it stands on the stage */
 	long object_index;
 	long rifle_index;
@@ -124,12 +132,10 @@ static struct
 	long spartan_definition, rifle_definition, animation_graph;
 	char hand_marker[TAG_STRING_LENGTH + 1];
 	char grip_marker[TAG_STRING_LENGTH + 1];
-	/* the stage: where the view's camera stands (set as the first Spartan
-	is made, kept while there is one), and the view's rectangle in the
-	menus' 640 by 480 of the Spartans' screen (empty: none asked for) */
+	/* the stage: where the first view's camera stands (set as the first
+	Spartan is made, kept while there is one; each Spartan's a step along it) */
 	boolean staged;
 	real_point3d stage;
-	real view[4];
 	/* debug: the frames drawn since the last trace */
 	long traced_frames;
 } menu_spartan;
@@ -259,41 +265,26 @@ static real_vector3d const spartan_forward = { 1.0f, 0.0f, 0.0f };
 static real_vector3d const spartan_up = { 0.0f, 0.0f, 1.0f };
 static real_vector3d const spartan_right = { 0.0f, -1.0f, 0.0f };
 
-/* the view's rectangle: the asked Spartans' boxes, grown (FALSE: none) */
-static boolean spartan_view_find(
-	real view[4])
+/* a Spartan's view's rectangle: its box, grown */
+static void spartan_view_find(
+	struct menu_spartan *spartan)
 {
-	boolean found = FALSE;
-	short index;
+	spartan->view[0] = spartan->x - spartan->height * SPARTAN_VIEW_SIDE;
+	spartan->view[2] = spartan->x + spartan->height * SPARTAN_VIEW_SIDE;
+	spartan->view[1] = spartan->bottom - spartan->height * (1.0f + SPARTAN_VIEW_TOP);
+	spartan->view[3] = spartan->bottom + spartan->height * SPARTAN_VIEW_FOOT;
+}
 
-	for (index = 0; index < MAXIMUM_MENU_SPARTANS; index++)
-	{
-		struct menu_spartan const *spartan = &menu_spartan.spartans[index];
-		real x0, y0, x1, y1;
+/* where a Spartan's view's camera stands: its step along the stage */
+static void spartan_camera_at(
+	struct menu_spartan const *spartan,
+	real_point3d *camera)
+{
+	real step = SPARTAN_STAGE_STEP * (real)(spartan - menu_spartan.spartans);
 
-		if (spartan->asked_frame != menu_spartan.frame || spartan->height <= 0.0f)
-			continue;
-		x0 = spartan->x - spartan->height * SPARTAN_VIEW_SIDE;
-		x1 = spartan->x + spartan->height * SPARTAN_VIEW_SIDE;
-		y0 = spartan->bottom - spartan->height * (1.0f + SPARTAN_VIEW_TOP);
-		y1 = spartan->bottom + spartan->height * SPARTAN_VIEW_FOOT;
-		if (!found)
-		{
-			view[0] = x0;
-			view[1] = y0;
-			view[2] = x1;
-			view[3] = y1;
-			found = TRUE;
-		}
-		else
-		{
-			view[0] = MIN(view[0], x0);
-			view[1] = MIN(view[1], y0);
-			view[2] = MAX(view[2], x1);
-			view[3] = MAX(view[3], y1);
-		}
-	}
-	return found;
+	camera->x = menu_spartan.stage.x + spartan_right.i * step;
+	camera->y = menu_spartan.stage.y + spartan_right.j * step;
+	camera->z = menu_spartan.stage.z + spartan_right.k * step;
 }
 
 /* where a Spartan stands on the stage, and which way it faces, for the
@@ -305,7 +296,7 @@ static void spartan_stand(
 	real_vector3d *forward,
 	real_vector3d *up)
 {
-	real const *view = menu_spartan.view;
+	real const *view = spartan->view;
 	real half_height = (view[3] - view[1]) * 0.5f;
 	real tangent = (real)tan(SPARTAN_FIELD_OF_VIEW_DEGREES * 3.14159265f / 360.0f);
 	real turn = SPARTAN_TURN_DEGREES * 3.14159265f / 180.0f;
@@ -316,10 +307,12 @@ static void spartan_stand(
 	real tall = MAX(spartan->height, 1.0f) / MAX(half_height, 1.0f);
 	real distance = SPARTAN_HEIGHT / (tall * tangent);
 	real side = across * distance * tangent, lift = above * distance * tangent + SPARTAN_SOLES;
+	real_point3d camera;
 
-	position->x = menu_spartan.stage.x + spartan_forward.i * distance + spartan_right.i * side + spartan_up.i * lift;
-	position->y = menu_spartan.stage.y + spartan_forward.j * distance + spartan_right.j * side + spartan_up.j * lift;
-	position->z = menu_spartan.stage.z + spartan_forward.k * distance + spartan_right.k * side + spartan_up.k * lift;
+	spartan_camera_at(spartan, &camera);
+	position->x = camera.x + spartan_forward.i * distance + spartan_right.i * side + spartan_up.i * lift;
+	position->y = camera.y + spartan_forward.j * distance + spartan_right.j * side + spartan_up.j * lift;
+	position->z = camera.z + spartan_forward.k * distance + spartan_right.k * side + spartan_up.k * lift;
 	/* (upright, facing the camera, turned to its right) */
 	forward->i = -spartan_forward.i * (real)cos(turn) + spartan_forward.j * (real)sin(turn);
 	forward->j = -spartan_forward.i * (real)sin(turn) - spartan_forward.j * (real)cos(turn);
@@ -447,13 +440,16 @@ real_rgb_color menu_spartan_color(
 	real blend;
 	real_rgb_color from, to;
 
+	if (color_index == MENU_SPARTAN_TEAM_RED)
+		return *global_real_rgb_red;
+	if (color_index == MENU_SPARTAN_TEAM_BLUE)
+		return *global_real_rgb_blue;
 	if (color_index != MENU_SPARTAN_RANDOM || count <= 0)
 		return player_profile_get_rgb_color(color_index);
 	/* (where in the round of the colors it is, each Spartan side by side a
 	quarter of the round on) */
 	round = (unsigned long)count * step;
-	at = (milliseconds % round + round * (unsigned long)(index & (MAXIMUM_MENU_SPARTANS - 1)) /
-		MAXIMUM_MENU_SPARTANS) % round;
+	at = (milliseconds % round + round * (unsigned long)(index & 3) / 4) % round;
 	color = (long)(at / step);
 	from = player_profile_get_rgb_color(color);
 	to = player_profile_get_rgb_color((color + 1) % count);
@@ -468,12 +464,12 @@ real_rgb_color menu_spartan_color(
 }
 
 short menu_spartan_test_colors(
-	short colors[MAXIMUM_MENU_SPARTANS])
+	short colors[MAXIMUM_MENU_SPARTAN_PLACES])
 {
 	char const *test = getenv("HALO_MENU_SPARTAN_TEST");
 	short count = 0;
 
-	while (test && *test && count < MAXIMUM_MENU_SPARTANS)
+	while (test && *test && count < MAXIMUM_MENU_SPARTAN_PLACES)
 	{
 		char *end;
 		long color = strtol(test, &end, 10);
@@ -519,8 +515,6 @@ void menu_spartan_frame(
 		menu_spartan.frame++;
 		return;
 	}
-	if (!spartan_view_find(menu_spartan.view))
-		csmemset(menu_spartan.view, 0, sizeof(menu_spartan.view));
 	for (index = 0; index < MAXIMUM_MENU_SPARTANS; index++)
 	{
 		struct menu_spartan *spartan = &menu_spartan.spartans[index];
@@ -551,6 +545,7 @@ void menu_spartan_frame(
 				spartan_delete(spartan);
 			continue;
 		}
+		spartan_view_find(spartan);
 		if (spartan->object_index == NONE)
 		{
 			if (!spartan_make(spartan))
@@ -579,9 +574,10 @@ void menu_spartan_frame(
 
 void menu_spartan_draw(
 	short x,
-	short y)
+	short y,
+	short first,
+	short count)
 {
-	real const *view = menu_spartan.view;
 	long ui_offset = (halo_screen_width() - MENUS_WIDTH) / 2;
 	struct render_camera camera, scene_camera;
 	struct render_frustum frustum, scene_frustum;
@@ -589,70 +585,74 @@ void menu_spartan_draw(
 	real_rectangle2d bounds;
 	short index, drawn = 0;
 
-	if (!menu_spartan.staged || view[2] <= view[0] || view[3] <= view[1])
+	if (!menu_spartan.staged)
 		return;
-	/* the view's camera: on the stage, its window the view's rectangle on
-	the screen (the menus' 640 centred in its width), its viewport that
-	rectangle's part on the screen */
-	csmemset(&camera, 0, sizeof(camera));
-	camera.position = menu_spartan.stage;
-	camera.forward = spartan_forward;
-	camera.up = spartan_up;
-	camera.vertical_field_of_view = SPARTAN_FIELD_OF_VIEW_DEGREES * 3.14159265f / 180.0f;
-	camera.z_near = SPARTAN_VIEW_NEAR;
-	camera.z_far = SPARTAN_VIEW_FAR;
-	camera.window_bounds.x0 = (short)(view[0] + x + ui_offset);
-	camera.window_bounds.y0 = (short)(view[1] + y);
-	camera.window_bounds.x1 = (short)(view[2] + x + ui_offset);
-	camera.window_bounds.y1 = (short)(view[3] + y);
-	camera.viewport_bounds.x0 = (short)MAX(camera.window_bounds.x0, 0);
-	camera.viewport_bounds.y0 = (short)MAX(camera.window_bounds.y0, 0);
-	camera.viewport_bounds.x1 = (short)MIN(camera.window_bounds.x1, halo_screen_width());
-	camera.viewport_bounds.y1 = (short)MIN(camera.window_bounds.y1, MENUS_HEIGHT);
-	if (camera.viewport_bounds.x1 <= camera.viewport_bounds.x0 ||
-		camera.viewport_bounds.y1 <= camera.viewport_bounds.y0)
-	{
-		return;
-	}
-	render_camera_build_frustum_bounds(&camera, &bounds);
-	render_camera_build_frustum(&camera, &bounds, &frustum, TRUE);
 	spartan_lighting(&lighting);
-	/* (the renderer's camera the view's while it draws, as the models' level
+	/* (the renderer's camera each view's while it draws, as the models' level
 	of detail is chosen by it; the scene's again after) */
 	scene_camera = render.camera;
 	scene_frustum = render.frustum;
-	render.camera = camera;
-	render.frustum = frustum;
 	/* (its viewport where it is on the screen, not shifted with the menus) */
 	halo_screen_ui_offset(FALSE);
-	rasterizer_view_begin(&camera, &frustum);
-	rasterizer_models_begin(FALSE);
-	for (index = 0; index < MAXIMUM_MENU_SPARTANS; index++)
+	for (index = (short)MAX(first, 0); index < first + count && index < MAXIMUM_MENU_SPARTANS; index++)
 	{
 		struct menu_spartan const *spartan = &menu_spartan.spartans[index];
+		real const *view = spartan->view;
 
-		if (spartan->object_index == NONE || !object_try_and_get(spartan->object_index))
+		if (spartan->object_index == NONE || !object_try_and_get(spartan->object_index) ||
+			view[2] <= view[0] || view[3] <= view[1])
+		{
 			continue;
+		}
+		/* its view's camera: at its place on the stage, its window its
+		rectangle on the screen (the menus' 640 centred in its width), its
+		viewport that rectangle's part on the screen */
+		csmemset(&camera, 0, sizeof(camera));
+		spartan_camera_at(spartan, &camera.position);
+		camera.forward = spartan_forward;
+		camera.up = spartan_up;
+		camera.vertical_field_of_view = SPARTAN_FIELD_OF_VIEW_DEGREES * 3.14159265f / 180.0f;
+		camera.z_near = SPARTAN_VIEW_NEAR;
+		camera.z_far = SPARTAN_VIEW_FAR;
+		camera.window_bounds.x0 = (short)(view[0] + x + ui_offset);
+		camera.window_bounds.y0 = (short)(view[1] + y);
+		camera.window_bounds.x1 = (short)(view[2] + x + ui_offset);
+		camera.window_bounds.y1 = (short)(view[3] + y);
+		camera.viewport_bounds.x0 = (short)MAX(camera.window_bounds.x0, 0);
+		camera.viewport_bounds.y0 = (short)MAX(camera.window_bounds.y0, 0);
+		camera.viewport_bounds.x1 = (short)MIN(camera.window_bounds.x1, halo_screen_width());
+		camera.viewport_bounds.y1 = (short)MIN(camera.window_bounds.y1, MENUS_HEIGHT);
+		if (camera.viewport_bounds.x1 <= camera.viewport_bounds.x0 ||
+			camera.viewport_bounds.y1 <= camera.viewport_bounds.y0)
+		{
+			continue;
+		}
+		render_camera_build_frustum_bounds(&camera, &bounds);
+		render_camera_build_frustum(&camera, &bounds, &frustum, TRUE);
+		render.camera = camera;
+		render.frustum = frustum;
+		rasterizer_view_begin(&camera, &frustum);
+		rasterizer_models_begin(FALSE);
 		render_object_alone(spartan->object_index, &lighting);
+		rasterizer_models_end();
+		rasterizer_view_end();
 		drawn++;
 	}
-	rasterizer_models_end();
-	rasterizer_view_end();
 	halo_screen_ui_offset(TRUE);
 	halo_hdr_interface();
 	render.camera = scene_camera;
 	render.frustum = scene_frustum;
 	/* (debug: where each is drawn, and the scene's camera, a line a
 	second or so) */
-	if (getenv("HALO_MENU_SPARTAN_TRACE") && ++menu_spartan.traced_frames >= 60)
+	if (getenv("HALO_MENU_SPARTAN_TRACE") && drawn && ++menu_spartan.traced_frames >= 60)
 	{
 		menu_spartan.traced_frames = 0;
-		platform_log("menu spartan: view %d %d %d %d (viewport %d %d %d %d), %d drawn; scene camera at %.3f %.3f %.3f "
+		platform_log("menu spartan: the last view %d %d %d %d (viewport %d %d %d %d), %d drawn; scene camera at %.3f %.3f %.3f "
 			"facing %.3f %.3f %.3f", camera.window_bounds.x0, camera.window_bounds.y0, camera.window_bounds.x1,
 			camera.window_bounds.y1, camera.viewport_bounds.x0, camera.viewport_bounds.y0, camera.viewport_bounds.x1,
 			camera.viewport_bounds.y1, drawn, scene_camera.position.x, scene_camera.position.y, scene_camera.position.z,
 			scene_camera.forward.i, scene_camera.forward.j, scene_camera.forward.k);
-		for (index = 0; index < MAXIMUM_MENU_SPARTANS; index++)
+		for (index = (short)MAX(first, 0); index < first + count && index < MAXIMUM_MENU_SPARTANS; index++)
 		{
 			struct menu_spartan const *spartan = &menu_spartan.spartans[index];
 			struct object_datum *object = spartan->object_index == NONE ? NULL : object_try_and_get(spartan->object_index);

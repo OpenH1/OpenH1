@@ -75,6 +75,17 @@ NEGATIVE_CONTROLS = {
     # an item's if not checked: a binding the game has not got taken
     "item-if-unchecked": ("\t\t\tif (!reader->failed && item->condition)\n\t\t\t\tbinding_check(reader, item->condition);\n",
                           "\n", "box"),
+    # a picture's set not checked: "photos" taken
+    "picture-set-unchecked": ("(strcmp(picture->picture, \"maps\") && strcmp(picture->picture, \"missions\"))", "0",
+                              "picture"),
+    # a picture's frame's binding not checked
+    "picture-frame-unchecked": ("\t\t\telse\n\t\t\t\tbinding_check(reader, picture->value);\n", "\n", "picture"),
+    # a panel's second <spartan> taken
+    "panel-spartans-uncounted": ("screen->blocks[index].parent == parent_block)\n", "screen->blocks[index].parent == -99)\n",
+                                 "spartan"),
+    # a fifth <panel> taken
+    "panels-uncounted": ("kind_count(screen, MENU_SCREEN_PANEL) >= MENU_SCREEN_MAXIMUM_PANELS",
+                         "kind_count(screen, MENU_SCREEN_PANEL) > 99", "panels"),
     # a box's align not checked: "bottom" taken
     "box-align-unchecked": ("values[3] && strcmp(values[3], \"top\") && strcmp(values[3], \"middle\")", "0", "box"),
 }
@@ -169,7 +180,7 @@ def built(fault=None):
 
 CASES = ["main", "hints", "good", "syntax", "elements", "spartan", "items", "actions", "bindings", "when",
          "kept", "browser", "profile_select", "tabs", "table", "panel", "buttons", "lanes", "choice", "lobby", "chat",
-         "box"]
+         "box", "picture", "panels"]
 
 
 @pytest.mark.parametrize("case", CASES)
@@ -199,7 +210,11 @@ def test_actions_registered():
     functions = read("port/linux/game/menu_functions.c")
     browser = re.search(r"\nint pc_menu_browser_value\(.*?\n\}\n", functions, re.S).group(0)
     profile = re.search(r"\nint pc_menu_profile_value\(.*?\n\}\n", functions, re.S).group(0)
+    # (the lobby's in its pc_menu_lobby_value, or its cards' and friends' values: lobby_card_value, lobby_friends_value)
     lobby = re.search(r"\nint pc_menu_lobby_value\(.*?\n\}\n", read("port/linux/game/lobby_menu.inc"), re.S).group(0)
+    for function in ("lobby_card_value", "lobby_friends_value"):
+        lobby += re.search(r"\nstatic int " + function + r"\(.*?\n\}\n", read("port/linux/game/lobby_menu.inc"),
+                           re.S).group(0)
     bindings = set(re.findall(r'"([^"]+)"', re.search(r"screen_binding_names\[\] =\n\{\n(.*?)\n\};", source,
                                                         re.S).group(1)))
     for binding in bindings:

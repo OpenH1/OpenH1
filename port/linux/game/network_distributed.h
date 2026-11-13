@@ -442,6 +442,10 @@ real distributed_own_round_trip_ticks(void);
 back, as the host measures it) in milliseconds: 0 for the host's own
 players, NONE before it is known */
 long distributed_player_ping(short player_index);
+/* (the host) a client machine's ping, as its players' messages measured it
+in a game (since it joined): NONE before it is (a new lobby's), or on a
+client (a player card's: lobby_menu.inc) */
+long distributed_machine_ping(long machine_index);
 /* the latency meter (latency_meter.c): the round trips above timed in
 milliseconds by when this machine sent the tick they come back naming,
 nothing more sent; what is shown of them is refreshed twice a second in the

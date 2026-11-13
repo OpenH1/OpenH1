@@ -1438,7 +1438,10 @@ change:
   token, which a status left empty before); the host sends the codes on to
   the same machines in `_distributed_message_friend_players` (130, reliably,
   when they change: an entry each, its format byte, the player and the
-  code). Older builds send no code, never set the bit, and drop 130 as a
+  code). The host also lists the game's record's players (format 2, the
+  player its slot of the record: the lobby's, which have no datum yet), for
+  a lobby's player card's ADD FRIEND; an older build drops format 2's
+  entries as another format's. Older builds send no code, never set the bit, and drop 130 as a
   kind they do not know: nothing they read changed, so the network version
   stays. The friends themselves (requests, presence, invites) go through the
   signalling brokers, never the game's connection.

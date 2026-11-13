@@ -10,11 +10,18 @@ Spartan tags (menu_models.h), in a view of its own among the menus' widgets.
 
 enum
 {
-	/* side by side, for the split screen's four players */
-	MAXIMUM_MENU_SPARTANS = 4,
+	/* at once, on every screen open: the split screen's four players side
+	by side, a lobby's lineup of eight and a player's card */
+	MAXIMUM_MENU_SPARTANS = 12,
+	/* (side by side in one <spartan>, at most) */
+	MAXIMUM_MENU_SPARTAN_PLACES = 8,
 	/* a Spartan's color for a random profile color: the profile colors in
 	turn, in their list's order, about one a second (menu_spartan_color) */
 	MENU_SPARTAN_RANDOM = -1,
+	/* a team game's colors, as the game gives its players theirs
+	(game_engine_player_get_change_color: red's team red, blue's blue) */
+	MENU_SPARTAN_TEAM_RED = -4,
+	MENU_SPARTAN_TEAM_BLUE = -5,
 };
 
 /* whether ui.map has the Spartan's tags (else the screens draw the
@@ -24,7 +31,8 @@ boolean menu_spartan_available(void);
 it draws): placed in the menus' 640 by 480, in its screen's units (its
 screen's place on the screen is menu_spartan_draw's), its feet's middle at
 x, bottom, as tall as height, in the profile color color_index (or
-MENU_SPARTAN_RANDOM) */
+MENU_SPARTAN_RANDOM, or a team's: MENU_SPARTAN_TEAM_RED, _BLUE). Each is
+drawn in a view of its own, about its box */
 void menu_spartan_place(short index, short color_index, real x, real bottom, real height);
 /* the armor's color of the Spartan index in the profile color color_index
 at the menus' frame time milliseconds: the color's own, or for
@@ -35,15 +43,15 @@ real_rgb_color menu_spartan_color(short index, short color_index, unsigned long 
 /* at the start of each frame the menus draw: the Spartans asked for made
 and placed on their stage, the others deleted */
 void menu_spartan_frame(void);
-/* the Spartans' view drawn now, among the menus' widgets (above those
-drawn before, under those after): their screen at x, y of the menus' 640
-by 480 */
-void menu_spartan_draw(short x, short y);
+/* the Spartans first to first + count - 1 drawn now, each in its view,
+among the menus' widgets (above those drawn before, under those after):
+their screen at x, y of the menus' 640 by 480 */
+void menu_spartan_draw(short x, short y, short first, short count);
 /* one of the Spartans' objects, or what one carries (the scene's view
 leaves them out: render_objects.c) */
 boolean menu_spartan_object(long object_index);
-/* debug: HALO_MENU_SPARTAN_TEST's colors ("<color> ...", up to four), in
+/* debug: HALO_MENU_SPARTAN_TEST's colors ("<color> ...", up to eight), in
 place of a <spartan>'s players' (0: not set) */
-short menu_spartan_test_colors(short colors[MAXIMUM_MENU_SPARTANS]);
+short menu_spartan_test_colors(short colors[MAXIMUM_MENU_SPARTAN_PLACES]);
 
 #endif
