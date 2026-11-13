@@ -882,6 +882,8 @@ boolean pc_menu_profile_edit_begin(void)
 	struct player_profile profile;
 	long profile_index;
 
+	if (main_menu_is_active())
+		settings_local_player = 0;
 	if (settings_local_player > 0)
 	{
 		profile_index = player_ui_get_active_player_profile_index(settings_local_player);
@@ -2524,7 +2526,10 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 	if (!strcmp(name, "begin"))
 	{
 		settings_pending_clear();
-		settings_local_player_set(controller_of(screen_of(widget)));
+		/* (the screen's player, where it has one; else the one whose press
+		opened it: profile_edit_begin) */
+		if (screen_of(widget)->local_player_index >= 0 && screen_of(widget)->local_player_index < 4)
+			settings_local_player_set(screen_of(widget)->local_player_index);
 		pc_menu_profile_edit_begin();
 	}
 	else if (!strcmp(name, "tab"))
