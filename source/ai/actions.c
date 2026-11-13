@@ -250,6 +250,7 @@ symbols in this file:
 #include "units/unit_definitions.h"
 #include "units/vehicle_definitions.h"
 #include "units/vehicles.h"
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* ---------- constants */
 
@@ -4370,9 +4371,11 @@ boolean actor_action_handle_evasion(
 			{
 				actor->emotions.last_defensive_cover_seeking_time = current_time;
 
+				/* port: (always, with the Tough Luck skull, for an actor that
+				seeks cover at all: port/linux/game/skulls.c) */
 				if (actor_action_allow_cover_seeking(actor_index, FALSE) &&
 					real_seed_random(get_global_random_seed_address()) <
-						definition->defensive.evasion_seek_cover_chance &&
+						skulls_evasion_chance(definition->defensive.evasion_seek_cover_chance) &&
 					actor_action_try_to_seek_cover(actor_index, FALSE, TRUE))
 				{
 					ai_communication_event(

@@ -391,6 +391,8 @@ symbols in this file:
 #include "matchmaking.h" /* port: port/linux/game/matchmaking.c */
 #include "network_aim_assist.h" /* port: port/linux/game/network_aim_assist.c */
 #include "network_shield_effects.h" /* port: port/linux/game/network_shield_effects.c */
+#include "skulls.h" /* port: port/linux/game/skulls.c */
+#include "network_skulls.h" /* port: port/linux/game/network_skulls.c */
 #include "map_share.h" /* port: port/linux/game/map_share.c */
 #include "profile_sections.h" /* port: port/linux/include/profile_sections.h */
 #include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
@@ -2167,9 +2169,10 @@ void main_pregame_render(
 /* port: a network co-op host reverts to its last saved state with its
 clock kept going forward, and the clients follow through the co-op syncs
 (network_coop.c). FALSE without a saved state, which would reset the map
-on the host alone. */
-static boolean main_coop_host_revert(
-	void)
+on the host alone. A death's revert (the Iron skull's, every_time) is
+never held back as a script's is below. */
+static boolean main_coop_host_revert_with(
+	boolean every_time)
 {
 	/* (the last reverts' times: a script whose failure holds again at once
 	after the revert would pull everyone back to the save over and over; a
@@ -2180,6 +2183,13 @@ static boolean main_coop_host_revert(
 
 	if (!game_state_port_saved_game_valid())
 		return FALSE;
+	if (every_time)
+	{
+		game_state_revert();
+		network_coop_reverted(now);
+		ui_widgets_disable_pause_game(30);
+		return TRUE;
+	}
 	if (revert_times[0] && milliseconds - revert_times[0] < 60000)
 	{
 		error(_error_log, "co-op: a third revert in a minute: the players respawn at the checkpoint instead");
@@ -2194,10 +2204,34 @@ static boolean main_coop_host_revert(
 	return TRUE;
 }
 
+static boolean main_coop_host_revert(
+	void)
+{
+	return main_coop_host_revert_with(FALSE);
+}
+
 static boolean main_coop_host(
 	void)
 {
 	return game_connection() == _game_connection_network_server && network_coop_active();
+}
+
+/* port: the Iron skull's revert of every player to the last checkpoint, on
+a death (port/linux/game/skulls.c): a network co-op host's, which its
+clients follow, or a game of this computer's; FALSE without the skull, or
+with no checkpoint for the host to go back to */
+static boolean main_iron_revert(
+	void)
+{
+	if (!skull_active(_skull_iron))
+		return FALSE;
+	if (main_coop_host())
+		return main_coop_host_revert_with(TRUE);
+	if (game_connection() != _game_connection_local)
+		return FALSE;
+	game_state_revert();
+	ui_widgets_disable_pause_game(30);
+	return TRUE;
 }
 
 static void main_revert_map_private(
@@ -2406,7 +2440,18 @@ static void main_lost_map_private(
 		scripts failed (game_lost, with players still alive: d40's timer,
 		a50's Keyes) does revert, or its failure cutscene would never end. */
 		if (game_connection() != _game_connection_network_server)
-			game_state_revert();
+		{
+			/* port: the Iron skull's lone player starts the level again
+			(port/linux/game/skulls.c) */
+			if (skull_active(_skull_iron) && players_are_all_dead() && local_player_count() <= 1)
+				main_reset_map();
+			else
+				game_state_revert();
+		}
+		/* port: (and the Iron skull's co-op reverts: main_iron_revert) */
+		else if (players_are_all_dead() && main_iron_revert())
+		{
+		}
 		else if (players_are_all_dead() || !main_coop_host_revert())
 			players_respawn_at_checkpoint();
 	}
@@ -2427,10 +2472,13 @@ long main_vr_revert_ticks_left(
 static void main_respawn_private(
 	void)
 {
-	if (main_death_timer_expired(
+	boolean expired = main_death_timer_expired(
 		&main_globals.respawn_timer, &main_respawn_last_tick,
-		!game_time_get_paused() && !cinematic_in_progress()) &&
-		players_respawn_coop())
+		!game_time_get_paused() && !cinematic_in_progress());
+
+	/* port: the Iron skull's: a player's death reverts every player to the
+	last checkpoint, rather than respawning the one who died */
+	if (expired && (main_iron_revert() || players_respawn_coop()))
 	{
 		main_globals.respawn = FALSE;
 		main_globals.respawn_timer = 0;
@@ -4007,6 +4055,8 @@ void main_loop(
 			network_aim_assist_update();
 			/* port: the host's shield effects, for every machine (port/linux/game/network_shield_effects.c) */
 			network_shield_effects_update();
+			/* port: the campaign's skulls, the host's for every machine (port/linux/game/network_skulls.c) */
+			network_skulls_update();
 			/* port: map sharing, in the lobby and in game (port/linux/game/map_share.c) */
 			map_share_update();
 			/* port: network games' text chat (port/linux/game/network_chat.c) */

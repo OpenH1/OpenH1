@@ -275,6 +275,9 @@ void weapon_export_function_values(
 	long weapon_index);
 
 void weapon_set_total_rounds(long weapon_index, short *rounds_array);
+/* port: its ammunition halved, rounded down (the Famine skull's:
+port/linux/game/skulls.c) */
+void weapon_halve_ammunition(long weapon_index);
 void weapon_delete(
 	long object_index);
 void weapon_set_current_amount(

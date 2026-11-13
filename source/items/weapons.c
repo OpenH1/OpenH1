@@ -1337,6 +1337,40 @@ void weapon_build_weapon_interface_state(
 	return;
 }
 
+/* port: its magazines' rounds, loaded and total alike, and the charge of
+a weapon that ages as it fires (a plasma weapon's battery), halved: the
+Famine skull's weapons dropped by the AI (port/linux/game/skulls.c) */
+void weapon_halve_ammunition(
+	long weapon_index)
+{
+	struct weapon_datum *weapon = weapon_get(weapon_index);
+	struct weapon_definition *weapon_definition = weapon_definition_get(weapon->definition_index);
+	boolean uses_age = weapon_definition->weapon.magazines.count==0;
+	short magazine_index;
+	short trigger_index;
+
+	for (trigger_index = 0; trigger_index<weapon_trigger_count(weapon_definition); ++trigger_index)
+	{
+		struct weapon_trigger_definition *trigger_definition = TAG_BLOCK_GET_ELEMENT(&weapon_definition->weapon.triggers, trigger_index, struct weapon_trigger_definition);
+
+		if (trigger_definition->age_generated_per_round>0.0f)
+			uses_age = TRUE;
+	}
+	if (uses_age)
+		weapon->weapon.age = 1.0f-(1.0f-weapon->weapon.age)*0.5f;
+	for (magazine_index = 0; magazine_index<weapon_magazine_count(weapon_definition); ++magazine_index)
+	{
+		struct weapon_magazine *magazine = weapon_magazine_get(weapon, magazine_index);
+
+		if (!magazine)
+			continue;
+		magazine->rounds_total /= 2;
+		magazine->rounds_loaded /= 2;
+	}
+
+	return;
+}
+
 void weapon_set_current_amount(
 	long weapon_index,
 	real amount)

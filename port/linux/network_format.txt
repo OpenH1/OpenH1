@@ -131,6 +131,7 @@ enum _distributed_message_player_substeps 120
 enum _distributed_message_relayed_actions 15
 enum _distributed_message_relayed_substeps 121
 enum _distributed_message_shield_effects 91
+enum _distributed_message_skulls 143
 enum _distributed_message_structure_bsp 65
 enum _distributed_message_substep_states 136
 enum _distributed_message_unit_state_differences 141

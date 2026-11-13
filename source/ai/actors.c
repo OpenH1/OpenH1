@@ -318,6 +318,7 @@ symbols in this file:
 #include "units/vehicle_definitions.h"
 #include "units/vehicles.h"
 #include "networking/network_game_globals.h"
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* ---------- constants */
 
@@ -3405,6 +3406,9 @@ void actor_died(
 				}
 				weapon_set_total_rounds(weapon_index, rounds);
 			}
+			/* port: the Famine skull's, half of what it is left with
+			(port/linux/game/skulls.c) */
+			skulls_actor_dropped_weapon(weapon_index);
 		}
 	}
 

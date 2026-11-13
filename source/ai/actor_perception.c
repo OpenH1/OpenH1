@@ -274,6 +274,7 @@ symbols in this file:
 #include "units/vehicle_definitions.h"
 #include "units/vehicles.h"
 #include "units/biped_definitions.h"
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* ---------- constants */
 
@@ -6238,6 +6239,9 @@ void actor_perception_update(
 				case _actor_danger_zone_projectile:
 					notice_chance = definition->perception.notice_projectile_chance;
 				test_notice_chance:
+					/* port: the Tough Luck skull's, every danger noticed that
+					can be (port/linux/game/skulls.c) */
+					notice_chance = skulls_evasion_chance(notice_chance);
 					if (notice_chance > 0.0f &&
 						real_seed_random(get_global_random_seed_address()) < notice_chance)
 					{
@@ -6264,9 +6268,11 @@ void actor_perception_update(
 					}
 					else
 					{
+						/* port: (every dive from a grenade with the Tough Luck
+						skull, that the actor can make: port/linux/game/skulls.c) */
 						actor->danger_zone.allow_dive_evasion =
 							real_seed_random(get_global_random_seed_address()) <
-								definition->moving.grenade_dive_chance;
+								skulls_evasion_chance(definition->moving.grenade_dive_chance);
 					}
 
 					actor_stimulus_noticed_danger_zone(

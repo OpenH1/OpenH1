@@ -139,6 +139,7 @@ symbols in this file:
 #include "units/bipeds.h"
 #include "units/units.h"
 #include "units/vehicles.h"
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* network_game_globals.c's */
 boolean network_game_distributed_client(void);
@@ -555,6 +556,40 @@ boolean object_double_charge_shield(
 	return charged;
 }
 
+/* port: the Black Eye skull's: a living object's shields filled at once, as
+their recharge in object_damage_update would fill them (its effect and
+regions back, if they were down: port/linux/game/skulls.c) */
+static void object_fill_shield(
+	long object_index)
+{
+	struct object_datum *object = object_try_and_get(object_index);
+	long collision_model_index;
+
+	if (!object || TEST_FLAG(object->object.damage_flags, _object_dead_bit) ||
+		object->object.maximum_shield_vitality <= 0.f || object->object.shield_vitality >= 1.f)
+	{
+		return;
+	}
+	collision_model_index = object_definition_get(object->definition_index)->object.collision_model.index;
+	if (TEST_FLAG(object->object.damage_flags, _object_shield_depleted_bit))
+	{
+		struct collision_model *collision_model = collision_model_index != NONE ?
+			collision_model_definition_get(collision_model_index) : NULL;
+
+		if (collision_model)
+		{
+			damage_effect_new_on_object(
+				collision_model->resistance.shield_recharging_effect.index,
+				object_index);
+		}
+		SET_FLAG(object->object.damage_flags, _object_shield_depleted_bit, FALSE);
+		object_permutation_shield_regions(object_index, TRUE);
+	}
+	SET_FLAG(object->object.damage_flags, _object_shield_charging_bit, FALSE);
+	object->object.shield_vitality = 1.f;
+	object->object.shield_stun_ticks = 0;
+}
+
 void object_deplete_body(
 	long object_index)
 {
@@ -924,8 +959,9 @@ static void object_damage_shield(
 			retail's are 0-30) */
 			if (VALID_INDEX(damage_resistance->shield_material_type, NUMBER_OF_MATERIAL_TYPES))
 			{
-				actual_shield_damage *= damage_definition->material_modifiers[
-					damage_resistance->shield_material_type];
+				/* port: (exaggerated by the Tilt skull: port/linux/game/skulls.c) */
+				actual_shield_damage *= skulls_material_modifier(damage_definition->material_modifiers[
+					damage_resistance->shield_material_type]);
 			}
 			else
 			{
@@ -1158,6 +1194,21 @@ static void object_damage_aftermath(
 		}
 	}
 
+	/* port: the Black Eye skull's: a player's melee hit on a living enemy, or
+	the one that kills it, fills their shields (port/linux/game/skulls.c) */
+	if (shield_damage + body_damage > 0.f &&
+		TEST_FLAG(_object_mask_unit, object->object.type) &&
+		(object->object.body_vitality > 0.f ||
+			TEST_FLAG(being_damaged_flags, _object_being_damaged_body_depleted_bit)) &&
+		skulls_melee_recharges_shields(
+			damage_effect->damage.category == _damage_category_melee,
+			damage->owner_object_index,
+			damage->owner_team_index,
+			object->object.owner_team_index))
+	{
+		object_fill_shield(damage->owner_object_index);
+	}
+
 	if (TEST_FLAG(_object_mask_unit, object->object.type))
 	{
 		unit_damage_aftermath(
@@ -1237,7 +1288,8 @@ static void object_damage_body(
 	retail's are 0-32) */
 	if (VALID_INDEX(damage_material->material_type, NUMBER_OF_MATERIAL_TYPES))
 	{
-		actual_damage *= damage_definition->material_modifiers[damage_material->material_type];
+		/* port: (exaggerated by the Tilt skull: port/linux/game/skulls.c) */
+		actual_damage *= skulls_material_modifier(damage_definition->material_modifiers[damage_material->material_type]);
 	}
 	else
 	{
@@ -2109,7 +2161,12 @@ void object_damage_update(
 		}
 		else if (object->object.shield_vitality < 1.f)
 		{
-			if (object->object.shield_stun_ticks == 0)
+			/* port: (but a player's, with the Black Eye skull, which only a
+			melee hit on an enemy recharges: port/linux/game/skulls.c) */
+			if (!skulls_shields_recharge(object_index))
+			{
+			}
+			else if (object->object.shield_stun_ticks == 0)
 			{
 				real shield_recharge =
 					collision_model->resistance.runtime_shield_recharge_velocity;

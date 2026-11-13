@@ -62,10 +62,15 @@ static int player_data;
 enum {_game_connection_local,_game_connection_network_client,_game_connection_network_server};
 static short game_connection(void) {return _game_connection_local;}
 static boolean network_coop_active(void) {return FALSE;}
-static boolean players_respawn_network_coop(void) {return FALSE;}
+static boolean players_respawn_network_coop(boolean majority) {(void)majority;return FALSE;}
 static void players_respawn_at_checkpoint(void) {}
 static boolean players_are_all_dead(void) {return FALSE;}
 static boolean main_coop_host_revert(void) {return FALSE;}
+/* (no Iron skull: its revert is test_skulls.py's) */
+enum {_skull_iron};
+static boolean skull_active(short skull) {(void)skull;return FALSE;}
+static boolean main_iron_revert(void) {return FALSE;}
+static short local_player_count(void) {return (short)player_count;}
 enum {_biped_airborne_bit=0,_object_mask_vehicle=1};
 static void data_iterator_new(struct data_iterator *i,int d) {(void)d;i->next=0;}
 static void *data_iterator_next(struct data_iterator *i) {

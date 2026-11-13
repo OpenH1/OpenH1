@@ -235,6 +235,9 @@ enum
 	OpenH1 client, in place of _distributed_message_actor_states): each
 	without the parts at their defaults */
 	_distributed_message_actor_states_compact = 142,
+	/* the campaign's skulls the host plays (network_skulls.c), reliably, to
+	each OpenH1 client, when it is ready and when they change */
+	_distributed_message_skulls = 143,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };

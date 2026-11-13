@@ -604,6 +604,7 @@ struct network_game *network_game_server_get_game(struct network_game_server *se
 #include "units/units.h"
 #include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
 #include "latency_meter.h" /* port: port/linux/game/latency_meter.c */
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 /* network_game_globals.c's */
 boolean network_game_distributed_client(void);
@@ -6961,6 +6962,9 @@ boolean game_engine_hud_draw_motion_sensor(
 		if (game_modes_motion_sensor_hidden())
 			draw_motion_sensor = FALSE;
 	}
+	/* port: the campaign's Fog skull has none (port/linux/game/skulls.c) */
+	else if (skulls_motion_sensor_hidden())
+		draw_motion_sensor = FALSE;
 
 	return draw_motion_sensor;
 }

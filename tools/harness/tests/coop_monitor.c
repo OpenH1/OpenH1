@@ -14,7 +14,9 @@ struct actor_starting_location {real_point3d position;short actor_variant_index;
 struct squad_definition {char *name;short actor_palette_index,min_count,max_count,platoon_index,unique_leader_type,major_upgrade;struct block starting_locations;};
 struct platoon_definition {char *name;};
 struct encounter_definition {char *name;struct block squads,platoons;};
-struct encounter_datum {short unique_leader_count,original_count;};
+struct encounter_datum {short unique_leader_count,original_count,team_index;};
+/* (no Thunderstorm skull: test_skulls.py's) */
+static boolean skulls_force_major_upgrade(short team_index){(void)team_index;return FALSE;}
 struct actor_variant_definition {struct tag_reference actor_reference,major_upgrade_reference;};
 struct actor_definition {short type;};
 struct scenario {struct block ai_encounters,ai_actor_palette;};

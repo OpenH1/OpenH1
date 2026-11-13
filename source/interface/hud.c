@@ -115,6 +115,7 @@ symbols in this file:
 #include "network_party.h" /* port: port/linux/game/network_party.c */
 #include "network_votekick.h" /* port: port/linux/game/network_votekick.c */
 #include "basic_training.h" /* port: port/linux/game/basic_training.c */
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 #include "text/font_group.h"
 #include "text/text_group.h"
 #include "units/unit_definitions.h"
@@ -1585,16 +1586,20 @@ void hud_draw_screen(
 		if (!vr_render_world_marks_drawn())
 #endif
 		{
+		/* port: (none with the Blind skull: port/linux/game/skulls.c) */
 		if ((!game_engine_running() || game_engine_display_team_indicators()) &&
-			!cinematic_in_progress())
+			!cinematic_in_progress() && !skulls_hud_hidden())
 		{
 			render_marks_hud(NONE, "player indicators"); /* port: debug.render_marks */
 			hud_draw_players();
 		}
 
 		/* port: players' names above their heads, in multiplayer and network co-op */
-		if ((game_engine_running() || network_coop_active()) && !cinematic_in_progress())
+		if ((game_engine_running() || network_coop_active()) && !cinematic_in_progress() &&
+			!skulls_hud_hidden())
+		{
 			hud_draw_player_names();
+		}
 		}
 #ifdef HALO_VR
 		halo_vr_hud_group(HALO_VR_HUD_GROUP_CENTRE);
@@ -1625,7 +1630,9 @@ void hud_draw_screen(
 			motion_sensor_tick();
 		}
 
-		if (hud_scripted_globals->show_hud)
+		/* port: (none of it with the Blind skull, whose player still hears
+		the HUD's sounds: port/linux/game/skulls.c) */
+		if (hud_scripted_globals->show_hud && !skulls_hud_hidden())
 		{
 			if (perspective != _director_perspective_neutral &&
 				perspective != _director_perspective_scripted &&
@@ -1665,7 +1672,7 @@ void hud_draw_screen(
 		}
 		else
 		{
-			hud_play_unit_sounds(player, FALSE);
+			hud_play_unit_sounds(player, hud_scripted_globals->show_hud);
 		}
 
 #ifdef HALO_VR
@@ -1701,7 +1708,8 @@ void hud_draw_vr_crosshairs(
 	long player_index = local_player_get_player_index(render.local_player_index);
 	director_perspective perspective = director_get_perspective(render.local_player_index);
 
-	if (player_index != NONE && hud_scripted_globals->show_hud &&
+	/* port: (not with the Blind skull: port/linux/game/skulls.c) */
+	if (player_index != NONE && hud_scripted_globals->show_hud && !skulls_hud_hidden() &&
 		perspective != _director_perspective_neutral &&
 		perspective != _director_perspective_scripted)
 	{
@@ -1727,7 +1735,8 @@ void hud_draw_vr_zoomed(
 	long player_index = local_player_get_player_index(render.local_player_index);
 	director_perspective perspective = director_get_perspective(render.local_player_index);
 
-	if (player_index != NONE && hud_scripted_globals->show_hud &&
+	/* port: (not with the Blind skull: port/linux/game/skulls.c) */
+	if (player_index != NONE && hud_scripted_globals->show_hud && !skulls_hud_hidden() &&
 		perspective != _director_perspective_neutral &&
 		perspective != _director_perspective_scripted)
 	{
@@ -1754,7 +1763,8 @@ void hud_draw_vr_world_marks(
 	long player_index = local_player_get_player_index(render.local_player_index);
 	director_perspective perspective = director_get_perspective(render.local_player_index);
 
-	if (player_index == NONE || cinematic_in_progress())
+	/* port: (not with the Blind skull: port/linux/game/skulls.c) */
+	if (player_index == NONE || cinematic_in_progress() || skulls_hud_hidden())
 		return;
 	rasterizer_hud_begin();
 	if (!game_engine_running() || game_engine_display_team_indicators())
