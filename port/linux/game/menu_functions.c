@@ -1322,10 +1322,9 @@ static void level_description(struct widget_instance *description, char const *p
 	}
 }
 
-/* player 1's profile's name (the active one, else the one used last: the
-main menu clears the active ones), on the descriptions'
-current_profile_name */
-static void profile_name_show(struct widget_instance *description)
+/* player 1's profile (the active one, else the one used last: the main menu
+clears the active ones), NULL for none */
+static struct player_profile const *profile_current(void)
 {
 	/* (the profile read from its file at most once a second) */
 	static struct player_profile profile;
@@ -1334,15 +1333,13 @@ static void profile_name_show(struct widget_instance *description)
 	static boolean read_good;
 	long index = player_ui_get_active_player_profile_index(0);
 
-	if (!description)
-		return;
 	if (index != NONE)
 	{
 		player_ui_get_active_player_profile(0, &profile);
 		read_index = NONE;
 	}
 	else if ((index = player_ui_get_player1_last_used_profile_index()) == NONE)
-		return;
+		return NULL;
 	else
 	{
 		/* (one that cannot be read too: tried again a second later) */
@@ -1353,9 +1350,18 @@ static void profile_name_show(struct widget_instance *description)
 			read_time = system_milliseconds();
 		}
 		if (!read_good)
-			return;
+			return NULL;
 	}
-	text_set(named(description, "current_profile_name", 0), profile.player_name);
+	return &profile;
+}
+
+/* player 1's profile's name, on the descriptions' current_profile_name */
+static void profile_name_show(struct widget_instance *description)
+{
+	struct player_profile const *profile = description ? profile_current() : NULL;
+
+	if (profile)
+		text_set(named(description, "current_profile_name", 0), profile->player_name);
 }
 
 /* (Campaign's menu) "campaign menu init": player 1's profile and saved
@@ -4585,8 +4591,9 @@ static short profile_list_rows(void)
 	return (short)MIN(profile_list.count + 1, PROFILE_ROWS);
 }
 
-/* "player profile list initialize": on player 1's profile */
-static boolean profile_list_initialize(struct widget_instance *list)
+/* the profiles read again, player 1's chosen, and the list's first row with
+it in its middle (of rows rows) */
+static void profile_list_open(short rows)
 {
 	long active = player_ui_get_active_player_profile_index(0);
 	short index;
@@ -4600,8 +4607,13 @@ static boolean profile_list_initialize(struct widget_instance *list)
 		if (profile_list.indices[index] == active)
 			profile_list.chosen = index;
 	}
-	profile_list.first = (short)PIN(profile_list.chosen - PROFILE_ROWS / 2, 0,
-		MAX(0, profile_list.count + 1 - PROFILE_ROWS));
+	profile_list.first = (short)PIN(profile_list.chosen - rows / 2, 0, MAX(0, profile_list.count + 1 - rows));
+}
+
+/* "player profile list initialize": on player 1's profile */
+static boolean profile_list_initialize(struct widget_instance *list)
+{
+	profile_list_open(PROFILE_ROWS);
 	focus_row(list, (short)(profile_list.chosen - profile_list.first));
 	return TRUE;
 }
@@ -12191,6 +12203,163 @@ boolean pc_menu_browser_select(struct widget_instance *widget, struct event_reco
 {
 	*deleted = FALSE;
 	return browser_select_row(widget, event_controller(widget, event), row, row == NONE, deleted);
+}
+
+/* ---- the hand-written Select Profile's (screens/profile_select.xml:
+menu_screen.c and menu_table.h): the profile list's model (profile_list, as
+the generated screen's list has it: "3wide player profile list update") as a
+table's row source, the chosen profile's details as the profile.* bindings,
+and the row an action is for chosen. The chosen row is the focused one, as
+the generated list's description follows its focus */
+
+static struct
+{
+	/* (the screen opened: its first frame puts the focus on the chosen row) */
+	boolean opened;
+} profile_source;
+
+static void profile_source_opened(void)
+{
+	profile_source.opened = TRUE;
+	profile_list_read(TRUE);
+}
+
+static void profile_source_update(struct menu_table_view *view)
+{
+	short shown = view->shown, focused = view->focused;
+	short rows;
+
+	profile_list_read(FALSE);
+	rows = (short)(profile_list.count + 1);
+	/* (as it opens: player 1's profile chosen, in the table's middle) */
+	if (profile_source.opened && shown)
+	{
+		profile_source.opened = FALSE;
+		profile_list_open(shown);
+		focused = (short)(profile_list.chosen - profile_list.first);
+		view->focus = focused;
+	}
+	/* (the focus kept off the table's ends while there is more past them,
+	the rows moving instead: list_scroll's) */
+	if (focused == shown - 1 && profile_list.first + shown < rows && list_scrolls_at_end())
+	{
+		profile_list.first++;
+		view->focus = --focused;
+	}
+	else if (focused == 0 && profile_list.first > 0 && list_scrolls_at_end())
+	{
+		profile_list.first--;
+		view->focus = ++focused;
+	}
+	profile_list.first = (short)PIN(profile_list.first, 0, MAX(0, rows - shown));
+	if (focused != NONE && focused >= 0 && focused < shown)
+		profile_list.chosen = (short)PIN(profile_list.first + focused, 0, rows - 1);
+	profile_list.chosen = (short)PIN(profile_list.chosen, 0, rows - 1);
+	view->count = rows;
+	view->first = profile_list.first;
+	view->chosen = profile_list.chosen;
+}
+
+static int profile_source_heading(short index, unsigned short *words, short size)
+{
+	(void)index;
+	(void)words;
+	(void)size;
+	return FALSE;
+}
+
+/* a row's name: its profile's, or the row that makes one's words (the
+generated list's: profile_row_text) */
+static void profile_source_cell(short index, char const *column, int focused, struct menu_table_cell *cell)
+{
+	wchar_t text[ROW_TEXT_LENGTH];
+
+	(void)focused;
+	cell->frame = NONE;
+	if (strcmp(column, "name") || index < 0 || index > profile_list.count)
+		return;
+	profile_row_text((short)(index - profile_list.first), text);
+	settings_wide_copy((wchar_t *)cell->text, text, MENU_TABLE_TEXT_LENGTH);
+}
+
+struct menu_table_source const pc_menu_profile_source =
+{
+	profile_source_update, profile_source_heading, profile_source_cell, profile_source_opened,
+};
+
+/* a profile.* binding's value (UTF-8; nonzero if it has one): the chosen
+row's profile's name, current level, best difficulty, controls and color
+(the generated screen's description's: profile_list_update), the row's
+title, whether a profile is chosen, and player 1's profile's name */
+int pc_menu_profile_value(char const *name, char *value, unsigned long size)
+{
+	wchar_t text[ROW_TEXT_LENGTH];
+	struct player_profile const *chosen = profile_list.chosen < profile_list.count ?
+		&profile_list.profiles[profile_list.chosen] : NULL;
+
+	text[0] = 0;
+	value[0] = 0;
+	if (!strcmp(name, "profile.title"))
+	{
+		if (chosen)
+			settings_wide_copy(text, chosen->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1);
+		else
+			profile_row_text((short)(profile_list.chosen - profile_list.first), text);
+	}
+	else if (!strcmp(name, "profile.current"))
+	{
+		struct player_profile const *current = profile_current();
+
+		if (current)
+			settings_wide_copy(text, current->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1);
+	}
+	else if (!chosen)
+		return FALSE;
+	else if (!strcmp(name, "profile.name"))
+		settings_wide_copy(text, chosen->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1);
+	else if (!strcmp(name, "profile.chosen"))
+		snprintf(value, size, "yes");
+	else if (!strcmp(name, "profile.color"))
+	{
+		if (chosen->primary_color_index >= 0 && chosen->primary_color_index < COLOR_COUNT)
+			snprintf(value, size, "%d", chosen->primary_color_index);
+		else
+			snprintf(value, size, "random");
+	}
+	else if (!strcmp(name, "profile.level"))
+	{
+		string_get("pc\\main_menu\\map_list",
+			(short)PIN(chosen->last_single_player_map_played, 0, NUMBER_OF_SINGLE_PLAYER_LEVELS - 1), text);
+	}
+	else if (!strcmp(name, "profile.difficulty"))
+	{
+		short level, difficulty;
+
+		player_profile_get_highest_completed_solo_level((struct player_profile *)chosen, &level, &difficulty);
+		if (level != NONE)
+			string_get("pc\\main_menu\\player_profiles_select\\difficulty_names", difficulty, text);
+	}
+	else if (!strcmp(name, "profile.controls"))
+	{
+		string_get("pc\\main_menu\\player_profiles_select\\joystick_set_defaults_descriptions",
+			(short)(chosen->controller_settings.invert_look ? 1 : 0), text);
+	}
+	else
+		return FALSE;
+	text[NUMBEROF(text) - 1] = 0;
+	if (text[0])
+		text_utf8(text, value, (long)size);
+	return value[0] != 0;
+}
+
+/* "profile select" (A, a click or a tap on a row, or OK): the row's
+profile (the chosen one's, for NONE) made player 1's, as the generated
+list's "profile manager select"; FALSE for the row that makes one */
+int pc_menu_profile_choose(struct widget_instance *widget, struct event_record *event, short row)
+{
+	if (row != NONE)
+		profile_list.chosen = (short)PIN(profile_list.first + row, 0, profile_list.count);
+	return profile_choose(event_controller(widget, event));
 }
 
 /* ---- the hand-written screens' (menu_screen.c and menu_table.h): the text

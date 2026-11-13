@@ -147,6 +147,8 @@ pills) and a text after a pair, a pill row's step, a pair's step */
 #define PANEL_PAIR_STEP 22
 #define PANEL_PAIR_LABEL_Y 3
 #define PANEL_PAIR_LABEL_WIDTH 70
+/* (a <spartan>'s line: the gap before and after it) */
+#define PANEL_SPARTAN_GAP 6
 
 /* (the menus' sounds: menu_functions.c's) */
 #define TALL_SOUND_FORWARD 2
@@ -318,6 +320,12 @@ struct screen_tall
 	long line_count;
 	struct widget_instance *panel_bar;
 	struct screen_prompt panel_button;
+	struct widget_instance *panel_widget;
+	/* (its <spartan>: the original picture where it stands, as wide as the
+	picture's shape at its height, centred in the panel) */
+	struct menu_screen_block const *spartan;
+	struct widget_instance *spartan_picture;
+	short spartan_width;
 	/* the bar's prompts */
 	struct widget_instance *bar;
 	struct screen_prompt prompts[TALL_MAXIMUM_PROMPTS];
@@ -1021,6 +1029,7 @@ static void tall_build_panel(struct screen_tall *tall, struct menu_screen const 
 	panel = tall_add(tall, tall->owner, tall_tag("panel"), left, top, TALL_PANEL_MOVE, TALL_PANEL_GROW, width,
 		(short)(height - (touch ? 0 : 0)));
 	tall_box_picture(tall, panel, "main_menu/parts/panel_%dx%d", width, height);
+	tall->panel_widget = panel;
 	for (index = 0; panel && index < file->block_count; index++)
 	{
 		struct menu_screen_block const *block = &file->blocks[index];
@@ -1053,6 +1062,22 @@ static void tall_build_panel(struct screen_tall *tall, struct menu_screen const 
 				tall->panel_bar->visible = FALSE;
 				tall->panel_bar->focused_child = tall->panel_button.widget;
 			}
+			continue;
+		}
+		/* (the Spartan: a line as tall as it, the original picture in its
+		place, centred each frame: tall_frame) */
+		if (block->kind == MENU_SCREEN_SPARTAN)
+		{
+			short spartan_height = (short)block->box_height;
+
+			y = (short)(y + (previous == NONE ? (touch ? TOUCH_PANEL_FIRST_GAP : PANEL_FIRST_GAP) : PANEL_SPARTAN_GAP));
+			tall->spartan = block;
+			tall->spartan_width = (short)(spartan_height * SCREEN_SPARTAN_PICTURE_WIDTH / SCREEN_SPARTAN_PICTURE_HEIGHT);
+			tall->spartan_picture = tall_add(tall, tall->owner, screens.spartan_tag,
+				(short)(left + (width - tall->spartan_width) / 2), y, TALL_PANEL_MOVE, 0, tall->spartan_width,
+				spartan_height);
+			y = (short)(y + spartan_height + PANEL_SPARTAN_GAP);
+			previous = MENU_SCREEN_SPARTAN;
 			continue;
 		}
 		/* (the gap before it, by what is before it) */
@@ -1327,6 +1352,8 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 	open->item_count = 0;
 	open->prompt_count = 0;
 	open->header = NULL;
+	open->has_spartan = FALSE;
+	open->spartan_picture = NULL;
 	/* (the parts that take no focus are the screen's, the rest the body's,
 	in the order the focus steps through them) */
 	tall->owner = tall_add(tall, widget, tall_tag("layer"), 0, 0, 0, 0, 0, 0);
@@ -1367,6 +1394,13 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 			tall_build_panel(tall, screen, index);
 			break;
 		}
+	}
+	/* (the panel's Spartan, drawn where its picture is) */
+	if (tall->spartan && tall->spartan_picture)
+	{
+		open->has_spartan = TRUE;
+		open->spartan = *tall->spartan;
+		open->spartan_picture = tall->spartan_picture;
 	}
 	/* (the table's button after the panel's, the bar last) */
 	if (table_index != NONE)
@@ -1963,6 +1997,25 @@ static void tall_frame(struct screen_open *open)
 			tall_focus(tall->body, tall->bar);
 	}
 	tall_place(tall, screen);
+	/* (the panel's Spartan: in the middle of the panel as wide as it is now,
+	at its line's foot, in its color now) */
+	if (open->has_spartan && tall->spartan_picture && tall->panel_widget)
+	{
+		struct screen_box *panel = tall_box_of(tall, tall->panel_widget);
+		struct screen_box *picture = tall_box_of(tall, tall->spartan_picture);
+
+		if (panel && picture)
+		{
+			picture->at_x = (short)(panel->at_x + (tall_width(tall, tall->panel_widget) - tall->spartan_width) / 2);
+			tall->spartan_picture->horizontal_offset = (short)(picture->at_x -
+				(picture->parent != NONE ? tall->boxes[picture->parent].at_x : 0));
+			open->spartan.box_x = picture->at_x;
+			open->spartan.box_y = picture->at_y;
+			open->spartan.box_width = tall->spartan_width;
+			open->spartan.box_height = tall->spartan->box_height;
+			screen_spartan_frame(open, NONE);
+		}
+	}
 }
 
 /* ---------- events */

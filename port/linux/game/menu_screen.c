@@ -47,6 +47,7 @@ char *tag_get_name(long tag_index);
 long pc_menu_event_function_index(char const *name);
 boolean menu_tags_open(struct widget_instance *widget, struct event_record *event, char const *screen,
 	boolean *deleted);
+void menu_tags_back(struct widget_instance *widget, struct event_record *event, boolean *deleted);
 struct widget_instance *ui_widget_port_add_child(struct widget_instance *parent, long tag_index,
 	struct widget_instance *before);
 /* (menu_functions.c) */
@@ -192,6 +193,8 @@ static boolean screen_call_browser(struct widget_instance *widget, struct event_
 	boolean *deleted);
 static boolean screen_call_search(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted);
+static boolean screen_call_profile(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted);
 /* the row of the table an action is run for (0 up, on the table), NONE for
 none (a key's, a button's) */
 static short screen_action_row = NONE;
@@ -253,6 +256,16 @@ static struct screen_action const screen_actions[] =
 	{ "browser filters", NULL, NULL, "port browser filters", NULL,
 		"main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_filters_screen",
 		NULL },
+	/* (Select Profile's, screens/profile_select.xml, as the generated
+	screen's: a row's profile made player 1's and back to the screen
+	before, or on the row that makes one its question; CREATE NEW's (Y) a
+	new profile's name asked; DELETE's (X) its question, for the chosen
+	row's profile) */
+	{ "profile select", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_profile },
+	{ "profile new", NULL, NULL, "new campaign chosen", NULL, "main_menu/profile_manager/pm_empty_creating_profile",
+		NULL },
+	{ "profile delete", NULL, NULL, "request del player profile", NULL,
+		"error/confirm_delete_profile_modal_fullscreen", NULL },
 };
 
 static char const *const screen_action_names[] =
@@ -261,7 +274,8 @@ static char const *const screen_action_names[] =
 	"open training", "quit", "search next", "search clear", "browser back", "browser host", "browser tab all",
 	"browser tab dedicated", "browser tab openh1", "browser tab legacy", "browser tab coop", "browser tab favorites",
 	"browser sort players", "browser sort ping", "browser sort server", "browser sort map", "browser sort mode",
-	"browser sort next", "browser favorite", "browser join", "browser refresh", "browser filters",
+	"browser sort next", "browser favorite", "browser join", "browser refresh", "browser filters", "profile select",
+	"profile new", "profile delete",
 };
 
 /* a binding's value: the saved game's mission and difficulty (player 1's
@@ -281,18 +295,21 @@ static char const *const screen_binding_names[] =
 	"browser.search.any", "browser.panel.title", "browser.panel.where", "browser.panel.kind",
 	"browser.panel.kind.tone", "browser.panel.tick", "browser.panel.opence", "browser.panel.players",
 	"browser.panel.ping", "browser.panel.status", "browser.joinable", "browser.server", "browser.link",
-	"browser.filtered",
+	"browser.filtered", "profile.title", "profile.name", "profile.level", "profile.difficulty", "profile.controls",
+	"profile.color", "profile.chosen", "profile.current",
 };
 
 /* the row sources a table may name (menu_table.h), and their names */
 static struct menu_table_source const *const screen_sources[] =
 {
 	&pc_menu_browser_source,
+	&pc_menu_profile_source,
 };
 
 static char const *const screen_source_names[] =
 {
 	"browser.games",
+	"profiles",
 };
 
 static int screen_value(void *context, char const *name, char *value, unsigned long size)
@@ -307,6 +324,9 @@ static int screen_value(void *context, char const *name, char *value, unsigned l
 	/* (the server browser's: menu_functions.c's) */
 	if (!strncmp(name, "browser.", 8))
 		return pc_menu_browser_value(name, value, size);
+	/* (Select Profile's: menu_functions.c's) */
+	if (!strncmp(name, "profile.", 8))
+		return pc_menu_profile_value(name, value, size);
 	if (!strcmp(name, "campaign.level") && values->saved)
 		snprintf(value, size, "%s", values->level);
 	else if (!strcmp(name, "campaign.difficulty") && values->saved)
@@ -353,6 +373,9 @@ static struct screen_place const screen_places[] =
 	/* (Settings' COLOR: the profile's color, its Spartan beside it) */
 	{ "profile_color", "main_menu\\settings_select\\player_setup\\player_profile_edit\\color_edit\\color_select_screen",
 		NULL, NULL },
+	/* (Settings' MANAGE PROFILES: the profiles, the chosen one's Spartan
+	beside them) */
+	{ "profile_select", "main_menu\\profile_manager\\player_profile_manager", NULL, NULL },
 };
 
 /* the server browser, whose screen gets a button of the hand-written
@@ -940,6 +963,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 
 static boolean screen_action_run(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted);
+static void screen_spartan_frame(struct screen_open *open, long focused);
 
 #include "menu_screen_tall.inc"
 
@@ -1010,6 +1034,10 @@ boolean menu_screen_opened(struct widget_instance *widget)
 			memset(open, 0, sizeof(*open));
 			return FALSE;
 		}
+		/* (its table's rows told it opened: Select Profile's on player 1's
+		profile) */
+		if (tall_of(open) && tall_of(open)->source && tall_of(open)->source->opened)
+			tall_of(open)->source->opened();
 		return TRUE;
 	}
 	return FALSE;
@@ -1047,13 +1075,28 @@ static long screen_focused(struct screen_open const *open)
 	return NONE;
 }
 
-/* the color a <spartan>'s player shows: the focused color's, or the
-profile's (the one being edited, else the player's own); NONE for random,
-or no profile */
+/* a <spartan> of a binding's color whose binding has no value: none, nor its
+picture (Select Profile's row that makes a profile) */
+#define SCREEN_SPARTAN_NONE (-2)
+
+/* the color a <spartan>'s player shows: the focused color's, the profile's
+(the one being edited, else the player's own), or its binding's (a color's
+number); NONE for random, or no profile; SCREEN_SPARTAN_NONE for a
+binding's none */
 static short screen_spartan_color(struct screen_open const *open, long focused, short player)
 {
 	if (open->spartan.color == MENU_SCREEN_SPARTAN_FOCUS && open->colors && focused != NONE)
 		return (short)focused;
+	if (open->spartan.color == MENU_SCREEN_SPARTAN_BINDING)
+	{
+		struct screen_values values;
+		char value[16];
+
+		memset(&values, 0, sizeof(values));
+		if (!open->spartan.value || !screen_value(&values, open->spartan.value, value, sizeof(value)))
+			return SCREEN_SPARTAN_NONE;
+		return value[0] >= '0' && value[0] <= '9' ? (short)atoi(value) : NONE;
+	}
 	if (player == 0 && player_ui_get_edit_player_profile())
 		return player_ui_get_edit_player_profile()->primary_color_index;
 	if (player_ui_get_active_player_profile_index(player) != NONE)
@@ -1097,7 +1140,7 @@ static void screen_spartan_frame(struct screen_open *open, long focused)
 	}
 	if (open->spartan_picture)
 	{
-		open->spartan_picture->visible = !drawn;
+		open->spartan_picture->visible = !drawn && first != SCREEN_SPARTAN_NONE;
 		open->spartan_picture->animation.current_frame_index =
 			(short)(first >= 0 && first < SCREEN_COLOR_COUNT ? first : SCREEN_SPARTAN_RANDOM_FRAME);
 	}
@@ -1285,6 +1328,28 @@ static boolean screen_call_browser(struct widget_instance *widget, struct event_
 	if (!strcmp(name, "browser join"))
 		return pc_menu_browser_select(widget, event, screen_action_row, deleted);
 	return FALSE;
+}
+
+/* Select Profile's "profile select" (menu_functions.c's model): the row's
+profile (the chosen one's, for OK) made player 1's and back to the screen
+before, as the generated list's "profile manager select" with its back; on
+the row that makes one, the generated list's question (pm_empty_selected) */
+#define SCREEN_PROFILE_EMPTY "main_menu/profile_manager/pm_empty_selected"
+
+static boolean screen_call_profile(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted)
+{
+	*deleted = FALSE;
+	if (strcmp(name, "profile select"))
+		return FALSE;
+	if (pc_menu_profile_choose(widget, event, screen_action_row))
+	{
+		menu_tags_back(widget, event, deleted);
+		return TRUE;
+	}
+	if (!menu_tags_open(widget, event, SCREEN_PROFILE_EMPTY, deleted))
+		platform_log("menus: action \"%s\": there is no screen %s", name, SCREEN_PROFILE_EMPTY);
+	return TRUE;
 }
 
 boolean menu_screen_do(struct widget_instance *item, struct event_record *event, boolean *deleted)

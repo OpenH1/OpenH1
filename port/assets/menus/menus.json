@@ -292,6 +292,7 @@
   "screens/campaign.xml",
   "screens/main.xml",
   "screens/profile_color.xml",
+  "screens/profile_select.xml",
   "ce/port/bitmaps/text_button_background__0.png",
   "ce/port/bitmaps/text_button_background__1.png",
   "ce/port/blank__0.png",
