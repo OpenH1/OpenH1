@@ -58,7 +58,7 @@ NEGATIVE_CONTROLS = {
     "empty-group-headed": (("if (written > start && browser_grouped && browser_group_headed(group))",
                             "if (browser_grouped && browser_group_headed(group))"), "groups"),
     "heading-words": (('return L"Legacy (Slow) Servers";', 'return L"Legacy Servers";'), "groups"),
-    "dedicated-heading-words": (('return L"OpenH1 Dedicated Servers";', 'return L"Dedicated Servers";'), "groups"),
+    "dedicated-heading-words": (('return L"GOAT H1 Dedicated Servers";', 'return L"Dedicated Servers";'), "groups"),
     "favorites-before-groups": (("browser_group_of(&entries[index]) != group ||", "FALSE ||"), "groups"),
     "offline-on-every-tab": (("\tif (!browser_tab_lists_offline())\n\t\tbrowser_offline_count = 0;\n", ""), "tabs"),
     "lan-says-nothing-to-do": (("L\"No games on your network yet.\\r\\nHost one from Create Game.\"",
@@ -258,7 +258,7 @@ def test_browser_layout():
         assert f'<on event="{event}" run="{run_name}"/>' in screen, event
     tabs = re.findall(rf'<widget name="{MT}/join_game/(tab_\w+)"[^>]*text="([^"]*)"', text)
     assert tabs == port_settings.BROWSER_TABS == [("tab_all", "ALL"), ("tab_dedicated", "DEDICATED"),
-                                                 ("tab_openh1", "OPENH1"), ("tab_legacy", "LEGACY"),
+                                                 ("tab_openh1", "GOAT H1"), ("tab_legacy", "LEGACY"),
                                                  ("tab_coop", "CO-OP"), ("tab_favorites", "FAVORITES")]
     # (the tabs in menu_functions.c's order)
     menus = read("port/linux/game/menu_functions.c")
