@@ -46,6 +46,7 @@ machines of a network game agree on.
 #include "scenario/scenario.h"
 #include "text/draw_string.h"
 #include "halo_keyboard.h"
+#include "player_settings.h"
 
 #include <math.h>
 
@@ -160,7 +161,7 @@ static boolean vr_prompt_text(
 	struct game_input_preferences preferences;
 	char name[64];
 
-	if (!strcmp(config_string("input.button_prompts"), "controller"))
+	if (!strcmp(config_player_string(local_player_index, "input.button_prompts"), "controller"))
 		return FALSE;
 	if (game_control != NONE)
 	{

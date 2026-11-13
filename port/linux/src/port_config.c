@@ -387,7 +387,7 @@ static const struct config_setting config_settings[] =
 	{ "display.hud_button_style", _config_string, "\"classic\"", "HALO_HUD_BUTTON_STYLE", _environment_value, _platform_all,
 		"High-res gameplay controller buttons: classic uses the Xbox's stencils;\n"
 		"gems uses shaded Xbox faces; menu_gems uses the menu's button art.\n"
-		"Requires display.high_res_hud." },
+		"Requires display.high_res_hud.", _scope_player },
 	{ "display.menu_pictures", _config_boolean, "true", "HALO_MENU_PICTURES", _environment_value, _platform_desktop,
 		"Draw the menus' pictures of the missions and the multiplayer maps again,\n"
 		"sharp, from your own maps: once, as the main menu first shows (\"Preparing\n"
@@ -1052,7 +1052,7 @@ static const struct config_setting config_settings[] =
 		"touch controls) was; \"controller\" always the controller's buttons, as\n"
 		"the Xbox; \"keyboard\" always the keys. In VR (but \"controller\"):\n"
 		"what presses it on the controllers in the hands, as the runtime names\n"
-		"it (\"A Button\", \"Right Hand Trigger\"), or the gesture that does." },
+		"it (\"A Button\", \"Right Hand Trigger\"), or the gesture that does.", _scope_player },
 	{ "input.controller_p1", _config_string, "\"\"", "HALO_CONTROLLER_P1", _environment_value, _platform_all,
 		"P1 custom controller layout; empty uses the profile's preset. Edit in\n"
 		"Settings > Controls > Controller > Button Remapping. v4: 27 physical\n"
