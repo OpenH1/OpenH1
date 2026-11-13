@@ -3224,6 +3224,72 @@ boolean players_coop_bring_to_host(
 	return arrived_count > 1;
 }
 
+/* port: Host Controls' BRING TO ME and GO TO (network_host_controls.c), the
+co-op host's: who moves (the player, or the host's first player in the
+level) and beside whom. Only in a network co-op game the host runs, while
+the scripts leave the players their controls (cutscenes place them), for
+another machine's living player who is not away, with the host's player
+in the loaded BSP; GO TO only to a player who is in it too, never out of
+it where the host would fall. FALSE where not */
+static boolean players_coop_host_teleport_parties(
+	long player_index,
+	boolean go_to,
+	long *moving_player_index,
+	long *beside_unit_index)
+{
+	struct player_datum *player = player_index != NONE ? player_try_and_get(player_index) : NULL;
+	long host_unit_index;
+
+	if (!network_coop_active() || game_connection() != _game_connection_network_server || !player_input_enabled() ||
+		!player || player->unit_index == NONE || player->local_player_index != NONE ||
+		network_coop_player_away(player_index))
+	{
+		return FALSE;
+	}
+	host_unit_index = players_coop_host_unit();
+	if (host_unit_index == NONE || (go_to && !players_coop_unit_in_structure(player->unit_index)))
+		return FALSE;
+	*moving_player_index = go_to ? unit_get(host_unit_index)->unit.player_index : player_index;
+	*beside_unit_index = go_to ? player->unit_index : host_unit_index;
+
+	return *moving_player_index != NONE;
+}
+
+boolean players_coop_host_can_teleport(
+	long player_index,
+	boolean go_to)
+{
+	long moving_player_index, beside_unit_index;
+
+	return players_coop_host_teleport_parties(player_index, go_to, &moving_player_index, &beside_unit_index);
+}
+
+/* port: the move itself, as a BSP switch's: out of any seat
+(player_teleport), beside the other player's unit (or the vehicle it rides)
+and facing their way (player_teleport_internal), else, with no room, in
+them (players_coop_teleport_stacked). Never onto a loading zone. The
+moved player's index (and the other's), or NONE */
+long players_coop_host_teleport(
+	long player_index,
+	boolean go_to,
+	long *beside_player_index)
+{
+	long moving_player_index, beside_unit_index;
+	real_point3d center;
+
+	if (!players_coop_host_teleport_parties(player_index, go_to, &moving_player_index, &beside_unit_index))
+		return NONE;
+	*beside_player_index = unit_get(beside_unit_index)->unit.player_index;
+	center = object_get(beside_unit_index)->object.bounding_sphere_center;
+	if (!player_teleport(moving_player_index, beside_unit_index, &center) &&
+		!players_coop_teleport_stacked(moving_player_index, beside_unit_index, &center))
+	{
+		return NONE;
+	}
+
+	return moving_player_index;
+}
+
 /* co-op, each tick: records when each player became somewhere spawnable,
 and where each last stood on the ground */
 static void players_coop_note_on_foot(
