@@ -847,9 +847,9 @@
 		<frame png="ce/port/main_menu/parts/item_148x22__0.png" width="148" height="22"/>
 		<frame png="ce/port/main_menu/parts/item_148x22__1.png" width="148" height="22"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/item_188x40">
-		<frame png="ce/port/main_menu/parts/item_188x40__0.png" width="188" height="40"/>
-		<frame png="ce/port/main_menu/parts/item_188x40__1.png" width="188" height="40"/>
+	<bitmap name="main_menu/parts/item_188x32">
+		<frame png="ce/port/main_menu/parts/item_188x32__0.png" width="188" height="32"/>
+		<frame png="ce/port/main_menu/parts/item_188x32__1.png" width="188" height="32"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/outline_148x24">
 		<frame png="ce/port/main_menu/parts/outline_148x24__0.png" width="148" height="24"/>

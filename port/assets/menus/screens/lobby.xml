@@ -21,15 +21,15 @@ one, Y the map vote or COPY INVITE). -->
 	<table source="lobby.players" lanes="2" do="lobby row" left="lobby team red" right="lobby team blue">
 		<lane label="{lobby.red}" detail="{lobby.red.count}" tone="lobby.red.tone"/>
 		<lane label="{lobby.blue}" detail="{lobby.blue.count}" tone="lobby.blue.tone"/>
-		<column id="dot" kind="dot" width="8" gap="0"/>
-		<column id="name" kind="strong" width="84" grow="48" gap="6"/>
-		<column id="tag" width="72" grow="24" gap="2" align="right"/>
+		<column id="dot" kind="dot" width="8" gap="0" touch="8 0 8 0 0"/>
+		<column id="name" kind="strong" width="76" grow="48" gap="6" touch="22 0 64 0 48"/>
+		<column id="tag" width="72" grow="24" gap="2" align="right" touch="88 0 62 48 24"/>
 	</table>
 	<panel>
-		<text text="NEXT GAME"/>
+		<text text="NEXT GAME" when="pointer"/>
 		<heading text="{lobby.gametype}"/>
 		<text text="{lobby.map}"/>
-		<text text="{lobby.limits}"/>
+		<text text="{lobby.limits}" when="pointer"/>
 		<pills>
 			<pill text="{lobby.kind}" tone="lobby.kind.tone" width="64"/>
 			<pill text="{lobby.tick}" tone="2" width="64"/>
@@ -46,10 +46,11 @@ one, Y the map vote or COPY INVITE). -->
 		<button key="accept" label="{lobby.start}" if="lobby.host" do="lobby start"/>
 	</panel>
 	<buttons>
-		<button key="back" label="LEAVE"/>
-		<button key="dpad" label="CHANGE TEAM" side="right" if="lobby.team.change" do="lobby team toggle"/>
-		<button key="y" label="COPY INVITE" side="right" if="lobby.invite"/>
-		<button key="x" label="ADD PLAYER" side="right" if="lobby.add"/>
-		<button key="rt" label="HOST CONTROLS" side="right" if="lobby.controls" do="lobby host" when="touch"/>
+		<button key="back" label="LEAVE" touch-width="84"/>
+		<button key="dpad" label="CHANGE TEAM" side="right" if="lobby.team.change" do="lobby team toggle" touch-width="120"/>
+		<button key="y" label="COPY INVITE" side="right" if="lobby.invite" when="pointer"/>
+		<button key="y" label="INVITE" side="right" if="lobby.invite" touch-width="80" when="touch"/>
+		<button key="x" label="ADD PLAYER" side="right" if="lobby.add" touch-width="106"/>
+		<button key="rt" label="HOST CONTROLS" side="right" if="lobby.controls" do="lobby host" touch-width="130" when="touch"/>
 	</buttons>
 </screen>

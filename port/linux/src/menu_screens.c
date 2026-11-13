@@ -358,8 +358,8 @@ static void touch_read(struct reader *reader, struct menu_screen_block *column, 
 label, and what it does (do: an action; none, its key pressed) */
 static int button_read(struct reader *reader, XML_Char const **attributes, int parent_block)
 {
-	static char const *const names[] = { "key", "label", "side", "do", "width", "if", "when", NULL };
-	char const *values[8];
+	static char const *const names[] = { "key", "label", "side", "do", "width", "if", "when", "touch-width", NULL };
+	char const *values[9];
 	struct menu_screen *screen = reader->screen;
 	int block;
 
@@ -386,6 +386,8 @@ static int button_read(struct reader *reader, XML_Char const **attributes, int p
 			action_check(reader, button->action);
 		if (!reader->failed && values[4])
 			button->width = number_read(reader, values[4], "a <button>'s width", 1, 640);
+		if (!reader->failed && values[7])
+			button->touch_width = number_read(reader, values[7], "a <button>'s touch-width", 1, 640);
 		shown_check(reader, button->condition, button->when);
 	}
 	return block;

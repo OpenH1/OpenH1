@@ -5581,7 +5581,7 @@ def lobby_pictures(framed, highlight) -> list:
 # and an outlined button's
 SCREEN_LANES = {"computer": (404, 74, 436), "touch": (364, 76, 410)}
 SCREEN_LANE_GAP, SCREEN_LANE_INSET, SCREEN_LANE_ROW = 12, 8, 18
-SCREEN_CHOICE_HEIGHTS = {"computer": (148, 22), "touch": (188, 40)}
+SCREEN_CHOICE_HEIGHTS = {"computer": (148, 22), "touch": (188, 32)}
 SCREEN_PANEL_BUTTON = (148, 24)
 
 

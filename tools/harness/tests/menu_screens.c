@@ -658,7 +658,7 @@ int main(int argc, char **argv)
 			rights += block->kind == MENU_SCREEN_BUTTON && block->side && !strcmp(block->side, "right");
 		}
 		CHECK(choices == 3 && panel_buttons == 3, "%d choices, %d panel buttons", choices, panel_buttons);
-		CHECK(rights == 4, "%d buttons at the bar's right", rights);
+		CHECK(rights == 5, "%d buttons at the bar's right", rights);
 		menu_screen_free(&screen);
 	}
 	else if (!strcmp(name, "buttons"))
@@ -682,6 +682,12 @@ int main(int argc, char **argv)
 			"no binding {nothing.here}");
 		refused("<screen name=\"t\"><buttons><button key=\"x\" label=\"A\" width=\"0\"/></buttons></screen>",
 			"width is a number");
+		refused("<screen name=\"t\"><buttons><button key=\"x\" label=\"A\" touch-width=\"0\"/></buttons></screen>",
+			"touch-width is a number");
+		CHECK(read_text("<screen name=\"t\"><buttons><button key=\"x\" label=\"A\" touch-width=\"80\"/></buttons>"
+			"</screen>", &screen, problem) && screen.blocks[kind_first(&screen, MENU_SCREEN_BUTTON)].touch_width == 80,
+			"a button's touch-width is not read: %s", problem);
+		menu_screen_free(&screen);
 		refused("<screen name=\"t\"><header title=\"T\"><button key=\"view\" label=\"{nothing.here}\"/></header>"
 			"</screen>", "no binding {nothing.here}");
 	}
