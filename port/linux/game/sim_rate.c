@@ -79,6 +79,9 @@ static struct
 	boolean frame_fresh;
 	boolean first_of_frame;
 	sim_substep_procedure procedures[NUMBER_OF_SIM_SUBSTEP_SLOTS];
+	/* the tick's own work before its fast phase is running (its first
+	sub-step's, sim_substep_in_macro_step) */
+	boolean macro_step;
 } sim_rate_globals = { 0, SIM_RATE_CLASSIC, FALSE, SIM_RATE_CLASSIC, 1, NONE, 0, TRUE, FALSE };
 
 /* ---------- private code */
@@ -320,6 +323,7 @@ void sim_rate_tick_drop(
 {
 	sim_rate_globals.substep_index = NONE;
 	sim_rate_globals.substep_next = 0;
+	sim_rate_globals.macro_step = FALSE;
 }
 
 void sim_rate_tick_begin(
@@ -331,6 +335,13 @@ void sim_rate_tick_begin(
 	sim_rate_globals.substep_count = (short)(rate / SIM_RATE_CLASSIC);
 	sim_rate_globals.substep_index = NONE;
 	sim_rate_globals.substep_next = 0;
+	sim_rate_globals.macro_step = TRUE;
+}
+
+boolean sim_substep_in_macro_step(
+	void)
+{
+	return sim_rate_globals.macro_step;
 }
 
 void sim_substep_run(
@@ -342,6 +353,7 @@ void sim_substep_run(
 
 	sim_rate_globals.first_of_frame = sim_rate_globals.frame_fresh;
 	sim_rate_globals.frame_fresh = FALSE;
+	sim_rate_globals.macro_step = FALSE;
 	sim_rate_globals.substep_index = substep_index;
 	for (slot = 0; slot < NUMBER_OF_SIM_SUBSTEP_SLOTS; slot++)
 	{
