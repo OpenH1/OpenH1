@@ -96,7 +96,7 @@ picture, the line, the words for no rows) -->
 	<!-- a bar of one or more buttons in the body (the panel's, a table's) -->
 	<widget name="screens/bar" type="column_list" width="640" height="24" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
 	<!-- the band's detail, at its right (on a touchscreen, under the title's left) -->
-	<widget name="screens/header_detail" type="text" width="240" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_flags="no_focus_test"/>
+	<widget name="screens/header_detail" type="text" width="312" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_flags="no_focus_test"/>
 	<widget name="screens/header_detail_left" type="text" width="300" height="16" font="ui\small_ui" color="#FF6F9CD0" text_flags="no_focus_test"/>
 	<!-- tabs: a strip, each tab framed (its picture's frames: the current
 	one's, and the one with the focus outlined), A or a click does its do;

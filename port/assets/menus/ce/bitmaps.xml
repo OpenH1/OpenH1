@@ -817,6 +817,44 @@
 		<frame png="ce/port/main_menu/parts/button_164x26__0.png" width="164" height="26"/>
 		<frame png="ce/port/main_menu/parts/button_164x26__1.png" width="164" height="26"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/team_panel_196x362">
+		<frame png="ce/port/main_menu/parts/team_panel_196x362__0.png" width="196" height="362"/>
+		<frame png="ce/port/main_menu/parts/team_panel_196x362__1.png" width="196" height="362"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/panel_404x362">
+		<frame png="ce/port/main_menu/parts/panel_404x362__0.png" width="404" height="362"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/lane_row_180x18">
+		<frame png="ce/port/main_menu/parts/lane_row_180x18__0.png" width="180" height="18"/>
+		<frame png="ce/port/main_menu/parts/lane_row_180x18__1.png" width="180" height="18"/>
+		<frame png="ce/port/main_menu/parts/lane_row_180x18__2.png" width="180" height="18"/>
+		<frame png="ce/port/main_menu/parts/lane_row_180x18__3.png" width="180" height="18"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/team_panel_176x334">
+		<frame png="ce/port/main_menu/parts/team_panel_176x334__0.png" width="176" height="334"/>
+		<frame png="ce/port/main_menu/parts/team_panel_176x334__1.png" width="176" height="334"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/panel_364x334">
+		<frame png="ce/port/main_menu/parts/panel_364x334__0.png" width="364" height="334"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/lane_row_160x18">
+		<frame png="ce/port/main_menu/parts/lane_row_160x18__0.png" width="160" height="18"/>
+		<frame png="ce/port/main_menu/parts/lane_row_160x18__1.png" width="160" height="18"/>
+		<frame png="ce/port/main_menu/parts/lane_row_160x18__2.png" width="160" height="18"/>
+		<frame png="ce/port/main_menu/parts/lane_row_160x18__3.png" width="160" height="18"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_148x22">
+		<frame png="ce/port/main_menu/parts/item_148x22__0.png" width="148" height="22"/>
+		<frame png="ce/port/main_menu/parts/item_148x22__1.png" width="148" height="22"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_188x40">
+		<frame png="ce/port/main_menu/parts/item_188x40__0.png" width="188" height="40"/>
+		<frame png="ce/port/main_menu/parts/item_188x40__1.png" width="188" height="40"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/outline_148x24">
+		<frame png="ce/port/main_menu/parts/outline_148x24__0.png" width="148" height="24"/>
+		<frame png="ce/port/main_menu/parts/outline_148x24__1.png" width="148" height="24"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/chip_52x52">
 		<frame png="ce/port/main_menu/parts/chip_52x52__0.png" width="52" height="52"/>
 		<frame png="ce/port/main_menu/parts/chip_52x52__1.png" width="52" height="52"/>

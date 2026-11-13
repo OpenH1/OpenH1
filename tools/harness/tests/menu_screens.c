@@ -335,6 +335,10 @@ int main(int argc, char **argv)
 		refused("<screen name=\"main\"><list><item label=\"A\" do=\"open nowhere\"/></list></screen>",
 			"no action \"open nowhere\"");
 		refused("<screen name=\"main\" back=\"explode\"><title-art/></screen>", "no action \"explode\"");
+		refused("<screen name=\"main\" start=\"explode\"><title-art/></screen>", "no action \"explode\"");
+		CHECK(read_text("<screen name=\"main\" start=\"quit\"><title-art/></screen>", &screen, problem) &&
+			screen.start && !strcmp(screen.start, "quit"), "a screen's start is not read: %s", problem);
+		menu_screen_free(&screen);
 		/* (every action the game has is one a file may name) */
 		{
 			unsigned index;

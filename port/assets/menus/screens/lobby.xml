@@ -16,7 +16,7 @@ the players change this player's team, a click on a lane's row puts them on
 its team, A on them (Start) starts the host's game; the generated screen's
 own keys stay (B leaves, START joins another controller's player, X adds
 one, Y the map vote or COPY INVITE). -->
-<screen name="lobby">
+<screen name="lobby" start="lobby start">
 	<header title="{lobby.title}" detail="{lobby.subtitle}"/>
 	<table source="lobby.players" lanes="2" do="lobby row" left="lobby team red" right="lobby team blue">
 		<lane label="{lobby.red}" detail="{lobby.red.count}" tone="lobby.red.tone"/>

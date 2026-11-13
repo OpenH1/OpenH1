@@ -1264,7 +1264,7 @@ int pc_menu_lobby_value(char const *name, char *value, unsigned long size)
 	value[0] = 0;
 	text[0] = 0;
 	if (!strcmp(name, "lobby.title"))
-		usnprintf(text, NUMBEROF(text) - 1, L"LOBBY");
+		usnprintf(text, NUMBEROF(text) - 1, L"GAME LOBBY");
 	else if (!strcmp(name, "lobby.subtitle"))
 		return lobby_screen_words(model->subtitle, value, size);
 	/* (the lanes: RED and BLUE in a team game, each its players' count;

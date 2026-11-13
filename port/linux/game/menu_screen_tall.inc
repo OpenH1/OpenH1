@@ -26,9 +26,9 @@ BROWSER_TALL, _browser and _touch_browser) */
 
 /* the band, its title's detail at its right, a button in it */
 #define TALL_BAND 40
-#define TALL_DETAIL_X 372
+#define TALL_DETAIL_X 300
 #define TALL_DETAIL_Y 11
-#define TALL_DETAIL_WIDTH 240
+#define TALL_DETAIL_WIDTH 312
 #define TALL_BUTTON_X 276
 #define TALL_BUTTON_Y 8
 #define TALL_BUTTON_WIDTH 148
@@ -175,7 +175,7 @@ height; the panel's buttons' gap one over another */
 #define TOUCH_PANEL_CHOICE_HEIGHT 40
 #define PANEL_CHOICE_LABEL_X 8
 #define PANEL_CHOICE_LABEL_WIDTH 58
-#define PANEL_CHOICE_VALUE_X 62
+#define PANEL_CHOICE_VALUE_X 66
 #define PANEL_CHOICE_ARROW 6
 #define PANEL_CHOICE_GAP 0
 #define PANEL_BUTTON_GAP 4
@@ -360,6 +360,9 @@ struct screen_tall
 	struct widget_instance *lane_panels[TALL_MAXIMUM_LANES], *lane_titles[TALL_MAXIMUM_LANES],
 		*lane_details[TALL_MAXIMUM_LANES];
 	struct widget_instance *lane_span;
+	/* (the focus put on the bar for want of a row: back on the first row
+	that comes, unless it has been moved since) */
+	boolean focus_waiting;
 	/* the searches (a column's, or the screen's), the one typed into */
 	struct screen_search searches[TALL_MAXIMUM_SEARCHES];
 	long search_count;
@@ -568,6 +571,10 @@ static char const *tall_key_picture(char const *key)
 	};
 	long index;
 
+	/* (the D-pad: the keyboard has no key of its own for it, its arrows
+	the menus' left and right) */
+	if (!strcmp(key, "dpad") && halo_keyboard_prompts())
+		return "";
 	for (index = 0; index < NUMBEROF(pictures); index++)
 	{
 		if (!strcmp(pictures[index].key, key))
@@ -612,7 +619,7 @@ static char const *tall_keyboard_key(char const *key)
 	} const names[] =
 	{
 		{ "accept", "Enter" }, { "back", "Esc" }, { "x", "Tab" }, { "y", "F" }, { "lb", "Q" }, { "rb", "E" },
-		{ "lt", "L" }, { "rt", "R" }, { "r3", "/" }, { "view", "F1" }, { "dpad", "<>" },
+		{ "lt", "L" }, { "rt", "R" }, { "r3", "/" }, { "view", "F1" },
 	};
 	long index;
 
@@ -634,8 +641,11 @@ static short tall_prompt_end(char const *key, char const *label, boolean control
 	snprintf(spaced, sizeof(spaced), " %s", label);
 	if (controller)
 	{
-		advance = !strcmp(key, "rt") ? 69 : !strcmp(key, "lt") ? 62 : !strcmp(key, "r3") ? 65 : 9;
+		advance = !strcmp(key, "rt") ? 69 : !strcmp(key, "lt") ? 62 : !strcmp(key, "r3") ? 65 : !strcmp(key, "dpad") ? 40 :
+			9;
 	}
+	else if (!strcmp(key, "dpad"))
+		advance = 0;
 	else
 	{
 		short letters = tall_small_width(tall_keyboard_key(key));
@@ -670,7 +680,7 @@ static void tall_build_header(struct screen_tall *tall, struct widget_instance *
 	{
 		tall->detail = touch ?
 			tall_add(tall, screen, tall_tag("header_detail_left"), TOUCH_DETAIL_X, TOUCH_DETAIL_Y, -106, 0, 0, 0) :
-			tall_add(tall, screen, tall_tag("header_detail"), TALL_DETAIL_X, TALL_DETAIL_Y, 106, 0, 0, 0);
+			tall_add(tall, screen, tall_tag("header_detail"), TALL_DETAIL_X, TALL_DETAIL_Y, 106, 0, TALL_DETAIL_WIDTH, 0);
 	}
 	for (index = 0; index < file->block_count; index++)
 	{
@@ -826,6 +836,8 @@ static void tall_build_search(struct screen_tall *tall, struct menu_screen_block
 	if (search->clear)
 		search->clear->visible = FALSE;
 }
+
+static void tall_lanes_frame(struct screen_tall *tall);
 
 /* a table's lanes: their top, each one's width */
 static short tall_lanes_top(void)
@@ -1685,6 +1697,7 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 			tall->searches[index].list->focused_child = tall->searches[index].icon;
 	}
 	snprintf(open->back, sizeof(open->back), "%s", screen->back ? screen->back : "");
+	snprintf(open->start, sizeof(open->start), "%s", screen->start ? screen->start : "");
 	open->generation = menu_screens_generation(screen->name);
 	return TRUE;
 }
@@ -2406,16 +2419,24 @@ static void tall_frame(struct screen_open *open)
 		screen->focused_child = tall->body;
 	/* (the focus off what cannot have it: the first row, else the bar) */
 	focused = tall->body->focused_child;
-	if (!focused || !focused->visible || focused->disabled)
+	if (tall->focus_waiting && focused != tall->bar)
+		tall->focus_waiting = FALSE;
+	if (!focused || !focused->visible || focused->disabled || tall->focus_waiting)
 	{
 		short row;
 
 		for (row = 0; row < tall->row_count && !(tall->rows[row].row && tall->rows[row].row->visible); row++)
 			;
 		if (row < tall->row_count && (row == 0 || tall->lanes > 1))
+		{
 			tall_focus(tall->body, tall->rows[row].row);
-		else if (tall->bar)
+			tall->focus_waiting = FALSE;
+		}
+		else if (tall->bar && focused != tall->bar)
+		{
 			tall_focus(tall->body, tall->bar);
+			tall->focus_waiting = tall->lanes > 1;
+		}
 	}
 	tall_place(tall, screen);
 	/* (the panel's Spartan: in the middle of the panel as wide as it is now,

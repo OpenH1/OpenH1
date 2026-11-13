@@ -165,8 +165,10 @@ struct menu_screen_block
 struct menu_screen
 {
 	char const *name;
-	/* (B and Back: an action, NULL for the screen before) */
+	/* (B and Back: an action, NULL for the screen before; Start anywhere on
+	the screen: an action, NULL for its widgets') */
 	char const *back;
+	char const *start;
 	char const *file;
 	struct menu_screen_block blocks[MENU_SCREEN_MAXIMUM_BLOCKS];
 	int block_count;

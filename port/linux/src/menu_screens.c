@@ -841,16 +841,19 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	if (!strcmp(name, "screen") && parent_element == -1)
 	{
-		static char const *const names[] = { "name", "back", NULL };
+		static char const *const names[] = { "name", "back", "start", NULL };
 
 		element = _element_screen;
 		attributes_read(reader, name, attributes, names, values);
 		screen->name = values[0];
 		screen->back = values[1];
+		screen->start = values[2];
 		if (!reader->failed && (!screen->name || !screen->name[0]))
 			reader_problem(reader, "<screen> has no name", NULL);
 		if (!reader->failed && screen->back)
 			action_check(reader, screen->back);
+		if (!reader->failed && screen->start)
+			action_check(reader, screen->start);
 	}
 	else if (parent_element == _element_screen && (!strcmp(name, "title-art") || !strcmp(name, "space")))
 	{

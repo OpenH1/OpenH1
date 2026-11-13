@@ -444,6 +444,7 @@ struct screen_open
 	char actions[SCREEN_MAXIMUM_ITEMS][SCREEN_ACTION_LENGTH];
 	long item_count;
 	char back[SCREEN_ACTION_LENGTH];
+	char start[SCREEN_ACTION_LENGTH];
 	/* (a button over a generated screen, its own widgets kept: the
 	browser's; and the child its focus goes back to from the button) */
 	boolean extra;
@@ -997,6 +998,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		open->list->parameters.list.selected_index = (short)focus_index;
 	}
 	snprintf(open->back, sizeof(open->back), "%s", screen->back ? screen->back : "");
+	snprintf(open->start, sizeof(open->start), "%s", screen->start ? screen->start : "");
 	open->generation = menu_screens_generation(screen->name);
 	return TRUE;
 }
@@ -1471,6 +1473,14 @@ boolean menu_screen_back(struct widget_instance *widget, struct event_record *ev
 	struct screen_open *open = screen_open_of(widget);
 
 	*deleted = FALSE;
+	/* (Start anywhere on a screen of its own start: that, where it does
+	something) */
+	if (open && open->start[0] && event->type == SCREEN_EVENT_BUTTON && event->data.button.value == 1 &&
+		event->data.button.index == _gamepad_binary_button_start &&
+		screen_action_run(widget, event, open->start, deleted))
+	{
+		return TRUE;
+	}
 	/* (a tall screen's keys: its buttons' and its tabs') */
 	if (open && tall_of(open) && tall_key(open, widget, event, deleted))
 		return TRUE;

@@ -60,6 +60,9 @@ NEGATIVE_CONTROLS = {
     # a choice with no right taken
     "choice-no-right": ("else if (!choice->left_action || !choice->right_action)", "else if (!choice->left_action)",
                         "choice"),
+    # a screen's start not checked: an action the game has not got taken
+    "start-unchecked": ("\t\tif (!reader->failed && screen->start)\n\t\t\taction_check(reader, screen->start);",
+                        "(void)0;", "actions"),
     # a choice's dim not checked
     "choice-dim-unchecked": ("if (!reader->failed && choice->dim)\n\t\t\t\tbinding_check(reader, choice->dim);",
                              "(void)0;", "choice"),
