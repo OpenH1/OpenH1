@@ -637,13 +637,16 @@ middle (port/linux/include/panini_projection.h): by its magnification there,
 middle keeps its sharpness, the screen is supersampled by as much, as
 display.supersampling supersamples it (the display blit scales it down), at
 most twice the pixels each way: the magnification at the widest of
-display.fov's and display.vehicle_fov's views on the display's shape, or
-display.supersampling's where that is more. Not on Android, Metal (the Mac
+display.fov's and display.vehicle_fov's views on the display's shape (of
+any local player's, each their profile's), or display.supersampling's where
+that is more. Not on Android, Metal (the Mac
 and iOS) or VR, which draw only the supersampling the player chooses (the
 Mac's: display.supersampling) or none; there the middle is drawn from the
 pixels the view has. */
 
 #define PANINI_SUPERSAMPLING_MOST 2.0f
+/* (split screen's players, each of whose settings may be their own) */
+#define PANINI_LOCAL_PLAYERS 4
 
 /* a field of view in degrees across 16:9 as the tangent of half the
 vertical (view_fov.c's fov_tangent), or the stock view's (the cyborg's 70
@@ -664,33 +667,51 @@ static float panini_supersampling(long display_width, long display_height)
 	(void)display_height;
 	return 1.0f;
 #else
+	/* (each local player's own settings, their profile's: the most any of
+	them needs, the screen being one target for every view of a split
+	screen) */
 	static long read_at = -1;
-	static float strength, tangent;
-	float factor;
+	static float strengths[PANINI_LOCAL_PLAYERS], tangents[PANINI_LOCAL_PLAYERS];
+	float most = 1.0f;
+	int player;
 
 	if (read_at != (long)config_changes())
 	{
 		read_at = (long)config_changes();
-		strength = (float)config_real("display.panini");
-		if (strength > 0.0f)
+		for (player = 0; player < PANINI_LOCAL_PLAYERS; player++)
 		{
-			const char *vehicle = config_string("display.vehicle_fov");
-			double foot = config_real("display.fov");
-			char *end;
-			double degrees = strtod(vehicle, &end);
-			float seated;
+			strengths[player] = (float)config_player_real(player, "display.panini");
+			if (strengths[player] > 0.0f)
+			{
+				const char *vehicle = config_player_string(player, "display.vehicle_fov");
+				double foot = config_player_real(player, "display.fov");
+				char *end;
+				double degrees = strtod(vehicle, &end);
+				float seated;
 
-			tangent = panini_vertical_tangent(foot);
-			/* ("default": the stock view; "match": display.fov's) */
-			seated = !strcmp(vehicle, "match") ? tangent : panini_vertical_tangent(end != vehicle ? degrees : 0.0);
-			if (seated > tangent)
-				tangent = seated;
+				tangents[player] = panini_vertical_tangent(foot);
+				/* ("default": the stock view; "match": display.fov's) */
+				seated = !strcmp(vehicle, "match") ? tangents[player] :
+					panini_vertical_tangent(end != vehicle ? degrees : 0.0);
+				if (seated > tangents[player])
+					tangents[player] = seated;
+			}
 		}
 	}
-	if (!(strength > 0.0f) || display_height <= 0)
+	if (display_height <= 0)
 		return 1.0f;
-	factor = panini_projection_scale(strength, tangent * (float)display_width / (float)display_height);
-	return factor < PANINI_SUPERSAMPLING_MOST ? factor : PANINI_SUPERSAMPLING_MOST;
+	for (player = 0; player < PANINI_LOCAL_PLAYERS; player++)
+	{
+		float factor;
+
+		if (!(strengths[player] > 0.0f))
+			continue;
+		factor = panini_projection_scale(strengths[player], tangents[player] * (float)display_width /
+			(float)display_height);
+		if (factor > most)
+			most = factor;
+	}
+	return most < PANINI_SUPERSAMPLING_MOST ? most : PANINI_SUPERSAMPLING_MOST;
 #endif
 }
 

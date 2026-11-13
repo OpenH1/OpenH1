@@ -412,6 +412,7 @@ symbols in this file:
 #include "view_fov.h" /* port: display.fov, before the projection and culling */
 #include "far_clip.h" /* port: display.draw_distance, the far clip plane */
 #include "lowered_reticle.h" /* port: display.lowered_reticle, the view above the aim */
+#include "player_settings.h" /* port: each local player's own settings, their profile's */
 
 #if defined(HALO_WINDOWS) || defined(HALO_ANDROID) || defined(__linux__)
 #define HALO_NATIVE_BUILD_INFO 1
@@ -1284,7 +1285,7 @@ void set_window_camera_values(
 	window->rasterizer_camera.mirrored = FALSE;
 	window->rasterizer_camera.z_near = rasterizer_globals.near_clip_distance;
 	/* port: display.draw_distance (far_clip.c) */
-	window->rasterizer_camera.z_far = render_far_clip_distance();
+	window->rasterizer_camera.z_far = render_far_clip_distance(window->local_player_index);
 	if (!debug_render_freeze)
 		window->render_camera = window->rasterizer_camera;
 
@@ -3976,6 +3977,10 @@ void main_loop(
 			frames_unseen = halo_frames_unseen() != 0;
 			frames_undrawn = frames_unseen && !main_globals.main_menu_scenario_loaded && !ui_widgets_active();
 
+			/* port: the profile each local player plays with, whose own settings
+			(the field of view, the first-person view's) they see
+			(port/linux/game/player_settings.c) */
+			player_settings_update();
 			/* automated system link tests (port/linux/game/network_test.c) */
 			network_test_update(main_globals.main_menu_scenario_loaded, main_globals.seconds_elapsed);
 			/* port: a demo asked for played, and the end of one
