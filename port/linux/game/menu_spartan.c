@@ -144,6 +144,9 @@ far apart any two Spartans' start (none in step with another) */
 #define SPARTAN_BLEND_OUT 350
 /* a weapon check: the rifle held put away this long */
 #define SPARTAN_WEAPON_CHECK_HOLD 350
+/* ... and the ready played this much slower (a soldier's check, not a
+weapon switch's) */
+#define SPARTAN_WEAPON_CHECK_SLOWER 2
 /* a look around: its length and blends, and how far the aim turns (to its
 side and the other, degrees) and the head on from the aim */
 #define SPARTAN_LOOK_LENGTH 5600
@@ -155,6 +158,8 @@ side and the other, degrees) and the head on from the aim */
 #define SPARTAN_CROUCH_DOWN 550
 #define SPARTAN_CROUCH_HOLD 650
 #define SPARTAN_CROUCH_UP 650
+/* ... how far into the crouched idle (a dip, not all the way down) */
+#define SPARTAN_CROUCH_DEPTH 0.8f
 
 /* each Spartan's own look in a lineup, from its place: turned a little
 from the others (degrees either way, at least the first, at most the
@@ -403,7 +408,7 @@ static unsigned long spartan_fidget_length(
 	case SPARTAN_FIDGET_RELOAD:
 		return play;
 	case SPARTAN_FIDGET_WEAPON_CHECK:
-		return play ? 2 * play + SPARTAN_WEAPON_CHECK_HOLD : 0;
+		return play ? 2 * SPARTAN_WEAPON_CHECK_SLOWER * play + SPARTAN_WEAPON_CHECK_HOLD : 0;
 	case SPARTAN_FIDGET_LOOK:
 		return SPARTAN_LOOK_LENGTH;
 	case SPARTAN_FIDGET_CROUCH:
@@ -464,11 +469,12 @@ static boolean spartan_fidget_progress(
 		unsigned long play = (length - SPARTAN_WEAPON_CHECK_HOLD) / 2;
 
 		if (elapsed < play)
-			pose->frame = last - frames;
+			pose->frame = last - frames / SPARTAN_WEAPON_CHECK_SLOWER;
 		else if (elapsed < play + SPARTAN_WEAPON_CHECK_HOLD)
 			pose->frame = 0.0f;
 		else
-			pose->frame = (real)(elapsed - play - SPARTAN_WEAPON_CHECK_HOLD) * (real)SPARTAN_FRAMES_PER_SECOND / 1000.0f;
+			pose->frame = (real)(elapsed - play - SPARTAN_WEAPON_CHECK_HOLD) * (real)SPARTAN_FRAMES_PER_SECOND /
+				(1000.0f * SPARTAN_WEAPON_CHECK_SLOWER);
 		break;
 	}
 	case SPARTAN_FIDGET_LOOK:
@@ -1140,7 +1146,8 @@ static boolean spartan_pose(
 			memcpy(fidget, idle, sizeof(real_orientation) * node_count);
 			break;
 		}
-		spartan_orientations_blend(node_count, idle, fidget, fidget_pose.weight);
+		spartan_orientations_blend(node_count, idle, fidget,
+			kind == SPARTAN_FIDGET_CROUCH ? fidget_pose.weight * SPARTAN_CROUCH_DEPTH : fidget_pose.weight);
 	}
 	else
 		memcpy(fidget, idle, sizeof(real_orientation) * node_count);
