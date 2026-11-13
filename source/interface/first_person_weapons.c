@@ -357,6 +357,10 @@ static void first_person_weapon_predict(
 static void first_person_weapon_start_interpolation(
 	short local_player_index,
 	short frame_count);
+static void first_person_weapon_pose(
+	short local_player_index,
+	real phase,
+	real_orientation *node_orientations);
 static void first_person_weapon_set_state(
 	short local_player_index,
 	short new_state,
@@ -469,6 +473,37 @@ step (first_person_weapon_update), which the frames drawn from the newest
 step blend from (first_person_weapon_springs_at): drawing only, beside the
 game state */
 static struct first_person_weapon_sways first_person_weapon_sways_before[MAXIMUM_NUMBER_OF_LOCAL_PLAYERS];
+/* port: a state's blend (interpolation_frame_index of interpolation_frame_count)
+as the frames drawn from the newest step draw it, drawing only, beside the
+game state. Its clock is the index and the phase of the frame
+(render_interpolation_first_person_phase) together, which runs on smoothly
+through each tick's advance of the index; the blend goes from none at the
+clock's value when the state changed to all of it when the index reaches the
+count, and starts from the pose drawn at that time (first_person_weapon_pose).
+It took the index plus one and the phase over the count, which at the change
+was a third of the way (two frames of six, one of three) on from the frame
+drawn just before: the gun jumped as a shot or a reload ended, a pop that 30
+frames a second hid in the step they take anyway. And it started from that
+frame, drawn at any time in the tick before, not the pose at the change */
+static struct first_person_weapon_blend
+{
+	/* the clock when the blend started, and its count then (none: a blend
+	started while the frames were drawn between the ticks, drawn as the
+	original drew it) */
+	real start;
+	short frame_count;
+	/* while first_person_weapon_update runs: the phase that a state changed
+	now is at, 1 until the update advances the blend's index and 0 after;
+	-1 otherwise */
+	real update_phase;
+	/* the phase the last frame was drawn at (-1: between the ticks) */
+	real drawn_phase;
+	/* the pose at the update's start, at a phase of 1 of the state before it
+	(the time every state changed in the update changes at), and the weapon
+	it was posed for (NONE: none) */
+	long update_pose_weapon_index;
+	real_orientation update_pose[MAXIMUM_NODES_PER_ANIMATION];
+} first_person_weapon_blends[MAXIMUM_NUMBER_OF_LOCAL_PLAYERS];
 
 /* ---------- public code */
 
@@ -520,6 +555,10 @@ void first_person_weapons_initialize_for_new_map(
 		first_person_weapons[local_player_index].current_sound_index= NONE;
 		first_person_weapons[local_player_index].current_sound_state= NONE;
 		first_person_weapon_sound_indices[local_player_index]= NONE;
+		first_person_weapon_blends[local_player_index].frame_count= 0;
+		first_person_weapon_blends[local_player_index].update_phase= -1.0f;
+		first_person_weapon_blends[local_player_index].drawn_phase= -1.0f;
+		first_person_weapon_blends[local_player_index].update_pose_weapon_index= NONE;
 	}
 
 	return;
@@ -1040,6 +1079,30 @@ struct real_matrix4x3 *first_person_weapon_get_node_matrix(
 	return &first_person_weapon->node_matrices[node_index];
 }
 
+/* port: the pose a state changed in first_person_weapon_update blends from
+(first_person_weapon_blends): the frames' at the end of the tick before,
+drawn from the newest step, the state before the update at a phase of 1 */
+static void first_person_weapon_blend_update_begin(
+	short local_player_index)
+{
+	struct first_person_weapon *first_person_weapon= first_person_weapon_get(local_player_index);
+	struct first_person_weapon_blend *blend= &first_person_weapon_blends[local_player_index];
+
+	blend->update_phase= 1.0f;
+	blend->update_pose_weapon_index= NONE;
+	if (blend->drawn_phase>=0.0f &&
+		first_person_weapon->unit_index!=NONE &&
+		first_person_weapon->weapon_index!=NONE &&
+		weapon_try_and_get(first_person_weapon->weapon_index) &&
+		first_person_weapon->state_animation.index!=NONE)
+	{
+		first_person_weapon_pose(local_player_index, 1.0f, blend->update_pose);
+		blend->update_pose_weapon_index= first_person_weapon->weapon_index;
+	}
+
+	return;
+}
+
 void first_person_weapons_update(
 	void)
 {
@@ -1056,6 +1119,7 @@ void first_person_weapons_update(
 			long unit_index= dead_spectate_first_person_weapon_unit(local_player_index,
 				player_get(player_index)->unit_index);
 
+			first_person_weapon_blend_update_begin(local_player_index);
 			if (first_person_weapon->unit_index!=unit_index)
 			{
 				first_person_weapon_new_unit(local_player_index, unit_index);
@@ -1065,6 +1129,7 @@ void first_person_weapons_update(
 				first_person_weapon_switch_weapons(local_player_index);
 			}
 			first_person_weapon_update(local_player_index);
+			first_person_weapon_blends[local_player_index].update_phase= -1.0f;
 		}
 	}
 	/* port: when the animations advanced: a frame drawn from the newest step
@@ -1453,11 +1518,37 @@ static void first_person_weapon_start_interpolation(
 	struct weapon_definition *weapon_definition= weapon_definition_get(weapon->definition_index);
 	struct animation_graph *animation_graph= animation_graph_definition_get(
 		weapon_definition->weapon.interface_definition.first_person_animations.index);
+	struct first_person_weapon_blend *blend= &first_person_weapon_blends[local_player_index];
+	/* port: the pose the blend starts from: the last frame drawn, as the
+	original; drawn from the newest step, the pose at the time of the change
+	(first_person_weapon_blends): in the update, its start's; otherwise (a
+	sub-step's shot, a message before the update) at the step's time */
+	real_orientation const *original_node_orientations= first_person_weapon->node_orientations;
+	real_orientation step_node_orientations[MAXIMUM_NODES_PER_ANIMATION];
+	real phase= -1.0f;
+
+	if (blend->drawn_phase>=0.0f)
+	{
+		if (blend->update_phase>=0.0f)
+		{
+			if (blend->update_pose_weapon_index==first_person_weapon->weapon_index)
+			{
+				original_node_orientations= blend->update_pose;
+				phase= blend->update_phase;
+			}
+		}
+		else if (first_person_weapon->state_animation.index!=NONE)
+		{
+			phase= render_interpolation_first_person_step_phase();
+			first_person_weapon_pose(local_player_index, phase, step_node_orientations);
+			original_node_orientations= step_node_orientations;
+		}
+	}
 
 	/* port: no more nodes than the weapon's orientations hold (a map's count) */
 	csmemcpy(
 		first_person_weapon->original_node_orientations,
-		first_person_weapon->node_orientations,
+		original_node_orientations,
 		PIN(animation_graph->nodes.count, 0, MAXIMUM_NODES_PER_ANIMATION)*sizeof(real_orientation));
 	if (frame_count>=first_person_weapon->interpolation_frame_count-
 		first_person_weapon->interpolation_frame_index)
@@ -1465,6 +1556,8 @@ static void first_person_weapon_start_interpolation(
 		first_person_weapon->interpolation_frame_index= 0;
 		first_person_weapon->interpolation_frame_count= frame_count;
 	}
+	blend->frame_count= phase>=0.0f ? first_person_weapon->interpolation_frame_count : 0;
+	blend->start= (real)first_person_weapon->interpolation_frame_index+phase;
 
 	return;
 }
@@ -1704,6 +1797,404 @@ static boolean first_person_weapon_animation_fits(
 	return FALSE;
 }
 
+/* port: how far a state's blend is at a frame drawn from the newest step at
+a phase (0 to 1, first_person_weapon_blends) */
+static real first_person_weapon_blend_fraction(
+	short local_player_index,
+	real phase)
+{
+	struct first_person_weapon *first_person_weapon= first_person_weapon_get(local_player_index);
+	struct first_person_weapon_blend const *blend= &first_person_weapon_blends[local_player_index];
+	real clock= (real)first_person_weapon->interpolation_frame_index+phase;
+	real end= (real)first_person_weapon->interpolation_frame_count;
+	real start= 0.0f;
+	real fraction;
+
+	/* (a blend started while the frames were drawn between the ticks, or one
+	of a game state loaded since: from the index's start) */
+	if (blend->frame_count==first_person_weapon->interpolation_frame_count &&
+		blend->start<end)
+	{
+		start= blend->start;
+	}
+	fraction= (clock-start)/(end-start);
+
+	return PIN(fraction, 0.0f, 1.0f);
+}
+
+/* port: the weapon's pose (its nodes' orientations: the state's animation,
+the overlays, the blend from the state before) at a phase of a tick past the
+animations' last advance (render_interpolation_first_person_phase: -1 for a
+view drawn between the ticks, as the original), into node_orientations. What
+first_person_weapon_build_node_matrices draws, and, at the phase a state
+changes, the pose its blend starts from (first_person_weapon_start_interpolation).
+Drawing only: the game state is not changed */
+static void first_person_weapon_pose(
+	short local_player_index,
+	real phase,
+	real_orientation *node_orientations)
+{
+	struct first_person_weapon *first_person_weapon= first_person_weapon_get(local_player_index);
+	struct weapon_datum *weapon= weapon_get(first_person_weapon->weapon_index);
+	struct weapon_definition *weapon_definition= weapon_definition_get(weapon->definition_index);
+	struct model *model= model_definition_get(
+		weapon_definition->weapon.interface_definition.first_person_model.index);
+	struct animation_graph *animation_graph= animation_graph_definition_get(
+		weapon_definition->weapon.interface_definition.first_person_animations.index);
+
+	if (animation_graph->first_person_weapon_animations.count)
+	{
+		struct animation_graph_first_person_weapon_animations *first_person_weapon_animations=
+			TAG_BLOCK_GET_ELEMENT(
+				&animation_graph->first_person_weapon_animations,
+				0,
+				struct animation_graph_first_person_weapon_animations);
+
+		if (first_person_weapon_animations)
+		{
+			short firing_animation_index;
+			short overlay_animation_index;
+			/* port: the overlays' springs (position, turning, firing push
+			back) at that time (first_person_weapon_springs_at) */
+			real_vector2d position= first_person_weapon->position;
+			real_vector2d turning= first_person_weapon->turning;
+			real firing_push_back= first_person_weapon->firing_push_back;
+
+			/* port: (at a phase of 0 too: where they were before their step,
+			not where it took them) */
+			if (phase>=0.0f)
+			{
+				first_person_weapon_springs_at(
+					first_person_weapon,
+					&first_person_weapon_sways_before[local_player_index],
+					phase,
+					&position,
+					&turning,
+					&firing_push_back);
+			}
+
+			if (first_person_weapon->state_animation.index!=NONE)
+			{
+				struct animation *state_animation= TAG_BLOCK_GET_ELEMENT(
+					&animation_graph->animations,
+					first_person_weapon->state_animation.index,
+					struct animation);
+
+				animation_get_node_orientations(
+					NULL,
+					state_animation,
+					first_person_weapon->state_animation.frame_index,
+					node_orientations);
+				/* port: a PAL map's animation, slowed to the NTSC maps' pace,
+				between the frame it is on and the next: held on the frame, it
+				stood still for that tick, and a reload moved in fits and starts
+				(port/linux/game/pal_tags.c) */
+				{
+					real fraction= pal_tags_first_person_fraction(
+						local_player_index,
+						weapon_definition->weapon.interface_definition.first_person_animations.index,
+						first_person_weapon->state_animation.index,
+						first_person_weapon->state_animation.frame_index);
+					short next_frame_index= (short)(first_person_weapon->state_animation.frame_index+1);
+
+					/* port: ... and the player's own view drawn from the newest
+					step, at the frame's time (phase, above) */
+					if (fraction<=0.0f && phase>0.0f)
+					{
+						fraction= phase;
+					}
+					/* port: past a looping animation's last frame, the frame it
+					loops back to (animation_update_internal): held on the last
+					frame, the loop stood still for that tick and then jumped */
+					if (next_frame_index>=state_animation->frame_count &&
+						state_animation->private_loop_frame_index>0)
+					{
+						next_frame_index= MIN(state_animation->private_loop_frame_index, state_animation->frame_count-1);
+					}
+					if (fraction>0.0f &&
+						next_frame_index<state_animation->frame_count &&
+						next_frame_index!=first_person_weapon->state_animation.frame_index)
+					{
+						real_orientation next_node_orientations[MAXIMUM_NODES_PER_ANIMATION];
+						short node_index;
+
+						animation_get_node_orientations(
+							NULL,
+							state_animation,
+							next_frame_index,
+							next_node_orientations);
+						/* port: no more nodes than the orientations hold (a
+						map's count) */
+						for (node_index= 0; node_index<MIN(state_animation->node_count, MAXIMUM_NODES_PER_ANIMATION); node_index++)
+						{
+							orientations_interpolate(
+								&node_orientations[node_index],
+								&next_node_orientations[node_index],
+								fraction,
+								&node_orientations[node_index]);
+						}
+					}
+				}
+			}
+			else
+			{
+				match_vassert(
+					"c:\\halo\\SOURCE\\interface\\first_person_weapons.c",
+					1294,
+					FALSE,
+					NULL);
+				model_get_node_orientations(model, node_orientations);
+			}
+
+			firing_animation_index= VALID_INDEX(
+				_first_person_weapon_animation_ammunition,
+				first_person_weapon_animations->animations.count) ?
+				animation_graph_animation_index_get(
+					&first_person_weapon_animations->animations)
+						[_first_person_weapon_animation_ammunition].animation_index :
+				(short)NONE;
+			if (firing_animation_index!=NONE)
+			{
+				struct animation *firing_animation= TAG_BLOCK_GET_ELEMENT(
+					&animation_graph->animations,
+					firing_animation_index,
+					struct animation);
+
+				/* port: and one of the graph's nodes (see first_person_weapon_animation_fits) */
+				if (!first_person_weapon_animation_fits(animation_graph, firing_animation))
+				{
+					/* (not applied) */
+				}
+				else if (weapon_definition->weapon.weapon_type==_weapon_type_needler &&
+					(first_person_weapons->state==_first_person_weapon_state_reload_while_empty ||
+					first_person_weapons->state==_first_person_weapon_state_reload_while_full))
+				{
+					short frame_index= weapon->weapon.magazines[0].rounds_loaded;
+					short settle_ticks= weapon->weapon.magazines[0].original_time-
+						weapon->weapon.magazines[0].state_timer;
+
+					if (settle_ticks>=FIRST_PERSON_WEAPON_RELOAD_SETTLE_TICKS)
+					{
+						struct weapon_magazine_definition *magazine_definition= TAG_BLOCK_GET_ELEMENT(
+							&weapon_definition->weapon.magazines,
+							0,
+							struct weapon_magazine_definition);
+						real settle_fraction= (settle_ticks-FIRST_PERSON_WEAPON_RELOAD_SETTLE_TICKS)*0.2f;
+						short predicted_frame_index;
+
+						if (settle_fraction>1.0f)
+						{
+							settle_fraction= 1.0f;
+						}
+						/* port: BUG (original): the needles the reload ends with
+						are the rounds loaded and the rounds left to load, not
+						those left alone: with fewer than a magazine left, the
+						needles went down to that many as the gun was raised, then
+						grew all at once to the full count as the reload ended */
+						predicted_frame_index= (short)MIN(
+							weapon->weapon.magazines[0].rounds_loaded+weapon->weapon.magazines[0].rounds_total,
+							magazine_definition->rounds_loaded_maximum);
+						frame_index= (short)((predicted_frame_index-frame_index)*settle_fraction)+
+							frame_index;
+					}
+					overlay_animation_apply(
+						firing_animation,
+						frame_index,
+						node_orientations);
+				}
+				else if (weapon->weapon.magazines[0].rounds_loaded<firing_animation->frame_count)
+				{
+					overlay_animation_apply(
+						firing_animation,
+						weapon->weapon.magazines[0].rounds_loaded,
+						node_orientations);
+				}
+			}
+
+			if (first_person_weapon->moving_animation.index!=NONE)
+			{
+				struct animation *moving_animation= TAG_BLOCK_GET_ELEMENT(
+					&animation_graph->animations,
+					first_person_weapon->moving_animation.index,
+					struct animation);
+
+				/* port: and one of the graph's nodes */
+				if (!first_person_weapon_animation_fits(animation_graph, moving_animation))
+				{
+					/* (not applied) */
+				}
+				/* port: at the frame's time, between its frame and the next
+				(phase, above) */
+				else if (phase>0.0f)
+				{
+					overlay_animation_apply_continuous_scaled(
+						moving_animation,
+						first_person_weapon->moving_animation.frame_index+phase,
+						1.0f,
+						node_orientations);
+				}
+				else
+				{
+					overlay_animation_apply(
+						moving_animation,
+						first_person_weapon->moving_animation.frame_index,
+						node_orientations);
+				}
+			}
+
+			if (first_person_weapon->overcharged_jitter_animation.index!=NONE)
+			{
+				struct animation *overcharged_jitter_animation= TAG_BLOCK_GET_ELEMENT(
+					&animation_graph->animations,
+					first_person_weapon->overcharged_jitter_animation.index,
+					struct animation);
+
+				/* port: and one of the graph's nodes */
+				if (first_person_weapon_animation_fits(animation_graph, overcharged_jitter_animation))
+				{
+					real jitter_frame_index= first_person_weapon->overcharged_jitter_animation.frame_index;
+
+					/* port: at the frame's time (phase, above), as far on as the
+					tick's advance (first_person_weapon_update: 2 to 4 frames a
+					tick, by the weapon's overcharge) takes it by then: held on
+					the tick's frame, the overcharged shake jumped once a tick,
+					whatever the frame rate */
+					if (phase>0.0f)
+					{
+						jitter_frame_index= (real)fmod(
+							jitter_frame_index+phase*(weapon->weapon.overcharged+1.0f)*2.0f,
+							(real)overcharged_jitter_animation->frame_count);
+					}
+					overlay_animation_apply_continuous_scaled(
+						overcharged_jitter_animation,
+						jitter_frame_index,
+						weapon->weapon.overcharged+0.5f,
+						node_orientations);
+				}
+			}
+
+			overlay_animation_index= VALID_INDEX(
+				_first_person_weapon_animation_overlays,
+				first_person_weapon_animations->animations.count) ?
+				animation_graph_animation_index_get(
+					&first_person_weapon_animations->animations)
+						[_first_person_weapon_animation_overlays].animation_index :
+				(short)NONE;
+			if (overlay_animation_index!=NONE)
+			{
+				struct animation *overlay_animation= TAG_BLOCK_GET_ELEMENT(
+					&animation_graph->animations,
+					overlay_animation_index,
+					struct animation);
+
+				/* port: and one of the graph's nodes */
+				if (overlay_animation->frame_count>=NUMBER_OF_FIRST_PERSON_WEAPON_OVERLAY_FRAMES &&
+					first_person_weapon_animation_fits(animation_graph, overlay_animation))
+				{
+					if (position.i>0.0f)
+					{
+						overlay_animation_apply_scaled(
+							overlay_animation,
+							0,
+							position.i,
+							node_orientations);
+					}
+					else if (position.i<0.0f)
+					{
+						overlay_animation_apply_scaled(
+							overlay_animation,
+							1,
+							-position.i,
+							node_orientations);
+					}
+
+					if (position.j>0.0f)
+					{
+						overlay_animation_apply_scaled(
+							overlay_animation,
+							3,
+							position.j,
+							node_orientations);
+					}
+					else if (position.j<0.0f)
+					{
+						overlay_animation_apply_scaled(
+							overlay_animation,
+							2,
+							-position.j,
+							node_orientations);
+					}
+
+					if (turning.i>0.0f)
+					{
+						overlay_animation_apply_scaled(
+							overlay_animation,
+							4,
+							turning.i,
+							node_orientations);
+					}
+					else if (turning.i<0.0f)
+					{
+						overlay_animation_apply_scaled(
+							overlay_animation,
+							5,
+							-turning.i,
+							node_orientations);
+					}
+
+					if (turning.j>0.0f)
+					{
+						overlay_animation_apply_scaled(
+							overlay_animation,
+							7,
+							turning.j,
+							node_orientations);
+					}
+					else if (turning.j<0.0f)
+					{
+						overlay_animation_apply_scaled(
+							overlay_animation,
+							6,
+							-turning.j,
+							node_orientations);
+					}
+
+					if (firing_push_back>0.0f)
+					{
+						overlay_animation_apply_scaled(
+							overlay_animation,
+							8,
+							firing_push_back,
+							node_orientations);
+					}
+				}
+			}
+
+			/* port: at the frame's time (phase, above), from the state's change
+			(first_person_weapon_blends) */
+			if (first_person_weapon->interpolation_frame_count>0 && phase>=0.0f)
+			{
+				first_person_weapon_interpolate_continuous(
+					(short)animation_graph->nodes.count,
+					first_person_weapon->original_node_orientations,
+					node_orientations,
+					first_person_weapon_blend_fraction(local_player_index, phase));
+			}
+			else if (first_person_weapon->interpolation_frame_count>0)
+			{
+				interpolate_node_orientations(
+					(short)animation_graph->nodes.count,
+					first_person_weapon->original_node_orientations,
+					node_orientations,
+					first_person_weapon->interpolation_frame_index,
+					first_person_weapon->interpolation_frame_count);
+			}
+		}
+	}
+
+	return;
+}
+
 static void first_person_weapon_build_node_matrices(
 	short local_player_index)
 {
@@ -1754,354 +2245,18 @@ static void first_person_weapon_build_node_matrices(
 	{
 		struct weapon_datum *weapon= weapon_get(first_person_weapon->weapon_index);
 		struct weapon_definition *weapon_definition= weapon_definition_get(weapon->definition_index);
-		struct model *model= model_definition_get(
-			weapon_definition->weapon.interface_definition.first_person_model.index);
 		struct animation_graph *animation_graph= animation_graph_definition_get(
 			weapon_definition->weapon.interface_definition.first_person_animations.index);
 
-		if (animation_graph->first_person_weapon_animations.count)
-		{
-			struct animation_graph_first_person_weapon_animations *first_person_weapon_animations=
-				TAG_BLOCK_GET_ELEMENT(
-					&animation_graph->first_person_weapon_animations,
-					0,
-					struct animation_graph_first_person_weapon_animations);
+		/* port: the player's own view drawn from the newest step: how far
+		the frame is past the tick that advanced the animations (0 to 1), at
+		which each is sampled between its frame and the next, so that the
+		weapon moves every frame, at the frame's time; -1 for a view drawn
+		between the ticks (port/linux/game/render_interpolation.c) */
+		real phase= render_interpolation_first_person_phase(local_player_index);
 
-			if (first_person_weapon_animations)
-			{
-				short firing_animation_index;
-				short overlay_animation_index;
-				/* port: the player's own view drawn from the newest step: how far
-				the frame is past the tick that advanced the animations (0 to 1),
-				at which each is sampled between its frame and the next, so that
-				the weapon moves every frame, at the frame's time; -1 for a view
-				drawn between the ticks (port/linux/game/render_interpolation.c) */
-				real phase= render_interpolation_first_person_phase(local_player_index);
-				/* port: the overlays' springs (position, turning, firing push
-				back) at that time (first_person_weapon_springs_at) */
-				real_vector2d position= first_person_weapon->position;
-				real_vector2d turning= first_person_weapon->turning;
-				real firing_push_back= first_person_weapon->firing_push_back;
-
-				if (phase>0.0f)
-				{
-					first_person_weapon_springs_at(
-						first_person_weapon,
-						&first_person_weapon_sways_before[local_player_index],
-						phase,
-						&position,
-						&turning,
-						&firing_push_back);
-				}
-
-				if (first_person_weapon->state_animation.index!=NONE)
-				{
-					struct animation *state_animation= TAG_BLOCK_GET_ELEMENT(
-						&animation_graph->animations,
-						first_person_weapon->state_animation.index,
-						struct animation);
-
-					animation_get_node_orientations(
-						NULL,
-						state_animation,
-						first_person_weapon->state_animation.frame_index,
-						first_person_weapon->node_orientations);
-					/* port: a PAL map's animation, slowed to the NTSC maps' pace,
-					between the frame it is on and the next: held on the frame, it
-					stood still for that tick, and a reload moved in fits and starts
-					(port/linux/game/pal_tags.c) */
-					{
-						real fraction= pal_tags_first_person_fraction(
-							local_player_index,
-							weapon_definition->weapon.interface_definition.first_person_animations.index,
-							first_person_weapon->state_animation.index,
-							first_person_weapon->state_animation.frame_index);
-
-						/* port: ... and the player's own view drawn from the newest
-						step, at the frame's time (phase, above) */
-						if (fraction<=0.0f && phase>0.0f)
-						{
-							fraction= phase;
-						}
-						if (fraction>0.0f &&
-							first_person_weapon->state_animation.frame_index+1<state_animation->frame_count)
-						{
-							real_orientation next_node_orientations[MAXIMUM_NODES_PER_ANIMATION];
-							short node_index;
-
-							animation_get_node_orientations(
-								NULL,
-								state_animation,
-								(short)(first_person_weapon->state_animation.frame_index+1),
-								next_node_orientations);
-							/* port: no more nodes than the orientations hold (a
-							map's count) */
-							for (node_index= 0; node_index<MIN(state_animation->node_count, MAXIMUM_NODES_PER_ANIMATION); node_index++)
-							{
-								orientations_interpolate(
-									&first_person_weapon->node_orientations[node_index],
-									&next_node_orientations[node_index],
-									fraction,
-									&first_person_weapon->node_orientations[node_index]);
-							}
-						}
-					}
-				}
-				else
-				{
-					match_vassert(
-						"c:\\halo\\SOURCE\\interface\\first_person_weapons.c",
-						1294,
-						FALSE,
-						NULL);
-					model_get_node_orientations(model, first_person_weapon->node_orientations);
-				}
-
-				firing_animation_index= VALID_INDEX(
-					_first_person_weapon_animation_ammunition,
-					first_person_weapon_animations->animations.count) ?
-					animation_graph_animation_index_get(
-						&first_person_weapon_animations->animations)
-							[_first_person_weapon_animation_ammunition].animation_index :
-					(short)NONE;
-				if (firing_animation_index!=NONE)
-				{
-					struct animation *firing_animation= TAG_BLOCK_GET_ELEMENT(
-						&animation_graph->animations,
-						firing_animation_index,
-						struct animation);
-
-					/* port: and one of the graph's nodes (see first_person_weapon_animation_fits) */
-					if (!first_person_weapon_animation_fits(animation_graph, firing_animation))
-					{
-						/* (not applied) */
-					}
-					else if (weapon_definition->weapon.weapon_type==_weapon_type_needler &&
-						(first_person_weapons->state==_first_person_weapon_state_reload_while_empty ||
-						first_person_weapons->state==_first_person_weapon_state_reload_while_full))
-					{
-						short frame_index= weapon->weapon.magazines[0].rounds_loaded;
-						short settle_ticks= weapon->weapon.magazines[0].original_time-
-							weapon->weapon.magazines[0].state_timer;
-
-						if (settle_ticks>=FIRST_PERSON_WEAPON_RELOAD_SETTLE_TICKS)
-						{
-							struct weapon_magazine_definition *magazine_definition= TAG_BLOCK_GET_ELEMENT(
-								&weapon_definition->weapon.magazines,
-								0,
-								struct weapon_magazine_definition);
-							real settle_fraction= (settle_ticks-FIRST_PERSON_WEAPON_RELOAD_SETTLE_TICKS)*0.2f;
-							short predicted_frame_index;
-
-							if (settle_fraction>1.0f)
-							{
-								settle_fraction= 1.0f;
-							}
-							/* port: BUG (original): the needles the reload ends with
-							are the rounds loaded and the rounds left to load, not
-							those left alone: with fewer than a magazine left, the
-							needles went down to that many as the gun was raised, then
-							grew all at once to the full count as the reload ended */
-							predicted_frame_index= (short)MIN(
-								weapon->weapon.magazines[0].rounds_loaded+weapon->weapon.magazines[0].rounds_total,
-								magazine_definition->rounds_loaded_maximum);
-							frame_index= (short)((predicted_frame_index-frame_index)*settle_fraction)+
-								frame_index;
-						}
-						overlay_animation_apply(
-							firing_animation,
-							frame_index,
-							first_person_weapon->node_orientations);
-					}
-					else if (weapon->weapon.magazines[0].rounds_loaded<firing_animation->frame_count)
-					{
-						overlay_animation_apply(
-							firing_animation,
-							weapon->weapon.magazines[0].rounds_loaded,
-							first_person_weapon->node_orientations);
-					}
-				}
-
-				if (first_person_weapon->moving_animation.index!=NONE)
-				{
-					struct animation *moving_animation= TAG_BLOCK_GET_ELEMENT(
-						&animation_graph->animations,
-						first_person_weapon->moving_animation.index,
-						struct animation);
-
-					/* port: and one of the graph's nodes */
-					if (!first_person_weapon_animation_fits(animation_graph, moving_animation))
-					{
-						/* (not applied) */
-					}
-					/* port: at the frame's time, between its frame and the next
-					(phase, above) */
-					else if (phase>0.0f)
-					{
-						overlay_animation_apply_continuous_scaled(
-							moving_animation,
-							first_person_weapon->moving_animation.frame_index+phase,
-							1.0f,
-							first_person_weapon->node_orientations);
-					}
-					else
-					{
-						overlay_animation_apply(
-							moving_animation,
-							first_person_weapon->moving_animation.frame_index,
-							first_person_weapon->node_orientations);
-					}
-				}
-
-				if (first_person_weapon->overcharged_jitter_animation.index!=NONE)
-				{
-					struct animation *overcharged_jitter_animation= TAG_BLOCK_GET_ELEMENT(
-						&animation_graph->animations,
-						first_person_weapon->overcharged_jitter_animation.index,
-						struct animation);
-
-					/* port: and one of the graph's nodes */
-					if (first_person_weapon_animation_fits(animation_graph, overcharged_jitter_animation))
-					{
-						real jitter_frame_index= first_person_weapon->overcharged_jitter_animation.frame_index;
-
-						/* port: at the frame's time (phase, above), as far on as the
-						tick's advance (first_person_weapon_update: 2 to 4 frames a
-						tick, by the weapon's overcharge) takes it by then: held on
-						the tick's frame, the overcharged shake jumped once a tick,
-						whatever the frame rate */
-						if (phase>0.0f)
-						{
-							jitter_frame_index= (real)fmod(
-								jitter_frame_index+phase*(weapon->weapon.overcharged+1.0f)*2.0f,
-								(real)overcharged_jitter_animation->frame_count);
-						}
-						overlay_animation_apply_continuous_scaled(
-							overcharged_jitter_animation,
-							jitter_frame_index,
-							weapon->weapon.overcharged+0.5f,
-							first_person_weapon->node_orientations);
-					}
-				}
-
-				overlay_animation_index= VALID_INDEX(
-					_first_person_weapon_animation_overlays,
-					first_person_weapon_animations->animations.count) ?
-					animation_graph_animation_index_get(
-						&first_person_weapon_animations->animations)
-							[_first_person_weapon_animation_overlays].animation_index :
-					(short)NONE;
-				if (overlay_animation_index!=NONE)
-				{
-					struct animation *overlay_animation= TAG_BLOCK_GET_ELEMENT(
-						&animation_graph->animations,
-						overlay_animation_index,
-						struct animation);
-
-					/* port: and one of the graph's nodes */
-					if (overlay_animation->frame_count>=NUMBER_OF_FIRST_PERSON_WEAPON_OVERLAY_FRAMES &&
-						first_person_weapon_animation_fits(animation_graph, overlay_animation))
-					{
-						if (position.i>0.0f)
-						{
-							overlay_animation_apply_scaled(
-								overlay_animation,
-								0,
-								position.i,
-								first_person_weapon->node_orientations);
-						}
-						else if (position.i<0.0f)
-						{
-							overlay_animation_apply_scaled(
-								overlay_animation,
-								1,
-								-position.i,
-								first_person_weapon->node_orientations);
-						}
-
-						if (position.j>0.0f)
-						{
-							overlay_animation_apply_scaled(
-								overlay_animation,
-								3,
-								position.j,
-								first_person_weapon->node_orientations);
-						}
-						else if (position.j<0.0f)
-						{
-							overlay_animation_apply_scaled(
-								overlay_animation,
-								2,
-								-position.j,
-								first_person_weapon->node_orientations);
-						}
-
-						if (turning.i>0.0f)
-						{
-							overlay_animation_apply_scaled(
-								overlay_animation,
-								4,
-								turning.i,
-								first_person_weapon->node_orientations);
-						}
-						else if (turning.i<0.0f)
-						{
-							overlay_animation_apply_scaled(
-								overlay_animation,
-								5,
-								-turning.i,
-								first_person_weapon->node_orientations);
-						}
-
-						if (turning.j>0.0f)
-						{
-							overlay_animation_apply_scaled(
-								overlay_animation,
-								7,
-								turning.j,
-								first_person_weapon->node_orientations);
-						}
-						else if (turning.j<0.0f)
-						{
-							overlay_animation_apply_scaled(
-								overlay_animation,
-								6,
-								-turning.j,
-								first_person_weapon->node_orientations);
-						}
-
-						if (firing_push_back>0.0f)
-						{
-							overlay_animation_apply_scaled(
-								overlay_animation,
-								8,
-								firing_push_back,
-								first_person_weapon->node_orientations);
-						}
-					}
-				}
-
-				/* port: at the frame's time (phase, above) */
-				if (first_person_weapon->interpolation_frame_count>0 && phase>0.0f)
-				{
-					first_person_weapon_interpolate_continuous(
-						(short)animation_graph->nodes.count,
-						first_person_weapon->original_node_orientations,
-						first_person_weapon->node_orientations,
-						((real)first_person_weapon->interpolation_frame_index+1.0f+phase)/
-							(real)first_person_weapon->interpolation_frame_count);
-				}
-				else if (first_person_weapon->interpolation_frame_count>0)
-				{
-					interpolate_node_orientations(
-						(short)animation_graph->nodes.count,
-						first_person_weapon->original_node_orientations,
-						first_person_weapon->node_orientations,
-						first_person_weapon->interpolation_frame_index,
-						first_person_weapon->interpolation_frame_count);
-				}
-			}
-		}
+		first_person_weapon_pose(local_player_index, phase, first_person_weapon->node_orientations);
+		first_person_weapon_blends[local_player_index].drawn_phase= phase;
 
 		animation_graph_node_matrices_from_orientations(
 			weapon_definition->weapon.interface_definition.first_person_animations.index,
@@ -2785,6 +2940,9 @@ static void first_person_weapon_update(
 				first_person_weapon->interpolation_frame_count= 0;
 			}
 		}
+		/* port: (a state changed from here on starts its blend at the index
+		just advanced: first_person_weapon_blends) */
+		first_person_weapon_blends[local_player_index].update_phase= 0.0f;
 
 		if (player_control_get_autoaim_level(local_player_index)!=0.0f ||
 			player_control_get_zoom_level(local_player_index)!=NONE ||

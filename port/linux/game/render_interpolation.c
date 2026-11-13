@@ -4984,6 +4984,19 @@ real render_interpolation_first_person_phase(short local_player_index)
 	return phase < 0.0 ? 0.0f : phase > 1.0 ? 1.0f : (real)phase;
 }
 
+/* The phase (render_interpolation_first_person_phase) of the step running
+now, at its end, where the frames after it go on from: a state's change made
+in it (a shot of a sub-step, a message of the tick's before the first-person
+weapons' update) is blended from the pose there (first_person_weapons.c). A
+tick's work before the update is at its end, 1; a later sub-step is part of
+a tick on */
+real render_interpolation_first_person_step_phase(void)
+{
+	double phase = (double)game_time_get() + (double)sim_substep_end_fraction() - first_person_updated_time;
+
+	return phase < 0.0 ? 0.0f : phase > 1.0 ? 1.0f : (real)phase;
+}
+
 /* The first-person weapon and hands are posed in world space from the drawn
 camera each frame, from animation state that changes once a tick: blend the
 pose relative to the camera. The player's own view drawn from the newest
