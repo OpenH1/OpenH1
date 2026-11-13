@@ -15,8 +15,10 @@ a row-name predicate run each frame (`video_rows_show`, `gamma_row_show`,
 The menu engine renders the generators' model instead: what the generators
 already hold as data, written as data, read by the game, and drawn with
 Halo's own primitives so that the look is the same. `display.menu_engine`
-chooses it (`"classic"`, the default, or `"new"`). The map-tag menus (the
-in-game pause menu, `display.menus = "xbox"`) stay on Halo's engine.
+chooses it (`"classic"`, the default, or `"new"`). The map-tag menus
+(`display.menus = "xbox"`) stay on Halo's engine; the in-game pause menu is a
+hand-written screen in place of the map's ([menu_screens.md](menu_screens.md),
+"The pause menu").
 
 The engine also draws the hand-written screens
 ([menu_screens.md](menu_screens.md)): a screen of our own, one file in

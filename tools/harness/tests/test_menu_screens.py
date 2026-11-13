@@ -48,6 +48,11 @@ NEGATIVE_CONTROLS = {
                            "panel"),
     # a column's touch place's numbers not counted: "1 2" taken
     "touch-short": ("if (count != 5 || *at", "if (*at", "table"),
+    # an item's if not checked: a binding the game has not got taken
+    "item-if-unchecked": ("\t\t\tif (!reader->failed && item->condition)\n\t\t\t\tbinding_check(reader, item->condition);\n",
+                          "\n", "box"),
+    # a box's align not checked: "bottom" taken
+    "box-align-unchecked": ("values[3] && strcmp(values[3], \"top\") && strcmp(values[3], \"middle\")", "0", "box"),
 }
 
 
@@ -119,6 +124,10 @@ def built(fault=None):
                                        c_string((ROOT / "port/assets/menus/screens/browser.xml").read_bytes()) + ";\n" +
                                        "static char const profile_select_xml[] =\n" +
                                        c_string((ROOT / "port/assets/menus/screens/profile_select.xml").read_bytes()) +
+                                       ";\n" + "static char const pause_xml[] =\n" +
+                                       c_string((ROOT / "port/assets/menus/screens/pause.xml").read_bytes()) + ";\n" +
+                                       "static char const pause_campaign_xml[] =\n" +
+                                       c_string((ROOT / "port/assets/menus/screens/pause_campaign.xml").read_bytes()) +
                                        ";\n")
     (work / "menu_screens.h").write_text(read("port/linux/include/menu_screens.h"))
     executable = work / "menu_screens"
@@ -132,7 +141,7 @@ def built(fault=None):
 
 
 CASES = ["main", "hints", "good", "syntax", "elements", "spartan", "items", "actions", "bindings", "when",
-         "kept", "browser", "profile_select", "tabs", "table", "panel", "buttons"]
+         "kept", "browser", "profile_select", "tabs", "table", "panel", "buttons", "box"]
 
 
 @pytest.mark.parametrize("case", CASES)
@@ -186,5 +195,6 @@ def test_main_menu_files_listed():
     listed = json.loads(read("port/assets/menus/menus.json"))["files"]
     assert "screens/main.xml" in listed and "screens/blocks.xml" in listed and "screens/browser.xml" in listed
     assert "screens/profile_select.xml" in listed
+    assert "screens/pause.xml" in listed and "screens/pause_campaign.xml" in listed
     files = read("port/linux/src/menu_files.c")
     assert 'strncmp(files[index].path, "screens/", 8) || !strcmp(files[index].path, "screens/blocks.xml")' in files

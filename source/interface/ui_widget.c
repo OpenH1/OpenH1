@@ -10736,7 +10736,9 @@ static boolean ui_check_for_pause_game(
 					}
 					if (widget_name &&
 						!ui_widget_load_by_name_or_tag(
-							widget_name,
+							/* port: the menu engine's pause menu in its
+							place (port/linux/game/menu_screen.c) */
+							menu_screen_pause_name(widget_name),
 							NONE,
 							NULL,
 							controller_index,
@@ -10777,7 +10779,8 @@ static boolean ui_check_for_pause_game(
 					tag_loaded(UI_WIDGET_DEFINITION_TAG, "ui\\shell\\multiplayer_game\\pause_game\\1p_pause_game") != NONE)
 				{
 					if (!ui_widget_load_by_name_or_tag(
-						"ui\\shell\\multiplayer_game\\pause_game\\1p_pause_game",
+						/* port: (menu_screen_pause_name, as above) */
+						menu_screen_pause_name("ui\\shell\\multiplayer_game\\pause_game\\1p_pause_game"),
 						NONE,
 						NULL,
 						controller_index,
@@ -10791,7 +10794,8 @@ static boolean ui_check_for_pause_game(
 					}
 				}
 				else if (!ui_widget_load_by_name_or_tag(
-					"ui\\shell\\solo_game\\pause_game\\pause_game",
+					/* port: (menu_screen_pause_name, as above) */
+					menu_screen_pause_name("ui\\shell\\solo_game\\pause_game\\pause_game"),
 					NONE,
 					NULL,
 					controller_index,
@@ -10813,7 +10817,8 @@ static boolean ui_check_for_pause_game(
 				else if (!game_time_get_paused())
 				{
 					if (!ui_widget_load_by_name_or_tag(
-						"ui\\shell\\solo_game\\pause_game\\pause_game_split_screen",
+						/* port: (menu_screen_pause_name, as above) */
+						menu_screen_pause_name("ui\\shell\\solo_game\\pause_game\\pause_game_split_screen"),
 						NONE,
 						NULL,
 						controller_index,
