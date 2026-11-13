@@ -43,6 +43,17 @@ of while the screen is drawn (the view's size divided by the scale), the
 GPU's staying the view. The first player's view is where the pointer is read
 back through. At full screen nothing changes.
 
+What a split screen player's pause menu opens, a screen of the engine's
+(Settings, Host Controls, Basic Training's chapters), is drawn full screen
+over every view instead (`menu_view_over_views`), once a frame in the whole
+screen's window after the views (`render.c`'s), and B brings back that
+player's pause menu in their view. It is still that player's: their
+controller drives it, and Settings edits their profile (`menu_functions.c`'s
+`settings_local_player`). Settings' band shows whose profile it edits at its
+right, `PROFILE: <name>` (as Select Profile's band has player 1's), and in a
+split screen game `PLAYER 2 · <name>` (`settings_profile_text`, each frame:
+a profile chosen or renamed shows at once; nothing without one).
+
 ## The model
 
 `tools/ce_menus.py` writes, beside each `ce/<file>.xml`, the screens of that

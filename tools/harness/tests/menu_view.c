@@ -24,7 +24,7 @@ takes the code.
 typedef struct { short x0, y0, x1, y1; } rectangle2d;
 typedef struct { short x, y; } point2d;
 
-struct widget_instance { short local_player_index; boolean owned; };
+struct widget_instance { short local_player_index; boolean owned; struct widget_instance *parent; long definition_tag_index; };
 struct camera_bounds { rectangle2d viewport_bounds, window_bounds; };
 static struct { struct camera_bounds camera; } render, global_window_parameters;
 
@@ -52,6 +52,13 @@ static short ui_widget_port_wide_extra(void) { return wide_extra; }
 static short ui_widget_port_past_extra(void) { return past_extra; }
 static short ui_widget_port_anchor_extra(void) { return 0; }
 static boolean menu_engine_screen_owned(struct widget_instance const *screen) { return screen && screen->owned; }
+static short local_players = 1;
+static short local_player_count(void) { return local_players; }
+/* (a screen's tag's name: 1, the pause menu's; 2, Settings') */
+static char *tag_get_name(long tag_index)
+{
+	return tag_index == 1 ? "pc\\screens\\pause_live" : "pc\\main_menu\\settings_select\\player_setup\\video_settings_screen";
+}
 
 #include "under_test.inc"
 
@@ -74,7 +81,7 @@ static void view_cameras(rectangle2d const *window)
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
-	struct widget_instance player2 = { 1, FALSE }, player1 = { 0, FALSE };
+	struct widget_instance player2 = { 1, FALSE, NULL, 2 }, player1 = { 0, FALSE, NULL, 2 };
 	rectangle2d clip, design = box(0, 0, 640, 480);
 	point2d offset;
 
@@ -200,6 +207,22 @@ int main(int argc, char **argv)
 		menu_view_begin(&player2, &design, &window, &clip, &offset);
 		CHECK(!pointer.set, "the second player's view taken for the pointer");
 		menu_view_end();
+	}
+	CASE("over")
+	{
+		/* a split screen player's Settings over every view; not the pause
+		menu, nor at one player, nor the game's own screens, nor a widget in
+		a screen */
+		struct widget_instance settings = { 1, TRUE, NULL, 2 }, pause = { 1, TRUE, NULL, 1 }, map = { 1, FALSE, NULL, 2 };
+		struct widget_instance part = { 1, TRUE, &settings, 2 };
+
+		local_players = 2;
+		CHECK(menu_view_over_views(&settings), "Settings in a player's view");
+		CHECK(!menu_view_over_views(&pause), "the pause menu over every view");
+		CHECK(!menu_view_over_views(&map), "the map's screen over every view");
+		CHECK(!menu_view_over_views(&part), "a screen's widget over every view");
+		local_players = 1;
+		CHECK(!menu_view_over_views(&settings), "Settings over every view at one player");
 	}
 	return 0;
 }

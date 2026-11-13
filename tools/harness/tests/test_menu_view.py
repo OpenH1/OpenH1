@@ -13,9 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, function, mutated, read, run  # noqa: E402
 
 SOURCE = "port/linux/game/menu_view.c"
-CASES = ["full", "half", "quarter", "tall", "xbox", "pointer"]
+CASES = ["full", "half", "quarter", "tall", "xbox", "pointer", "over"]
 FUNCTIONS = ("menu_view_design", "menu_view_begin", "menu_view_end", "menu_view_side", "menu_view_canvas",
-             "menu_view_scale")
+             "menu_view_scale", "menu_view_over_views")
 
 # a fault in the code, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -28,6 +28,9 @@ NEGATIVE_CONTROLS = {
                      "\tcanvas->x0 = bounds->x0;"), "half"),
     # the cameras left on the canvas for what is drawn after the screen
     "kept": (("\trender.camera.viewport_bounds = menu_view.render_viewport;\n", ""), "half"),
+    # the pause menu drawn over every view, not in the player's own
+    "pause-over": (("return name && strncmp(name, MENU_VIEW_PAUSE, sizeof(MENU_VIEW_PAUSE) - 1);",
+                    "return name != NULL;"), "over"),
     # the screen not centred down a view taller than it needs
     "not-centred": (("\toffset->y = menu_view.top;\n", ""), "tall"),
 }
@@ -35,7 +38,7 @@ NEGATIVE_CONTROLS = {
 
 def generated(fault=None):
     source = read(SOURCE)
-    defines = "\n".join(re.findall(r"^#define MENU_VIEW_\w+ \d+$", source, re.M))
+    defines = "\n".join(re.findall(r"^#define MENU_VIEW_\w+ .+$", source, re.M))
     state = re.search(r"^static struct\n\{.*?^\} menu_view;", source, re.M | re.S).group(0)
     code = "\n\n".join([defines, state] + [function(source, name) for name in FUNCTIONS])
     if fault:

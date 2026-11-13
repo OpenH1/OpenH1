@@ -13,6 +13,12 @@ larger than it was made, centred in it. Nothing of it is cut off, and the
 view's room either side of it is the canvas its wide layout and its dim
 (a pause menu's) reach across, edge to edge (menu_view_canvas).
 
+What the pause menu opens (Settings, Host Controls, the chapters), a screen of
+the menu engine's laid out for the whole screen, is drawn full screen over
+every view instead (menu_view_over_views): once a frame, after the views, in
+the whole screen's window (render.c's), still that player's screen, taking
+their controller's presses and editing their profile.
+
 The scale costs the menus nothing: the game draws its menus' rectangles and
 text in the units of the viewport it is told it has (the rasterizer's
 viewport_bounds: rasterizer_xbox_dynavobgeom.c and rasterizer_text.c map
@@ -30,13 +36,17 @@ same view (halo_screen_ui_pointer_view).
 #include "rasterizer/rasterizer.h"
 #include "render/render.h"
 #include "render/render_cameras.h"
+#include "game/players.h"
 
 #include "menu_engine.h"
 #include "menu_view.h"
 #include "menu_widget.h"
 
 #include <math.h>
+#include <string.h>
 
+/* tag_groups.c's */
+char *tag_get_name(long tag_index);
 /* port/linux/src/d3d8_device.c's */
 long halo_screen_width(void);
 void halo_screen_ui_offset_to(long offset);
@@ -46,6 +56,9 @@ void ui_widget_port_wide_layout(long width);
 short ui_widget_port_wide_extra(void);
 short ui_widget_port_past_extra(void);
 short ui_widget_port_anchor_extra(void);
+
+/* the pause menu's screens' names begin so (screens/blocks.xml's) */
+#define MENU_VIEW_PAUSE "pc\\screens\\pause"
 
 /* the menus' room (their 640 by 480) */
 #define MENU_VIEW_WIDTH 640
@@ -181,6 +194,19 @@ boolean menu_view_canvas(rectangle2d const *bounds, rectangle2d *canvas)
 	canvas->y0 = (short)MIN(bounds->y0, -menu_view.top);
 	canvas->y1 = (short)MAX(bounds->y1, menu_view.height - menu_view.top);
 	return TRUE;
+}
+
+boolean menu_view_over_views(struct widget_instance const *screen)
+{
+	char const *name;
+
+	if (!screen || screen->parent || screen->local_player_index == NONE || local_player_count() <= 1 ||
+		!menu_engine_screen_owned(screen))
+	{
+		return FALSE;
+	}
+	name = tag_get_name(screen->definition_tag_index);
+	return name && strncmp(name, MENU_VIEW_PAUSE, sizeof(MENU_VIEW_PAUSE) - 1);
 }
 
 real menu_view_scale(void)

@@ -3,6 +3,9 @@
 <menus>
 	<widget name="main_menu/settings/header_settings" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/settings/header_settings" wide="-106 0" source="tools/port_settings.py settings_files/_settings_shared">
 	</widget>
+	<widget name="main_menu/settings/profile" type="text" controller="1" left="372" top="11" width="240" height="18" color="#FF6F9CD0" align="right" text_flags="no_focus_test" wide="106 0" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_shared/_settings_text">
+		<data input="port settings profile"/>
+	</widget>
 	<widget name="main_menu/settings/tab_panel" controller="1" left="388" top="104" width="224" height="296" flags="keep_ends" bitmap="main_menu/settings/tab_panel" wide="138 -32" source="tools/port_settings.py settings_files/_settings_shared">
 		<child widget="main_menu/settings/panel_name" x="400" y="116"/>
 		<child widget="main_menu/settings/panel_value" x="400" y="130"/>

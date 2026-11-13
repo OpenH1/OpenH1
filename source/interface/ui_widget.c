@@ -9598,6 +9598,10 @@ void render_ui_widgets(
 				{
 					should_render = TRUE;
 				}
+				/* port: a split screen player's screen drawn over every
+				view, not in theirs (render_ui_widgets_over_views) */
+				if (!we_are_at_the_main_menu && menu_view_over_views(widget))
+					should_render = FALSE;
 			}
 			if (should_render)
 			{
@@ -9720,6 +9724,34 @@ void render_ui_widgets(
 	ui_debug_draw_targets(first_players_render);
 
 	return;
+}
+
+/* port: the split screen players' screens drawn full screen over every view
+(port/linux/game/menu_view.c's menu_view_over_views: what the pause menu
+opens, Settings), once a frame in the whole screen's window, after the
+views (render.c) */
+void render_ui_widgets_over_views(
+	rectangle2d const *window_bounds)
+{
+	long widget_index;
+
+	if (we_are_at_the_main_menu || virtual_keyboard_active() || bink_playback_ui_rendering_inhibited())
+		return;
+	ui_widget_port_wide_layout(window_bounds->x1 - window_bounds->x0);
+	for (widget_index = 0; widget_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; widget_index++)
+	{
+		struct widget_instance *widget = widget_globals.active_widgets[widget_index];
+		rectangle2d bounds;
+		point2d offset;
+
+		if (!widget || !menu_view_over_views(widget))
+			continue;
+		local_player_index_for_draw_string_and_hack_in_icons = widget->local_player_index;
+		menu_view_begin(widget, &ui_widget_definition_get(widget->definition_tag_index)->bounds, window_bounds,
+			&bounds, &offset);
+		widget_instance_render_recursive(widget, &bounds, offset, TRUE, FALSE);
+		menu_view_end();
+	}
 }
 
 /* ---------- private code */

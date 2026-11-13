@@ -310,6 +310,11 @@ static void render_nonplayer_frame(
 		if (!halo_vr_frame_active())
 #endif
 		interface_draw_fullscreen_overlays();
+		/* port: a split screen player's Settings (what their pause menu
+		opens) over every view, full screen (port/linux/game/menu_view.c) */
+		halo_screen_ui_offset(TRUE);
+		render_ui_widgets_over_views(&window->rasterizer_camera.viewport_bounds);
+		halo_screen_ui_offset(FALSE);
 		rasterizer_debug_draw();
 		break;
 

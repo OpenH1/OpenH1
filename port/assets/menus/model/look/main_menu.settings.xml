@@ -4,6 +4,9 @@
 	<look name="main_menu/settings/header_settings" type="text" box="24 0 616 40" wide="-106 0" past="-143 0">
 		<text font="heading" color="#FF2995FD" at="0 9" string_list="main_menu/settings/tall_titles" scale="1.4 1.4"/>
 	</look>
+	<look name="main_menu/settings/profile" type="text" box="372 11 612 29" wide="106 0" past="143 0">
+		<text font="ui\small_ui" color="#FF6F9CD0" align="right" flags="no_focus_test"/>
+	</look>
 	<look name="main_menu/settings/tab_panel" box="388 78 612 438" wide="138 -32" past="50 93" place="keep_ends above_foot" picture="main_menu/settings/tab_panel_tall">
 		<at widget="main_menu/settings/panel_name" x="400" y="90"/>
 		<at widget="main_menu/settings/panel_value" x="400" y="104"/>

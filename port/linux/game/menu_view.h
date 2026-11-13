@@ -32,6 +32,12 @@ design (a pause menu's dim) is widened; FALSE if it is the design's own
 (nothing to widen) */
 boolean menu_view_canvas(rectangle2d const *bounds, rectangle2d *canvas);
 
+/* whether a player's screen is drawn full screen, over every view, rather
+than in the player's own (split screen's: a screen of the menu engine's
+opened from the pause menu, Settings, Host Controls, Basic Training's
+chapters, but the pause menu itself) */
+boolean menu_view_over_views(struct widget_instance const *screen);
+
 /* the scale the screen is drawn at (1 but in a split screen's view whose
 screen was made for more room than it has) */
 real menu_view_scale(void);
