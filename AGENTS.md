@@ -431,7 +431,11 @@ environment variable and a comment that `config.toml` gets. Document it in
 the settings table of `port/linux/README.md` (and the Android README for an
 Android-only one). A departure from the stock game's look or behaviour
 should be a setting, off or stock by default, unless the project decides
-otherwise.
+otherwise. A fix for what the original got wrong only because of its time's
+limits (bodies and objects clipping through walls, glitches the developers
+plainly did not intend) is not such a departure: fix it, on by default, with
+no setting, and say so in a `port:` comment. Network games must still agree:
+raise `HALO_PORT_NETWORK_VERSION` when the fix changes the simulation.
 
 ### Third-party code and licences
 
