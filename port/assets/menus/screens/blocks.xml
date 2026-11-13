@@ -42,6 +42,10 @@ screen file's, set on each widget as the screen is made. -->
 	<!-- where a <spartan> is drawn without one (no Spartan from the player's maps, random, no profile): the original
 	picture of the color, a frame a color and the last random (menu_screen.c sets its frame) -->
 	<widget name="screens/spartan" width="143" height="294" bitmap="ui\shell\main_menu\settings_select\player_setup\player_profile_edit\color_edit\player_color_marine_large"/>
+	<!-- a panel's <picture>: a map's (mp_map_grafix) or a mission's (sp_levels) picture, the frame's 140 by 114 at its
+	top left drawn whole over the box (menu_screen.c sets its box, bitmap and frame; the menus' sharp pictures, where
+	they are made, in the originals' place: menu_pictures.h) -->
+	<widget name="screens/picture" width="140" height="114" bitmap="ui\shell\bitmaps\mp_map_grafix" radius="5"/>
 	<!-- cards side by side: the d-pad, the stick and the wheel step them -->
 	<widget name="screens/cards" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
 	<!-- a card, as the campaign's mission cards: its frame lit while focused;

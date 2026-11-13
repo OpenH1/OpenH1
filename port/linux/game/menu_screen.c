@@ -333,6 +333,18 @@ static struct screen_action const screen_actions[] =
 	/* (the lobby's chat: a line begun, the on-screen keyboard's on a
 	controller or a touchscreen) */
 	{ "lobby chat", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	/* (the lobby's panels: a player's card opened (a row's) and its ADD
+	FRIEND, MUTE and KICK; INVITE FRIENDS, its friend stepped and invited;
+	either closed) */
+	{ "lobby card", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby card friend", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby card mute", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby card kick", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby friends", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby friend left", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby friend right", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby friend invite", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby close", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
 	/* (the pause menu's, screens/pause.xml and pause_campaign.xml, as its
 	rows did on the map's: the screen closed (RESUME GAME), or every screen
 	(B; the campaign's RESUME GAME); the player out of a multiplayer game
@@ -360,7 +372,9 @@ static char const *const screen_action_names[] =
 	"profile new", "profile delete", "lobby row", "lobby start", "lobby team red", "lobby team blue",
 	"lobby team toggle", "lobby invite", "lobby settings", "lobby host", "lobby add player", "lobby bots left",
 	"lobby bots right", "lobby skill left", "lobby skill right", "lobby teams left", "lobby teams right",
-	"lobby chat", "close", "close all", "pause leave", "open host controls", "pause end game",
+	"lobby chat", "lobby card", "lobby card friend", "lobby card mute", "lobby card kick", "lobby friends",
+	"lobby friend left", "lobby friend right", "lobby friend invite", "lobby close",
+	"close", "close all", "pause leave", "open host controls", "pause end game",
 	"pause friendly fire", "pause revert", "pause restart", "pause quit",
 };
 
@@ -385,10 +399,15 @@ static char const *const screen_binding_names[] =
 	"profile.color", "profile.chosen", "profile.current", "lobby.title", "lobby.subtitle", "lobby.red",
 	"lobby.red.count", "lobby.red.tone", "lobby.blue", "lobby.blue.count", "lobby.blue.tone", "lobby.gametype",
 	"lobby.map", "lobby.limits", "lobby.kind", "lobby.kind.tone", "lobby.tick", "lobby.opence", "lobby.after",
-	"lobby.bots", "lobby.bots.shown", "lobby.bots.locked", "lobby.bots.count.locked", "lobby.skill", "lobby.teams",
+	"lobby.bots", "lobby.bots.shown", "lobby.bots.some", "lobby.bots.locked", "lobby.bots.count.locked", "lobby.skill", "lobby.teams",
 	"lobby.status", "lobby.start", "lobby.host", "lobby.settings", "lobby.controls", "lobby.waiting",
-	"lobby.team.change", "lobby.invite", "lobby.add", "lobby.chat", "pause.friendly_fire", "pause.host_controls",
-	"pause.end_game", "pause.chapters",
+	"lobby.team.change", "lobby.invite", "lobby.add", "lobby.chat", "lobby.details", "lobby.card", "lobby.inviting",
+	"lobby.panel.open", "lobby.card.name", "lobby.card.color", "lobby.card.ping", "lobby.card.platform",
+	"lobby.card.party", "lobby.card.note", "lobby.card.facts", "lobby.card.friend",
+	"lobby.card.mutable", "lobby.card.mute", "lobby.card.kick", "lobby.friends", "lobby.friends.count",
+	"lobby.friend", "lobby.friend.where", "lobby.friends.said", "lobby.map.picture", "lobby.description",
+	"lobby.where", "pause.friendly_fire", "pause.host_controls", "pause.end_game",
+	"pause.chapters",
 };
 
 /* the row sources a table may name (menu_table.h), and their names */
@@ -527,6 +546,19 @@ static struct screen_place const screen_browser_place = { "browser host", SCREEN
 
 /* ---------- the screens open */
 
+/* a <spartan> of an open screen: its block (its box, in a tall screen, set
+each frame), the widget it is drawn at (its original picture, drawn where
+no Spartan is: a lineup shows none), its Spartans' first index and their
+most, and whether it is shown now */
+struct screen_spartan
+{
+	struct menu_screen_block block;
+	struct widget_instance *picture;
+	short first;
+	short places;
+	boolean shown;
+};
+
 struct screen_open
 {
 	struct widget_instance *widget;
@@ -555,9 +587,8 @@ struct screen_open
 	/* (its <colors>: its items the colors, in order; its <spartan>, and the
 	original picture drawn where no Spartan is) */
 	boolean colors;
-	boolean has_spartan;
-	struct menu_screen_block spartan;
-	struct widget_instance *spartan_picture;
+	struct screen_spartan spartans[MENU_SCREEN_MAXIMUM_SPARTANS];
+	long spartan_count;
 	/* (its cards' scale, to fill their room: 0 for their own size) */
 	real card_scale;
 	/* (its button bar's prompts, each its key, and its place in the 640
@@ -780,6 +811,37 @@ static boolean screen_button_right(struct menu_screen_block const *button)
 static boolean tall_build(struct screen_open *open, struct menu_screen const *screen);
 static boolean box_build(struct screen_open *open, struct menu_screen const *screen);
 
+/* a <spartan> of the screen's made (the widget it is drawn at: its
+picture), its Spartans' indices after those of the screen's <spartan>s
+before it: a binding's one, a profile's its players */
+static struct screen_spartan *screen_spartan_add(struct screen_open *open, struct menu_screen_block const *block,
+	struct widget_instance *picture)
+{
+	struct screen_spartan *spartan;
+	short first = 0;
+	long index;
+
+	if (open->spartan_count >= MENU_SCREEN_MAXIMUM_SPARTANS)
+		return NULL;
+	for (index = 0; index < open->spartan_count; index++)
+		first = (short)(first + open->spartans[index].places);
+	spartan = &open->spartans[open->spartan_count];
+	memset(spartan, 0, sizeof(*spartan));
+	spartan->block = *block;
+	spartan->picture = picture;
+	spartan->first = first;
+	spartan->places = (short)(block->color == MENU_SCREEN_SPARTAN_PROFILE ? block->players : 1);
+	if (first + spartan->places > MAXIMUM_MENU_SPARTANS)
+	{
+		platform_log("menus: a screen's <spartan>s are more than %d Spartans; the last is left out",
+			(int)MAXIMUM_MENU_SPARTANS);
+		return NULL;
+	}
+	spartan->shown = TRUE;
+	open->spartan_count++;
+	return spartan;
+}
+
 /* the screen's widgets made from the hand-written screen, in place of
 whatever it had: FALSE (nothing changed) if they cannot be */
 static boolean screen_build(struct screen_open *open, struct menu_screen const *screen)
@@ -865,8 +927,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 	open->list = NULL;
 	open->item_count = 0;
 	open->colors = FALSE;
-	open->has_spartan = FALSE;
-	open->spartan_picture = NULL;
+	open->spartan_count = 0;
 	focus_id = screens.focused[place_index][0] ? screens.focused[place_index] : NULL;
 	top = 0;
 	spaces_left = spaces;
@@ -1077,11 +1138,11 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		case MENU_SCREEN_SPARTAN:
 			/* (over the screen's other blocks, where its box is: the original
 			picture made at the box's foot, shown where no Spartan is) */
-			open->has_spartan = TRUE;
-			open->spartan = *block;
-			open->spartan_picture = screen_widget_add(widget, screens.spartan_tag,
+			if (!menu_screen_when(block->when))
+				break;
+			screen_spartan_add(open, block, screen_widget_add(widget, screens.spartan_tag,
 				(short)(block->box_x + (block->box_width - SCREEN_SPARTAN_PICTURE_WIDTH) / 2),
-				(short)(block->box_y + block->box_height - SCREEN_SPARTAN_PICTURE_HEIGHT));
+				(short)(block->box_y + block->box_height - SCREEN_SPARTAN_PICTURE_HEIGHT)));
 			break;
 		case MENU_SCREEN_BUTTONS:
 		{
@@ -1231,8 +1292,7 @@ static boolean box_build(struct screen_open *open, struct menu_screen const *scr
 	open->list = NULL;
 	open->item_count = 0;
 	open->colors = FALSE;
-	open->has_spartan = FALSE;
-	open->spartan_picture = NULL;
+	open->spartan_count = 0;
 	open->header = NULL;
 	open->prompt_count = 0;
 	open->box = TRUE;
@@ -1568,77 +1628,152 @@ picture (Select Profile's row that makes a profile) */
 /* a <spartan> of a profile's color where there is no profile: no Spartan,
 the original picture of random */
 #define SCREEN_SPARTAN_NO_PROFILE (-3)
+/* a place of a lineup's with no one in it ("-") */
+#define SCREEN_SPARTAN_EMPTY (-6)
 
-/* the color a <spartan>'s player shows: the focused color's, the profile's
-(the one being edited, else the player's own), or its binding's (a color's
-number); MENU_SPARTAN_RANDOM for random; SCREEN_SPARTAN_NO_PROFILE for no
-profile; SCREEN_SPARTAN_NONE for a binding's none */
-static short screen_spartan_color(struct screen_open const *open, long focused, short player)
+/* a color's word in a <spartan>'s binding's value: a profile color's
+number, random, a team's (red, blue), or "-" for an empty place */
+static short screen_spartan_word(char const *word, long length)
 {
-	if (open->spartan.color == MENU_SCREEN_SPARTAN_FOCUS && open->colors && focused != NONE)
-		return (short)focused;
-	if (open->spartan.color == MENU_SCREEN_SPARTAN_BINDING)
-	{
-		struct screen_values values;
-		char value[16];
-
-		memset(&values, 0, sizeof(values));
-		if (!open->spartan.value || !screen_value(&values, open->spartan.value, value, sizeof(value)))
-			return SCREEN_SPARTAN_NONE;
-		return value[0] >= '0' && value[0] <= '9' ? (short)atoi(value) : MENU_SPARTAN_RANDOM;
-	}
-	if (player == 0 && player_ui_get_edit_player_profile())
-	{
-		short color = player_ui_get_edit_player_profile()->primary_color_index;
-
-		return color < 0 || color >= SCREEN_COLOR_COUNT ? MENU_SPARTAN_RANDOM : color;
-	}
-	if (player_ui_get_active_player_profile_index(player) != NONE)
-	{
-		struct player_profile profile;
-
-		player_ui_get_active_player_profile(player, &profile);
-		return profile.primary_color_index < 0 || profile.primary_color_index >= SCREEN_COLOR_COUNT ?
-			MENU_SPARTAN_RANDOM : profile.primary_color_index;
-	}
-	return SCREEN_SPARTAN_NO_PROFILE;
+	if (length == 6 && !strncmp(word, "random", 6))
+		return MENU_SPARTAN_RANDOM;
+	if (length == 3 && !strncmp(word, "red", 3))
+		return MENU_SPARTAN_TEAM_RED;
+	if (length == 4 && !strncmp(word, "blue", 4))
+		return MENU_SPARTAN_TEAM_BLUE;
+	if (word[0] >= '0' && word[0] <= '9')
+		return (short)atoi(word);
+	return SCREEN_SPARTAN_EMPTY;
 }
 
-/* a <spartan>'s Spartans asked for this frame, each player's side by side in
-its box (a random color's cycling through the colors: menu_spartan_color),
-and the original picture shown where there is none (no Spartan's tags:
-menu_spartan_available; or no profile) */
+/* the colors a <spartan>'s places show (their count: at most its places):
+the focused color's, the profile's (the one being edited, else the
+player's own; each player's side by side), or its binding's (a color's
+word each, as many places); MENU_SPARTAN_RANDOM for random,
+SCREEN_SPARTAN_NO_PROFILE for no profile, SCREEN_SPARTAN_NONE for a
+binding's none, SCREEN_SPARTAN_EMPTY for an empty place */
+static short screen_spartan_colors(struct screen_open const *open, struct screen_spartan const *spartan,
+	long focused, short *colors)
+{
+	struct menu_screen_block const *block = &spartan->block;
+	short player, count = 0;
+
+	if (block->color == MENU_SCREEN_SPARTAN_FOCUS && open->colors && focused != NONE)
+	{
+		colors[0] = (short)focused;
+		return 1;
+	}
+	if (block->color == MENU_SCREEN_SPARTAN_BINDING)
+	{
+		struct screen_values values;
+		char value[MENU_SCREEN_MAXIMUM_TEXT];
+		char const *word = value;
+
+		memset(&values, 0, sizeof(values));
+		if (!block->value || !screen_value(&values, block->value, value, sizeof(value)))
+		{
+			colors[0] = SCREEN_SPARTAN_NONE;
+			return 1;
+		}
+		while (*word && count < spartan->places)
+		{
+			long length = 0;
+
+			while (*word == ' ')
+				word++;
+			while (word[length] && word[length] != ' ')
+				length++;
+			if (!length)
+				break;
+			colors[count++] = screen_spartan_word(word, length);
+			word += length;
+		}
+		if (!count)
+			colors[count++] = SCREEN_SPARTAN_NONE;
+		return count;
+	}
+	for (player = 0; player < spartan->places; player++)
+	{
+		if (player == 0 && player_ui_get_edit_player_profile())
+		{
+			short color = player_ui_get_edit_player_profile()->primary_color_index;
+
+			colors[count++] = color < 0 || color >= SCREEN_COLOR_COUNT ? MENU_SPARTAN_RANDOM : color;
+		}
+		else if (player_ui_get_active_player_profile_index(player) != NONE)
+		{
+			struct player_profile profile;
+
+			player_ui_get_active_player_profile(player, &profile);
+			colors[count++] = profile.primary_color_index < 0 || profile.primary_color_index >= SCREEN_COLOR_COUNT ?
+				MENU_SPARTAN_RANDOM : profile.primary_color_index;
+		}
+		else
+			colors[count++] = SCREEN_SPARTAN_NO_PROFILE;
+	}
+	return count;
+}
+
+/* the screen's <spartan>s' Spartans asked for this frame, each one's places
+side by side in its box (a random color's cycling through the colors:
+menu_spartan_color), and the original picture shown where there is none
+(no Spartan's tags: menu_spartan_available; or no profile; a lineup shows
+none) */
 static void screen_spartan_frame(struct screen_open *open, long focused)
 {
-	struct menu_screen_block const *block = &open->spartan;
-	boolean drawn = FALSE;
-	short player, first = screen_spartan_color(open, focused, 0);
-	short players = (short)block->players;
-	short test_colors[MAXIMUM_MENU_SPARTANS];
-	short tested = menu_spartan_test_colors(test_colors);
+	long index;
 
-	/* (debug: HALO_MENU_SPARTAN_TEST's colors in place of its players') */
-	if (tested)
+	for (index = 0; index < open->spartan_count; index++)
 	{
-		players = tested;
-		first = test_colors[0];
-	}
-	for (player = 0; player < players; player++)
-	{
-		short color = tested ? test_colors[player] : player ? screen_spartan_color(open, focused, player) : first;
+		struct screen_spartan *spartan = &open->spartans[index];
+		struct menu_screen_block const *block = &spartan->block;
+		boolean drawn = FALSE;
+		boolean lineup = block->color == MENU_SCREEN_SPARTAN_BINDING && spartan->places > 1;
+		short colors[MAXIMUM_MENU_SPARTAN_PLACES];
+		short test_colors[MAXIMUM_MENU_SPARTAN_PLACES];
+		short tested = index == 0 ? menu_spartan_test_colors(test_colors) : 0;
+		short place, places, first;
 
-		if ((color != MENU_SPARTAN_RANDOM && (color < 0 || color >= SCREEN_COLOR_COUNT)) || !menu_spartan_available())
+		if (!spartan->shown)
+		{
+			if (spartan->picture)
+				spartan->picture->visible = FALSE;
 			continue;
-		menu_spartan_place(player, color,
-			(real)block->box_x + (real)block->box_width * ((real)player + 0.5f) / (real)players,
-			(real)(block->box_y + block->box_height), (real)block->box_height / (real)(players > 2 ? 2 : 1));
-		drawn |= player == 0;
-	}
-	if (open->spartan_picture)
-	{
-		open->spartan_picture->visible = !drawn && first != SCREEN_SPARTAN_NONE;
-		open->spartan_picture->animation.current_frame_index =
-			(short)(first >= 0 && first < SCREEN_COLOR_COUNT ? first : SCREEN_SPARTAN_RANDOM_FRAME);
+		}
+		places = screen_spartan_colors(open, spartan, focused, colors);
+		/* (debug: HALO_MENU_SPARTAN_TEST's colors in place of the first's
+		players') */
+		if (tested)
+		{
+			places = (short)MIN(tested, MAX(spartan->places, 1));
+			for (place = 0; place < places; place++)
+				colors[place] = test_colors[place];
+		}
+		first = colors[0];
+		for (place = 0; place < places; place++)
+		{
+			short color = colors[place];
+			boolean team = color == MENU_SPARTAN_TEAM_RED || color == MENU_SPARTAN_TEAM_BLUE;
+
+			if ((color != MENU_SPARTAN_RANDOM && !team && (color < 0 || color >= SCREEN_COLOR_COUNT)) ||
+				!menu_spartan_available())
+			{
+				continue;
+			}
+			menu_spartan_place((short)(spartan->first + place), color,
+				(real)block->box_x + (real)block->box_width * ((real)place + 0.5f) / (real)places,
+				(real)(block->box_y + block->box_height),
+				(real)block->box_height / (real)(!lineup && places > 2 ? 2 : 1));
+			drawn |= place == 0;
+		}
+		if (spartan->picture && !lineup)
+		{
+			spartan->picture->visible = !drawn && first != SCREEN_SPARTAN_NONE;
+			spartan->picture->animation.current_frame_index =
+				(short)(first >= 0 && first < SCREEN_COLOR_COUNT ? first : SCREEN_SPARTAN_RANDOM_FRAME);
+		}
+		else if (spartan->picture)
+			spartan->picture->visible = FALSE;
 	}
 }
 
@@ -1649,11 +1784,17 @@ void menu_screen_widget_drawing(struct widget_instance const *widget, point2d of
 	for (index = 0; widget && index < SCREEN_MAXIMUM_OPEN; index++)
 	{
 		struct screen_open const *open = &screens.open[index];
+		long spartan;
 
-		/* (its <spartan>'s Spartans in their view, where the picture is in
-		the widgets' order: over what is drawn before, under what after) */
-		if (open->widget && open->has_spartan && open->spartan_picture == widget)
-			menu_spartan_draw(offset.x, offset.y);
+		/* (its <spartan>s' Spartans, each in its view, where its picture is
+		in the widgets' order: over what is drawn before, under what after) */
+		for (spartan = 0; open->widget && spartan < open->spartan_count; spartan++)
+		{
+			struct screen_spartan const *each = &open->spartans[spartan];
+
+			if (each->picture == widget && each->shown)
+				menu_spartan_draw(offset.x, offset.y, each->first, each->places);
+		}
 		/* (its chat's on-screen keyboard, over everything) */
 		if (open->widget && tall_screens[index] && tall_screens[index]->chat_keyboard == widget)
 			tall_chat_keyboard_draw(tall_screens[index], offset);
@@ -1743,7 +1884,7 @@ void menu_screen_frame(struct widget_instance *widget)
 	}
 	if (focused != NONE)
 		snprintf(screens.focused[open->place - screen_places], SCREEN_ID_LENGTH, "%s", open->ids[focused]);
-	if (open->has_spartan)
+	if (open->spartan_count)
 		screen_spartan_frame(open, focused);
 	if (open->place->shown)
 		open->place->shown(widget);
@@ -2035,17 +2176,7 @@ boolean menu_screen_text_color(struct widget_instance const *widget, real_argb_c
 
 boolean menu_screen_picture_stretched(struct widget_instance const *widget)
 {
-	long open_index;
-
-	for (open_index = 0; widget && screens.blocks_found && open_index < SCREEN_MAXIMUM_OPEN; open_index++)
-	{
-		if (screens.open[open_index].widget && tall_screens[open_index] &&
-			tall_screens[open_index]->spartan_picture == widget)
-		{
-			return TRUE;
-		}
-	}
-	return FALSE;
+	return widget && screens.blocks_found && tall_stretched(widget);
 }
 
 boolean menu_screen_item_picture(struct widget_instance const *widget, long *bitmap_tag, rectangle2d *bounds)

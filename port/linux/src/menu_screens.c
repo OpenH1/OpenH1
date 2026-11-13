@@ -74,7 +74,8 @@ enum reader_element
 	_element_chat,
 	_element_box,
 	_element_legend,
-	_element_objectives
+	_element_objectives,
+	_element_picture
 };
 
 struct reader
@@ -403,27 +404,34 @@ Its color the focused <colors> item's, the profile's, or a binding's (a
 color's number, random, or none) */
 static int spartan_read(struct reader *reader, XML_Char const **attributes, int parent_block)
 {
-	static char const *const names[] = { "x", "y", "width", "height", "color", "players", NULL };
-	static char const *const panel_names[] = { "height", "color", NULL };
+	static char const *const names[] = { "x", "y", "width", "height", "color", "players", "touch-height", "when",
+		NULL };
+	static char const *const panel_names[] = { "height", "color", "touch-height", "when", NULL };
 	static long const defaults[] = { 440, 80, 160, 320 };
-	char const *values[8];
+	char const *values[9];
 	struct menu_screen *screen = reader->screen;
 	int panel = parent_block >= 0;
-	int block;
+	int block, index;
 
 	if (panel)
 	{
-		char const *read[3];
+		char const *read[5];
 
 		attributes_read(reader, "spartan", attributes, panel_names, read);
 		values[0] = values[1] = values[2] = values[5] = NULL;
 		values[3] = read[0];
 		values[4] = read[1];
+		values[6] = read[2];
+		values[7] = read[3];
 	}
 	else
 		attributes_read(reader, "spartan", attributes, names, values);
-	if (!reader->failed && kind_count(screen, MENU_SCREEN_SPARTAN))
-		reader_problem(reader, "a screen has one <spartan>", NULL);
+	/* (one of the screen's own, one in each panel) */
+	for (index = 0; index < screen->block_count && !reader->failed; index++)
+	{
+		if (screen->blocks[index].kind == MENU_SCREEN_SPARTAN && screen->blocks[index].parent == parent_block)
+			reader_problem(reader, panel ? "a panel has one <spartan>" : "a screen has one <spartan> of its own", NULL);
+	}
 	block = block_add(reader, MENU_SCREEN_SPARTAN, parent_block);
 	if (block >= 0 && !reader->failed)
 	{
@@ -474,6 +482,11 @@ static int spartan_read(struct reader *reader, XML_Char const **attributes, int 
 		}
 		if (!reader->failed && spartan->color != MENU_SCREEN_SPARTAN_PROFILE && spartan->players != 1)
 			reader_problem(reader, "a <spartan> of the focused color, or a binding's, is one player's", NULL);
+		spartan->touch_box_height = spartan->box_height;
+		if (!reader->failed && values[6])
+			spartan->touch_box_height = number_read(reader, values[6], "a <spartan>'s touch-height", 1, 360);
+		spartan->when = values[7];
+		shown_check(reader, NULL, spartan->when);
 	}
 	return block;
 }
@@ -681,7 +694,8 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 
 		*element = _element_panel;
 		attributes_read(reader, name, attributes, names, values);
-		one_check(reader, MENU_SCREEN_PANEL, "panel");
+		if (!reader->failed && kind_count(screen, MENU_SCREEN_PANEL) >= MENU_SCREEN_MAXIMUM_PANELS)
+			reader_problem(reader, "a screen has at most %s <panel>s", "4");
 		block = block_add(reader, MENU_SCREEN_PANEL, -1);
 		if (block >= 0 && !reader->failed)
 		{
@@ -839,6 +853,37 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 			if (!reader->failed && choice->dim)
 				binding_check(reader, choice->dim);
 			shown_check(reader, choice->condition, choice->when);
+		}
+	}
+	else if (parent_element == _element_panel && !strcmp(name, "picture"))
+	{
+		static char const *const names[] = { "set", "frame", "height", "touch-height", "if", "when", NULL };
+
+		*element = _element_picture;
+		attributes_read(reader, name, attributes, names, values);
+		block = block_add(reader, MENU_SCREEN_PICTURE, parent_block);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *picture = &screen->blocks[block];
+
+			picture->picture = values[0];
+			picture->value = values[1];
+			picture->condition = values[4];
+			picture->when = values[5];
+			picture->box_height = 120;
+			if (!picture->picture || (strcmp(picture->picture, "maps") && strcmp(picture->picture, "missions")))
+				reader_problem(reader, "a <picture>'s set is maps or missions: \"%s\"", picture->picture ?
+					picture->picture : "");
+			else if (!picture->value)
+				reader_problem(reader, "<picture> has no frame", NULL);
+			else
+				binding_check(reader, picture->value);
+			if (!reader->failed && values[2])
+				picture->box_height = number_read(reader, values[2], "a <picture>'s height", 24, 240);
+			picture->touch_box_height = picture->box_height;
+			if (!reader->failed && values[3])
+				picture->touch_box_height = number_read(reader, values[3], "a <picture>'s touch-height", 24, 240);
+			shown_check(reader, picture->condition, picture->when);
 		}
 	}
 	else if (parent_element == _element_panel && !strcmp(name, "spartan"))

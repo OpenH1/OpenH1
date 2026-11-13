@@ -311,10 +311,20 @@ int main(int argc, char **argv)
 		refused("<screen name=\"main\"><panel><spartan height=\"400\"/></panel></screen>", "1 to 360");
 		refused("<screen name=\"main\"><spartan color=\"profile.color\" players=\"2\"/></screen>",
 			"one player's");
-		refused("<screen name=\"main\"><spartan/><panel><spartan/></panel></screen>", "one <spartan>");
+		/* (one of the screen's own and one in each panel: a player's card's
+		beside a lineup; a touchscreen's height) */
+		CHECK(read_text("<screen name=\"main\"><spartan color=\"test.value\" touch-height=\"60\"/><panel>"
+			"<spartan height=\"120\" color=\"test.value\"/></panel><panel><spartan/></panel></screen>", &screen,
+			problem), "refused: %s", problem);
+		CHECK(kind_total(&screen, MENU_SCREEN_SPARTAN, -2) == 3 && screen.blocks[0].touch_box_height == 60 &&
+			screen.blocks[2].touch_box_height == 120, "three Spartans, their touchscreen's heights");
+		menu_screen_free(&screen);
+		refused("<screen name=\"main\"><panel><spartan/><spartan/></panel></screen>", "a panel has one <spartan>");
+		refused("<screen name=\"main\"><panel><spartan touch-height=\"0\"/></panel></screen>",
+			"touch-height is a number");
 		refused("<screen name=\"main\"><spartan width=\"wide\"/></screen>", "are numbers");
 		refused("<screen name=\"main\"><spartan color=\"focus\" players=\"2\"/></screen>", "one player's");
-		refused("<screen name=\"main\"><spartan/><spartan/></screen>", "one <spartan>");
+		refused("<screen name=\"main\"><spartan/><spartan/></screen>", "one <spartan> of its own");
 		refused("<screen name=\"main\"><colors/><list><item label=\"A\" do=\"quit\"/></list></screen>",
 			"one <list>, <cards> or <colors>");
 		refused("<screen name=\"main\"><colors/><colors/></screen>", "one <list>, <cards> or <colors>");
@@ -562,6 +572,51 @@ int main(int argc, char **argv)
 		refused("<screen name=\"t\"><panel><pair label=\"A\"/></panel></screen>", "<pair> has no value");
 		refused("<screen name=\"t\"><panel><pair value=\"A\"/></panel></screen>", "<pair> has no label");
 	}
+	else if (!strcmp(name, "picture"))
+	{
+		struct menu_screen_block const *picture;
+
+		/* (a panel's picture: its set, its frame's binding, its heights, its
+		if) */
+		CHECK(read_text("<screen name=\"t\"><panel><picture set=\"maps\" frame=\"test.value\" height=\"132\" "
+			"touch-height=\"72\" if=\"test.flag\"/><heading text=\"A\"/></panel></screen>", &screen, problem),
+			"a good picture refused: %s", problem);
+		picture = &screen.blocks[kind_first(&screen, MENU_SCREEN_PICTURE)];
+		CHECK(!strcmp(picture->picture, "maps") && !strcmp(picture->value, "test.value") && picture->box_height == 132 &&
+			picture->touch_box_height == 72 && !strcmp(picture->condition, "test.flag") &&
+			screen.blocks[picture->parent].kind == MENU_SCREEN_PANEL, "the picture as read");
+		menu_screen_free(&screen);
+		CHECK(read_text("<screen name=\"t\"><panel><picture set=\"missions\" frame=\"test.value\"/></panel>"
+			"</screen>", &screen, problem), "a mission's picture refused: %s", problem);
+		CHECK(screen.blocks[1].box_height == 120 && screen.blocks[1].touch_box_height == 120, "its height by default");
+		menu_screen_free(&screen);
+		refused("<screen name=\"t\"><panel><picture frame=\"test.value\"/></panel></screen>", "set is maps or missions");
+		refused("<screen name=\"t\"><panel><picture set=\"photos\" frame=\"test.value\"/></panel></screen>",
+			"set is maps or missions");
+		refused("<screen name=\"t\"><panel><picture set=\"maps\"/></panel></screen>", "<picture> has no frame");
+		refused("<screen name=\"t\"><panel><picture set=\"maps\" frame=\"nothing.here\"/></panel></screen>",
+			"no binding {nothing.here}");
+		refused("<screen name=\"t\"><panel><picture set=\"maps\" frame=\"test.value\" height=\"300\"/></panel>"
+			"</screen>", "height is a number");
+		refused("<screen name=\"t\"><panel><picture set=\"maps\" frame=\"test.value\" if=\"nothing.here\"/>"
+			"</panel></screen>", "no binding {nothing.here}");
+		refused("<screen name=\"t\"><picture set=\"maps\" frame=\"test.value\"/></screen>", "is not one of what");
+	}
+	else if (!strcmp(name, "panels"))
+	{
+		/* (a screen's panels, up to four, each its if) */
+		CHECK(read_text("<screen name=\"t\"><panel if=\"test.flag\"><heading text=\"A\"/></panel>"
+			"<panel if=\"test.value\"><heading text=\"B\"/></panel><panel><heading text=\"C\"/></panel>"
+			"<panel><heading text=\"D\"/></panel></screen>", &screen, problem), "four panels refused: %s", problem);
+		CHECK(kind_total(&screen, MENU_SCREEN_PANEL, -2) == 4 && !strcmp(screen.blocks[0].condition, "test.flag"),
+			"the panels as read");
+		menu_screen_free(&screen);
+		refused("<screen name=\"t\"><panel><heading text=\"A\"/></panel><panel><heading text=\"B\"/></panel>"
+			"<panel><heading text=\"C\"/></panel><panel><heading text=\"D\"/></panel><panel><heading text=\"E\"/>"
+			"</panel></screen>", "at most 4 <panel>s");
+		refused("<screen name=\"t\"><panel if=\"nothing.here\"><heading text=\"A\"/></panel></screen>",
+			"no binding {nothing.here}");
+	}
 	else if (!strcmp(name, "lanes"))
 	{
 		struct menu_screen_block const *table;
@@ -671,7 +726,7 @@ int main(int argc, char **argv)
 		table_index = kind_first(&screen, MENU_SCREEN_TABLE);
 		table = &screen.blocks[table_index];
 		CHECK(!strcmp(table->source, "lobby.players") && table->lanes == 2 && !strcmp(table->left_action, "lobby team red")
-			&& !strcmp(table->right_action, "lobby team blue") && !strcmp(table->action, "lobby row"), "the table");
+			&& !strcmp(table->right_action, "lobby team blue") && !strcmp(table->action, "lobby card"), "the table");
 		CHECK(kind_total(&screen, MENU_SCREEN_LANE, table_index) == 2, "the lanes");
 		CHECK(block_of(&screen, "dot")->cell == MENU_SCREEN_CELL_DOT && block_of(&screen, "tag")->right, "the columns");
 		for (index = 0; index < screen.block_count; index++)
@@ -682,10 +737,17 @@ int main(int argc, char **argv)
 			panel_buttons += block->kind == MENU_SCREEN_BUTTON && screen.blocks[block->parent].kind == MENU_SCREEN_PANEL;
 			rights += block->kind == MENU_SCREEN_BUTTON && block->side && !strcmp(block->side, "right");
 		}
-		CHECK(choices == 3 && panel_buttons == 3, "%d choices, %d panel buttons", choices, panel_buttons);
+		CHECK(choices == 4 && panel_buttons == 8, "%d choices, %d panel buttons", choices, panel_buttons);
 		CHECK(rights == 6, "%d buttons at the bar's right", rights);
 		CHECK(kind_first(&screen, MENU_SCREEN_CHAT) >= 0 &&
 			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_CHAT)].source, "lobby.chat"), "the lobby's chat");
+		/* (its panels: the next game's (its map's picture), a player's card
+		(their Spartan) and the friends' invite, each its if) */
+		CHECK(kind_total(&screen, MENU_SCREEN_PANEL, -2) == 3 && kind_total(&screen, MENU_SCREEN_PICTURE, -2) == 1,
+			"the panels and the picture");
+		CHECK(kind_total(&screen, MENU_SCREEN_SPARTAN, -2) == 1 &&
+			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_SPARTAN)].value, "lobby.card.color"),
+			"the card's Spartan");
 		menu_screen_free(&screen);
 	}
 	else if (!strcmp(name, "buttons"))

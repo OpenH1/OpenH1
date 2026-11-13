@@ -110,6 +110,7 @@ their handlers open opens.
 #include "game_modes.h"
 #include "network_voice.h"
 #include "network_chat.h"
+#include "network_party.h"
 #include "network_host_controls.h"
 #include "network_admin.h"
 #include "network_host_rules.h"

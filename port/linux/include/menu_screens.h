@@ -12,8 +12,8 @@ screen down: <title-art/>, <header> (title, picture, detail, a <button>),
 <list> (focus) holding <item>s (id, label, hint or <hint>s, do, when),
 <cards> holding <card>s, <tabs> (current) holding <tab>s, <table> (source,
 sorted, do, empty, lanes, left, right) holding <lane>s, <column>s (each a <search> in its title) and a
-<button>, <search>, <panel> holding <heading>, <text>, <pills> of <pill>s,
-<pair>, <choice>, <spartan> and <button>s, <chat> (source, lines, do, if), <space/>, <box> (x, y, width, align) holding a
+<button>, <search>, <panel>s (each its if) holding <heading>, <text>, <pills> of <pill>s,
+<pair>, <choice>, <picture>, <spartan> and <button>s, <chat> (source, lines, do, if), <space/>, <box> (x, y, width, align) holding a
 <list> and a <legend> (x), <objectives> (title), and <buttons> holding
 <button>s (key, label, do, width, if). Texts may hold bindings, {name}, filled from C; a do and the
 screen's back are actions, a table's source a row source, an if, a current,
@@ -31,6 +31,10 @@ checked as the file is read against the names the game gave
 #define MENU_SCREEN_MAXIMUM_STRINGS 640
 #define MENU_SCREEN_MAXIMUM_TEXT 256
 #define MENU_SCREEN_MAXIMUM_SCREENS 16
+/* a screen's <panel>s (each its if: the first whose if has a value shown),
+and its <spartan>s (one of its own, one in each panel) */
+#define MENU_SCREEN_MAXIMUM_PANELS 4
+#define MENU_SCREEN_MAXIMUM_SPARTANS (MENU_SCREEN_MAXIMUM_PANELS + 1)
 
 enum menu_screen_block_kind
 {
@@ -83,7 +87,11 @@ enum menu_screen_block_kind
 	MENU_SCREEN_LEGEND,
 	/* (a framed box beside the box before it, as tall: its title (label)
 	and the mission's objectives, a line each) */
-	MENU_SCREEN_OBJECTIVES
+	MENU_SCREEN_OBJECTIVES,
+	/* (a panel's picture of one of the menus' sets: a map's, a mission's,
+	its frame a binding's; as tall as its height, or the room the panel's
+	other lines leave) */
+	MENU_SCREEN_PICTURE
 };
 
 /* a <spartan>'s color: the focused <colors> item's, the profile's, or a
@@ -136,6 +144,8 @@ struct menu_screen_block
 	height alone: its width and place the panel's), its color's source and
 	how many side by side) */
 	long box_x, box_y, box_width, box_height;
+	/* (a <spartan>'s or a <picture>'s height on a touchscreen) */
+	long touch_box_height;
 	int color;
 	int players;
 	/* (a binding named: a tabs' current, a table's sorted, a search's

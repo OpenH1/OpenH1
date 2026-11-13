@@ -22,12 +22,12 @@ HEADER = "port/linux/game/menu_spartan.h"
 # a fault in the code, the file it is in, and the case that must catch it
 NEGATIVE_CONTROLS = {
     # random given the original picture, as before
-    "random-pictured": (SCREEN, "(color != MENU_SPARTAN_RANDOM && (color < 0 || color >= SCREEN_COLOR_COUNT))",
+    "random-pictured": (SCREEN, "(color != MENU_SPARTAN_RANDOM && !team && (color < 0 || color >= SCREEN_COLOR_COUNT))",
                         "(color < 0 || color >= SCREEN_COLOR_COUNT)", "random"),
     # the clock not read: one color for good
     "clock-ignored": (SPARTAN, "at = (milliseconds % round +", "at = (0 % round +", "cycle"),
     # every Spartan side by side the same color at once
-    "not-offset": (SPARTAN, "(unsigned long)(index & (MAXIMUM_MENU_SPARTANS - 1))", "0UL", "offset"),
+    "not-offset": (SPARTAN, "(unsigned long)(index & 7)", "0UL", "offset"),
     # a color passed over in the round
     "color-skipped": (SPARTAN, "color = (long)(at / step);", "color = (long)(at / step) * 2 % count;", "cycle"),
 }

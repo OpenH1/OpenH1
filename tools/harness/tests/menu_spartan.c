@@ -14,16 +14,27 @@ table. test_menu_spartan.py takes the code.
 
 typedef struct { real red, green, blue; } real_rgb_color;
 
+/* (cseries.c's: the team games' colors) */
+static real_rgb_color const team_red = { 1.0f, 0.0f, 0.0f }, team_blue = { 0.0f, 0.0f, 1.0f };
+static real_rgb_color const *const global_real_rgb_red = &team_red;
+static real_rgb_color const *const global_real_rgb_blue = &team_blue;
+
 #include "menu_spartan_types.inc"
 
 /* ---------- the fake game */
 
 #define COLORS 18
 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+enum { MENU_SCREEN_SPARTAN_FOCUS, MENU_SCREEN_SPARTAN_PROFILE, MENU_SCREEN_SPARTAN_BINDING };
+
 struct menu_screen_block
 {
 	int box_x, box_y, box_width, box_height;
 	int players;
+	int color;
 };
 
 struct widget_instance
@@ -32,26 +43,40 @@ struct widget_instance
 	struct { short current_frame_index; } animation;
 };
 
-struct screen_open
+struct screen_spartan
 {
-	struct menu_screen_block spartan;
-	struct widget_instance *spartan_picture;
+	struct menu_screen_block block;
+	struct widget_instance *picture;
+	short first;
+	short places;
+	boolean shown;
 };
 
-/* each player's color, as screen_spartan_color gives it */
+struct screen_open
+{
+	struct screen_spartan spartans[2];
+	long spartan_count;
+};
+
+/* each player's color, as screen_spartan_colors gives them */
 static short player_colors[MAXIMUM_MENU_SPARTANS];
 static boolean available = TRUE;
 /* the Spartans asked for (NONE: none), and their colors */
 static short placed[MAXIMUM_MENU_SPARTANS];
 
-static short screen_spartan_color(struct screen_open const *open, long focused, short player)
+static short screen_spartan_colors(struct screen_open const *open, struct screen_spartan const *spartan, long focused,
+	short *colors)
 {
+	short place;
+
 	(void)open;
 	(void)focused;
-	return player_colors[player];
+	for (place = 0; place < spartan->places; place++)
+		colors[place] = player_colors[place];
+	return spartan->places;
 }
 
-static short menu_spartan_test_colors(short colors[MAXIMUM_MENU_SPARTANS])
+static short menu_spartan_test_colors(short colors[MAXIMUM_MENU_SPARTAN_PLACES])
 {
 	(void)colors;
 	return 0;
@@ -105,12 +130,17 @@ static void frame(int players)
 
 	for (index = 0; index < MAXIMUM_MENU_SPARTANS; index++)
 		placed[index] = -100;
-	open_screen.spartan.box_x = 380;
-	open_screen.spartan.box_y = 84;
-	open_screen.spartan.box_width = 200;
-	open_screen.spartan.box_height = 300;
-	open_screen.spartan.players = players;
-	open_screen.spartan_picture = &picture;
+	open_screen.spartan_count = 1;
+	open_screen.spartans[0].block.box_x = 380;
+	open_screen.spartans[0].block.box_y = 84;
+	open_screen.spartans[0].block.box_width = 200;
+	open_screen.spartans[0].block.box_height = 300;
+	open_screen.spartans[0].block.players = players;
+	open_screen.spartans[0].block.color = MENU_SCREEN_SPARTAN_PROFILE;
+	open_screen.spartans[0].picture = &picture;
+	open_screen.spartans[0].first = 0;
+	open_screen.spartans[0].places = (short)players;
+	open_screen.spartans[0].shown = TRUE;
 	picture.visible = TRUE;
 	picture.animation.current_frame_index = 0;
 	screen_spartan_frame(&open_screen, NONE);
@@ -174,9 +204,9 @@ int main(int argc, char **argv)
 	{
 		short a, b;
 
-		for (a = 0; a < MAXIMUM_MENU_SPARTANS; a++)
+		for (a = 0; a < MAXIMUM_MENU_SPARTAN_PLACES; a++)
 		{
-			for (b = (short)(a + 1); b < MAXIMUM_MENU_SPARTANS; b++)
+			for (b = (short)(a + 1); b < MAXIMUM_MENU_SPARTAN_PLACES; b++)
 			{
 				CHECK(!same(menu_spartan_color(a, MENU_SPARTAN_RANDOM, HELD(2)),
 					menu_spartan_color(b, MENU_SPARTAN_RANDOM, HELD(2))), "Spartans %d and %d the same color", a, b);
