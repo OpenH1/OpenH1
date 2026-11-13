@@ -1262,12 +1262,8 @@ void network_coop_handle_screen_effect(
 		state.convolution_extra_passes = 0;
 		state.convolution_radius[0] = state.convolution_radius[1] = 0.0f;
 	}
-	/* the game can only blur one window, so split screen goes without */
-	if (main_get_window_count() > 1)
-	{
-		state.convolution_type = 0;
-		state.convolution_radius[0] = state.convolution_radius[1] = 0.0f;
-	}
+	/* (split screen's views drawn without its blur, while there is more than
+	one: rasterizer_screen_effect_get_cinematic_parameters) */
 	rasterizer_screen_effect_port_set(&state);
 }
 

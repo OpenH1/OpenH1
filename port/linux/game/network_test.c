@@ -190,6 +190,7 @@ enum
 	_network_test_follow,
 	_network_test_log,
 	_network_test_probe,
+	_network_test_campaign,
 };
 
 static struct
@@ -339,6 +340,14 @@ static void network_test_read_settings(
 			*colon = 0;
 			snprintf(network_test.variant_name, sizeof(network_test.variant_name), "%s", colon + 1);
 		}
+	}
+	/* "campaign:<level>": the campaign on this machine alone, its
+	debug.network_test_players players in split screen (2: Multiplayer's
+	SPLIT-SCREEN CO-OP, the Xbox's Cooperative Play) */
+	else if (!strncmp(setting, "campaign:", 9) && setting[9])
+	{
+		network_test.mode = _network_test_campaign;
+		snprintf(network_test.map_name, sizeof(network_test.map_name), "%s", setting + 9);
 	}
 	else if (!strcmp(setting, "join"))
 	{
@@ -2780,6 +2789,27 @@ void network_test_update(
 				network_game_client_request_immediate_start();
 				platform_log("network test: starting the game");
 			}
+		}
+		break;
+	case _network_test_campaign:
+		/* as SPLIT-SCREEN CO-OP and New Game start it, at Normal (menu_functions.c's
+		coop_begin, coop_player2_choose and campaign_start): a local game whose
+		players are the first controllers, each its own */
+		if (!network_test.set_up)
+		{
+			short local_player_index;
+
+			network_test.set_up = TRUE;
+			player_spawn_count = network_test.local_players;
+			player_ui_reset_single_player_local_player_controllers();
+			for (local_player_index = 0; local_player_index < network_test.local_players; local_player_index++)
+				player_ui_set_single_player_local_player_controller(local_player_index, local_player_index);
+			main_set_map_name(network_test.map_name);
+			main_set_difficulty(_game_difficulty_level_normal);
+			game_connection_set(_game_connection_local);
+			main_menu_switch_to_single_player();
+			platform_log("network test: the campaign's %s, %d players", network_test.map_name,
+				network_test.local_players);
 		}
 		break;
 	case _network_test_probe:
