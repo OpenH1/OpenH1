@@ -81,8 +81,9 @@ enum
 left out) are config.toml's alone, the same for every player on it: what
 one screen cannot have two of (the window, the resolution, VSync and the
 frame rate, HDR, anti-aliasing and the rest of the drawing's quality), the
-sound, the network, the server's. Settings sets them whoever opened it, as
-player 1's are. A player's own (_scope_player) may differ between the
+sound, the network, the server's, and what the simulation's own effects
+follow (display.overshield_effect: a hit on an overshield plays an Elite's
+shield's effect). Settings sets them whoever opened it, as player 1's are. A player's own (_scope_player) may differ between the
 players of one split screen: each player profile can keep a value of its
 own (its settings.toml, beside its blam.sav: config_player_profile), which
 that profile's player sees and plays with (config_player_boolean and the
@@ -1318,7 +1319,7 @@ static const struct config_setting config_settings[] =
 		"The energy shield's flare on the first-person arms too, as on the body\n"
 		"(the stock game draws it on the body only): it shows as the shield\n"
 		"takes hits and fades after them; a full shield untouched shows none.\n"
-		"An overshield stays lit on the arms with display.overshield_effect." },
+		"An overshield stays lit on the arms with display.overshield_effect.", _scope_player },
 #ifdef HALO_VR
 	/* (the VR build's on: in the headset, your body under you, port/linux/README.md "Your body") */
 	{ "display.first_person_legs", _config_boolean, "true", "HALO_FIRST_PERSON_LEGS", _environment_value, _platform_all,
@@ -1326,7 +1327,7 @@ static const struct config_setting config_settings[] =
 	{ "display.first_person_legs", _config_boolean, "false", "HALO_FIRST_PERSON_LEGS", _environment_value, _platform_all,
 #endif
 		"Your own legs in first person, seen looking down: your body as others\n"
-		"see it, drawn from the belly down, moving as it moves, with its shadow." },
+		"see it, drawn from the belly down, moving as it moves, with its shadow.", _scope_player },
 	{ "display.overshield_effect", _config_boolean, "true", "HALO_OVERSHIELD_EFFECT", _environment_value, _platform_all,
 		"The overshield as this machine draws it: its flare lit as it charges\n"
 		"and staying lit for as long as it lasts, its energy slower, in its own\n"
@@ -1377,7 +1378,7 @@ static const struct config_setting config_settings[] =
 		"Your energy shield's color, as this machine draws it: \"default\" (the\n"
 		"shield's own) or a multiplayer armor color: white, black, red, blue,\n"
 		"gray, yellow, green, pink, purple, cyan, cobalt, orange, teal, sage,\n"
-		"brown, tan, maroon or salmon." },
+		"brown, tan, maroon or salmon.", _scope_player },
 
 	{ "game.unlock_all_levels", _config_boolean, "false", "HALO_UNLOCK_ALL_LEVELS", _environment_value, _platform_all,
 		"true: a profile made from now on starts with every campaign level\n"
@@ -4692,7 +4693,8 @@ static void config_apply_server_mode(void)
 }
 #endif
 
-static void config_weapons_read(toml_datum_t table);
+/* config.toml's weapons' tables read (config_weapons_read) */
+static void config_weapons_read_global(toml_datum_t table);
 
 static void config_load(void)
 {
@@ -4839,7 +4841,7 @@ static void config_load(void)
 			for (index = 0; index < NUMBER_OF_CONFIG_SETTINGS; index++)
 				config_set[index] = (unsigned char)config_set_from_file(&config_values[index], &config_settings[index],
 					result.toptab);
-			config_weapons_read(result.toptab);
+			config_weapons_read_global(result.toptab);
 #ifndef HALO_ANDROID
 			if (config_values[config_setting_index("server.enabled")].boolean && !config_probe_mode)
 				config_server_mode = 1;
@@ -5467,7 +5469,7 @@ int config_reload(const char *prefix)
 	}
 	/* (each weapon's offsets: display.viewmodel_weapon) */
 	if (!strncmp(CONFIG_WEAPON_TABLE, prefix, length))
-		config_weapons_read(result.toptab);
+		config_weapons_read_global(result.toptab);
 #ifndef HALO_ANDROID
 	/* (what the run forces, forced again: a server started by --server
 	stays one whatever the file's server.enabled says, and its router asked
@@ -5515,8 +5517,13 @@ struct config_weapon
 	double values[CONFIG_WEAPON_VALUES];
 };
 
-static struct config_weapon *config_weapons;
-static int config_weapon_count;
+/* (config.toml's; a player profile's are its own: config_profile) */
+struct config_weapons
+{
+	struct config_weapon *list;
+	int count;
+};
+static struct config_weapons config_weapons;
 
 /* whether two tag paths are the same tag's: tags' paths are the same in
 any case, and a / is taken for the \ the maps write */
@@ -5534,34 +5541,36 @@ static int config_weapon_paths_same(const char *a, const char *b)
 	}
 }
 
-static int config_weapon_find(const char *path)
+static int config_weapon_find(const struct config_weapons *weapons, const char *path)
 {
 	int index;
 
-	for (index = 0; index < config_weapon_count; index++)
+	for (index = 0; index < weapons->count; index++)
 	{
-		if (config_weapon_paths_same(config_weapons[index].path, path))
+		if (config_weapon_paths_same(weapons->list[index].path, path))
 			return index;
 	}
 	return -1;
 }
 
-static void config_weapons_clear(void)
+static void config_weapons_clear(struct config_weapons *weapons)
 {
 	int index;
 
-	for (index = 0; index < config_weapon_count; index++)
-		free(config_weapons[index].path);
-	free(config_weapons);
-	config_weapons = NULL;
-	config_weapon_count = 0;
+	for (index = 0; index < weapons->count; index++)
+		free(weapons->list[index].path);
+	free(weapons->list);
+	weapons->list = NULL;
+	weapons->count = 0;
 }
 
-/* one weapon's values set (all 0: none kept); 0 if out of memory */
-static int config_weapon_store(const char *path, const double values[CONFIG_WEAPON_VALUES])
+/* one weapon's values set (all 0: none kept, unless keep_zero: a profile's,
+whose 0 stands in place of config.toml's); 0 if out of memory */
+static int config_weapon_store(struct config_weapons *weapons, const char *path,
+	const double values[CONFIG_WEAPON_VALUES], int keep_zero)
 {
-	int index = config_weapon_find(path);
-	int value, any = 0;
+	int index = config_weapon_find(weapons, path);
+	int value, any = keep_zero;
 
 	for (value = 0; value < CONFIG_WEAPON_VALUES; value++)
 		any |= values[value] != 0.0;
@@ -5569,44 +5578,46 @@ static int config_weapon_store(const char *path, const double values[CONFIG_WEAP
 	{
 		if (index >= 0)
 		{
-			free(config_weapons[index].path);
-			config_weapons[index] = config_weapons[--config_weapon_count];
+			free(weapons->list[index].path);
+			weapons->list[index] = weapons->list[--weapons->count];
 		}
 		return 1;
 	}
 	if (index < 0)
 	{
-		struct config_weapon *grown = realloc(config_weapons, sizeof(*grown) * (size_t)(config_weapon_count + 1));
+		struct config_weapon *grown = realloc(weapons->list, sizeof(*grown) * (size_t)(weapons->count + 1));
 		char *copy = strdup(path);
 
 		if (!grown || !copy)
 		{
 			free(copy);
 			if (grown)
-				config_weapons = grown;
+				weapons->list = grown;
 			return 0;
 		}
-		config_weapons = grown;
-		index = config_weapon_count++;
-		config_weapons[index].path = copy;
+		weapons->list = grown;
+		index = weapons->count++;
+		weapons->list[index].path = copy;
 	}
-	memcpy(config_weapons[index].values, values, sizeof(config_weapons[index].values));
+	memcpy(weapons->list[index].values, values, sizeof(weapons->list[index].values));
 	return 1;
 }
 
-/* the weapons' tables in the file (table, parsed): each number kept, any
-other value or key said in the log */
-static void config_weapons_read(toml_datum_t table)
+/* the weapons' tables in a file (table, parsed: config.toml's, or with
+keep_zero a profile's): each number kept, any other value or key said in
+the log */
+static void config_weapons_read(struct config_weapons *weapons_read, toml_datum_t table, int keep_zero)
 {
 	toml_datum_t weapons = toml_seek(table, CONFIG_WEAPON_TABLE);
 	int weapon;
 
-	config_weapons_clear();
+	config_weapons_clear(weapons_read);
 	if (weapons.type == TOML_UNKNOWN)
 		return;
 	if (weapons.type != TOML_TABLE)
 	{
-		platform_log("config.toml line %d: %s should be a table of weapons", weapons.lineno, CONFIG_WEAPON_TABLE);
+		platform_log("%s line %d: %s should be a table of weapons", config_file_read_now, weapons.lineno,
+			CONFIG_WEAPON_TABLE);
 		return;
 	}
 	for (weapon = 0; weapon < weapons.u.tab.size; weapon++)
@@ -5618,8 +5629,8 @@ static void config_weapons_read(toml_datum_t table)
 
 		if (entry.type != TOML_TABLE || !path[0] || strlen(path) > CONFIG_WEAPON_PATH_MAXIMUM)
 		{
-			platform_log("config.toml line %d: %s.\"%s\" should be a table (x, y, z, pitch, yaw, roll)",
-				entry.lineno, CONFIG_WEAPON_TABLE, path);
+			platform_log("%s line %d: %s.\"%s\" should be a table (x, y, z, pitch, yaw, roll)",
+				config_file_read_now, entry.lineno, CONFIG_WEAPON_TABLE, path);
 			continue;
 		}
 		for (key = 0; key < entry.u.tab.size; key++)
@@ -5631,18 +5642,24 @@ static void config_weapons_read(toml_datum_t table)
 				value++)
 				;
 			if (value == CONFIG_WEAPON_VALUES)
-				platform_log("config.toml line %d: %s is no weapon offset (x, y, z, pitch, yaw, roll)", datum.lineno,
-					entry.u.tab.key[key]);
+				platform_log("%s line %d: %s is no weapon offset (x, y, z, pitch, yaw, roll)", config_file_read_now,
+					datum.lineno, entry.u.tab.key[key]);
 			else if (datum.type == TOML_FP64)
 				values[value] = datum.u.fp64;
 			else if (datum.type == TOML_INT64)
 				values[value] = (double)datum.u.int64;
 			else
-				platform_log("config.toml line %d: %s should be a number; using 0", datum.lineno, entry.u.tab.key[key]);
+				platform_log("%s line %d: %s should be a number; using 0", config_file_read_now, datum.lineno,
+					entry.u.tab.key[key]);
 		}
 		/* (a path twice, as / and \: the later one's) */
-		config_weapon_store(path, values);
+		config_weapon_store(weapons_read, path, values, keep_zero);
 	}
+}
+
+static void config_weapons_read_global(toml_datum_t table)
+{
+	config_weapons_read(&config_weapons, table, 0);
 }
 
 int config_viewmodel_weapon(const char *path, double values[CONFIG_WEAPON_VALUES])
@@ -5651,9 +5668,9 @@ int config_viewmodel_weapon(const char *path, double values[CONFIG_WEAPON_VALUES
 
 	config_ensure_loaded();
 	pthread_mutex_lock(&config_lock);
-	index = path ? config_weapon_find(path) : -1;
+	index = path ? config_weapon_find(&config_weapons, path) : -1;
 	if (index >= 0)
-		memcpy(values, config_weapons[index].values, sizeof(config_weapons[index].values));
+		memcpy(values, config_weapons.list[index].values, sizeof(config_weapons.list[index].values));
 	else
 		memset(values, 0, sizeof(double) * CONFIG_WEAPON_VALUES);
 	pthread_mutex_unlock(&config_lock);
@@ -5801,7 +5818,7 @@ int config_viewmodel_weapon_write(const char *path, const double values[CONFIG_W
 	}
 	config_ensure_loaded();
 	pthread_mutex_lock(&config_lock);
-	if (!config_weapon_store(path, values))
+	if (!config_weapon_store(&config_weapons, path, values, 0))
 	{
 		pthread_mutex_unlock(&config_lock);
 		return 0;
@@ -5875,6 +5892,9 @@ static struct config_profile
 	char folder[CONFIG_PROFILE_FOLDER_SIZE];
 	struct config_profile_value values[CONFIG_PROFILE_VALUES];
 	int count;
+	/* each weapon's own offsets, the profile's (its 0s too, in place of
+	config.toml's: config_player_viewmodel_weapon) */
+	struct config_weapons weapons;
 	unsigned long used_at;
 } config_profiles[CONFIG_PROFILES];
 
@@ -5935,7 +5955,7 @@ static void config_profile_report(const char *path, toml_datum_t table)
 			char name[128];
 
 			snprintf(name, sizeof(name), "%s.%s", table.u.tab.key[section], keys.u.tab.key[key]);
-			if (config_player_setting(name) < 0)
+			if (config_player_setting(name) < 0 && strcmp(name, CONFIG_WEAPON_TABLE))
 				platform_log("settings: %s line %d: %s is no setting of a player's; config.toml's is used", path,
 					keys.u.tab.value[key].lineno, name);
 		}
@@ -5951,6 +5971,7 @@ static void config_profile_read(struct config_profile *profile)
 	toml_result_t result;
 
 	profile->count = 0;
+	config_weapons_clear(&profile->weapons);
 	config_profile_path(profile->folder, path, sizeof(path));
 	text = config_read_file(path, &size);
 	if (!text)
@@ -5978,6 +5999,7 @@ static void config_profile_read(struct config_profile *profile)
 		if (config_set_from_file(&entry->value, &config_settings[index], result.toptab))
 			profile->count++;
 	}
+	config_weapons_read(&profile->weapons, result.toptab, 1);
 	config_file_read_now = "config.toml";
 	config_profile_report(path, result.toptab);
 	toml_free(result);
@@ -6089,6 +6111,96 @@ const char *config_player_string(int local_player, const char *name)
 	const char *string = config_player_read(local_player, name, _config_string)->string;
 
 	return string ? string : "";
+}
+
+int config_player_viewmodel_weapon(int local_player, const char *path, double values[CONFIG_WEAPON_VALUES])
+{
+	int slot, index = -1;
+
+	if (local_player < 0 || local_player >= CONFIG_LOCAL_PLAYERS)
+		return config_viewmodel_weapon(path, values);
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	slot = config_player_profiles[local_player];
+	if (slot >= 0 && path && !config_picture_viewing)
+		index = config_weapon_find(&config_profiles[slot].weapons, path);
+	if (index >= 0)
+		memcpy(values, config_profiles[slot].weapons.list[index].values, sizeof(double) * CONFIG_WEAPON_VALUES);
+	pthread_mutex_unlock(&config_lock);
+	if (index < 0)
+		return config_viewmodel_weapon(path, values);
+	return 1;
+}
+
+int config_profile_viewmodel_weapon(const char *folder, const char *path, double values[CONFIG_WEAPON_VALUES])
+{
+	struct config_profile *profile;
+	int index = -1;
+
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	profile = config_profile_slot(folder);
+	if (profile && path)
+		index = config_weapon_find(&profile->weapons, path);
+	if (index >= 0)
+		memcpy(values, profile->weapons.list[index].values, sizeof(double) * CONFIG_WEAPON_VALUES);
+	pthread_mutex_unlock(&config_lock);
+	return index >= 0;
+}
+
+int config_profile_viewmodel_weapon_write(const char *folder, const char *path,
+	const double values[CONFIG_WEAPON_VALUES])
+{
+	struct config_profile *profile;
+	char file[CONFIG_PROFILE_FOLDER_SIZE + 32];
+	size_t size = 0, length = path ? strlen(path) : 0;
+	char *text, *updated;
+	int succeeded = 0, value;
+
+	if (!length || length > CONFIG_WEAPON_PATH_MAXIMUM)
+		return 0;
+	for (value = 0; value < (int)length; value++)
+	{
+		if ((unsigned char)path[value] < 0x20 || path[value] == 0x7F)
+			return 0;
+	}
+	for (value = 0; value < CONFIG_WEAPON_VALUES; value++)
+	{
+		if (!(values[value] == values[value]))
+			return 0;
+	}
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	profile = config_profile_slot(folder);
+	if (!profile || !config_weapon_store(&profile->weapons, path, values, 1))
+	{
+		pthread_mutex_unlock(&config_lock);
+		return 0;
+	}
+	config_change_count++;
+	if (config_answer_only)
+	{
+		pthread_mutex_unlock(&config_lock);
+		return 1;
+	}
+	config_profile_path(folder, file, sizeof(file));
+	text = config_read_file(file, &size);
+	/* (a profile's table kept at 0 too: its 0 in place of config.toml's) */
+	updated = config_weapon_set_table(text ? text : CONFIG_PROFILE_HEAD, path, values);
+	if (updated)
+	{
+		toml_result_t check = toml_parse(updated, (int)strlen(updated));
+
+		if (check.ok)
+			succeeded = config_write_file(file, updated);
+		else
+			platform_log("settings: %s's offsets not written: %s would not read (%s)", path, file, check.errmsg);
+		toml_free(check);
+	}
+	pthread_mutex_unlock(&config_lock);
+	free(updated);
+	free(text);
+	return succeeded;
 }
 
 int config_profile_text(const char *folder, const char *name, char *text, size_t size)

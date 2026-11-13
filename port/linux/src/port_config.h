@@ -112,6 +112,14 @@ double config_player_real(int local_player, const char *name);
 const char *config_player_string(int local_player, const char *name);
 int config_profile_text(const char *folder, const char *name, char *text, size_t size);
 int config_profile_write(const char *folder, const char *name, const char *value);
+/* each weapon's own offsets (config_viewmodel_weapon's, below) as a local
+player sees them: their profile's table of the weapon, else config.toml's;
+a profile's own (0: it has none), and set in it (its 0s kept, in place of
+config.toml's) */
+int config_player_viewmodel_weapon(int local_player, const char *path, double values[CONFIG_WEAPON_VALUES]);
+int config_profile_viewmodel_weapon(const char *folder, const char *path, double values[CONFIG_WEAPON_VALUES]);
+int config_profile_viewmodel_weapon_write(const char *folder, const char *path,
+	const double values[CONFIG_WEAPON_VALUES]);
 
 /* the settings whose names begin with prefix ("server.") read from
 config.toml again, but for those their environment variables set; 1 on
