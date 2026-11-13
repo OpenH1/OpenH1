@@ -63,7 +63,7 @@
 		<text font="ui\large_ui" color="#FF2896FF" at="13 -2" string_list="main_menu/multiplayer_type_select/server_settings/labels" index="14"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/server_settings/game_mode_spinner" type="spinner" box="0 -2 206 20" header="bitmaps/arrow_sm_left" header_box="-13 3 -7 15" footer="bitmaps/arrow_sm_right" footer_box="213 3 219 15">
-		<text font="ui\large_ui" color="#FF2896FF" align="center" at="0 0" items="OPENH1 30 TICK|OPENH1 60 TICK|OPENH1 120 TICK|LEGACY"/>
+		<text font="ui\large_ui" color="#FF2896FF" align="center" at="0 0" items="GOAT H1 30 TICK|GOAT H1 60 TICK|GOAT H1 120 TICK|LEGACY"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/server_settings/op_invite" box="0 0 512 18" picture="main_menu/parts/option_row_512x18">
 		<text color="#FF2896FF"/>

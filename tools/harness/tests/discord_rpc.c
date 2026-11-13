@@ -380,7 +380,7 @@ static void case_states(void)
 	p2p_discord_set_game(1, 0, "OpenH1 120 Tick \xC2\xB7 Slayer on Blood Gulch", NULL, 5, 16);
 	run(4000);
 	json = last_activity();
-	CHECK(has(json, "\"details\":\"Hosting OpenH1 120 Tick \xC2\xB7 Slayer on Blood Gulch\",\"state\":\"In the lobby\""),
+	CHECK(has(json, "\"details\":\"Hosting GOAT H1 120 Tick \xC2\xB7 Slayer on Blood Gulch\",\"state\":\"In the lobby\""),
 		"hosting, in the lobby: %s", json);
 	CHECK(has(json, "\"party\":{\"id\":\"0123456789abcdef0123456789abcdef\",\"size\":[5,16]}") &&
 		has(json, "\"secrets\":{\"join\":\"" CODE "\"}"), "the game's players and invite: %s", json);

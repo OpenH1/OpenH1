@@ -1920,10 +1920,10 @@ static void main_native_build_label(char *label, size_t capacity)
 	platform = "Linux";
 	#endif
 	if (HALO_BUILD_NUMBER > 0)
-		_snprintf(label, capacity - 1, "OpenH1 %s | build %d (%s)",
+		_snprintf(label, capacity - 1, "GOAT H1 %s | build %d (%s)",
 			platform, HALO_BUILD_NUMBER, HALO_BUILD_FLAVOR);
 	else
-		_snprintf(label, capacity - 1, "OpenH1 %s | local build (%s)",
+		_snprintf(label, capacity - 1, "GOAT H1 %s | local build (%s)",
 			platform, HALO_BUILD_FLAVOR);
 	label[capacity - 1] = 0;
 }
@@ -4311,9 +4311,9 @@ void main_build_identity(
 	main_native_build_label(version, version_size);
 #else
 	if (HALO_BUILD_NUMBER > 0)
-		_snprintf(version, version_size - 1, "OpenH1 | build %d (%s)", HALO_BUILD_NUMBER, HALO_BUILD_FLAVOR);
+		_snprintf(version, version_size - 1, "GOAT H1 | build %d (%s)", HALO_BUILD_NUMBER, HALO_BUILD_FLAVOR);
 	else
-		_snprintf(version, version_size - 1, "OpenH1 | local build (%s)", HALO_BUILD_FLAVOR);
+		_snprintf(version, version_size - 1, "GOAT H1 | local build (%s)", HALO_BUILD_FLAVOR);
 	version[version_size - 1] = 0;
 #endif
 }

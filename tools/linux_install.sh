@@ -310,7 +310,7 @@ fi
 # copied as the game copies an image's (to maps.partial, then renamed
 # maps); a disc image is linked into the game's folder, where that first
 # start finds it.
-title="OpenH1: your game's maps"
+title="GOAT H1: your game's maps"
 image_link=
 if [ -n "$image" ]; then
 	for link in "$dir"/*.iso "$dir"/*.xiso "$dir"/*.ISO "$dir"/*.XISO; do
@@ -343,7 +343,7 @@ if [ -z "$batch" ] && ! has_maps "$dir" && ! data_set "$dir" && [ -z "$image_lin
 	else
 		answer=0
 		kdialog --title "$title" --yes-label "A disc image" --no-label "A maps folder" --yesnocancel \
-			"OpenH1 plays the maps of your own Halo: Combat Evolved for the Xbox.
+			"GOAT H1 plays the maps of your own Halo: Combat Evolved for the Xbox.
 
 Where are they: in a disc image of the game (.iso or .xiso), or in a maps folder copied from its disc?" || answer=$?
 		if [ "$answer" = 0 ] &&

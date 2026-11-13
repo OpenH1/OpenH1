@@ -416,7 +416,7 @@ int main(int argc, char **argv)
 			"the local network's empty list says %ls", text);
 		browser_empty_text(_multiplayer_mode_lan, _browser_tab_openh1, TRUE, TRUE, FALSE, 0, 0, 0, text,
 			NUMBEROF(text));
-		CHECK(contains(text, L"No OpenH1 games on your network."), "OPENH1's says %ls", text);
+		CHECK(contains(text, L"No GOAT H1 games on your network."), "OPENH1's says %ls", text);
 		browser_empty_text(_multiplayer_mode_lan, _browser_tab_favorites, TRUE, TRUE, FALSE, 0, 0, 0, text,
 			NUMBEROF(text));
 		CHECK(contains(text, L"favorites") && contains(text, L"FAVORITE on a game"), "FAVORITES' says %ls", text);

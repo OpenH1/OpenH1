@@ -684,8 +684,8 @@ in an OpenH1 game"):
   lists the game and refuses to join it ("The host is using a newer version
   of the network code"). Its server browser hides the game, and says
   "games are on a newer version" when nothing else is listed.
-  `HALO_PORT_STANDARD_REFUSAL` ("This is an OpenH1 60 Tick game; join a
-  Legacy game or get OpenH1", with the game's rate) is the text an OpenCE
+  `HALO_PORT_STANDARD_REFUSAL` ("This is a GOAT H1 60 Tick game; join a
+  Legacy game or get GOAT H1", with the game's rate) is the text an OpenCE
   build that knows of OpenH1 games would show for one. No game needs it
   otherwise: everything an OpenH1 game plays, OpenCE players join. A build without that change
   can show only its own messages: join refusals are codes, and host text

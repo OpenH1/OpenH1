@@ -64,7 +64,7 @@
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" text="DEDICATED"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/tab_openh1" type="text" box="0 0 86 22" wide="-21 0" place="keep_ends" picture="main_menu/parts/tab">
-		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" text="OPENH1"/>
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" text="GOAT H1"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/tab_legacy" type="text" box="0 0 86 22" wide="21 0" place="keep_ends" picture="main_menu/parts/tab">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" text="LEGACY"/>

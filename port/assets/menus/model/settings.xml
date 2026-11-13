@@ -466,8 +466,8 @@
 			<help>Saves a report (the log, your settings and GPU, the frame rate and a screenshot) and opens a GitHub issue filled in with it: say what happened, drag in the report's file, submit. F8 does the same in a game, its screenshot that moment.</help>
 		</row>
 		<section key="section_10" title="ABOUT"/>
-		<row key="about" kind="link" label="OPENH1" crumb="PROFILES › ABOUT">
-			<help>Halo: Combat Evolved, the Xbox game, on this computer, played from your own copy of its maps. OpenH1 is a free fan project.</help>
+		<row key="about" kind="link" label="GOAT H1" crumb="PROFILES › ABOUT">
+			<help>Halo: Combat Evolved, the Xbox game, on this computer, played from your own copy of its maps. GOAT H1 is a free fan project.</help>
 		</row>
 		<button key="button_defaults" kind="defaults" run="port settings defaults" help="Puts this tab's settings back to their defaults. Nothing changes until OK."/>
 		<button key="button_ok" kind="ok" run="port settings ok" help="Keeps your changes, on every tab, and applies them."/>
@@ -572,7 +572,7 @@
 		</row>
 		<section key="section_13" title="GAME"/>
 		<row key="sim_rate" kind="choice" setting="game.sim_rate" label="TICK RATE" crumb="VIDEO › ADVANCED GRAPHICS" search="hz tickrate" search_choices="original">
-			<help>How often the world updates each second, in games on this device (campaign, split screen, bots). 60 and 120 respond faster and take more of the processor. Online games play at their host's tick rate: an OpenH1 game's (OpenH1 60 Tick), a Legacy game's 30.</help>
+			<help>How often the world updates each second, in games on this device (campaign, split screen, bots). 60 and 120 respond faster and take more of the processor. Online games play at their host's tick rate: a GOAT H1 game's (GOAT H1 60 Tick), a Legacy game's 30.</help>
 			<choice shown="ORIGINAL (30)" value="30"/>
 			<choice shown="60" value="60"/>
 			<choice shown="120" value="120"/>
@@ -1086,7 +1086,7 @@
 		<section key="section_0" title="GYRO AIMING"/>
 		<row key="gyro_found" kind="status" label="GYRO" crumb="CONTROLS › CONTROLLER › GYRO &amp; FLICK STICK">
 			<help>Whether a controller with a gyroscope is connected: a DualSense, a DualShock 4, a Switch Pro Controller or Joy-Cons, a Steam Deck.</help>
-			<note>With Steam Input, turn it off for OpenH1.</note>
+			<note>With Steam Input, turn it off for GOAT H1.</note>
 		</row>
 		<row key="gyro_aim" kind="choice" setting="input.gyro_aim" label="GYRO AIMING" crumb="CONTROLS › CONTROLLER › GYRO &amp; FLICK STICK" search_choices="always hold aim pause thumb stick" when="gyro">
 			<help>Aim by turning the controller, as a mouse; the stick still works. Hold to Aim: only while the gyro button is held. Hold to Pause: except while it is held, to re-center. Thumb on Stick: while your thumb is on the right stick (Steam Deck, Steam Controller).</help>
@@ -1310,13 +1310,13 @@
 			<choice shown="UNDER 50 MS" value="50"/>
 		</row>
 		<section key="section_5" title="GAME"/>
-		<row key="browser_tick" kind="choice" setting="network.browser_tick" label="TICK RATE" crumb="ONLINE › SERVER BROWSER FILTERS" search_choices="any openh1 legacy">
+		<row key="browser_tick" kind="choice" setting="network.browser_tick" label="TICK RATE" crumb="ONLINE › SERVER BROWSER FILTERS" search_choices="any goat h1 legacy">
 			<help>Lists only the games of this tick rate.</help>
-			<note>OpenH1 games play at 30, 60 or 120 ticks a second; Legacy games are OpenCE's netcode.</note>
+			<note>GOAT H1 games play at 30, 60 or 120 ticks a second; Legacy games are OpenCE's netcode.</note>
 			<choice shown="ANY" value="any"/>
-			<choice shown="OPENH1 30" value="30"/>
-			<choice shown="OPENH1 60" value="60"/>
-			<choice shown="OPENH1 120" value="120"/>
+			<choice shown="GOAT H1 30" value="30"/>
+			<choice shown="GOAT H1 60" value="60"/>
+			<choice shown="GOAT H1 120" value="120"/>
 			<choice shown="LEGACY" value="legacy"/>
 		</row>
 		<row key="browser_game_type" kind="choice" setting="network.browser_game_type" label="GAME TYPE" crumb="ONLINE › SERVER BROWSER FILTERS" search_choices="any slayer team capture the flag oddball king of hill race swat infection gun game co op pro 2v2">

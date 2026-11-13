@@ -283,7 +283,7 @@ def test_frame_install_asks_for_maps_and_adds_to_steam(tmp_path):
     output = run_install(package, home, KDIALOG_FOLDER=disc)
     installed = home / "apps/halo-vr"
     assert (installed / "maps/a10.map").read_text() == "map"
-    assert calls(home) == [f"kdialog --title OpenH1: your game's maps --getexistingdirectory {home}",
+    assert calls(home) == [f"kdialog --title GOAT H1: your game's maps --getexistingdirectory {home}",
                            f"steamos-add-to-steam {home}/.local/share/applications/openh1-vr.desktop"]
     assert "Added to Steam as GOAT H1 VR: start SteamVR, then it, from the library." in output
     appid = steam_id(f"{installed}/halo-vr.sh")
@@ -698,11 +698,11 @@ def test_install_sh_installs_the_tree(release, tmp_path):
     assert {key: value for key, value in entry.items() if key not in ("Exec", "Icon", "Path")} == \
         {key: value for key, value in tree_entry.items() if key not in ("Exec", "Icon")}
     assert calls(home) == [
-        "kdialog --title OpenH1: your game's maps --yes-label A disc image --no-label A maps folder --yesnocancel "
-        + "OpenH1 plays the maps of your own Halo: Combat Evolved for the Xbox.",
+        "kdialog --title GOAT H1: your game's maps --yes-label A disc image --no-label A maps folder --yesnocancel "
+        + "GOAT H1 plays the maps of your own Halo: Combat Evolved for the Xbox.",
         "",
         "Where are they: in a disc image of the game (.iso or .xiso), or in a maps folder copied from its disc?",
-        f"kdialog --title OpenH1: your game's maps --getexistingdirectory {home}",
+        f"kdialog --title GOAT H1: your game's maps --getexistingdirectory {home}",
         f"steamos-add-to-steam {home}/.local/share/applications/openh1.desktop",
     ]
     assert "Added to Steam as GOAT H1" in output

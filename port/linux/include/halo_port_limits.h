@@ -168,7 +168,7 @@ Legacy games, and what an OpenCE machine sees, are unchanged) */
 joining one, with the game's rate (the advertisement's
 HALO_PORT_ADVERTISED_RATE_OFFSET): NETCODE.md, "OpenH1 and Legacy games".
 Players see Standard games as "OpenH1 <rate> Tick" */
-#define HALO_PORT_STANDARD_REFUSAL "This is an OpenH1 %u Tick game; join a Legacy game or get OpenH1"
+#define HALO_PORT_STANDARD_REFUSAL "This is a GOAT H1 %u Tick game; join a Legacy game or get GOAT H1"
 /* ... the host plays the distributed netcode (always, since the lockstep
 netcode was removed; hosts of version 4 built before then may not) */
 #define HALO_PORT_ADVERTISED_DISTRIBUTED_FLAG 0x01
