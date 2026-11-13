@@ -11627,20 +11627,27 @@ static boolean browser_select(struct widget_instance *widget, struct event_recor
 }
 
 /* "player profile save changes" (Settings' OK, the profile being edited):
-saved if it has changes, as the Xbox's (the saving screen follows); if it
-has none (the settings' own screens write theirs to config.toml as their OK
-is chosen), editing ends and the previous screen comes back, as CANCEL
-(the Xbox's called that a failure, and closed every screen) */
+saved if it has changes, as the Xbox's; if it has none (the settings' own
+screens write theirs to config.toml as their OK is chosen), editing ends.
+Either way the previous screen comes back, as CANCEL (the Xbox's called no
+changes a failure, and closed every screen). The Xbox's saving screen
+followed a save, and the screen came back after it only to close itself,
+no longer editing ("close if not editing profile"): the save takes a few
+hundredths of a second here (saving_screens.c) */
 static boolean profile_save_changes(struct widget_instance *widget, boolean *widget_deleted)
 {
 	if (player_ui_edit_profile_is_dirty())
 	{
-		if (player_ui_save_profile())
-			return TRUE;
-		platform_log("menus: could not save the profile's changes");
-		return campaign_fail();
+		if (!player_ui_save_profile())
+		{
+			platform_log("menus: could not save the profile's changes");
+			return campaign_fail();
+		}
 	}
-	player_ui_end_editing_profile();
+	else
+	{
+		player_ui_end_editing_profile();
+	}
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
 	ui_widget_port_go_back(widget);
 	*widget_deleted = TRUE;

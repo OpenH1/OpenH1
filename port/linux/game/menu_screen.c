@@ -144,9 +144,10 @@ static struct screen_action const screen_actions[] =
 	/* (Choose Mission, the campaign's missions as cards, as the campaign
 	menu's CHOOSE MISSION opens it once the menu has read the profile's
 	campaign: a profile made first if there is none, as the PC version's
-	CAMPAIGN) */
+	CAMPAIGN, and then Choose Mission at once: port_settings.py's
+	_solo_new_profile) */
 	{ "open solo", NULL, NULL, "new game if no plyr profiles", "port campaign init", "main_menu/campaign/mission_screen",
-		"main_menu/new_campaign_creating_profile" },
+		"main_menu/campaign/solo_creating_profile" },
 	/* (the server browser, as Multiplayer's SERVER BROWSER opens it: its mode
 	the browser's; every game, or the co-op games, this visit) */
 	{ "open multiplayer", "all", "mp type set mode", "new game if no plyr profiles", NULL,

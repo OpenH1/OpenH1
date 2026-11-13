@@ -2776,6 +2776,33 @@ void const *menu_tags_behaviour_handlers(
 	return menu_tags.behaviour_handlers[index];
 }
 
+/* the model's behaviours made (menu_tags_behaviour_handlers_at's indices) */
+long menu_tags_behaviour_count(
+	void)
+{
+	return menu_tags.loaded && menu_tags.behaviour_model && menu_tags.behaviour_handlers ?
+		menu_tags.behaviour_model->behaviour_count : 0;
+}
+
+/* the handlers of the model's behaviour of the index, by which the engine
+takes their widget's events, and the widget's name: saving_screens.c's,
+which skips their saving screens as it does the widgets' own (NULL: none) */
+void *menu_tags_behaviour_handlers_at(
+	long index,
+	long *count,
+	char const **name)
+{
+	struct halo_menu_model const *model = menu_tags.behaviour_model;
+
+	*count = 0;
+	*name = NULL;
+	if (index < 0 || index >= menu_tags_behaviour_count())
+		return NULL;
+	*count = menu_tags.behaviour_handler_counts[index];
+	*name = model->behaviours[index].name;
+	return menu_tags.behaviour_handlers[index];
+}
+
 /* the screen of the name (the menus' files', "main_menu/campaign/campaign_screen")
 opened from the widget, as a handler's open opens it (its history, its sound):
 the hand-written screens' actions (menu_screen.c); FALSE if there is no such
