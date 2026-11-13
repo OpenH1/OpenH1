@@ -1055,6 +1055,33 @@ static boolean spartan_fidget_now(
 	return spartan_fidget_progress(*kind, milliseconds - *start, animation->frame_count, pose);
 }
 
+/* the aiming screen's (the rifle's, yaw and pitch radians from ahead)
+and the looking screen's (the head's, head_yaw on from the aim) over a
+pose, as a unit's are (units.c's unit_preprocess_node_orientations) */
+static void spartan_aim(
+	struct animation_graph *graph,
+	short node_count,
+	real yaw,
+	real pitch,
+	real head_yaw,
+	real_orientation *pose)
+{
+	if (menu_spartan.aim_animation != NONE && menu_spartan.aim_animation < graph->animations.count)
+	{
+		struct animation const *aim = (struct animation const *)graph->animations.address + menu_spartan.aim_animation;
+
+		if (aim->node_count == node_count)
+			aiming_screen_apply(aim, &menu_spartan.aim_bounds, yaw, pitch, pose);
+	}
+	if (menu_spartan.look_animation != NONE && menu_spartan.look_animation < graph->animations.count)
+	{
+		struct animation const *look = (struct animation const *)graph->animations.address + menu_spartan.look_animation;
+
+		if (look->node_count == node_count)
+			aiming_screen_apply(look, &menu_spartan.look_bounds, head_yaw, 0.0f, pose);
+	}
+}
+
 /* a Spartan's pose at the menus' clock's milliseconds, its nodes' matrices
 as the game would place them (spartan->body_nodes; FALSE: none, the game's
 own drawn): its idle at its own time, and a fidget blended over it; its
@@ -1099,10 +1126,11 @@ static boolean spartan_pose(
 	if (idle_animation->node_count != node_count)
 		return FALSE;
 
-	/* (the idle, at its own time) */
+	/* (the idle, at its own time, aimed ahead as a unit's is) */
 	model_get_node_orientations(model, rest);
 	spartan_animation_pose(model, idle_animation, spartan_loop_frame(spartan, idle_animation->frame_count, milliseconds),
 		TRUE, rest, node_count, idle);
+	spartan_aim(graph, node_count, 0.0f, 0.0f, 0.0f, idle);
 
 	/* (a fidget over it) */
 	fidgeting = spartan_fidget_now(spartan, index, milliseconds, &kind, &start, &fidget_pose);
@@ -1120,28 +1148,16 @@ static boolean spartan_pose(
 		case SPARTAN_FIDGET_CROUCH:
 			spartan_animation_pose(model, animation, spartan_loop_frame(spartan, animation->frame_count, milliseconds),
 				TRUE, rest, node_count, fidget);
+			spartan_aim(graph, node_count, 0.0f, 0.0f, 0.0f, fidget);
 			break;
 		case SPARTAN_FIDGET_LOOK:
-		{
-			/* (the aim turned, and the head on from it, through the
-			aiming and looking screens, as a unit's: units.c) */
-			real aim_yaw = fidget_pose.look * SPARTAN_LOOK_AIM_DEGREES * 3.14159265f / 180.0f;
-			real head_yaw = fidget_pose.look * SPARTAN_LOOK_HEAD_DEGREES * 3.14159265f / 180.0f;
-			real pitch = (real)fabs(fidget_pose.look) * SPARTAN_LOOK_PITCH_DEGREES * 3.14159265f / 180.0f;
-
-			memcpy(fidget, idle, sizeof(real_orientation) * node_count);
-			if (animation->node_count == node_count)
-				aiming_screen_apply(animation, &menu_spartan.aim_bounds, aim_yaw, -pitch, fidget);
-			if (menu_spartan.look_animation != NONE && menu_spartan.look_animation < graph->animations.count)
-			{
-				struct animation const *look =
-					(struct animation const *)graph->animations.address + menu_spartan.look_animation;
-
-				if (look->node_count == node_count)
-					aiming_screen_apply(look, &menu_spartan.look_bounds, head_yaw, 0.0f, fidget);
-			}
+			/* (the aim turned, and the head on from it) */
+			spartan_animation_pose(model, idle_animation, spartan_loop_frame(spartan, idle_animation->frame_count,
+				milliseconds), TRUE, rest, node_count, fidget);
+			spartan_aim(graph, node_count, fidget_pose.look * SPARTAN_LOOK_AIM_DEGREES * 3.14159265f / 180.0f,
+				(real)fabs(fidget_pose.look) * SPARTAN_LOOK_PITCH_DEGREES * 3.14159265f / 180.0f,
+				fidget_pose.look * SPARTAN_LOOK_HEAD_DEGREES * 3.14159265f / 180.0f, fidget);
 			break;
-		}
 		default:
 			memcpy(fidget, idle, sizeof(real_orientation) * node_count);
 			break;
