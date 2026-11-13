@@ -52,7 +52,7 @@
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/settings_search/search_note" role="search note" type="text" box="0 0 344 24" wide="-106 244" past="-143 193">
 		<text font="ui\small_ui" color="#FF6F9CD0" at="10 3" flags="no_focus_test" scale="1 1.2"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/settings_search/button_bar" role="buttons" type="column_list" box="0 0 640 28">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/settings_search/button_bar" role="buttons" type="column_list" box="0 0 640 28" place="foot">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/settings_search/button_ok" x="358" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/settings_search/button_back" x="488" y="1"/>
 	</look>

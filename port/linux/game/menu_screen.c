@@ -52,6 +52,7 @@ int halo_keyboard_prompts(void);
 long ui_widget_port_text_box_font(struct widget_instance *widget, short *width);
 short ui_widget_port_past_move(void);
 boolean ui_widget_port_pointer_focused(void);
+void event_manager_post_button(short controller_index, short button_index);
 
 /* ---------- constants */
 
@@ -103,16 +104,28 @@ or the tall layout's band's (port_settings.py's TALL_BAND) */
 /* the header's words drawn larger than their font (the heading's), as the
 tall layout's titles (TALL_TITLE_SCALE) */
 #define HEADER_TITLE_SCALE 1.4f
-/* the button bar's right side's margin from the screen's right (port_settings.py's WIDE_MARGIN) */
-#define BUTTONS_MARGIN 24
+/* the button bar: its room at the foot (port_settings.py's TALL_FOOTER), and
+its prompts as the tall layout's footer's (Choose Mission's: port_settings.py's
+_missions), from the room's top, the screen's margin (WIDE_MARGIN) at either
+side, each as wide as its block (BACK's at the left, the rest's at the
+right, this far apart) */
 #define BUTTONS_ROOM 37
-#define BUTTONS_TOP 9
+#define BUTTONS_MARGIN 24
+#define PROMPTS_TOP 5
+#define PROMPT_TOP 1
+#define PROMPT_WIDTH 124
+#define PROMPT_LEFT_WIDTH 96
+#define PROMPT_GAP 8
 /* an item's label drawn larger than its font (large_ui's): at 4:3, and
 at 16:9 and wider */
 #define ITEM_SCALE_LEAST 1.45f
 #define ITEM_SCALE_MOST 1.6f
 /* (menu_tags.c's WIDE_LAYOUT_EXTRA: 16:9's width past 640) */
 #define WIDE_LAYOUT_EXTRA 212
+/* (menu_functions.c's BUTTON_B, BUTTON_X, BUTTON_Y: the buttons a prompt presses) */
+#define SCREEN_BUTTON_B 1
+#define SCREEN_BUTTON_X 2
+#define SCREEN_BUTTON_Y 3
 /* (menu_engine.c's ENGINE_EVENT_BUTTON: the event manager's button event) */
 #define SCREEN_EVENT_BUTTON 3
 
@@ -264,13 +277,13 @@ struct screen_open
 	long header_picture;
 	/* (its cards' scale, to fill their room: 0 for their own size) */
 	real card_scale;
-	/* (its button bar's right side, its keys and words, which is placed to
-	end at the screen's right margin each frame: the keys' pictures differ by
-	the device) */
-	struct widget_instance *buttons_right, *buttons_left;
-	char right_keys[SCREEN_MAXIMUM_BUTTONS][SCREEN_ID_LENGTH];
-	char right_labels[SCREEN_MAXIMUM_BUTTONS][SCREEN_ID_LENGTH];
-	long right_count;
+	/* (its button bar's prompts, each its key, and its place in the 640
+	and its side, which past 16:9 moves it to the screen's edge each frame) */
+	struct widget_instance *prompts[SCREEN_MAXIMUM_BUTTONS];
+	char prompt_keys[SCREEN_MAXIMUM_BUTTONS][SCREEN_ID_LENGTH];
+	short prompt_x[SCREEN_MAXIMUM_BUTTONS];
+	boolean prompt_right[SCREEN_MAXIMUM_BUTTONS];
+	long prompt_count;
 };
 
 static struct
@@ -282,7 +295,8 @@ static struct
 	the screen its item opened) */
 	char focused[NUMBEROF(screen_places)][SCREEN_ID_LENGTH];
 	/* the blocks' tags, as the menus' tags were last built */
-	long title_art_tag, list_tag, item_tag, hint_tag, buttons_tag, button_tag, cards_tag, card_tag, card_title_tag, card_art_tag, card_subtitle_tag, header_tag, buttons_right_tag, header_text_tag;
+	long prompts_tag;
+	long title_art_tag, list_tag, item_tag, hint_tag, prompt_left_tag, button_tag, cards_tag, card_tag, card_title_tag, card_art_tag, card_subtitle_tag, header_tag, prompt_tag, header_text_tag;
 } screens = { FALSE };
 
 static void screens_names_give(void)
@@ -333,7 +347,7 @@ static boolean screen_blocks_found(void)
 	screens.list_tag = screen_block_tag("pc\\screens\\list");
 	screens.item_tag = screen_block_tag("pc\\screens\\item");
 	screens.hint_tag = screen_block_tag("pc\\screens\\hint");
-	screens.buttons_tag = screen_block_tag("pc\\screens\\buttons");
+	screens.prompt_left_tag = screen_block_tag("pc\\screens\\prompt_left");
 	screens.button_tag = screen_block_tag("pc\\screens\\button");
 	screens.cards_tag = screen_block_tag("pc\\screens\\cards");
 	screens.card_tag = screen_block_tag("pc\\screens\\card");
@@ -341,13 +355,15 @@ static boolean screen_blocks_found(void)
 	screens.card_art_tag = screen_block_tag("pc\\screens\\card_art");
 	screens.header_tag = screen_block_tag("pc\\screens\\header");
 	screens.card_subtitle_tag = screen_block_tag("pc\\screens\\card_subtitle");
-	screens.buttons_right_tag = screen_block_tag("pc\\screens\\buttons_right");
+	screens.prompt_tag = screen_block_tag("pc\\screens\\prompt");
+	screens.prompts_tag = screen_block_tag("pc\\screens\\prompts");
 	screens.header_text_tag = screen_block_tag("pc\\screens\\header_text");
 	if (screens.title_art_tag == NONE || screens.list_tag == NONE || screens.item_tag == NONE ||
-		screens.hint_tag == NONE || screens.buttons_tag == NONE || screens.button_tag == NONE ||
+		screens.hint_tag == NONE || screens.prompt_left_tag == NONE || screens.button_tag == NONE ||
 		screens.cards_tag == NONE || screens.card_tag == NONE || screens.card_title_tag == NONE ||
 		screens.card_art_tag == NONE || screens.header_tag == NONE ||
-		screens.card_subtitle_tag == NONE || screens.buttons_right_tag == NONE || screens.header_text_tag == NONE)
+		screens.card_subtitle_tag == NONE || screens.prompt_tag == NONE || screens.prompts_tag == NONE ||
+		screens.header_text_tag == NONE)
 	{
 		platform_log("menus: the screens' blocks (screens/blocks.xml) are not all there");
 		screens.blocks_found = FALSE;
@@ -411,31 +427,11 @@ static boolean screen_item_shown(struct menu_screen_block const *item, struct sc
 	return menu_screen_when(item->when) && menu_screen_text(item->label, screen_value, values, label, size);
 }
 
-/* the buttons' words: each one's key (its icon, "%a-button": the menus' key
-for it while the keyboard plays) and label */
+/* a button's side of the bar: back's the left, the rest's the right (or as
+its side says) */
 static boolean screen_button_right(struct menu_screen_block const *button)
 {
 	return button->side ? !strcmp(button->side, "right") : strcmp(button->key, "back") != 0;
-}
-
-static void screen_buttons_text(struct menu_screen const *screen, long buttons, boolean right, char *text,
-	unsigned long size)
-{
-	long index;
-
-	text[0] = 0;
-	for (index = 0; index < screen->block_count; index++)
-	{
-		struct menu_screen_block const *button = &screen->blocks[index];
-		char const *icon;
-		size_t used = strlen(text);
-
-		if (button->kind != MENU_SCREEN_BUTTON || button->parent != buttons || screen_button_right(button) != right)
-			continue;
-		icon = !strcmp(button->key, "accept") ? "%a-button" : !strcmp(button->key, "back") ? "%b-button" :
-			!strcmp(button->key, "x") ? "%x-button" : "%y-button";
-		snprintf(text + used, size - used, "%s%s %s", used ? "     " : "", icon, button->label);
-	}
 }
 
 /* the screen's widgets made from the hand-written screen, in place of
@@ -449,7 +445,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 	boolean shown[MENU_SCREEN_MAXIMUM_BLOCKS];
 	short heights[MENU_SCREEN_MAXIMUM_BLOCKS];
 	char const *focus_id;
-	short fixed = 0, spaces = 0, extra, top, shrink = 0;
+	short fixed = 0, spaces = 0, spaces_left, extra, top, shrink = 0;
 	long index, place_index = open->place - screen_places;
 	struct widget_instance *focus = NULL;
 	long focus_index = 0;
@@ -512,6 +508,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 	open->item_count = 0;
 	focus_id = screens.focused[place_index][0] ? screens.focused[place_index] : NULL;
 	top = 0;
+	spaces_left = spaces;
 	for (index = 0; index < screen->block_count; index++)
 	{
 		struct menu_screen_block const *block = &screen->blocks[index];
@@ -526,7 +523,10 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 			height = (short)(height - shrink);
 			break;
 		case MENU_SCREEN_SPACE:
-			height = spaces ? (short)(extra / spaces) : 0;
+			/* (the last the rest of it, so that a bar after it is at the
+			screen's foot) */
+			spaces_left--;
+			height = spaces ? (short)(spaces_left ? extra / spaces : extra - (spaces - 1) * (extra / spaces)) : 0;
 			break;
 		case MENU_SCREEN_HEADER:
 		{
@@ -680,34 +680,44 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		}
 		case MENU_SCREEN_BUTTONS:
 		{
-			struct widget_instance *bar;
 			long button;
+			short left_x = BUTTONS_MARGIN, right_x = (short)(SCREEN_WIDTH - BUTTONS_MARGIN - PROMPT_WIDTH);
+			struct widget_instance *bar =
+				screen_widget_add(widget, screens.prompts_tag, 0, (short)(top + PROMPTS_TOP));
 
-			/* (back at the left, the rest at the right, on the screen's
-			bottom line) */
-			screen_buttons_text(screen, index, FALSE, text, sizeof(text));
-			bar = text[0] ? screen_widget_add(widget, screens.buttons_tag, 0, (short)(top + BUTTONS_TOP)) : NULL;
-			if (bar)
-				screen_text_set(bar, text);
-			open->buttons_left = bar;
-			screen_buttons_text(screen, index, TRUE, text, sizeof(text));
-			bar = text[0] ? screen_widget_add(widget, screens.buttons_right_tag, 0, (short)(top + BUTTONS_TOP)) :
-				NULL;
-			if (bar)
-				screen_text_set(bar, text);
-			open->buttons_right = bar;
-			open->right_count = 0;
-			for (button = 0; button < screen->block_count && open->right_count < SCREEN_MAXIMUM_BUTTONS; button++)
+			/* (each a prompt, its key's picture, "%a-button": the menus' key
+			for it while the keyboard plays, and its word; back at the left,
+			the rest from the right, on the footer's line) */
+			open->prompt_count = 0;
+			for (button = 0; button < screen->block_count && open->prompt_count < SCREEN_MAXIMUM_BUTTONS; button++)
 			{
 				struct menu_screen_block const *block_button = &screen->blocks[button];
+				boolean right;
+				struct widget_instance *prompt;
+				long made = open->prompt_count;
 
-				if (block_button->kind == MENU_SCREEN_BUTTON && block_button->parent == index &&
-					screen_button_right(block_button))
-				{
-					snprintf(open->right_keys[open->right_count], SCREEN_ID_LENGTH, "%s", block_button->key);
-					snprintf(open->right_labels[open->right_count], SCREEN_ID_LENGTH, "%s", block_button->label);
-					open->right_count++;
-				}
+				if (!bar || block_button->kind != MENU_SCREEN_BUTTON || block_button->parent != index)
+					continue;
+				right = screen_button_right(block_button);
+				/* (in the bar, where it is) */
+				prompt = ui_widget_port_add_child(bar, right ? screens.prompt_tag : screens.prompt_left_tag, NULL);
+				if (!prompt)
+					continue;
+				prompt->horizontal_offset = right ? right_x : left_x;
+				prompt->vertical_offset = PROMPT_TOP;
+				snprintf(text, sizeof(text), "%s %s", !strcmp(block_button->key, "accept") ? "%a-button" :
+					!strcmp(block_button->key, "back") ? "%b-button" : !strcmp(block_button->key, "x") ? "%x-button" :
+					"%y-button", block_button->label);
+				screen_text_set(prompt, text);
+				open->prompts[made] = prompt;
+				open->prompt_x[made] = right ? right_x : left_x;
+				open->prompt_right[made] = right;
+				snprintf(open->prompt_keys[made], SCREEN_ID_LENGTH, "%s", block_button->key);
+				open->prompt_count++;
+				if (right)
+					right_x = (short)(right_x - PROMPT_GAP - PROMPT_WIDTH);
+				else
+					left_x = (short)(left_x + PROMPT_LEFT_WIDTH + PROMPT_GAP);
 			}
 			break;
 		}
@@ -807,51 +817,6 @@ void menu_screen_closed(struct widget_instance *widget)
 		memset(open, 0, sizeof(*open));
 }
 
-/* the button bar's right side placed to end at the screen's right margin:
-its words measured in its font, each key's picture as wide as the device
-shows it (a controller's button, or the keyboard's key's cap) */
-static void screen_buttons_right_place(struct screen_open *open)
-{
-	struct widget_instance *bar = open->buttons_right;
-	short box_width = 0;
-	long font = ui_widget_port_text_box_font(bar, &box_width);
-	boolean keys = halo_keyboard_prompts() != 0;
-	wchar_t measured[MENU_SCREEN_MAXIMUM_TEXT];
-	char text[MENU_SCREEN_MAXIMUM_TEXT];
-	unsigned short wide[MENU_SCREEN_MAXIMUM_TEXT];
-	rectangle2d bounds, text_bounds, cursor_bounds;
-	real_argb_color color = { 1.0f, 1.0f, 1.0f, 1.0f };
-	long index, length;
-	short width;
-
-	if (font == NONE)
-		return;
-	text[0] = 0;
-	for (index = 0; index < open->right_count; index++)
-	{
-		size_t used = strlen(text);
-		/* (a key's picture as wide as its name's letters and its cap's
-		edges, or a button's as two letters) */
-		char const *key = !strcmp(open->right_keys[index], "accept") ? "Enter" :
-			!strcmp(open->right_keys[index], "back") ? "Esc" : !strcmp(open->right_keys[index], "x") ? "Tab" : "F";
-
-		snprintf(text + used, sizeof(text) - used, "%s%s %s", used ? "     " : "", keys ? key : "WW",
-			open->right_labels[index]);
-		if (keys)
-			snprintf(text + strlen(text), sizeof(text) - strlen(text), "  ");
-	}
-	length = halo_menus_utf16(text, wide, NUMBEROF(wide));
-	csmemcpy(measured, wide, length * (long)sizeof(wchar_t));
-	set_rectangle2d(&bounds, 0, 0, 640, 40);
-	draw_string_set_draw_mode(font, NONE, 0, 0, &color);
-	draw_unicode_string_compute_bounds(&bounds, measured, &text_bounds, &cursor_bounds);
-	width = (short)(text_bounds.x1 - text_bounds.x0);
-	if (width <= 0 || width > SCREEN_WIDTH)
-		return;
-	bar->horizontal_offset = (short)(open->widget->horizontal_offset + SCREEN_WIDTH - BUTTONS_MARGIN - width +
-		ui_widget_port_past_move() / 2);
-}
-
 /* the item focused now (its index, NONE for none) */
 static long screen_focused(struct screen_open const *open)
 {
@@ -896,14 +861,15 @@ void menu_screen_frame(struct widget_instance *widget)
 		else
 			open->generation = menu_screens_generation(open->place->screen);
 	}
-	if (open->buttons_right)
-		screen_buttons_right_place(open);
-	/* (past 16:9, the band's title and the bar's left side to the screen's
-	left edge, as the tall layout's titles: its right side, above) */
+	/* (past 16:9, the band's title and the bar's prompts to the screen's
+	edges, as the tall layout's titles and footer's prompts) */
 	if (open->header && open->header_picture == NONE)
 		open->header->horizontal_offset = (short)(widget->horizontal_offset - ui_widget_port_past_move() / 2);
-	if (open->buttons_left)
-		open->buttons_left->horizontal_offset = (short)(widget->horizontal_offset - ui_widget_port_past_move() / 2);
+	for (index = 0; index < open->prompt_count; index++)
+	{
+		open->prompts[index]->horizontal_offset = (short)(open->prompt_x[index] +
+			(open->prompt_right[index] ? 1 : -1) * (ui_widget_port_past_move() / 2));
+	}
 	focused = screen_focused(open);
 	for (index = 0; index < open->item_count; index++)
 	{
@@ -987,6 +953,29 @@ boolean menu_screen_do(struct widget_instance *item, struct event_record *event,
 				snprintf(screens.focused[open->place - screen_places], SCREEN_ID_LENGTH, "%s", open->ids[index]);
 			return screen_action_run(item, event, open->actions[index], deleted);
 		}
+	}
+	return FALSE;
+}
+
+boolean menu_screen_key(struct widget_instance *prompt, struct event_record *event, boolean *deleted, short controller)
+{
+	struct screen_open *open = screen_open_of(widget_instance_get_topmost_parent(prompt));
+	long index;
+
+	*deleted = FALSE;
+	for (index = 0; open && index < open->prompt_count; index++)
+	{
+		char const *key = open->prompt_keys[index];
+
+		if (open->prompts[index] != prompt)
+			continue;
+		/* (accept: the item the list has chosen, as A on it; the others their
+		button pressed, which the screen takes as it takes the controller's) */
+		if (!strcmp(key, "accept"))
+			return open->list && open->list->focused_child && menu_screen_do(open->list->focused_child, event, deleted);
+		event_manager_post_button(controller, !strcmp(key, "back") ? SCREEN_BUTTON_B :
+			!strcmp(key, "x") ? SCREEN_BUTTON_X : SCREEN_BUTTON_Y);
+		return TRUE;
 	}
 	return FALSE;
 }

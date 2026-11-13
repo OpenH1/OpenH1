@@ -103,6 +103,10 @@ tall layout's) where the engine runs it, else the model's first (NULL: no
 model) */
 struct halo_menu_model_geometry;
 struct halo_menu_model_geometry const *menu_engine_settings_geometry(struct widget_instance *widget);
+/* where a geometry's rows or panel end (its rows_bottom or panel_bottom):
+the tall layout's (a geometry that scrolls) the footer's lift higher on a
+touchscreen (ui_widget_port_foot_lift), the footer raised there */
+long menu_engine_geometry_bottom(struct halo_menu_model_geometry const *geometry, long bottom);
 
 /* ---------- Settings' search, the engine's alone (menu_search.c; the menus'
 functions' settings_search_*) */
@@ -149,5 +153,8 @@ drawn as its definition has it */
 boolean menu_screen_item_picture(struct widget_instance const *widget, long *bitmap_tag, rectangle2d *bounds);
 /* "port screen do", an item's A: its action run */
 boolean menu_screen_do(struct widget_instance *item, struct event_record *event, boolean *deleted);
+/* "port screen key", a button bar prompt's A (a click, a tap): its key
+pressed (accept: the item chosen's action) */
+boolean menu_screen_key(struct widget_instance *prompt, struct event_record *event, boolean *deleted, short controller);
 
 #endif

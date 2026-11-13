@@ -230,6 +230,11 @@ short ui_widget_port_anchor_extra(void);
 the Android and iOS apps, or debug.touch_menus): their buttons then name no
 controller's key (port/linux/game/menu_tags.c) */
 int ui_widget_port_touch_menus(void);
+/* the tall layout's footer on a touchscreen, raised above a phone's safe
+area at the screen's foot: how far (0 elsewhere), and a widget's move up by
+it (its port flag foot) as it is drawn (port/linux/game/menu_tags.c) */
+short ui_widget_port_foot_lift(void);
+short ui_widget_port_foot_offset(long flags);
 /* the wide layout of the port's own screens (their widgets' wide attribute:
 port/linux/game/menu_tags.c): the extra width past the menus' 640 a view
 this wide lays them out in (to 16:9's), and a value's part of it; the

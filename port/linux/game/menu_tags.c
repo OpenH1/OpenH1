@@ -361,8 +361,9 @@ static char const *const widget_flag_names[] =
 	/* (the PC version's, which this engine has no use for) */
 	"force_handle_mouse", "no_widescreen_fill",
 	/* (the port's: ui_widget_port_anchor_offset, ui_widget_port_stretch,
-	ui_widget_port_keep_ends, ui_widget_port_wheel_sideways) */
-	"anchor_left", "anchor_right", "stretch", "keep_ends", "wheel_sideways",
+	ui_widget_port_keep_ends, ui_widget_port_wheel_sideways,
+	ui_widget_port_foot_offset; above_foot, look_make) */
+	"anchor_left", "anchor_right", "stretch", "keep_ends", "wheel_sideways", "foot", "above_foot",
 };
 
 /* the port's widget flags' bits (widget_flag_names) */
@@ -371,6 +372,16 @@ static char const *const widget_flag_names[] =
 #define WIDGET_FLAG_STRETCH 19
 #define WIDGET_FLAG_KEEP_ENDS 20
 #define WIDGET_FLAG_WHEEL_SIDEWAYS 21
+#define WIDGET_FLAG_FOOT 22
+#define WIDGET_FLAG_ABOVE_FOOT 23
+
+/* how far the tall layout's footer is raised on a touchscreen
+(port_settings.py's TALL_FOOT_LIFT): its prompts' words, which end 11 units
+above the screen's foot, to above a phone's safe area there (an iPhone's 21
+points: menu_layout.c's MENU_LAYOUT_PHONE_FOOT, 25.6 units) */
+#define TALL_FOOT_LIFT 16
+/* (a picture's name and _touch) */
+#define HALO_MENU_TOUCH_NAME 300
 
 /* whether the menus are laid out for a touchscreen: the touchscreens'
 builds, or debug.touch_menus (read again when a setting changes: the menu
@@ -439,6 +450,20 @@ right (ui_widget.c's ui_mouse_wheel_widget) */
 boolean ui_widget_port_wheel_sideways(long flags)
 {
 	return (flags & FLAG(WIDGET_FLAG_WHEEL_SIDEWAYS)) != 0;
+}
+
+/* how far the tall layout's footer is raised: TALL_FOOT_LIFT on a
+touchscreen, else 0 (the computer's layout as it is) */
+short ui_widget_port_foot_lift(void)
+{
+	return ui_widget_port_touch_menus() ? TALL_FOOT_LIFT : 0;
+}
+
+/* foot: the widget (and what is in it) moved up by the footer's lift, as it
+is drawn and tapped (the tall layout's footer: its prompts and buttons) */
+short ui_widget_port_foot_offset(long flags)
+{
+	return flags & FLAG(WIDGET_FLAG_FOOT) ? (short)-ui_widget_port_foot_lift() : 0;
 }
 
 static char const *const widget_type_names[] = { "container", "text", "spinner", "column_list" };
@@ -606,8 +631,9 @@ static char const *const port_function_names[] =
 	/* (the main menu's 2V2 browser: doubles_browser.inc) */
 	"port doubles init", "port doubles dispose", "port doubles host", "port doubles find", "port doubles friend",
 	"port doubles join", "port doubles invite", "port doubles x",
-	/* (a hand-written screen's item: its action, menu_screen.c) */
-	"port screen do",
+	/* (a hand-written screen's item: its action; and a prompt of its button
+	bar: its key, menu_screen.c) */
+	"port screen do", "port screen key",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -1970,8 +1996,14 @@ static void *widget_build(long widget_index)
 	reference_clear(&definition->background_bitmap, BITMAP_GROUP_TAG);
 	if (source->bitmap)
 	{
+		char touch[HALO_MENU_TOUCH_NAME];
+
+		/* (on a touchscreen, its <bitmap>_touch where the menus have one, as
+		a look's picture is: look_make) */
+		snprintf(touch, sizeof(touch), "%s_touch", source->bitmap);
 		reference_set(&definition->background_bitmap, BITMAP_GROUP_TAG,
-			tag_named(BITMAP_GROUP_TAG, source->bitmap, source->file, source->line));
+			tag_named(BITMAP_GROUP_TAG, ui_widget_port_foot_lift() && !strchr(source->bitmap, '\\') &&
+				bitmap_named(touch) != NONE ? touch : source->bitmap, source->file, source->line));
 	}
 	/* the game data inputs */
 	for (count = 0, input = source->first_input; input != HALO_MENU_NONE; input = menus->inputs[input].next)
@@ -2382,9 +2414,11 @@ model has not got, or whose look names what is not there, is drawn from its
 definition, and logged (look_missing): tools/menu_parity.py fails on it. */
 
 /* the widget flags that are its look (widget_flag_names): flash_bitmap,
-nifty_fx, anchor_left, anchor_right, stretch and keep_ends */
+nifty_fx, anchor_left, anchor_right, stretch, keep_ends, foot and
+above_foot */
 #define LOOK_FLAGS (FLAG(2) | FLAG(13) | FLAG(WIDGET_FLAG_ANCHOR_LEFT) | FLAG(WIDGET_FLAG_ANCHOR_RIGHT) | \
-	FLAG(WIDGET_FLAG_STRETCH) | FLAG(WIDGET_FLAG_KEEP_ENDS))
+	FLAG(WIDGET_FLAG_STRETCH) | FLAG(WIDGET_FLAG_KEEP_ENDS) | FLAG(WIDGET_FLAG_FOOT) | \
+	FLAG(WIDGET_FLAG_ABOVE_FOOT))
 
 /* a widget drawn from its definition, not its look, and why */
 static void look_missing(char const *name, char const *why, char const *detail)
@@ -2624,11 +2658,19 @@ static boolean look_make(struct menu_look *made, long tag_index)
 		look->line) & LOOK_FLAGS;
 	definition->flags |= flags_parse(look->effects, widget_flag_names, NUMBEROF(widget_flag_names), look->file,
 		look->line) & LOOK_FLAGS;
-	if (!look_reference(&definition->background_bitmap, BITMAP_GROUP_TAG, look->picture, ""))
+	/* (on a touchscreen, its picture the menus' <picture>_touch where they
+	have one: the tall layout's drawn for its footer's lift; and above_foot,
+	a widget that reaches down to the footer, the lift shorter) */
+	if (!(look->picture && ui_widget_port_foot_lift() &&
+			look_tag(BITMAP_GROUP_TAG, look->picture, "_touch") != NONE &&
+			look_reference(&definition->background_bitmap, BITMAP_GROUP_TAG, look->picture, "_touch")) &&
+		!look_reference(&definition->background_bitmap, BITMAP_GROUP_TAG, look->picture, ""))
 	{
 		look_missing(made->name, "there is no picture", look->picture);
 		return FALSE;
 	}
+	if (definition->flags & FLAG(WIDGET_FLAG_ABOVE_FOOT))
+		definition->bounds.y1 = (short)(definition->bounds.y1 - ui_widget_port_foot_lift());
 	made->radius = (short)look->radius;
 	if (!look_text(definition, look))
 	{

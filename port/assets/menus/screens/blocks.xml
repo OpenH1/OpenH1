@@ -9,6 +9,8 @@ screen file's, set on each widget as the screen is made. -->
 	<!-- a hand-written screen of its own (not one that takes a generated
 	screen's place): the screen the game opens, which the engine fills from its
 	file (menu_screen.c's screen_places) -->
+	<!-- (on a touchscreen, drawn from background_tall_touch: its footer's line raised, as the tall screens' are,
+	menu_tags.c's widget_build) -->
 	<widget name="screens/campaign" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/background_tall"/>
 	<!-- a header's title in the tall layout's band, as Settings' and the browsers' titles (port_settings.py's tall_title) -->
 	<widget name="screens/header_text" type="text" left="24" width="592" height="40" font="heading" color="#FF2995FD" text_y="9" wide="-106 0" text_flags="no_focus_test"/>
@@ -47,8 +49,22 @@ screen file's, set on each widget as the screen is made. -->
 	<widget name="screens/card_subtitle" type="text" left="10" top="172" width="138" height="60" font="ui\small_ui" color="#FF6F9CD0" align="center" text_flags="no_focus_test wrap"/>
 	<!-- the focused item's hint, under it -->
 	<widget name="screens/hint" type="text" width="440" height="16" font="ui\small_ui" color="#FF6F9CD0" align="center" text_flags="no_focus_test"/>
-	<!-- the button-hint bar: each button's key and what it does, at the foot of the screen -->
-	<widget name="screens/buttons" type="text" left="24" width="400" height="20" font="ui\small_ui" color="#FFCCCCCC" wide="-106 0" text_flags="no_focus_test"/>
-	<!-- the bar's right side (accept): placed to end at the screen's right margin (menu_screen.c) -->
-	<widget name="screens/buttons_right" type="text" width="400" height="20" font="ui\small_ui" color="#FFCCCCCC" wide="106 0" text_flags="no_focus_test"/>
+	<!-- the button bar at the foot of the screen: each button a prompt, its
+	key's picture and its word, as the tall layout's footer's (Choose
+	Mission's, port_settings.py's _missions and _prompts): lit while it has
+	the focus, and A, Start, a click or a tap press its key (menu_screen.c's
+	menu_screen_key); raised above a phone's safe area on a touchscreen
+	(foot). The bar a list of them, as Choose Mission's footer: the pointer
+	over one gives it the focus. BACK's at the left, the rest's at the right -->
+	<widget name="screens/prompts" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items foot"/>
+	<widget name="screens/prompt_left" type="text" width="96" height="24" wide="-106 0" bitmap="main_menu/parts/item_96x24" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="3">
+		<on event="a" run="port screen key"/>
+		<on event="start" run="port screen key"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="screens/prompt" type="text" width="124" height="24" wide="106 0" bitmap="main_menu/parts/item_124x24" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="3">
+		<on event="a" run="port screen key"/>
+		<on event="start" run="port screen key"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
 </menus>

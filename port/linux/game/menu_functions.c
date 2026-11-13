@@ -4024,8 +4024,9 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		short name_top = settings_part(panel, "panel name")->vertical_offset;
 		struct halo_menu_model_geometry const *geometry = menu_engine_settings_geometry(list);
 		/* (the panel's bottom in the geometry its screen is laid out in: the
-		tall layout's lower) */
-		short bottom = (short)(geometry && geometry->panel_bottom ? geometry->panel_bottom : SETTINGS_PANEL_BOTTOM);
+		tall layout's lower, and raised with the footer on a touchscreen) */
+		short bottom = (short)(geometry && geometry->panel_bottom ?
+			menu_engine_geometry_bottom(geometry, geometry->panel_bottom) : SETTINGS_PANEL_BOTTOM);
 		short room = (short)(bottom - SETTINGS_PANEL_TEXT_MARGIN - name_top);
 		short top = stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : picture ? SETTINGS_PANEL_TEXT_UNDER_PICTURE :
 			SETTINGS_PANEL_TEXT_TOP;
@@ -13384,6 +13385,10 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "port screen do"))
 		{
 			return menu_screen_do(widget, event, widget_deleted);
+		}
+		else if (!strcmp(name, "port screen key"))
+		{
+			return menu_screen_key(widget, event, widget_deleted, controller);
 		}
 		else if (!strcmp(name, "profile set edit begin"))
 		{

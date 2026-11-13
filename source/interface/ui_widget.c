@@ -8905,6 +8905,9 @@ static void widget_instance_render_recursive(
 	/* port: anchored to the screen's left or right edge where the screen is
 	wider than the menus' 640 (ui_widget_port_anchor_offset) */
 	offset.x += ui_widget_port_anchor_offset(definition->flags);
+	/* port: the tall layout's footer raised above a phone's safe area at the
+	screen's foot (ui_widget_port_foot_offset) */
+	offset.y += ui_widget_port_foot_offset(definition->flags);
 	/* port: and moved in the wide layout of the port's own screens
 	(ui_widget_port_wide_offset) */
 	offset.x += ui_widget_port_wide_offset(widget->definition_tag_index);

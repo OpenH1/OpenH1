@@ -2,6 +2,7 @@
 (tools/port_settings.py's PAGES, packed as menu_functions.c's
 settings_rows_pack packs them)."""
 import re
+from xml.etree import ElementTree
 from pathlib import Path
 
 import pytest
@@ -472,3 +473,29 @@ def test_tall_layout_is_the_new_engines():
     model = "\n".join(port_settings.model_files()[port_settings.MODEL_FILE])
     assert model.count(f'geometry="{tall.name}"') == len(PAGES) + 1  # (and the search's screen)
     assert f'<geometry name="{tall.name}"' in model
+
+
+def test_the_tall_footer_is_raised_on_a_touchscreen():
+    """On a touchscreen the tall layout's footer rises TALL_FOOT_LIFT (menu_tags.c's, the same number): every tall
+    screen's footer bar is flagged foot, the panels that reach down to it above_foot, each of those panels' pictures
+    and the background have a _touch picture (the footer's line raised), and nothing else is flagged (the rows the
+    engine lays out past the footer's line among them)."""
+    tags = Path("port/linux/game/menu_tags.c").read_text()
+    assert int(re.search(r"#define TALL_FOOT_LIFT (\d+)", tags).group(1)) == port_settings.TALL_FOOT_LIFT
+    root = ElementTree.fromstring("<menus>" + "\n".join(port_settings.tall_widgets()) + "</menus>")
+    flagged = {}
+    for widget in root.iter("widget"):
+        for flag in ("foot", "above_foot"):
+            if flag in (widget.get("flags") or "").split():
+                flagged.setdefault(flag, set()).add(widget.get("name"))
+    footers = {name.rsplit("/", 1)[1] for name in flagged["foot"]}
+    assert footers == {"button_bar", "mission_prompts", "difficulty_prompts", "doubles_prompts",
+                       "join_game_button_bar"}
+    assert all(root.find(f".//widget[@name='{name}']").get("type") == "column_list" for name in flagged["foot"])
+    pictures = {name for name, _ in port_settings.settings_pictures() + port_settings.parts_pictures()}
+    panels = {root.find(f".//widget[@name='{name}']").get("bitmap") for name in flagged["above_foot"]}
+    assert panels and all(port_settings.touch_picture(picture) in pictures for picture in panels)
+    assert port_settings.touch_picture(port_settings.TALL_BACKGROUND) in pictures
+    # (the computer's footer as it was: the classic widgets have no such flag)
+    ce = "\n".join(path.read_text() for path in Path("port/assets/menus/ce").glob("*.xml"))
+    assert not re.search(r'flags="[^"]*\b(above_)?foot\b', ce)
