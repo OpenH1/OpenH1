@@ -289,6 +289,9 @@ static struct screen_action const screen_actions[] =
 	{ "lobby skill right", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
 	{ "lobby teams left", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
 	{ "lobby teams right", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	/* (the lobby's chat: a line begun, the on-screen keyboard's on a
+	controller or a touchscreen) */
+	{ "lobby chat", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
 };
 
 static char const *const screen_action_names[] =
@@ -301,6 +304,7 @@ static char const *const screen_action_names[] =
 	"profile new", "profile delete", "lobby row", "lobby start", "lobby team red", "lobby team blue",
 	"lobby team toggle", "lobby invite", "lobby settings", "lobby host", "lobby add player", "lobby bots left",
 	"lobby bots right", "lobby skill left", "lobby skill right", "lobby teams left", "lobby teams right",
+	"lobby chat",
 };
 
 /* a binding's value: the saved game's mission and difficulty (player 1's
@@ -326,7 +330,7 @@ static char const *const screen_binding_names[] =
 	"lobby.map", "lobby.limits", "lobby.kind", "lobby.kind.tone", "lobby.tick", "lobby.opence", "lobby.after",
 	"lobby.bots", "lobby.bots.shown", "lobby.bots.locked", "lobby.bots.count.locked", "lobby.skill", "lobby.teams",
 	"lobby.status", "lobby.start", "lobby.host", "lobby.settings", "lobby.controls", "lobby.waiting",
-	"lobby.team.change", "lobby.invite", "lobby.add",
+	"lobby.team.change", "lobby.invite", "lobby.add", "lobby.chat",
 };
 
 /* the row sources a table may name (menu_table.h), and their names */
@@ -342,6 +346,17 @@ static char const *const screen_source_names[] =
 	"browser.games",
 	"profiles",
 	"lobby.players",
+};
+
+/* the chats a <chat> may name (menu_table.h), and their names */
+static struct menu_chat_source const *const screen_chats[] =
+{
+	&pc_menu_lobby_chat,
+};
+
+static char const *const screen_chat_names[] =
+{
+	"lobby.chat",
 };
 
 static int screen_value(void *context, char const *name, char *value, unsigned long size)
@@ -384,6 +399,7 @@ static struct menu_screen_names const screen_names =
 	screen_action_names, NUMBEROF(screen_action_names),
 	screen_binding_names, NUMBEROF(screen_binding_names),
 	screen_source_names, NUMBEROF(screen_source_names),
+	screen_chat_names, NUMBEROF(screen_chat_names),
 };
 
 /* the menus' screens a hand-written one takes the place of, by its name, and
@@ -1209,6 +1225,9 @@ void menu_screen_widget_drawing(struct widget_instance const *widget, point2d of
 		the widgets' order: over what is drawn before, under what after) */
 		if (open->widget && open->has_spartan && open->spartan_picture == widget)
 			menu_spartan_draw(offset.x, offset.y);
+		/* (its chat's on-screen keyboard, over everything) */
+		if (open->widget && tall_screens[index] && tall_screens[index]->chat_keyboard == widget)
+			tall_chat_keyboard_draw(tall_screens[index], offset);
 	}
 }
 

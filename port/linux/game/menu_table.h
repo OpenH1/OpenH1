@@ -94,6 +94,32 @@ struct menu_table_source
 	int (*state)(short index);
 };
 
+/* a chat's line, as its source says it is */
+struct menu_chat_line
+{
+	/* its sender's name (empty: a notice), its words (UTF-16), the name's
+	colour (0xRRGGBBAA) */
+	unsigned short name[MENU_TABLE_BADGE_LENGTH * 2];
+	unsigned short text[MENU_TABLE_TEXT_LENGTH];
+	unsigned long color;
+};
+
+/* a chat's lines and what is typed (<chat>: the lobby's) */
+struct menu_chat_source
+{
+	/* each frame the chat is drawn: its lines, the oldest first (at most
+	maximum), their count */
+	short (*lines)(struct menu_chat_line *lines, short maximum);
+	/* the line being typed (NULL: none), and whether its on-screen keyboard
+	is up */
+	char const *(*typed)(int *keyboard);
+	/* the on-screen keyboard drawn in its place (the menus' screen's units,
+	width by height) */
+	void (*keyboard)(short x0, short y0, short x1, short y1, short screen_width, short screen_height);
+	/* the words the line typed's place shows while none is (empty: none) */
+	char const *(*prompt)(void);
+};
+
 /* ---------- the server browser's (menu_functions.c) */
 
 extern struct menu_table_source const pc_menu_browser_source;
@@ -123,6 +149,8 @@ int pc_menu_lobby_action(struct widget_instance *widget, struct event_record *ev
 /* each frame the lobby's screen is drawn: what its generated screen's list
 did each frame (the split screen's players joining, the map vote's screen) */
 void pc_menu_lobby_frame(struct widget_instance *screen);
+/* the lobby's chat (network_chat.c's lobby lines) */
+extern struct menu_chat_source const pc_menu_lobby_chat;
 /* a text box drawn with a machine's speaker beside it (the voice chat's:
 menu_functions_text_box_drawn), this frame */
 void pc_menu_speaker_note(struct widget_instance *text, long machine);

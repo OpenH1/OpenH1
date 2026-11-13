@@ -13,7 +13,7 @@ screen down: <title-art/>, <header> (title, picture, detail, a <button>),
 <cards> holding <card>s, <tabs> (current) holding <tab>s, <table> (source,
 sorted, do, empty, lanes, left, right) holding <lane>s, <column>s (each a <search> in its title) and a
 <button>, <search>, <panel> holding <heading>, <text>, <pills> of <pill>s,
-<pair>, <choice>, <spartan> and <button>s, <space/>, and <buttons> holding <button>s (key, label,
+<pair>, <choice>, <spartan> and <button>s, <chat> (source, lines, do, if), <space/>, and <buttons> holding <button>s (key, label,
 do, width, if). Texts may hold bindings, {name}, filled from C; a do and the
 screen's back are actions, a table's source a row source, an if, a current,
 a sorted and a search's value bindings: names the game knows. All are
@@ -69,7 +69,9 @@ enum menu_screen_block_kind
 	lane its panel, title and detail) */
 	MENU_SCREEN_LANE,
 	/* (a panel's choice: its label, its value between arrows, stepped) */
-	MENU_SCREEN_CHOICE
+	MENU_SCREEN_CHOICE,
+	/* (a chat's lines, under a tall screen's table, and the line typed) */
+	MENU_SCREEN_CHAT
 };
 
 /* a <spartan>'s color: the focused <colors> item's, the profile's, or a
@@ -189,6 +191,9 @@ struct menu_screen_names
 	long binding_count;
 	char const *const *sources;
 	long source_count;
+	/* (a <chat>'s sources) */
+	char const *const *chats;
+	long chat_count;
 };
 
 /* a binding's value as text (UTF-8) for menu_screen_text: nonzero if it has

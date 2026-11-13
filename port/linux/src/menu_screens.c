@@ -70,7 +70,8 @@ enum reader_element
 	_element_pill,
 	_element_pair,
 	_element_lane,
-	_element_choice
+	_element_choice,
+	_element_chat
 };
 
 struct reader
@@ -768,6 +769,35 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 			text_attribute_check(reader, pair->label);
 			text_attribute_check(reader, values[1]);
 			shown_check(reader, NULL, pair->when);
+		}
+	}
+	else if (parent_element == _element_screen && !strcmp(name, "chat"))
+	{
+		static char const *const names[] = { "source", "lines", "do", "if", "when", NULL };
+
+		*element = _element_chat;
+		attributes_read(reader, name, attributes, names, values);
+		one_check(reader, MENU_SCREEN_CHAT, "chat");
+		block = block_add(reader, MENU_SCREEN_CHAT, -1);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *chat = &screen->blocks[block];
+
+			chat->source = values[0];
+			chat->action = values[2];
+			chat->condition = values[3];
+			chat->when = values[4];
+			chat->lines = 5;
+			if (!chat->source || !chat->source[0])
+				reader_problem(reader, "<chat> has no source", NULL);
+			else if (screen_names && !name_known(screen_names->chats, screen_names->chat_count, chat->source,
+				strlen(chat->source)))
+				reader_problem(reader, "there is no chat \"%s\"", chat->source);
+			if (!reader->failed && values[1])
+				chat->lines = number_read(reader, values[1], "a <chat>'s lines", 1, 12);
+			if (!reader->failed && chat->action)
+				action_check(reader, chat->action);
+			shown_check(reader, chat->condition, chat->when);
 		}
 	}
 	else if (parent_element == _element_panel && !strcmp(name, "choice"))
