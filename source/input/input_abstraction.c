@@ -651,6 +651,24 @@ boolean input_abstraction_port_flick_stick(
 		_joystick_controls_default;
 }
 
+/* port: the stick that alone looks (Modern aim's round dead zone:
+input_xbox.c's input_port_fix_stick_dead_zones) */
+short input_abstraction_port_look_stick(
+	short controller_index)
+{
+	if (controller_index < 0 || controller_index >= MAXIMUM_GAMEPADS)
+		return NONE;
+	switch (input_abstraction_globals.player_control_preferences[controller_index].joystick_controls)
+	{
+		case _joystick_controls_default:
+			return _gamepad_stick_right;
+		case _joystick_controls_southpaw:
+			return _gamepad_stick_left;
+		default:
+			return NONE;
+	}
+}
+
 /* ---------- public code */
 
 void input_abstraction_initialize(
@@ -1195,10 +1213,8 @@ boolean input_abstraction_port_substep_state(
 			*ticks = 1;
 	}
 	/* (each stick's dead range as input_xbox.c's: halo_stick_dead_range) */
-	gamepad.sticks[_gamepad_stick_left].x = fix_dead_zone(pad.sThumbLX, halo_stick_dead_range(_gamepad_stick_left));
-	gamepad.sticks[_gamepad_stick_left].y = fix_dead_zone(pad.sThumbLY, halo_stick_dead_range(_gamepad_stick_left));
-	gamepad.sticks[_gamepad_stick_right].x = fix_dead_zone(pad.sThumbRX, halo_stick_dead_range(_gamepad_stick_right));
-	gamepad.sticks[_gamepad_stick_right].y = fix_dead_zone(pad.sThumbRY, halo_stick_dead_range(_gamepad_stick_right));
+	input_port_fix_stick_dead_zones(controller_index, pad.sThumbLX, pad.sThumbLY, pad.sThumbRX, pad.sThumbRY,
+		gamepad.sticks);
 	input_abstraction_state_from_gamepad(controller_index, &gamepad, state);
 	keyboard_controls_apply(controller_index, halo_keyboard_actions(controller_index), state);
 	/* port: the input trace (port/linux/src/input_trace.c) */
