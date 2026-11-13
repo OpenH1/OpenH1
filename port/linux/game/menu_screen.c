@@ -1079,11 +1079,14 @@ static long screen_focused(struct screen_open const *open)
 /* a <spartan> of a binding's color whose binding has no value: none, nor its
 picture (Select Profile's row that makes a profile) */
 #define SCREEN_SPARTAN_NONE (-2)
+/* a <spartan> of a profile's color where there is no profile: no Spartan,
+the original picture of random */
+#define SCREEN_SPARTAN_NO_PROFILE (-3)
 
 /* the color a <spartan>'s player shows: the focused color's, the profile's
 (the one being edited, else the player's own), or its binding's (a color's
-number); NONE for random, or no profile; SCREEN_SPARTAN_NONE for a
-binding's none */
+number); MENU_SPARTAN_RANDOM for random; SCREEN_SPARTAN_NO_PROFILE for no
+profile; SCREEN_SPARTAN_NONE for a binding's none */
 static short screen_spartan_color(struct screen_open const *open, long focused, short player)
 {
 	if (open->spartan.color == MENU_SCREEN_SPARTAN_FOCUS && open->colors && focused != NONE)
@@ -1096,23 +1099,29 @@ static short screen_spartan_color(struct screen_open const *open, long focused, 
 		memset(&values, 0, sizeof(values));
 		if (!open->spartan.value || !screen_value(&values, open->spartan.value, value, sizeof(value)))
 			return SCREEN_SPARTAN_NONE;
-		return value[0] >= '0' && value[0] <= '9' ? (short)atoi(value) : NONE;
+		return value[0] >= '0' && value[0] <= '9' ? (short)atoi(value) : MENU_SPARTAN_RANDOM;
 	}
 	if (player == 0 && player_ui_get_edit_player_profile())
-		return player_ui_get_edit_player_profile()->primary_color_index;
+	{
+		short color = player_ui_get_edit_player_profile()->primary_color_index;
+
+		return color < 0 || color >= SCREEN_COLOR_COUNT ? MENU_SPARTAN_RANDOM : color;
+	}
 	if (player_ui_get_active_player_profile_index(player) != NONE)
 	{
 		struct player_profile profile;
 
 		player_ui_get_active_player_profile(player, &profile);
-		return profile.primary_color_index;
+		return profile.primary_color_index < 0 || profile.primary_color_index >= SCREEN_COLOR_COUNT ?
+			MENU_SPARTAN_RANDOM : profile.primary_color_index;
 	}
-	return NONE;
+	return SCREEN_SPARTAN_NO_PROFILE;
 }
 
 /* a <spartan>'s Spartans asked for this frame, each player's side by side in
-its box, and the original picture shown where there is none (no Spartan's
-tags: menu_spartan_available; random; or no profile) */
+its box (a random color's cycling through the colors: menu_spartan_color),
+and the original picture shown where there is none (no Spartan's tags:
+menu_spartan_available; or no profile) */
 static void screen_spartan_frame(struct screen_open *open, long focused)
 {
 	struct menu_screen_block const *block = &open->spartan;
@@ -1132,7 +1141,7 @@ static void screen_spartan_frame(struct screen_open *open, long focused)
 	{
 		short color = tested ? test_colors[player] : player ? screen_spartan_color(open, focused, player) : first;
 
-		if (color < 0 || color >= SCREEN_COLOR_COUNT || !menu_spartan_available())
+		if ((color != MENU_SPARTAN_RANDOM && (color < 0 || color >= SCREEN_COLOR_COUNT)) || !menu_spartan_available())
 			continue;
 		menu_spartan_place(player, color,
 			(real)block->box_x + (real)block->box_width * ((real)player + 0.5f) / (real)players,
