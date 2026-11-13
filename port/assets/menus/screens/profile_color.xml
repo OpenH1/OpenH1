@@ -23,7 +23,7 @@ edited and goes back, B goes back without one. -->
 	<panel>
 		<heading text="{color.title}"/>
 		<text text="{color.current}"/>
-		<spartan height="210" touch-height="120" color="color.spartan"/>
+		<spartan height="210" touch-height="150" color="color.spartan"/>
 		<text text="{color.about}" lines="2" touch-lines="2"/>
 	</panel>
 	<buttons>
