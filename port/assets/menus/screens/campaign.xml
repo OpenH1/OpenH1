@@ -3,7 +3,9 @@
 menu's CAMPAIGN; B goes back to it. Full screen, as Settings and the
 browsers: its title in the band at the top, two cards centred in the room
 under it, each a level's still (the campaign's pictures, by level), and the
-button bar at the bottom, BACK left and SELECT right. -->
+button bar at the bottom, BACK left, SELECT right and SKULLS (Y) beside it,
+which opens the campaign's skulls (screens/skulls.xml) for the solo and
+co-op games alike. -->
 <screen name="campaign">
 	<header title="CAMPAIGN"/>
 	<space/>
@@ -14,6 +16,7 @@ button bar at the bottom, BACK left and SELECT right. -->
 	<space/>
 	<buttons>
 		<button key="accept" label="SELECT"/>
+		<button key="y" label="SKULLS" do="open skulls"/>
 		<button key="back" label="BACK"/>
 	</buttons>
 </screen>

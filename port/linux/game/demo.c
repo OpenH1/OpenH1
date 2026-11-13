@@ -104,6 +104,7 @@ the code, and another's may part from it at the first tick.
 #include "network_coop.h"
 #include "halo_keyboard.h"
 #include "sim_rate.h"
+#include "skulls.h"
 #include "../src/demo_files.h"
 
 #include <stdio.h>
@@ -380,6 +381,8 @@ static struct
 	long rate;
 	/* the recorded game's rules (_demo_rule_*: the header's) */
 	unsigned long rules;
+	/* ... and its skulls (skulls.c: the header's) */
+	unsigned long skulls;
 	/* the records of a tick's code (D, F, I, L) the playback's code did not
 	take, left at a sub-step's or the tick's end: its code ran otherwise
 	than the recording's (it has parted, or is about to) */
@@ -801,6 +804,9 @@ static void demo_header_write(
 			/* (the game's rules this machine's settings would give a game
 			of the playback's machine otherwise: network_standard.c) */
 			network_standard_demo_rules(),
+			/* (the campaign's skulls the game plays: skulls.c; 0 in a demo
+			recorded before them) */
+			skulls_game(),
 		};
 		long index;
 
@@ -2146,6 +2152,15 @@ boolean demo_playback_rules(
 	return TRUE;
 }
 
+boolean demo_playback_skulls(
+	unsigned long *skulls)
+{
+	if (!demo_player.playing)
+		return FALSE;
+	*skulls = demo_player.skulls;
+	return TRUE;
+}
+
 /* (only inside the ticks: the frames, the menus and the netcode stay
 those of a game of this machine's own. A multiplayer game's ticks run as
 this machine's, as they always did: what the host decided by its machines
@@ -3094,6 +3109,7 @@ static boolean demo_playback_open(
 	demo_player.rate = (long)demo_read_u32(header + 96);
 	demo_player.difficulty = (long)demo_read_u32(header + 100);
 	demo_player.rules = demo_read_u32(header + 120);
+	demo_player.skulls = demo_read_u32(header + 124);
 	header[128 + DEMO_MAP_NAME_SIZE - 1] = 0;
 	snprintf(demo_player.map_name, sizeof(demo_player.map_name), "%s", (char const *)header + 128);
 	if (demo_player.connection != _game_connection_local && demo_player.connection != _game_connection_network_server)

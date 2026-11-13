@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The campaign's skulls (docs/menu_screens.md; port/linux/game/skulls.c):
+each on or off, as game.skulls keeps them for the next level begun (solo,
+or hosted in co-op). Opened
+from the Campaign screen's SKULLS (Y), before SOLO or CO-OP is chosen;
+B goes back to it. Its title in the band at the top, the skulls in two
+columns, the focused one's line under them, and the button bar at the
+bottom: BACK left, TOGGLE right, and the presets beside it, MYTHIC (X) and
+LASO (Y), each pressed again to turn its skulls off. -->
+<screen name="skulls">
+	<header title="SKULLS"/>
+	<space/>
+	<list focus="iron" columns="2">
+		<item id="iron" label="IRON" state="{skull.iron}" hint="Any player's death sends everyone back to the last checkpoint. Alone, the level starts over" do="skull iron"/>
+		<item id="black_eye" label="BLACK EYE" state="{skull.black_eye}" hint="Your shields recharge only when you melee an enemy" do="skull black_eye"/>
+		<item id="mythic" label="MYTHIC" state="{skull.mythic}" hint="Enemies have double health and shields" do="skull mythic"/>
+		<item id="thunderstorm" label="THUNDERSTORM" state="{skull.thunderstorm}" hint="Enemies are promoted one rank where they can be" do="skull thunderstorm"/>
+		<item id="catch" label="CATCH" state="{skull.catch}" hint="Enemies throw grenades far more often" do="skull catch"/>
+		<item id="tough_luck" label="TOUGH LUCK" state="{skull.tough_luck}" hint="Enemies always dive, take cover and dodge when they can" do="skull tough_luck"/>
+		<item id="famine" label="FAMINE" state="{skull.famine}" hint="Weapons dropped by enemies carry half their ammo" do="skull famine"/>
+		<item id="fog" label="FOG" state="{skull.fog}" hint="No motion tracker" do="skull fog"/>
+		<item id="tilt" label="TILT" state="{skull.tilt}" hint="Strengths and weaknesses are exaggerated: plasma against shields, bullets against flesh" do="skull tilt"/>
+		<item id="blind" label="BLIND" state="{skull.blind}" hint="No HUD and no weapon in view" do="skull blind"/>
+	</list>
+	<space/>
+	<buttons>
+		<button key="accept" label="TOGGLE"/>
+		<button key="x" label="MYTHIC" do="skulls mythic"/>
+		<button key="y" label="LASO" do="skulls laso"/>
+		<button key="back" label="BACK"/>
+	</buttons>
+</screen>

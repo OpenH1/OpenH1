@@ -95,6 +95,8 @@ def built(fault=None):
     (work / "names.inc").write_text(game_names())
     (work / "main_xml.inc").write_text("static char const main_xml[] =\n" +
                                        c_string((ROOT / "port/assets/menus/screens/main.xml").read_bytes()) + ";\n")
+    (work / "skulls_xml.inc").write_text("static char const skulls_xml[] =\n" +
+                                         c_string((ROOT / "port/assets/menus/screens/skulls.xml").read_bytes()) + ";\n")
     (work / "menu_screens.h").write_text(read("port/linux/include/menu_screens.h"))
     executable = work / "menu_screens"
     command = ["clang", *ABI_FLAGS, "-std=gnu99", "-O1", "-Wall", "-Werror", "-Wno-unused-function",
@@ -106,7 +108,7 @@ def built(fault=None):
     return executable
 
 
-CASES = ["main", "hints", "good", "syntax", "elements", "items", "actions", "bindings", "when", "kept"]
+CASES = ["main", "grid", "hints", "good", "syntax", "elements", "items", "actions", "bindings", "when", "kept"]
 
 
 @pytest.mark.parametrize("case", CASES)

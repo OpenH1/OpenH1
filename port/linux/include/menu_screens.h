@@ -8,9 +8,9 @@ into widgets by the menu engine (port/linux/game/menu_screen.c). Plain C89
 types, for both.
 
 A screen file holds <screen> (name, back), and in it, from the top of the
-screen down: <title-art/>, <list> (focus) holding <item>s (id, label, hint
-or <hint>s, do, when), <space/>, and <buttons> holding <button>s (key,
-label). An item's label and hints may hold bindings, {name}, filled from C;
+screen down: <title-art/>, <list> (focus, columns) holding <item>s (id,
+label, state, hint or <hint>s, do, when), <space/>, and <buttons> holding
+<button>s (key, label, do). An item's label and hints may hold bindings, {name}, filled from C;
 its do and the screen's back are actions, names the game knows. Both are
 checked as the file is read against the names the game gave
 (menu_screens_names).
@@ -63,6 +63,13 @@ struct menu_screen_block
 	long frame;
 	/* (a list's item focused first, by its id) */
 	char const *focus;
+	/* (a list's columns: 0, one, its items the large ones under each
+	other; 2 or more, a grid of small rows, each an item's label and its
+	state, the focused one's hint under the grid) */
+	long columns;
+	/* (an item's state, at the right of its row in a grid: "{skull.iron}";
+	NULL, none) */
+	char const *state;
 	char const *hints[MENU_SCREEN_MAXIMUM_HINTS];
 	int hint_count;
 	long line;

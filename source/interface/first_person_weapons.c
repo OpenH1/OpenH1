@@ -128,6 +128,7 @@ symbols in this file:
 #include "lowered_reticle.h" /* port: port/linux/game/lowered_reticle.c */
 #include "shaders/shader_definitions.h" /* port: (the shield's flare on the arms) */
 #include "shaders/shaders.h"
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 /* port: port/linux/game/shield_color.c */
 real_rgb_color const *shield_color_colors(long unit_index, real_rgb_color const *colors);
 /* port: port/linux/game/overshield_effect.c */
@@ -909,6 +910,9 @@ void first_person_weapon_render_update(
 				visible= TRUE;
 #endif
 
+			/* port: none with the Blind skull (port/linux/game/skulls.c) */
+			if (skulls_hud_hidden())
+				visible= FALSE;
 			first_person_weapon_set_visibility(render.local_player_index, visible);
 			if (first_person_weapon->visible)
 			{

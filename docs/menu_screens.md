@@ -60,11 +60,11 @@ centred, and the bar's wide layout reaches the screen's edges up to 16:9.
 | --- | --- | --- |
 | `<screen>` | `name` (required), `back` | The screen. `back` is the action for B and Back; without it, B goes back to the screen before |
 | `<title-art/>` | | Halo's title art, where the main menu has it. If the screen's blocks need more height than the canvas has, this block gives up some of its room |
-| `<list>` | `id`, `focus` | A list of items. The d-pad, the stick and the mouse wheel move through it, wrapping from the last item to the first, as the classic lists do. `focus` is the id of the item focused when the screen first opens. After that the screen remembers the last focused item |
-| `<item>` | `label` (required), `do` (required), `id`, `hint`, `when` | One item. A, Start, a click or a tap runs `do`. `hint` is the line shown under the item while it is focused. Write `<hint>` children instead to give alternatives: the first whose bindings all have values is shown. `when` lists platforms (`desktop android vr hdr touch pointer computer`, as for `platform=` in the menu files) and the item is made only on one of them |
+| `<list>` | `id`, `focus`, `columns` | A list of items. The d-pad, the stick and the mouse wheel move through it, wrapping from the last item to the first, as the classic lists do. `focus` is the id of the item focused when the screen first opens. After that the screen remembers the last focused item. `columns="2"` makes it a grid of small rows (`screens/toggle`), filled column by column: up and down step through the items, left and right go to the row beside, and the focused item's hint is shown under the grid (`screens/grid_hint`) |
+| `<item>` | `label` (required), `do` (required), `id`, `hint`, `when`, `state` | One item. A, Start, a click or a tap runs `do`. `hint` is the line shown under the item while it is focused. Write `<hint>` children instead to give alternatives: the first whose bindings all have values is shown. `when` lists platforms (`desktop android vr hdr touch pointer computer`, as for `platform=` in the menu files) and the item is made only on one of them. `state`, in a grid, is the words at the right of its row (a binding, `{skull.iron}`), read again each frame |
 | `<space/>` | | Takes the height left over (several spaces share it) |
 | `<buttons>` | | The button bar: each button a prompt, as Choose Mission's footer has them (its key's picture and word, lit while it has the focus; A, a click or a tap presses its key, accept running the chosen item's action), BACK at the left and the rest from the right, past 16:9 at the screen's edges, and on a touchscreen raised above a phone's safe area with the tall layout's footer (`foot`) |
-| `<button>` | `key` (`accept`, `back`, `x`, `y`), `label` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word |
+| `<button>` | `key` (`accept`, `back`, `x`, `y`), `label`, `do` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word. An `x` or `y` button's `do` is its own action, run by the button, its key or the controller's X or Y; without one, the key's button is pressed for the screen |
 
 The reader checks each file whole. A file is refused if it has any of these
 problems: bad XML; an element where it may not be; an attribute an element
@@ -94,6 +94,7 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | --- | --- |
 | `{campaign.level}` | The saved game's mission (player 1's profile), for example `The Silent Cartographer`; none without a saved game, or in co-op |
 | `{campaign.difficulty}` | The saved game's difficulty, for example `Legendary` |
+| `{skull.<name>}` | `ON` or `OFF`: whether `game.skulls` has the skull (`iron`, `black_eye`, `mythic`, `thunderstorm`, `catch`, `tough_luck`, `famine`, `fog`, `tilt`, `blind`) |
 
 ## Actions
 
@@ -112,6 +113,9 @@ sounds and the fades are the game's.
 | `open settings` | Settings, as the main menu's SETTINGS opens it |
 | `open training` | The VR tutorial (Basic Training's chapters) |
 | `quit` | The quit question, as the main menu's QUIT and B open it |
+| `open skulls` | The Skulls screen (`screens/skulls.xml`), from the Campaign screen's SKULLS (Y) |
+| `skull <name>` | That skull switched on or off in `game.skulls` (`port/linux/game/skulls.c`) |
+| `skulls mythic`, `skulls laso` | The presets: `game.skulls` set to Mythic, Thunderstorm and Catch, or to every skull; all off when it already is that |
 
 A file is checked against `screen_action_names` as it is read, and
 `tools/harness/tests/test_menu_screens.py` checks that every name there has an
@@ -182,6 +186,17 @@ studio's reload (`debug.menu_studio`, F7) reads them again.
 5. If it replaces a screen that `tools/menu_parity.py` compares, add the
    screen to `HAND_WRITTEN` there. The classic engine still draws the old
    screen; the new engine's side must have drawn the hand-written blocks.
+
+## The Skulls screen
+
+`screens/skulls.xml`: the campaign's skulls (`game.skulls`, read as a level
+begins: solo, and a co-op host's for its game) in a grid of two columns, each
+row a skull and ON or OFF, the focused one's line under the grid, and the bar:
+BACK, LASO (Y), MYTHIC (X) and TOGGLE (A). It is opened from the Campaign
+screen's SKULLS (Y), not Choose Difficulty: the Campaign screen is
+hand-written and comes before both SOLO and CO-OP, whose host plays its
+skulls too, while Choose Difficulty is generated, shared with the classic
+engine, and on the solo path alone.
 
 ## The main menu: four doors
 

@@ -12,6 +12,8 @@ screen file's, set on each widget as the screen is made. -->
 	<!-- (on a touchscreen, drawn from background_tall_touch: its footer's line raised, as the tall screens' are,
 	menu_tags.c's widget_build) -->
 	<widget name="screens/campaign" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/background_tall"/>
+	<!-- the campaign's skulls (screens/skulls.xml), opened from the Campaign screen -->
+	<widget name="screens/skulls" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/background_tall"/>
 	<!-- a header's title in the tall layout's band, as Settings' and the browsers' titles (port_settings.py's tall_title) -->
 	<widget name="screens/header_text" type="text" left="24" width="592" height="40" font="heading" color="#FF2995FD" text_y="9" wide="-106 0" text_flags="no_focus_test"/>
 	<!-- an inner screen's header: its lettered picture (the file's picture=), where the campaign menu's is -->
@@ -32,6 +34,18 @@ screen file's, set on each widget as the screen is made. -->
 		<on event="start" run="port screen do"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
+	<!-- a grid's row (a list of columns="2"): its label at the left, framed while
+	focused, as Settings' rows; its state at the right; A, Start, a click or a
+	tap do its action -->
+	<widget name="screens/toggle" type="text" width="280" height="26" bitmap="main_menu/parts/item_280x26" font="ui\large_ui" color="#FF8DB6E6" text_x="12" text_y="2">
+		<on event="a" run="port screen do"/>
+		<on event="start" run="port screen do"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="screens/toggle_state"/>
+	</widget>
+	<widget name="screens/toggle_state" type="text" left="172" width="96" height="26" font="ui\large_ui" color="#FF4584C8" align="right" text_y="2" text_flags="no_focus_test"/>
+	<!-- the focused row's hint, under the grid: two lines at most -->
+	<widget name="screens/grid_hint" type="text" width="576" height="36" font="ui\small_ui" color="#FF6F9CD0" align="center" text_flags="no_focus_test wrap"/>
 	<!-- cards side by side: the d-pad, the stick and the wheel step them -->
 	<widget name="screens/cards" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
 	<!-- a card, as the campaign's mission cards: its frame lit while focused;

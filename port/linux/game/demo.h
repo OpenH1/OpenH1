@@ -97,6 +97,8 @@ enum
 	_demo_rule_simulation_fixes_bit,
 };
 boolean demo_playback_rules(unsigned long *rules);
+/* ... and the campaign's skulls it played (skulls.c) */
+boolean demo_playback_skulls(unsigned long *skulls);
 /* the connection the ticks of the demo playing run as (main.c's
 game_connection): a co-op game this machine hosted plays its ticks as its
 host's, whose code decides the game's co-op parts (network_coop.c, the

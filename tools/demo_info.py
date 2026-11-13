@@ -23,6 +23,8 @@ SNAPSHOT_FLAGS = {0: "start", 1: "loaded", 2: "reset", 3: "seek"}
 # the game's rules the header holds (demo.h's _demo_rule_*), from format 3
 RULES = {0: "enhanced animations", 1: "turns with the aim", 2: "walks over a second weapon",
          3: "simulation fixes"}
+# the campaign's skulls the header holds (port/linux/game/skulls.h's order), 0 before them
+SKULLS = ["iron", "black_eye", "mythic", "thunderstorm", "catch", "tough_luck", "famine", "fog", "tilt", "blind"]
 # the records the tick's code takes as it runs, which only a tick holds,
 # between its sub-steps' U and its Z
 TICK_CODE_RECORDS = set("DFIL")
@@ -34,9 +36,10 @@ class Demo:
             raise ValueError("not a demo")
         self.version = data[8]
         self.build = data[16:80].split(b"\0")[0].decode("ascii", "replace")
-        values = struct.unpack_from("<11I", data, 80)
+        values = struct.unpack_from("<12I", data, 80)
         (self.network_version, self.allocation_checksum, self.state_size, self.connection, self.rate,
-         self.difficulty, self.start_tick, self.time, self.local_players, self.server, self.rules) = values
+         self.difficulty, self.start_tick, self.time, self.local_players, self.server, self.rules,
+         self.skulls) = values
         self.map_name = data[128:256].split(b"\0")[0].decode("ascii", "replace")
         self.blocks = []
         offset = HEADER_SIZE
@@ -142,6 +145,9 @@ def main() -> int:
     if demo.version >= 3:
         rules = [name for bit, name in RULES.items() if demo.rules & (1 << bit)]
         print(f"  the game's rules: {', '.join(rules) if rules else 'none of the enhancements'}")
+    if demo.skulls:
+        skulls = [name for bit, name in enumerate(SKULLS) if demo.skulls & (1 << bit)]
+        print(f"  skulls: {', '.join(skulls)}")
     by_kind = defaultdict(lambda: [0, 0, 0])
     for kind, _, size, packed_size, _ in demo.blocks:
         by_kind[kind][0] += 1

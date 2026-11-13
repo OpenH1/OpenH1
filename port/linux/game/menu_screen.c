@@ -32,6 +32,7 @@ kept on the item of the same id.
 #include "menu_engine.h"
 #include "menu_screens.h"
 #include "menu_widget.h"
+#include "skulls.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -122,6 +123,15 @@ at 16:9 and wider */
 #define ITEM_SCALE_MOST 1.6f
 /* (menu_tags.c's WIDE_LAYOUT_EXTRA: 16:9's width past 640) */
 #define WIDE_LAYOUT_EXTRA 212
+/* a grid's rows (blocks.xml's screens/toggle, 280 by 26), their step down
+and the gap between the columns, and the focused row's hint under them
+(screens/grid_hint), from the last row's foot, in its room */
+#define GRID_ROW_WIDTH 280
+#define GRID_ROW_STEP 32
+#define GRID_GAP 16
+#define GRID_HINT_WIDTH 576
+#define GRID_HINT_TOP 12
+#define GRID_HINT_ROOM 52
 /* (menu_functions.c's BUTTON_B, BUTTON_X, BUTTON_Y: the buttons a prompt presses) */
 #define SCREEN_BUTTON_B 1
 #define SCREEN_BUTTON_X 2
@@ -148,6 +158,11 @@ struct screen_action
 	char const *then;
 	char const *open;
 	char const *otherwise;
+	/* (the Skulls screen's: these skulls switched in game.skulls, each on or
+	off; or, a preset, set to these, or all off when they are already
+	these: skulls.c) */
+	unsigned long skulls;
+	boolean preset;
 };
 
 static struct screen_action const screen_actions[] =
@@ -178,12 +193,28 @@ static struct screen_action const screen_actions[] =
 	{ "open training", NULL, NULL, NULL, NULL, "main_menu/training/training_screen", NULL },
 	/* (the quit question, as QUIT and B on the main menu open it) */
 	{ "quit", NULL, NULL, NULL, NULL, "main_menu/quit_select/quit_screen", NULL },
+	/* (the campaign's skulls: screens/skulls.xml) */
+	{ "open skulls", NULL, NULL, NULL, NULL, "screens/skulls", NULL },
+	{ "skull iron", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_iron), FALSE },
+	{ "skull black_eye", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_black_eye), FALSE },
+	{ "skull mythic", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_mythic), FALSE },
+	{ "skull thunderstorm", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_thunderstorm), FALSE },
+	{ "skull catch", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_catch), FALSE },
+	{ "skull tough_luck", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_tough_luck), FALSE },
+	{ "skull famine", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_famine), FALSE },
+	{ "skull fog", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_fog), FALSE },
+	{ "skull tilt", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_tilt), FALSE },
+	{ "skull blind", NULL, NULL, NULL, NULL, NULL, NULL, FLAG(_skull_blind), FALSE },
+	{ "skulls mythic", NULL, NULL, NULL, NULL, NULL, NULL, SKULLS_PRESET_MYTHIC, TRUE },
+	{ "skulls laso", NULL, NULL, NULL, NULL, NULL, NULL, SKULLS_PRESET_LASO, TRUE },
 };
 
 static char const *const screen_action_names[] =
 {
 	"open campaign", "open solo", "open multiplayer", "open coop", "open host", "open host coop", "open settings",
-	"open training", "quit",
+	"open training", "quit", "open skulls", "skull iron", "skull black_eye", "skull mythic", "skull thunderstorm",
+	"skull catch", "skull tough_luck", "skull famine", "skull fog", "skull tilt", "skull blind", "skulls mythic",
+	"skulls laso",
 };
 
 /* a binding's value: the saved game's mission and difficulty (player 1's
@@ -198,7 +229,8 @@ struct screen_values
 
 static char const *const screen_binding_names[] =
 {
-	"campaign.level", "campaign.difficulty",
+	"campaign.level", "campaign.difficulty", "skull.iron", "skull.black_eye", "skull.mythic", "skull.thunderstorm",
+	"skull.catch", "skull.tough_luck", "skull.famine", "skull.fog", "skull.tilt", "skull.blind",
 };
 
 static int screen_value(void *context, char const *name, char *value, unsigned long size)
@@ -214,6 +246,29 @@ static int screen_value(void *context, char const *name, char *value, unsigned l
 		snprintf(value, size, "%s", values->level);
 	else if (!strcmp(name, "campaign.difficulty") && values->saved)
 		snprintf(value, size, "%s", values->difficulty);
+	/* (a skull's, as game.skulls has it: ON or OFF) */
+	else if (!strncmp(name, "skull.", 6))
+	{
+		static struct
+		{
+			char const *name;
+			short skull;
+		} const skull_bindings[] =
+		{
+			{ "skull.iron", _skull_iron }, { "skull.black_eye", _skull_black_eye }, { "skull.mythic", _skull_mythic },
+			{ "skull.thunderstorm", _skull_thunderstorm }, { "skull.catch", _skull_catch },
+			{ "skull.tough_luck", _skull_tough_luck }, { "skull.famine", _skull_famine }, { "skull.fog", _skull_fog },
+			{ "skull.tilt", _skull_tilt }, { "skull.blind", _skull_blind },
+		};
+		long index;
+
+		for (index = 0; index < NUMBEROF(skull_bindings) && strcmp(skull_bindings[index].name, name); index++)
+		{
+		}
+		if (index >= NUMBEROF(skull_bindings))
+			return 0;
+		snprintf(value, size, "%s", TEST_FLAG(skulls_chosen(), skull_bindings[index].skull) ? "ON" : "OFF");
+	}
 	else
 		return 0;
 	return value[0] != 0;
@@ -239,6 +294,7 @@ static struct screen_place const screen_places[] =
 {
 	{ "main", "main_menu\\main_menu", pc_menu_main_menu_shown },
 	{ "campaign", "screens\\campaign", NULL },
+	{ "skulls", "screens\\skulls", NULL },
 };
 
 /* the server browser, whose screen gets a button of the hand-written
@@ -283,7 +339,15 @@ struct screen_open
 	char prompt_keys[SCREEN_MAXIMUM_BUTTONS][SCREEN_ID_LENGTH];
 	short prompt_x[SCREEN_MAXIMUM_BUTTONS];
 	boolean prompt_right[SCREEN_MAXIMUM_BUTTONS];
+	/* (an x or y prompt's own action, empty for its button pressed) */
+	char prompt_actions[SCREEN_MAXIMUM_BUTTONS][SCREEN_ACTION_LENGTH];
 	long prompt_count;
+	/* (a grid's: its rows in a column, which left and right step by; each
+	row's state's words and their file's text, kept up to date each frame) */
+	long grid_rows;
+	struct widget_instance *states[SCREEN_MAXIMUM_ITEMS];
+	char const *state_texts[SCREEN_MAXIMUM_ITEMS];
+	char state_shown[SCREEN_MAXIMUM_ITEMS][SCREEN_ID_LENGTH];
 };
 
 static struct
@@ -297,6 +361,7 @@ static struct
 	/* the blocks' tags, as the menus' tags were last built */
 	long prompts_tag;
 	long title_art_tag, list_tag, item_tag, hint_tag, prompt_left_tag, button_tag, cards_tag, card_tag, card_title_tag, card_art_tag, card_subtitle_tag, header_tag, prompt_tag, header_text_tag;
+	long toggle_tag, grid_hint_tag;
 } screens = { FALSE };
 
 static void screens_names_give(void)
@@ -358,7 +423,10 @@ static boolean screen_blocks_found(void)
 	screens.prompt_tag = screen_block_tag("pc\\screens\\prompt");
 	screens.prompts_tag = screen_block_tag("pc\\screens\\prompts");
 	screens.header_text_tag = screen_block_tag("pc\\screens\\header_text");
-	if (screens.title_art_tag == NONE || screens.list_tag == NONE || screens.item_tag == NONE ||
+	screens.toggle_tag = screen_block_tag("pc\\screens\\toggle");
+	screens.grid_hint_tag = screen_block_tag("pc\\screens\\grid_hint");
+	if (screens.toggle_tag == NONE || screens.grid_hint_tag == NONE ||
+		screens.title_art_tag == NONE || screens.list_tag == NONE || screens.item_tag == NONE ||
 		screens.hint_tag == NONE || screens.prompt_left_tag == NONE || screens.button_tag == NONE ||
 		screens.cards_tag == NONE || screens.card_tag == NONE || screens.card_title_tag == NONE ||
 		screens.card_art_tag == NONE || screens.header_tag == NONE ||
@@ -476,7 +544,16 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 			shown[index] = screen_item_shown(block, &values, label, sizeof(label));
 			if (block->kind == MENU_SCREEN_CARD)
 				break;
-			if (shown[index])
+			/* (a grid's room: its rows, a column's worth, and its hint's) */
+			if (shown[index] && screen->blocks[block->parent].columns > 1)
+			{
+				long columns = screen->blocks[block->parent].columns, count = 0, other;
+
+				for (other = 0; other <= index; other++)
+					count += screen->blocks[other].parent == block->parent && shown[other];
+				heights[block->parent] = (short)((count + columns - 1) / columns * GRID_ROW_STEP + GRID_HINT_ROOM);
+			}
+			else if (shown[index])
 				heights[block->parent] = (short)(heights[block->parent] +
 					(block->hint_count ? ITEM_STEP : ITEM_STEP_PLAIN));
 			break;
@@ -506,6 +583,9 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		ui_widget_delete(widget->child);
 	open->list = NULL;
 	open->item_count = 0;
+	open->grid_rows = 0;
+	memset(open->states, 0, sizeof(open->states));
+	memset(open->state_texts, 0, sizeof(open->state_texts));
 	focus_id = screens.focused[place_index][0] ? screens.focused[place_index] : NULL;
 	top = 0;
 	spaces_left = spaces;
@@ -629,6 +709,67 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 				break;
 			if (!focus_id)
 				focus_id = block->focus;
+			/* (a grid: small rows, column by column, each its label and its
+			state, and the focused row's hint under them all) */
+			if (block->columns > 1)
+			{
+				long count = 0;
+				short left = (short)((SCREEN_WIDTH - block->columns * GRID_ROW_WIDTH -
+					(block->columns - 1) * GRID_GAP) / 2);
+
+				for (item_index = 0; item_index < screen->block_count; item_index++)
+					count += screen->blocks[item_index].kind == MENU_SCREEN_ITEM &&
+						screen->blocks[item_index].parent == index && shown[item_index];
+				open->grid_rows = MAX(1, (count + block->columns - 1) / block->columns);
+				for (item_index = 0; item_index < screen->block_count; item_index++)
+				{
+					struct menu_screen_block const *item = &screen->blocks[item_index];
+					struct widget_instance *made;
+					long made_index = open->item_count;
+
+					if (item->kind != MENU_SCREEN_ITEM || item->parent != index || !shown[item_index] ||
+						made_index >= SCREEN_MAXIMUM_ITEMS)
+					{
+						continue;
+					}
+					made = screen_widget_add(open->list, screens.toggle_tag,
+						(short)(left + made_index / open->grid_rows * (GRID_ROW_WIDTH + GRID_GAP)),
+						(short)(top + made_index % open->grid_rows * GRID_ROW_STEP));
+					if (!made)
+						break;
+					menu_screen_text(item->label, screen_value, &values, label, sizeof(label));
+					screen_text_set(made, label);
+					/* (its state, set each frame: menu_screen_frame) */
+					open->states[made_index] = made->child;
+					open->state_texts[made_index] = item->state;
+					open->state_shown[made_index][0] = 0;
+					open->items[made_index] = made;
+					open->hints[made_index] = NULL;
+					open->pictures[made_index] = NONE;
+					snprintf(open->ids[made_index], SCREEN_ID_LENGTH, "%s", item->id ? item->id : "");
+					snprintf(open->actions[made_index], SCREEN_ACTION_LENGTH, "%s", item->action);
+					if (item->hint_count && menu_screen_text(item->hints[0], screen_value, &values, text, sizeof(text)))
+					{
+						struct widget_instance *line = screen_widget_add(widget, screens.grid_hint_tag,
+							(short)((SCREEN_WIDTH - GRID_HINT_WIDTH) / 2),
+							(short)(top + open->grid_rows * GRID_ROW_STEP + GRID_HINT_TOP));
+
+						if (line)
+						{
+							screen_text_set(line, text);
+							line->visible = FALSE;
+						}
+						open->hints[made_index] = line;
+					}
+					if (!focus || (focus_id && item->id && !strcmp(item->id, focus_id)))
+					{
+						focus = made;
+						focus_index = made_index;
+					}
+					open->item_count++;
+				}
+				break;
+			}
 			for (item_index = 0; item_index < screen->block_count; item_index++)
 			{
 				struct menu_screen_block const *item = &screen->blocks[item_index];
@@ -713,6 +854,8 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 				open->prompt_x[made] = right ? right_x : left_x;
 				open->prompt_right[made] = right;
 				snprintf(open->prompt_keys[made], SCREEN_ID_LENGTH, "%s", block_button->key);
+				snprintf(open->prompt_actions[made], SCREEN_ACTION_LENGTH, "%s",
+					block_button->action ? block_button->action : "");
 				open->prompt_count++;
 				if (right)
 					right_x = (short)(right_x - PROMPT_GAP - PROMPT_WIDTH);
@@ -873,6 +1016,21 @@ void menu_screen_frame(struct widget_instance *widget)
 	focused = screen_focused(open);
 	for (index = 0; index < open->item_count; index++)
 	{
+		/* (a grid row's state, as its binding has it now: a skull switched) */
+		if (open->states[index] && open->state_texts[index])
+		{
+			struct screen_values values;
+			char state[SCREEN_ID_LENGTH];
+
+			memset(&values, 0, sizeof(values));
+			if (!menu_screen_text(open->state_texts[index], screen_value, &values, state, sizeof(state)))
+				state[0] = 0;
+			if (strcmp(state, open->state_shown[index]))
+			{
+				snprintf(open->state_shown[index], SCREEN_ID_LENGTH, "%s", state);
+				screen_text_set(open->states[index], state);
+			}
+		}
 		if (open->hints[index])
 			open->hints[index]->visible = index == focused;
 		/* (a picture's frames: lit while focused, as the PC version's items) */
@@ -903,6 +1061,16 @@ static boolean screen_action_run(struct widget_instance *widget, struct event_re
 	{
 		platform_log("menus: there is no action \"%s\"", name);
 		return FALSE;
+	}
+	/* (skulls switched: the rows' states follow, menu_screen_frame) */
+	if (action->skulls)
+	{
+		unsigned long chosen = skulls_chosen();
+
+		if (action->preset)
+			skulls_choose(chosen == action->skulls ? 0 : action->skulls);
+		else
+			skulls_choose(chosen ^ action->skulls);
 	}
 	if (action->browser_tab || action->before)
 		pc_menu_browser_visit(action->browser_tab);
@@ -973,6 +1141,9 @@ boolean menu_screen_key(struct widget_instance *prompt, struct event_record *eve
 		button pressed, which the screen takes as it takes the controller's) */
 		if (!strcmp(key, "accept"))
 			return open->list && open->list->focused_child && menu_screen_do(open->list->focused_child, event, deleted);
+		/* (an x or y prompt's own action: the Skulls screen's presets) */
+		if (open->prompt_actions[index][0])
+			return screen_action_run(prompt, event, open->prompt_actions[index], deleted);
 		event_manager_post_button(controller, !strcmp(key, "back") ? SCREEN_BUTTON_B :
 			!strcmp(key, "x") ? SCREEN_BUTTON_X : SCREEN_BUTTON_Y);
 		return TRUE;
@@ -993,6 +1164,40 @@ boolean menu_screen_back(struct widget_instance *widget, struct event_record *ev
 			return FALSE;
 		}
 		return screen_action_run(widget, event, open->actions[0], deleted);
+	}
+	/* (X and Y, where a prompt of theirs has its own action: the Skulls
+	screen's presets) */
+	if (open && event->type == SCREEN_EVENT_BUTTON && event->data.button.value == 1 &&
+		(event->data.button.index == _gamepad_analog_button_x || event->data.button.index == _gamepad_analog_button_y))
+	{
+		char const *key = event->data.button.index == _gamepad_analog_button_x ? "x" : "y";
+		long index;
+
+		for (index = 0; index < open->prompt_count; index++)
+		{
+			if (!strcmp(open->prompt_keys[index], key) && open->prompt_actions[index][0])
+				return screen_action_run(widget, event, open->prompt_actions[index], deleted);
+		}
+	}
+	/* (a grid's left and right: the row beside, in the other column) */
+	if (open && open->grid_rows && open->list && event->type == SCREEN_EVENT_BUTTON && event->data.button.value == 1 &&
+		(event->data.button.index == _gamepad_binary_button_dpad_left ||
+			event->data.button.index == _gamepad_binary_button_dpad_right))
+	{
+		long focused = screen_focused(open);
+		long beside = focused + (event->data.button.index == _gamepad_binary_button_dpad_right ? 1 : -1) *
+			open->grid_rows;
+
+		/* (the footer's prompts, focused, step as they do) */
+		if (focused != NONE && widget->focused_child == open->list)
+		{
+			if (beside >= 0 && beside < open->item_count)
+			{
+				open->list->focused_child = open->items[beside];
+				open->list->parameters.list.selected_index = (short)beside;
+			}
+			return TRUE;
+		}
 	}
 	if (!open || !open->back[0] || event->type != SCREEN_EVENT_BUTTON || event->data.button.value != 1 ||
 		(event->data.button.index != _gamepad_analog_button_b &&
@@ -1039,7 +1244,8 @@ boolean menu_screen_text_scale(long definition_index, short wide_extra, real *sc
 item's label white, as the main menu's lit pictures were */
 boolean menu_screen_text_color(struct widget_instance const *widget, real_argb_color *color)
 {
-	if (!screens.blocks_found || widget->definition_tag_index != screens.item_tag || !widget->parent ||
+	if (!screens.blocks_found || (widget->definition_tag_index != screens.item_tag &&
+		widget->definition_tag_index != screens.toggle_tag) || !widget->parent ||
 		widget->parent->focused_child != widget)
 	{
 		return FALSE;

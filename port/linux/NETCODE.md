@@ -1768,6 +1768,17 @@ A party's leader joins a game first and its members follow it in
   members join as they can. Nothing goes to an OpenCE machine. The OpenH1
   protocol version is unchanged: the new kinds are only asked for, and an
   older host ignores them.
+- From protocol version 29 a co-op host plays the campaign's skulls
+  (`game.skulls`, `port/linux/game/skulls.c`), taken as its level begins,
+  and sends them to each OpenH1 client reliably when it is ready and when
+  they change (distributed message 143, `network_skulls.c`: a bit a skull,
+  checked whole). Only the host decides what the AI does and deals damage,
+  but the skulls change what every machine computes too (an enemy's
+  vitality and shields, a player's shield recharge, the HUD and the
+  first-person weapon drawn), so a build of 28, which would play the game
+  without them, does not join. A host plays none in a Legacy game or a game
+  OpenCE's players may join (`network_standard_hosting_mixed`), whose
+  machines could not hear them; a Legacy game is unchanged in every byte.
 
 ## Joining a game in progress
 

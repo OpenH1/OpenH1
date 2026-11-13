@@ -312,6 +312,7 @@ symbols in this file:
 #include "structures/structure_bsp_definitions.h"
 #include "units/units.h"
 #include "coop_enemies.h" /* port: port/linux/game/coop_enemies.c */
+#include "skulls.h" /* port: port/linux/game/skulls.c */
 
 #include <stddef.h>
 
@@ -3183,6 +3184,13 @@ static boolean encounter_place_actor(
 					real chance = 0.f;
 
 					ai_get_major_upgrade_chance(squad_definition->major_upgrade, &upgrade_major, &random, &chance);
+					/* port: the Thunderstorm skull's enemies, every one upgraded
+					whose variant has a major upgrade (port/linux/game/skulls.c) */
+					if (skulls_force_major_upgrade(encounter_get(encounter_index)->team_index))
+					{
+						upgrade_major = TRUE;
+						random = FALSE;
+					}
 					if (random)
 						upgrade_major = ai_consider_major_upgrade(encounter_index, squad_index, chance);
 				}
