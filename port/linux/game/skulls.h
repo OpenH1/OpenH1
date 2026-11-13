@@ -62,6 +62,11 @@ unsigned long skulls_parse(char const *text);
 /* the names of the skulls of a set, as game.skulls takes them */
 void skulls_format(unsigned long skulls, char *text, long size);
 
+/* the skulls chosen (game.skulls, the Skulls screen's), and a choice
+written to it (and config.toml) */
+unsigned long skulls_chosen(void);
+void skulls_choose(unsigned long skulls);
+
 /* the skulls of the game about to begin, taken as its map's objects and AI
 are placed (game.c): a campaign game of this computer's, game.skulls; a
 network co-op host's, game.skulls in an OpenH1 game that no OpenCE machine

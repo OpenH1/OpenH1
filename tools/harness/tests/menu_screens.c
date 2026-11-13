@@ -86,6 +86,7 @@ void platform_log(char const *format, ...)
 #include "under_test.inc"
 #include "names.inc"
 #include "main_xml.inc"
+#include "skulls_xml.inc"
 
 /* ---------- the cases */
 
@@ -227,6 +228,38 @@ int main(int argc, char **argv)
 	{
 		CHECK(read_text(GOOD("VERSUS"), &screen, problem), "refused: %s", problem);
 		menu_screen_free(&screen);
+	}
+	else if (!strcmp(name, "grid"))
+	{
+		/* (the Skulls screen's: a list of two columns, each item its state,
+		and the x and y buttons their own actions) */
+		struct menu_screen_block const *list = NULL, *iron;
+		int index, mythic = 0;
+
+		CHECK(read_text(skulls_xml, &screen, problem), "the Skulls screen's file is refused: %s", problem);
+		for (index = 0; index < screen.block_count; index++)
+		{
+			if (screen.blocks[index].kind == MENU_SCREEN_LIST)
+				list = &screen.blocks[index];
+			if (screen.blocks[index].kind == MENU_SCREEN_BUTTON && screen.blocks[index].action &&
+				!strcmp(screen.blocks[index].key, "x") && !strcmp(screen.blocks[index].action, "skulls mythic"))
+			{
+				mythic = 1;
+			}
+		}
+		CHECK(list && list->columns == 2, "its list is not of two columns");
+		iron = block_of(&screen, "iron");
+		CHECK(iron && iron->state && !strcmp(iron->state, "{skull.iron}"), "IRON has no state");
+		CHECK(mythic, "its X is not the Mythic preset");
+		menu_screen_free(&screen);
+		refused("<screen name=\"main\"><list columns=\"3\"><item label=\"A\" do=\"quit\"/></list></screen>",
+			"columns are 1 or 2");
+		refused("<screen name=\"main\"><list><item label=\"A\" state=\"{nothing}\" do=\"quit\"/></list></screen>",
+			"nothing");
+		refused("<screen name=\"main\"><buttons><button key=\"accept\" label=\"A\" do=\"quit\"/></buttons></screen>",
+			"only an x or y");
+		refused("<screen name=\"main\"><buttons><button key=\"x\" label=\"A\" do=\"open nowhere\"/></buttons></screen>",
+			"no action \"open nowhere\"");
 	}
 	else if (!strcmp(name, "syntax"))
 	{

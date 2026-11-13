@@ -58,6 +58,7 @@ game plays none. A demo plays its recording's, which its header keeps
 #include <string.h>
 
 char const *config_string(char const *name);
+int config_write(char const *name, char const *value);
 
 /* ---------- globals */
 
@@ -129,6 +130,21 @@ void skulls_format(
 		length += name_length;
 		text[length] = 0;
 	}
+}
+
+unsigned long skulls_chosen(
+	void)
+{
+	return skulls_parse(config_string("game.skulls"));
+}
+
+void skulls_choose(
+	unsigned long skulls)
+{
+	char names[128];
+
+	skulls_format(skulls & SKULLS_ALL, names, sizeof(names));
+	config_write("game.skulls", names);
 }
 
 void skulls_initialize_for_new_map(

@@ -281,7 +281,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	else if (parent_element == _element_screen && !strcmp(name, "list"))
 	{
-		static char const *const names[] = { "id", "focus", NULL };
+		static char const *const names[] = { "id", "focus", "columns", NULL };
 
 		element = _element_list;
 		attributes_read(reader, name, attributes, names, values);
@@ -290,13 +290,21 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 		block = block_add(reader, MENU_SCREEN_LIST, -1);
 		if (block >= 0)
 		{
+			char *end = NULL;
+
 			screen->blocks[block].id = values[0];
 			screen->blocks[block].focus = values[1];
+			if (values[2])
+			{
+				screen->blocks[block].columns = strtol(values[2], &end, 10);
+				if (!end || *end || screen->blocks[block].columns < 1 || screen->blocks[block].columns > 2)
+					reader_problem(reader, "a <list>'s columns are 1 or 2: \"%s\"", values[2]);
+			}
 		}
 	}
 	else if (parent_element == _element_list && !strcmp(name, "item"))
 	{
-		static char const *const names[] = { "id", "label", "hint", "do", "when", "picture", NULL };
+		static char const *const names[] = { "id", "label", "hint", "do", "when", "picture", "state", NULL };
 
 		element = _element_item;
 		attributes_read(reader, name, attributes, names, values);
@@ -310,6 +318,9 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			item->action = values[3];
 			item->when = values[4];
 			item->picture = values[5];
+			item->state = values[6];
+			if (item->state)
+				text_check(reader, item->state);
 			if (values[2])
 				item->hints[item->hint_count++] = values[2];
 			if (!item->label || !item->label[0])
@@ -419,7 +430,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	else if (parent_element == _element_buttons && !strcmp(name, "button"))
 	{
-		static char const *const names[] = { "key", "label", "side", NULL };
+		static char const *const names[] = { "key", "label", "side", "do", NULL };
 
 		element = _element_button;
 		attributes_read(reader, name, attributes, names, values);
@@ -431,6 +442,13 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			button->key = values[0];
 			button->label = values[1];
 			button->side = values[2];
+			/* (x's or y's own action, its key on the controller too: NULL,
+			the key's button pressed, as the screen takes it) */
+			button->action = values[3];
+			if (button->action && button->key && (!strcmp(button->key, "accept") || !strcmp(button->key, "back")))
+				reader_problem(reader, "only an x or y <button> has a do", NULL);
+			else if (button->action)
+				action_check(reader, button->action);
 			if (!button->key || (strcmp(button->key, "accept") && strcmp(button->key, "back") &&
 				strcmp(button->key, "x") && strcmp(button->key, "y")))
 			{
