@@ -91,6 +91,7 @@ jobs:
     outputs:
       build: ${{ steps.diff.outputs.build }}
       ios: ${{ steps.diff.outputs.ios }}
+      macos: ${{ steps.diff.outputs.macos }}
     steps:
       # (the history's commits and trees, without their files' contents,
       # and one file checked out: seconds)
@@ -106,9 +107,11 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           build=true
           ios=true
+          macos=true
           base=
           if [ "$EVENT" = push ]; then
             if [ "$GITHUB_REF" = refs/heads/master ] || [ "$GITHUB_REF" = refs/heads/dev ]; then
@@ -137,12 +140,27 @@ jobs:
                 -e '^\.github/' -e '[Tt]ouch' > /dev/null; then
               ios=false
             fi
+            # (a branch builds macOS only when it changes what the macOS
+            # app builds beyond the arm64_32 guest, which linux-arm64 and
+            # Android build: the hosts' and the presenters' code, the Apple
+            # and Metal files, the build's tools; or when its newest commit
+            # asks with [mac]. dev and master always build it, so a merge
+            # that breaks the app shows on dev's run)
+            if [ "$GITHUB_REF" != refs/heads/master ] && [ "$GITHUB_REF" != refs/heads/dev ] &&
+                ! printf '%s\n' "$HEAD_MESSAGE" | grep -F '[mac]' > /dev/null &&
+                ! printf '%s\n' "$files" | grep -E \
+                -e '^port/(ios|macos|third_party|linux/src|linux/host|linux/include|android/host)/' \
+                -e '^tools/(ios_|macos_|build_common|ci_build|embed_assets|render_manifest)' -e '^configure\.py$' \
+                -e '^\.github/' -e '\.(m|mm|metal)$' -e '[Mm]etal' -e 'xgpu' > /dev/null; then
+              macos=false
+            fi
           else
             echo "No base to compare with (event $EVENT): building"
           fi
-          echo "build: $build, ios: $ios"
+          echo "build: $build, ios: $ios, macos: $macos"
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "ios=$ios" >> "$GITHUB_OUTPUT"
+          echo "macos=$macos" >> "$GITHUB_OUTPUT"
 
   linux-arm64:
     needs: changes
@@ -866,7 +884,7 @@ jobs:
 
   macos:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' && needs.changes.outputs.macos != 'false' }}
     # The runner image has Xcode (clang, the Metal compiler), Python and
     # CMake; the guest's compiler is the pinned LLVM configure.py downloads.
     # The app is signed ad hoc (tools/macos_app.py), and the release on
@@ -1448,7 +1466,7 @@ jobs:
               *) echo "➖ Skipped" ;;
             esac
           }
-          if [ "$LINUX_X86_64" = success ] && [ "$TESTS" = success ] && [ "$LINUX_ARM64" = success ] && [ "$ANDROID" = success ] && [ "$WINDOWS" = success ] && [ "$MACOS" = success ]; then
+          if [ "$LINUX_X86_64" = success ] && [ "$TESTS" = success ] && [ "$LINUX_ARM64" = success ] && [ "$ANDROID" = success ] && [ "$WINDOWS" = success ] && { [ "$MACOS" = success ] || [ "$MACOS" = skipped ]; }; then
             title="Build succeeded"; color=5763719
           else
             title="Build failed"; color=15548997
