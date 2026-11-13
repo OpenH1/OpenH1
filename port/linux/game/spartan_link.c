@@ -14,8 +14,20 @@ world: their eye (where their body is drawn, render_interpolation.c), their
 aim, their weapon's zoom, their weapon and arms (first_person_weapons.c's
 posed draw: the idle animation, not their reloads), their body hidden, and
 none of their HUD. A teammate in a seat whose camera follows the vehicle
-is seen from behind. Under each: their name, their shield and their
-distance. A teammate who dies is shown down for a moment, then dropped;
+is seen from behind. Under each: their name, their shield, their health
+under it (the HUD's health colours, flashing as the HUD's does while their
+shield is down) and their distance.
+
+On each feed, the teammate's reticle: a dot in a thin ring where they aim,
+in the HUD's blue, red with an enemy under it as Halo's turns red (a living
+enemy biped, within their weapon's autoaim reach, that a line along their
+aim meets first: a collision test of this machine's world, which takes no
+seed and makes nothing). Through their eyes it is the feed's middle, the
+feed looking along their aim; from behind them in a gunner's seat, the
+point their aim meets, seen through the feed's camera. None in a seat
+without a weapon (a driver's or a passenger's), nor while they are down.
+
+A teammate who dies is shown down for a moment, then dropped;
 with none left alive the link closes. While this player is dead the link
 is hidden (spectating fills the screen: dead_spectate.c) and comes back
 with the respawn. Split screen: each window has its own link, of its own
@@ -46,7 +58,13 @@ version is unchanged.
 #include "interface/hud.h"
 #include "interface/hud_messaging.h"
 #include "interface/ui_widget.h"
+#include "game/game_allegiance.h"
+#include "interface/hud_definitions.h"
+#include "interface/unit_hud_interface_definition.h"
 #include "items/weapons.h"
+#include "items/weapon_definitions.h"
+#include "physics/collisions.h"
+#include "physics/collision_usage.h"
 #include "main/console.h"
 #include "math/real_math.h"
 #include "objects/objects.h"
@@ -63,6 +81,7 @@ version is unchanged.
 #include "text/unicode.h"
 #include "units/units.h"
 #include "units/unit_definitions.h"
+#include "units/biped_definitions.h"
 
 #include "halo_keyboard.h"
 #include "controller_remap.h"
@@ -137,6 +156,11 @@ stay clear of (the stock HUD's and the high-res HUD's, at the HUD's scale) */
 #define SPARTAN_LINK_PANEL_RIGHT 198.0f
 /* the frame's angled ends: how far in its top corners are, of its height */
 #define SPARTAN_LINK_SLANT 0.12f
+/* the teammate's reticle on their feed: its ring's radius, of the feed's
+height, and its curve's steps; and its red, on an enemy (Halo's reticle's) */
+#define SPARTAN_LINK_RETICLE_SIZE 0.05f
+#define SPARTAN_LINK_RETICLE_SEGMENTS 16
+#define SPARTAN_LINK_RETICLE_RED 0xF2FF3424UL
 
 /* ---------- structures */
 
@@ -149,6 +173,8 @@ struct spartan_link_feed
 	unsigned long down_at;
 	/* the view's size in the screen's units, as last drawn */
 	unsigned long width, height;
+	/* since when their health has flashed, their shield down (0: not) */
+	unsigned long health_flash_at;
 };
 
 struct spartan_link_window
@@ -484,6 +510,285 @@ static real spartan_link_field_of_view(
 	return field_of_view;
 }
 
+/* a feed's camera: the teammate's eye as their body is drawn, along their
+aim; or in a seat whose camera follows the vehicle, from behind. TRUE
+through their eyes, where their aim is the view's middle */
+static boolean spartan_link_feed_view(
+	long unit_index,
+	struct render_camera *camera)
+{
+	struct camera_command command;
+	director_perspective perspective;
+	real_point3d eye;
+	boolean through_eyes;
+
+	first_person_camera_fake(unit_index, &command);
+	render_interpolation_unit_camera_position(unit_index, &eye);
+	through_eyes = !director_desired_perspective(unit_index, &perspective);
+	camera->forward = command.forward;
+	camera->up = command.up;
+	if (through_eyes)
+	{
+		camera->position = eye;
+	}
+	else
+	{
+		struct object_datum *unit = object_get(unit_index);
+		long vehicle_index = unit->object.parent_object_index;
+		real radius = vehicle_index != NONE && object_try_and_get(vehicle_index) ?
+			object_get(vehicle_index)->object.bounding_sphere_radius : 1.0f;
+		real back = radius * 1.6f + 0.6f;
+
+		camera->position.x = eye.x - command.forward.i * back;
+		camera->position.y = eye.y - command.forward.j * back;
+		camera->position.z = eye.z - command.forward.k * back + radius * 0.35f;
+	}
+	camera->vertical_field_of_view = 2.0f * arctangent(
+		0.75f * render_camera_get_adjusted_field_of_view_tangent(
+			through_eyes ? spartan_link_field_of_view(unit_index) : DEGREES_TO_RADIANS(70.0f)),
+		1.0f);
+	return through_eyes;
+}
+
+/* ---------- the teammate's aim */
+
+/* what the aim's line stops at: the level, and the objects a shot would
+hit or a reticle is turned by (not the weapons and equipment lying about,
+nor an enemy's held weapon, which their body is behind) */
+#define SPARTAN_LINK_AIM_FLAGS (FLAG(_collision_test_front_facing_surfaces_bit) | \
+	FLAG(_collision_test_ignore_invisible_surfaces_bit) | FLAG(_collision_test_structure_bit) | \
+	FLAG(_collision_test_objects_bit) | FLAG(_collision_test_objects_bipeds_bit) | \
+	FLAG(_collision_test_objects_vehicles_bit) | FLAG(_collision_test_objects_scenery_bit) | \
+	FLAG(_collision_test_objects_machines_bit))
+/* how far the aim's line reaches (world units) when the weapon's red reach
+is shorter: aim_assist.c's shot reference */
+#define SPARTAN_LINK_AIM_REACH 128.0f
+
+/* where a point of the world lands on a feed drawn through camera into
+bounds (the window's units: the camera's whole view, its vertical angle
+across the bounds' height): FALSE behind the camera, or a reticle of
+margin about it not wholly on the feed */
+static boolean spartan_link_aim_place(
+	struct render_camera const *camera,
+	real_rectangle2d const *bounds,
+	real margin,
+	real_point3d const *point,
+	real_point2d *place)
+{
+	real width = bounds->x1 - bounds->x0;
+	real height = bounds->y1 - bounds->y0;
+	real tangent_y = (real)tan(camera->vertical_field_of_view * 0.5f);
+	real tangent_x = tangent_y * width / (height > 0.0f ? height : 1.0f);
+	real_vector3d right, to;
+	real depth;
+
+	if (!(width > 0.0f) || !(height > 0.0f) || !(tangent_y > 0.0f))
+		return FALSE;
+	/* (the camera's right: forward across up, y being the world's left) */
+	right.i = camera->forward.j * camera->up.k - camera->forward.k * camera->up.j;
+	right.j = camera->forward.k * camera->up.i - camera->forward.i * camera->up.k;
+	right.k = camera->forward.i * camera->up.j - camera->forward.j * camera->up.i;
+	to.i = point->x - camera->position.x;
+	to.j = point->y - camera->position.y;
+	to.k = point->z - camera->position.z;
+	depth = to.i * camera->forward.i + to.j * camera->forward.j + to.k * camera->forward.k;
+	if (!(depth > 0.0f))
+		return FALSE;
+	place->x = (bounds->x0 + bounds->x1) * 0.5f +
+		(to.i * right.i + to.j * right.j + to.k * right.k) / depth / tangent_x * width * 0.5f;
+	place->y = (bounds->y0 + bounds->y1) * 0.5f -
+		(to.i * camera->up.i + to.j * camera->up.j + to.k * camera->up.k) / depth / tangent_y * height * 0.5f;
+	return place->x - margin >= bounds->x0 && place->x + margin <= bounds->x1 &&
+		place->y - margin >= bounds->y0 && place->y + margin <= bounds->y1;
+}
+
+/* whether what the aim stopped at turns the teammate's reticle red, as
+Halo's does for the targets its autoaim takes (aim_assist.c's): a living
+biped of a team that is the teammate's enemy, not wholly camouflaged nor
+one autoaim ignores, within the weapon's reach (distance and range, world
+units; no range: never). A held object is its holder's */
+static boolean spartan_link_aim_enemy(
+	short team_index,
+	long object_index,
+	real distance,
+	real range)
+{
+	struct object_datum *object = object_try_and_get(object_index);
+
+	if (object && !TEST_FLAG(_object_mask_unit, object->object.type) && object->object.parent_object_index != NONE)
+	{
+		object_index = object->object.parent_object_index;
+		object = object_try_and_get(object_index);
+	}
+	if (!object || !(range > 0.0f) || !(distance <= range) || !TEST_FLAG(_object_mask_biped, object->object.type))
+		return FALSE;
+	return !TEST_FLAG(object->object.damage_flags, _object_dead_bit) &&
+		!TEST_FLAG(object->object.flags, _object_invisible_bit) &&
+		unit_get(object_index)->unit.active_camouflage < 1.0f &&
+		game_team_is_enemy(team_index, object->object.owner_team_index) &&
+		!TEST_FLAG(biped_definition_get(object->definition_index)->unit.flags, _unit_ignored_by_autoaiming_bit);
+}
+
+/* the object at the root of what an object rides */
+static long spartan_link_root(
+	long object_index)
+{
+	struct object_datum *object = object_try_and_get(object_index);
+	short depth;
+
+	for (depth = 0; object && object->object.parent_object_index != NONE && depth < 8; depth++)
+	{
+		object_index = object->object.parent_object_index;
+		object = object_try_and_get(object_index);
+	}
+	return object_index;
+}
+
+/* the first thing along the teammate's aim from origin (forward a unit
+vector), out to reach, past their own unit and what it rides: TRUE with
+it. A collision test only, which reads the world: no seed, no effect */
+static boolean spartan_link_aim_ray(
+	long unit_index,
+	real_point3d const *origin,
+	real_vector3d const *forward,
+	real reach,
+	struct collision_result *result)
+{
+	long root_index = spartan_link_root(unit_index);
+	real_point3d from = *origin;
+	boolean hit = FALSE;
+	short attempt;
+
+	if (global_current_collision_user_depth >= MAXIMUM_COLLISION_USER_STACK_DEPTH)
+		return FALSE;
+	global_current_collision_users[global_current_collision_user_depth++] = _collision_user_ui;
+	for (attempt = 0; attempt < 4 && reach > 0.0f; attempt++)
+	{
+		real_vector3d vector;
+
+		vector.i = forward->i * reach;
+		vector.j = forward->j * reach;
+		vector.k = forward->k * reach;
+		hit = collision_test_vector(SPARTAN_LINK_AIM_FLAGS, &from, &vector, root_index, result);
+		if (!hit || result->type != _collision_result_object || spartan_link_root(result->object_index) != root_index)
+			break;
+		/* (their own, or what they ride: on past it) */
+		hit = FALSE;
+		reach -= reach * result->t + 0.05f;
+		from.x = result->point.x + forward->i * 0.05f;
+		from.y = result->point.y + forward->j * 0.05f;
+		from.z = result->point.z + forward->k * 0.05f;
+	}
+	--global_current_collision_user_depth;
+	return hit;
+}
+
+/* ---------- the aim as this machine has it */
+
+/* whether the teammate has an aim their own HUD draws a reticle for
+(hud_weapon.c's hud_render_weapon_interface): a weapon of their own, their
+seat's when it is a gunner's, or none at all on foot (the default
+reticle); not in a seat with no weapon (a driver's or a passenger's, whose
+camera follows the vehicle) */
+static boolean spartan_link_aims(
+	long unit_index)
+{
+	struct unit_datum *unit = unit_get(unit_index);
+	struct unit_datum *parent;
+	struct unit_seat const *seat;
+
+	if (unit_inventory_get_weapon(unit_index, unit->unit.current_weapon_index) != NONE)
+		return TRUE;
+	if (unit->object.parent_object_index == NONE || unit->unit.parent_seat_index == NONE)
+		return !unit_get_weapon_count(unit_index);
+	parent = unit_try_and_get(unit->object.parent_object_index);
+	if (!parent)
+		return FALSE;
+	seat = TAG_BLOCK_GET_ELEMENT(&unit_definition_get(parent->definition_index)->unit.seats,
+		unit->unit.parent_seat_index, struct unit_seat);
+	return TEST_FLAG(seat->flags, _unit_seat_gunner_bit) &&
+		unit_inventory_get_weapon(unit->object.parent_object_index, parent->unit.current_weapon_index) != NONE;
+}
+
+/* how far the teammate's weapon turns the reticle red: its autoaim's reach
+at its zoom (aim_assist.c's unit_get_aim_assist_parameters); 0 for none */
+static real spartan_link_aim_range(
+	long unit_index)
+{
+	long aiming_index = unit_get_aiming_unit_index(unit_index);
+	struct unit_datum *unit;
+	struct weapon_definition *definition;
+	long weapon_index;
+	short zoom_level;
+
+	if (aiming_index == NONE || !unit_try_and_get(aiming_index))
+		return 0.0f;
+	unit = unit_get(aiming_index);
+	weapon_index = unit_inventory_get_weapon(aiming_index, unit->unit.current_weapon_index);
+	if (weapon_index == NONE)
+		return 0.0f;
+	definition = weapon_definition_get(weapon_get(weapon_index)->definition_index);
+	zoom_level = unit_get_zoom_level(aiming_index);
+	if (zoom_level == NONE && TEST_FLAG(definition->weapon.flags, _weapon_aim_assists_only_when_zoomed_bit))
+		return 0.0f;
+	return definition->weapon.aim_assist_parameters.autoaim_distance *
+		weapon_get_zoom_magnification(weapon_index, zoom_level);
+}
+
+/* the teammate's reticle on their feed (bounds): where, in the window's
+units, and whether red. FALSE for none: down, no aim (a seat without a
+weapon), or their aim off the feed's picture. Through their eyes it is the
+feed's middle (the feed looks along the aim); from behind them, the point
+the aim stops at, seen through the feed's camera */
+static boolean spartan_link_feed_aim(
+	struct spartan_link_feed const *feed,
+	real_rectangle2d const *bounds,
+	real margin,
+	real_point2d *place,
+	boolean *enemy)
+{
+	struct player_datum *teammate = player_try_and_get(feed->player_index);
+	struct render_camera camera;
+	struct camera_command command;
+	struct collision_result collision;
+	real_vector3d forward;
+	real_point3d target;
+	real range, reach;
+	boolean hit;
+
+	*enemy = FALSE;
+	if (!teammate || feed->down_at || !object_try_and_get_and_verify_type(feed->unit_index, _object_mask_unit) ||
+		TEST_FLAG(object_get(feed->unit_index)->object.damage_flags, _object_dead_bit) ||
+		!spartan_link_aims(feed->unit_index))
+	{
+		return FALSE;
+	}
+	first_person_camera_fake(feed->unit_index, &command);
+	forward = command.forward;
+	if (normalize3d(&forward) == 0.0f)
+		return FALSE;
+	range = spartan_link_aim_range(feed->unit_index);
+	reach = MAX(range, SPARTAN_LINK_AIM_REACH);
+	hit = spartan_link_aim_ray(feed->unit_index, &command.position, &forward, reach, &collision);
+	if (hit)
+	{
+		target = collision.point;
+		*enemy = collision.type == _collision_result_object && spartan_link_aim_enemy((short)teammate->team_index,
+			collision.object_index, distance3d(&command.position, &collision.point), range);
+	}
+	else
+	{
+		point_from_line3d(&command.position, &forward, reach, &target);
+	}
+	if (spartan_link_feed_view(feed->unit_index, &camera))
+	{
+		place->x = (bounds->x0 + bounds->x1) * 0.5f;
+		place->y = (bounds->y0 + bounds->y1) * 0.5f;
+		return TRUE;
+	}
+	return spartan_link_aim_place(&camera, bounds, margin, &target, place);
+}
+
 /* ---------- the drawing's pieces */
 
 /* the maps' white texture, NULL where the map has none (menu_shapes.c's) */
@@ -502,13 +807,15 @@ static struct bitmap_data *spartan_link_white(
 
 /* a quadrilateral, its corners in the window's units (clockwise from the
 top left), of the white texture or (u, v from 0 to 1 over bounds) the
-feed's image */
-static void spartan_link_quad(
+feed's image; its corners on the display's pixels' edges (snap), or where
+they fall (a reticle's curves) */
+static void spartan_link_quad_snapped(
 	struct bitmap_data *white,
 	real const x[4],
 	real const y[4],
 	pixel32 color,
-	real_rectangle2d const *bounds)
+	real_rectangle2d const *bounds,
+	boolean snap)
 {
 	struct rasterizer_dynamic_screen_geometry_parameters parameters;
 	struct dynamic_screen_vertex vertices[4];
@@ -519,8 +826,8 @@ static void spartan_link_quad(
 	{
 		/* (on the display's pixels' edges: where the screen's unit 0 falls
 		is the Xbox's pixels' centres, menu_shapes.c) */
-		vertices[index].position.x = floorf(x[index] * pixels + 0.5f) / pixels + 0.5f;
-		vertices[index].position.y = floorf(y[index] * pixels + 0.5f) / pixels + 0.5f;
+		vertices[index].position.x = (snap ? floorf(x[index] * pixels + 0.5f) / pixels : x[index]) + 0.5f;
+		vertices[index].position.y = (snap ? floorf(y[index] * pixels + 0.5f) / pixels : y[index]) + 0.5f;
 		vertices[index].texture_coordinates.x = bounds ? (x[index] - bounds->x0) / (bounds->x1 - bounds->x0) : 0.0f;
 		vertices[index].texture_coordinates.y = bounds ? (y[index] - bounds->y0) / (bounds->y1 - bounds->y0) : 0.0f;
 		vertices[index].color = color;
@@ -532,6 +839,16 @@ static void spartan_link_quad(
 	rasterizer_globals.current_lock_operation = _rasterizer_lock_cinematics;
 	rasterizer_psuedo_dynamic_screen_quad_draw(&parameters, vertices);
 	rasterizer_globals.current_lock_operation = _rasterizer_lock_none;
+}
+
+static void spartan_link_quad(
+	struct bitmap_data *white,
+	real const x[4],
+	real const y[4],
+	pixel32 color,
+	real_rectangle2d const *bounds)
+{
+	spartan_link_quad_snapped(white, x, y, color, bounds, TRUE);
 }
 
 static void spartan_link_rectangle(
@@ -656,6 +973,107 @@ static void spartan_link_draw_feed(
 	spartan_link_quad(white, x, y, edge_color, NULL);
 }
 
+/* the reticle's radius on a feed: a twentieth of its height, three of the
+display's pixels at least */
+static real spartan_link_reticle_radius(
+	real_rectangle2d const *bounds)
+{
+	real pixels = halo_screen_pixel_scale() > 0.0f ? halo_screen_pixel_scale() : 1.0f;
+
+	return MAX((bounds->y1 - bounds->y0) * SPARTAN_LINK_RETICLE_SIZE, 3.0f / pixels);
+}
+
+/* the teammate's reticle at place: a dot and a thin ring about it, in the
+HUD's blue, or red on an enemy */
+static void spartan_link_draw_reticle(
+	struct bitmap_data *white,
+	real_point2d const *place,
+	real radius,
+	boolean enemy)
+{
+	real pixels = halo_screen_pixel_scale() > 0.0f ? halo_screen_pixel_scale() : 1.0f;
+	real thickness = MAX(radius * 0.18f, 1.0f / pixels);
+	real dot = MAX(radius * 0.22f, 1.0f / pixels);
+	pixel32 color = enemy ? SPARTAN_LINK_RETICLE_RED : spartan_link_color(0.95f, 1.0f);
+	real x[4], y[4];
+	short index;
+
+	for (index = 0; index < SPARTAN_LINK_RETICLE_SEGMENTS; index++)
+	{
+		real angle0 = (real)index * 2.0f * _pi / SPARTAN_LINK_RETICLE_SEGMENTS;
+		real angle1 = (real)(index + 1) * 2.0f * _pi / SPARTAN_LINK_RETICLE_SEGMENTS;
+
+		x[0] = place->x + cosf(angle0) * radius; y[0] = place->y + sinf(angle0) * radius;
+		x[1] = place->x + cosf(angle1) * radius; y[1] = place->y + sinf(angle1) * radius;
+		x[2] = place->x + cosf(angle1) * (radius - thickness); y[2] = place->y + sinf(angle1) * (radius - thickness);
+		x[3] = place->x + cosf(angle0) * (radius - thickness); y[3] = place->y + sinf(angle0) * (radius - thickness);
+		spartan_link_quad_snapped(white, x, y, color, NULL, FALSE);
+	}
+	/* (the dot: an octagon, its middle band and the two ends) */
+	{
+		real side = dot * 0.4142f;
+
+		spartan_link_rectangle(white, place->x - dot, place->y - side, place->x + dot, place->y + side, color);
+		x[0] = place->x - side; y[0] = place->y - dot;
+		x[1] = place->x + side; y[1] = place->y - dot;
+		x[2] = place->x + dot; y[2] = place->y - side;
+		x[3] = place->x - dot; y[3] = place->y - side;
+		spartan_link_quad_snapped(white, x, y, color, NULL, FALSE);
+		x[0] = place->x - dot; y[0] = place->y + side;
+		x[1] = place->x + dot; y[1] = place->y + side;
+		x[2] = place->x + side; y[2] = place->y + dot;
+		x[3] = place->x - side; y[3] = place->y + dot;
+		spartan_link_quad_snapped(white, x, y, color, NULL, FALSE);
+	}
+}
+
+/* the HUD's health meter's colour at a vitality, from the unit's own HUD
+(hud_unit.c's: its full colour at or above the meter's upper cutoff, its
+empty colour at or below the lower, its middle colour between), and while
+flashing (since flash_at) the meter's background's flash, as the HUD's
+health panel flashes while the shield is down; the HUD's text colour where
+the unit has none */
+static pixel32 spartan_link_health_color(
+	long unit_index,
+	real vitality,
+	unsigned long flash_at)
+{
+	struct unit_definition *definition = unit_definition_get(unit_get(unit_index)->definition_index);
+	long hud_index = unit_definition_get_active_hud_index(definition, FALSE);
+	struct unit_hud_interface_definition const *hud;
+	struct hud_color_definition const *flash;
+	real_argb_color color, flash_color;
+	real fraction = 0.0f;
+
+	if (hud_index == NONE)
+		return spartan_link_color(0.95f, 1.0f);
+	hud = unit_hud_interface_definition_get(hud_index);
+	pixel32_to_real_argb_color(
+		vitality >= hud->health_meter.health_extras.max_cutoff ? hud->health_meter.meter.max_color :
+		vitality <= hud->health_meter.health_extras.min_cutoff ? hud->health_meter.meter.min_color :
+		hud->health_meter.health_extras.mid_color, &color);
+	color.alpha = 0.95f;
+	/* (the flash: get_flash_color's pulse, its period's first flashes) */
+	flash = &hud->health_meter.background.colors;
+	if (flash_at && flash->flash_period > 0.0f && flash->flash_length > 0.0f)
+	{
+		real phase = fmodf((real)(system_milliseconds() - flash_at) * 0.001f, flash->flash_period);
+		real cycle = flash->flash_delay + flash->flash_length;
+
+		if (phase < flash->number_of_flashes * cycle)
+		{
+			phase = fmodf(phase, cycle);
+			if (phase < flash->flash_length)
+				fraction = sqrtf(PIN(1.0f - (cosf(phase / flash->flash_length * 2.0f * _pi) + 1.0f) * 0.5f, 0.0f, 1.0f));
+		}
+	}
+	pixel32_to_real_argb_color(flash->flash_color, &flash_color);
+	color.red += (flash_color.red - color.red) * fraction;
+	color.green += (flash_color.green - color.green) * fraction;
+	color.blue += (flash_color.blue - color.blue) * fraction;
+	return real_argb_color_to_pixel32(&color);
+}
+
 /* a line's width in the HUD's font, unscaled (spartan_link_text's units) */
 static real spartan_link_text_width(
 	wchar_t const *text)
@@ -674,9 +1092,9 @@ static real spartan_link_text_width(
 	return (real)(text_bounds.x1 - text_bounds.x0);
 }
 
-/* under a feed: the teammate's name, a thin bar of their shield, and how
-far away they are (the name cut short, and the bar left out, where the
-feed is too narrow for them all) */
+/* under a feed: the teammate's name, thin bars of their shield and under it
+their health, and how far away they are (the name cut short, and the bars
+left out, where the feed is too narrow for them all) */
 static void spartan_link_draw_row(
 	struct bitmap_data *white,
 	short local_player_index,
@@ -684,9 +1102,10 @@ static void spartan_link_draw_row(
 	real_rectangle2d const *bounds,
 	real scale)
 {
-	struct spartan_link_feed const *feed = &spartan_link.windows[local_player_index].feeds[index];
+	struct spartan_link_feed *feed = &spartan_link.windows[local_player_index].feeds[index];
 	struct player_datum *teammate = player_try_and_get(feed->player_index);
 	long self = local_player_get_player_index(local_player_index);
+	real pixel = 1.0f / (halo_screen_pixel_scale() > 0.0f ? halo_screen_pixel_scale() : 1.0f);
 	real_argb_color text_color;
 	real width = bounds->x1 - bounds->x0;
 	real top = bounds->y1 + 1.5f * scale;
@@ -695,9 +1114,10 @@ static void spartan_link_draw_row(
 	in a narrower feed, to a point) */
 	real text_scale = 0.6f * MAX(scale, 0.9f) * MAX(spartan_link.size, 0.9f) *
 		PIN(width / (spartan_link_widths[SPARTAN_LINK_FEEDS - 1] * scale), 0.75f, 1.0f);
-	real shield = 0.0f;
-	real bar_height = MAX(2.0f * scale, 1.0f / (halo_screen_pixel_scale() > 0.0f ? halo_screen_pixel_scale() : 1.0f));
-	real name_width, distance_width, bar_x0, bar_x1, bar_y;
+	real shield = 0.0f, health = 0.0f;
+	real bar_height = MAX(2.0f * scale, pixel);
+	real health_height = MAX(1.25f * scale, pixel);
+	real name_width, distance_width, bar_x0, bar_x1, bar_y, health_y;
 	wchar_t name[16];
 	wchar_t distance[16];
 	short length;
@@ -721,6 +1141,19 @@ static void spartan_link_draw_row(
 		object_get_origin(feed->unit_index, &there);
 		usnprintf(distance, NUMBEROF(distance) - 1, L"%ldm", (long)floorf(distance3d(&here, &there) * 3.048f + 0.5f));
 		shield = object_get(feed->unit_index)->object.shield_vitality;
+		health = object_get(feed->unit_index)->object.body_vitality;
+	}
+	/* (the health flashing while the shield is down, as the HUD's: from
+	when it went down) */
+	if (!feed->down_at && object_try_and_get(feed->unit_index) &&
+		TEST_FLAG(object_get(feed->unit_index)->object.damage_flags, _object_shield_depleted_bit))
+	{
+		if (!feed->health_flash_at)
+			feed->health_flash_at = system_milliseconds() ? system_milliseconds() : 1;
+	}
+	else
+	{
+		feed->health_flash_at = 0;
 	}
 	distance[NUMBEROF(distance) - 1] = 0;
 	distance_width = spartan_link_text_width(distance) * text_scale;
@@ -737,16 +1170,26 @@ static void spartan_link_draw_row(
 	spartan_link_text(name, bounds->x0 + margin, top, name_width, 0, text_scale, &text_color);
 	spartan_link_text(distance, bounds->x1 - margin - distance_width, top, distance_width, 0, text_scale,
 		&text_color);
-	/* (the shield: a thin bar between them, where there is room for one) */
+	/* (the shield: a thin bar between them, where there is room for one;
+	the health a thinner one under it, the two about the text's middle) */
 	bar_x0 = bounds->x0 + margin * 2.0f + name_width;
 	bar_x1 = bounds->x1 - margin * 2.0f - distance_width;
-	bar_y = top + SPARTAN_LINK_ROW * scale * 0.38f;
+	bar_y = top + SPARTAN_LINK_ROW * scale * 0.30f;
+	health_y = bar_y + bar_height + MAX(0.75f * scale, pixel);
 	if (bar_x1 - bar_x0 >= 6.0f * scale)
 	{
+		pixel32 health_color = object_try_and_get_and_verify_type(feed->unit_index, _object_mask_unit) ?
+			spartan_link_health_color(feed->unit_index, health, feed->health_flash_at) : spartan_link_color(0.95f, 1.0f);
+
 		shield = PIN(shield, 0.0f, 1.0f);
+		health = PIN(health, 0.0f, 1.0f);
 		spartan_link_rectangle(white, bar_x0, bar_y, bar_x1, bar_y + bar_height, spartan_link_color(0.35f, 0.6f));
 		spartan_link_rectangle(white, bar_x0, bar_y, bar_x0 + (bar_x1 - bar_x0) * shield, bar_y + bar_height,
 			spartan_link_color(0.95f, 1.0f));
+		spartan_link_rectangle(white, bar_x0, health_y, bar_x1, health_y + health_height,
+			(health_color & 0x00FFFFFFUL) | 0x50000000UL);
+		spartan_link_rectangle(white, bar_x0, health_y, bar_x0 + (bar_x1 - bar_x0) * health, health_y + health_height,
+			health_color);
 	}
 }
 
@@ -863,11 +1306,8 @@ boolean spartan_link_feed_begin(
 	struct spartan_link_window *window;
 	struct spartan_link_feed *feed;
 	struct player_datum *teammate;
-	struct camera_command command;
 	real_rectangle2d rectangles[SPARTAN_LINK_FEEDS];
-	director_perspective perspective;
 	real scale;
-	real_point3d eye;
 	boolean through_eyes;
 	unsigned long width, height;
 	int view;
@@ -893,33 +1333,7 @@ boolean spartan_link_feed_begin(
 	spartan_link.due_local_player = NONE;
 	spartan_link.due_feed = NONE;
 
-	/* its camera: their eye as their body is drawn, along their aim; or in a
-	seat whose camera follows the vehicle, from behind */
-	first_person_camera_fake(feed->unit_index, &command);
-	render_interpolation_unit_camera_position(feed->unit_index, &eye);
-	through_eyes = !director_desired_perspective(feed->unit_index, &perspective);
-	camera->forward = command.forward;
-	camera->up = command.up;
-	if (through_eyes)
-	{
-		camera->position = eye;
-	}
-	else
-	{
-		struct object_datum *unit = object_get(feed->unit_index);
-		long vehicle_index = unit->object.parent_object_index;
-		real radius = vehicle_index != NONE && object_try_and_get(vehicle_index) ?
-			object_get(vehicle_index)->object.bounding_sphere_radius : 1.0f;
-		real back = radius * 1.6f + 0.6f;
-
-		camera->position.x = eye.x - command.forward.i * back;
-		camera->position.y = eye.y - command.forward.j * back;
-		camera->position.z = eye.z - command.forward.k * back + radius * 0.35f;
-	}
-	camera->vertical_field_of_view = 2.0f * arctangent(
-		0.75f * render_camera_get_adjusted_field_of_view_tangent(
-			through_eyes ? spartan_link_field_of_view(feed->unit_index) : DEGREES_TO_RADIANS(70.0f)),
-		1.0f);
+	through_eyes = spartan_link_feed_view(feed->unit_index, camera);
 	camera->mirrored = FALSE;
 	camera->z_near = rasterizer_globals.near_clip_distance;
 	camera->z_far = render_far_clip_distance(local_player_index);
@@ -1021,5 +1435,15 @@ void spartan_link_draw(
 	{
 		spartan_link_draw_feed(white, local_player_index, index, &rectangles[index], scale);
 		spartan_link_draw_row(white, local_player_index, index, &rectangles[index], scale);
+		/* (the teammate's reticle, on their feed's picture) */
+		if (halo_view_drawn(SPARTAN_LINK_VIEW(local_player_index, index)))
+		{
+			real radius = spartan_link_reticle_radius(&rectangles[index]);
+			real_point2d place;
+			boolean enemy;
+
+			if (spartan_link_feed_aim(&window->feeds[index], &rectangles[index], radius, &place, &enemy))
+				spartan_link_draw_reticle(white, &place, radius, enemy);
+		}
 	}
 }
