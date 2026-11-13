@@ -140,6 +140,9 @@ enum
 	_host_button_mute_day,
 	_host_button_unmute,
 	_host_button_cancel,
+	/* (co-op's: BRING TO ME and GO TO, the player's _host_controls_bring and
+	_go_to, chosen after it, as a ban's lengths are) */
+	_host_button_teleport,
 	/* (a map's) */
 	_host_button_map_now,
 	_host_button_map_after,
@@ -515,6 +518,13 @@ static boolean host_move(struct host_controls_player const *player)
 	if (host_remote())
 		return host_ask(_network_admin_move_team, player, 0, NULL);
 	return network_host_game_move_player(player);
+}
+
+/* (co-op's host: never an admin's, whose actions have neither) */
+static boolean host_teleport(struct host_controls_player const *player, boolean go_to)
+{
+	return !host_remote() && player->player_index != NONE &&
+		network_host_controls_teleport(player->player_index, go_to);
 }
 
 /* ---- the game's rows */
@@ -1847,12 +1857,25 @@ static short host_buttons_of(struct host_controls_player const *player, short ch
 			buttons[shown++] = _host_button_cancel;
 			break;
 		}
+		if (host_menu.choosing == _host_button_teleport &&
+			(player->actions & (FLAG(_host_controls_bring) | FLAG(_host_controls_go_to))))
+		{
+			if (TEST_FLAG(player->actions, _host_controls_bring))
+				buttons[shown++] = _host_controls_bring;
+			if (TEST_FLAG(player->actions, _host_controls_go_to))
+				buttons[shown++] = _host_controls_go_to;
+			buttons[shown++] = _host_button_cancel;
+			break;
+		}
 		for (index = 0; index < NUMBEROF(order); index++)
 		{
 			if (TEST_FLAG(player->actions, order[index]))
 				buttons[shown++] = order[index] == _host_controls_mute && host_muted(player) ?
 					_host_button_unmute : order[index];
 		}
+		/* (co-op's, which has no teams to move between: a fourth button) */
+		if (player->actions & (FLAG(_host_controls_bring) | FLAG(_host_controls_go_to)))
+			buttons[shown++] = _host_button_teleport;
 		break;
 	case _host_tab_maps:
 		if (!host_chosen_map())
@@ -1924,6 +1947,15 @@ static void host_button_text(short action, struct host_controls_player const *pl
 		break;
 	case _host_button_unmute:
 		usnprintf(text, size - 1, L"UNMUTE");
+		break;
+	case _host_button_teleport:
+		usnprintf(text, size - 1, L"TELEPORT...");
+		break;
+	case _host_controls_bring:
+		usnprintf(text, size - 1, L"BRING TO ME");
+		break;
+	case _host_controls_go_to:
+		usnprintf(text, size - 1, L"GO TO %s", player ? player->name : L"");
 		break;
 	case _host_button_unban:
 		usnprintf(text, size - 1, L"UNBAN");
@@ -2077,6 +2109,8 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 			usnprintf(status, NUMBEROF(status) - 1, L"For how long? They can't join until then.");
 		else if (host_menu.choosing == _host_controls_mute)
 			usnprintf(status, NUMBEROF(status) - 1, L"For how long? No chat or voice.");
+		else if (host_menu.choosing == _host_button_teleport)
+			usnprintf(status, NUMBEROF(status) - 1, L"Bring them beside you, or go to them.");
 		else if (!lobby && game_engine_running() && game_engine_has_teams() &&
 			!TEST_FLAG(player->actions, _host_controls_move_team))
 		{
@@ -2774,6 +2808,21 @@ static boolean host_controls_action(struct widget_instance *button)
 		host_menu.choosing = NONE;
 		host_focus_buttons(button->parent);
 		ui_play_audio_feedback_sound(SOUND_CURSOR);
+		return TRUE;
+	case _host_button_teleport:
+		if (!player)
+			break;
+		host_menu.choosing = action;
+		host_focus_buttons(button->parent);
+		ui_play_audio_feedback_sound(SOUND_CURSOR);
+		return TRUE;
+	case _host_controls_bring:
+	case _host_controls_go_to:
+		if (!player || !host_teleport(player, action == _host_controls_go_to))
+			break;
+		host_menu.choosing = NONE;
+		host_notice(action == _host_controls_bring ? L"%s was brought to you." : L"You went to %s.", name);
+		ui_play_audio_feedback_sound(SOUND_FORWARD);
 		return TRUE;
 	case _host_controls_move_team:
 		if (!player || !host_move(player))

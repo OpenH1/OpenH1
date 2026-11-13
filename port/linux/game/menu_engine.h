@@ -26,6 +26,9 @@ void menu_engine_screen_closed(struct widget_instance *screen);
 engine is drawing it now), for ui_widget.c to draw */
 boolean menu_engine_screen_draw(struct widget_instance *screen, rectangle2d *clip, point2d offset, boolean focus,
 	boolean nifty);
+/* whether the engine runs the screen (a generated or hand-written screen,
+laid out for the menus' 640 by 480) */
+boolean menu_engine_screen_owned(struct widget_instance const *screen);
 /* an event for the screen taken by the engine (*deleted: the screen is gone
 after it): FALSE if the screen is not the engine's */
 boolean menu_engine_screen_event(struct widget_instance *screen, struct event_record *event, boolean *deleted);
@@ -160,6 +163,10 @@ drawn in (what its widget's own size shows of it), not cut to it: the
 original picture in a tall panel's <spartan> line, smaller than the
 picture */
 boolean menu_screen_picture_stretched(struct widget_instance const *widget);
+/* the screen a pause menu opens as (name: the map's pause screen's tag):
+under the menu engine, the hand-written pause menu that takes its place,
+else name */
+char const *menu_screen_pause_name(char const *name);
 /* "port screen do", an item's A: its action run */
 boolean menu_screen_do(struct widget_instance *item, struct event_record *event, boolean *deleted);
 /* "port screen key", a button bar prompt's A (a click, a tap): its key

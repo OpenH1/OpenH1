@@ -656,6 +656,7 @@ struct widget_instance;
 #include "custom_edition_maps.h" /* port: port/linux/game/custom_edition_maps.c */
 #include "menu_layout.h" /* port: port/linux/game/menu_layout.c */
 #include "menu_engine.h" /* port: port/linux/game/menu_engine.c */
+#include "menu_view.h" /* port: port/linux/game/menu_view.c */
 void menu_tour_update(void); /* port: port/linux/game/menu_tour.c */
 /* port: port/linux/game/menu_studio.c */
 void menu_studio_update(void);
@@ -7858,7 +7859,8 @@ static void ui_mouse_widen_values(
 	rectangle2d noted[UI_MOUSE_MAXIMUM_TARGETS];
 	long index;
 	long other;
-	short screen_width = (short)halo_screen_width();
+	/* port: (the canvas the menus are drawn in: menu_view.c) */
+	short side = menu_view_side();
 
 	for (index = 0; index < ui_mouse_target_count; index++)
 		noted[index] = ui_mouse_targets[index].bounds;
@@ -7874,8 +7876,8 @@ static void ui_mouse_widen_values(
 			continue;
 		value->split_x = (box->x0 + box->x1) / 2;
 		value->split_y = (box->y0 + box->y1) / 2;
-		left = MAX(left, (short)(-(screen_width - 640) / 2));
-		right = MIN(right, (short)(640 + (screen_width - 640) / 2));
+		left = MAX(left, (short)-side);
+		right = MIN(right, (short)(640 + side));
 		for (other = 0; other < ui_mouse_target_count; other++)
 		{
 			struct ui_mouse_target const *beside = &ui_mouse_targets[other];
@@ -8963,19 +8965,20 @@ static void widget_instance_render_recursive(
 			&bitmap_group->sequences,
 			0,
 			struct bitmap_group_sequence);
-		/* port: a widget whose bounds cover the whole 640x480 design space (the
-		 * pause menu's dim, for example) should cover the whole screen too,
-		 * not just the centered 640 columns -- same as the fade_to_black
-		 * quad in render_ui_widgets(). Both the bounds and the clip are
-		 * widened symmetrically below, before the centering offset is
-		 * added. Only flat fills (the dims, and the menus' vertical
-		 * gradient, at most 16 texels wide): a picture is drawn texel for
-		 * texel, so wider bounds would shift it (the loading screen). */
+		/* port: a widget whose bounds cover the whole of the room its screen
+		 * was made for (the pause menu's dim, for example) should cover the
+		 * whole screen too, not just the centered 640 columns -- same as the
+		 * fade_to_black quad in render_ui_widgets() -- or in split screen
+		 * the player's whole view (port/linux/game/menu_view.c's canvas).
+		 * Both the bounds and the clip are widened below, before the
+		 * centering offset is added. Only flat fills (the dims, and the
+		 * menus' vertical gradient, at most 16 texels wide): a picture is
+		 * drawn texel for texel, so wider bounds would shift it (the
+		 * loading screen). */
+		rectangle2d canvas;
 		boolean widen_to_screen =
-			bounds.x0 <= 0 && bounds.y0 <= 0 &&
-			bounds.x1 >= 640 && bounds.y1 >= 480 &&
 			bitmap->width <= 16 &&
-			halo_screen_width() > 640;
+			menu_view_canvas(&bounds, &canvas);
 
 		if (use_nifty_plasma_fx)
 		{
@@ -8985,11 +8988,7 @@ static void widget_instance_render_recursive(
 			ui_plasma_effect_color.blue = 0.05f;
 		}
 		if (widen_to_screen)
-		{
-			long extra = (halo_screen_width() - 640) / 2;
-			bounds.x0 -= (short)extra;
-			bounds.x1 = (short)(640 + extra);
-		}
+			bounds = canvas;
 		/* port: a panel stretched over the width a wide screen adds
 		(ui_widget_port_stretch) */
 		bounds.x1 = (short)(bounds.x1 + ui_widget_port_stretch(definition->flags));
@@ -9012,14 +9011,13 @@ static void widget_instance_render_recursive(
 		}
 		if (widen_to_screen && clip)
 		{
-			/* widen the clip by the same amount (it is offset-shifted but
-			 * still 640-wide at the edges) so the dim is not clipped back
+			/* widen the clip as far (it is offset-shifted but still the
+			 * screen's room at the edges) so the dim is not clipped back
 			 * to the centered columns */
-			long extra = (halo_screen_width() - 640) / 2;
-			if (clip->x0 <= 0)
-				clip->x0 -= (short)extra;
-			if (clip->x1 >= 640)
-				clip->x1 = (short)(clip->x1 + extra);
+			clip->x0 = MIN(clip->x0, bounds.x0);
+			clip->x1 = MAX(clip->x1, bounds.x1);
+			clip->y0 = MIN(clip->y0, bounds.y0);
+			clip->y1 = MAX(clip->y1, bounds.y1);
 		}
 		if (TEST_FLAG(definition->flags, _widget_flash_background_bitmap_bit))
 		{
@@ -9600,21 +9598,21 @@ void render_ui_widgets(
 				{
 					should_render = TRUE;
 				}
+				/* port: a split screen player's screen drawn over every
+				view, not in theirs (render_ui_widgets_over_views) */
+				if (!we_are_at_the_main_menu && menu_view_over_views(widget))
+					should_render = FALSE;
 			}
 			if (should_render)
 			{
 				point2d offset;
 
 				/* port: from the screen's left edge where widgets are anchored to
-				it (ui_widget_port_anchor_extra), or the wide layout's
-				(ui_widget_port_wide_extra, and past 16:9 the menu engine's:
-				ui_widget_port_past_extra), not the menus' 0 */
-				bounds.x0 = (short)-MAX(ui_widget_port_anchor_extra(), (ui_widget_port_wide_extra() + ui_widget_port_past_extra() + 1) / 2);
-				bounds.y0 = 0;
-				bounds.x1 = window_bounds->x1 - window_bounds->x0;
-				bounds.y1 = window_bounds->y1 - window_bounds->y0;
-				offset.x = 0;
-				offset.y = 0;
+				it, or the wide layout's, not the menus' 0; in split screen, the
+				screen scaled to fit the player's view, centred in it
+				(port/linux/game/menu_view.c) */
+				menu_view_begin(widget, &ui_widget_definition_get(widget->definition_tag_index)->bounds,
+					window_bounds, &bounds, &offset);
 				/* the mouse drives the first player's menus; a widget shown in
 				every viewport (a dialog for everyone) is noted in the first
 				player's render only, and once a frame */
@@ -9627,6 +9625,8 @@ void render_ui_widgets(
 					TRUE,
 					FALSE);
 				ui_mouse_noting_targets = FALSE;
+				/* port: (the view's canvas let go: menu_view.c) */
+				menu_view_end();
 				/* port: (debug.menu_layout) */
 				menu_layout_widget_none();
 				if (widget_globals.debug_show_path)
@@ -9724,6 +9724,34 @@ void render_ui_widgets(
 	ui_debug_draw_targets(first_players_render);
 
 	return;
+}
+
+/* port: the split screen players' screens drawn full screen over every view
+(port/linux/game/menu_view.c's menu_view_over_views: what the pause menu
+opens, Settings), once a frame in the whole screen's window, after the
+views (render.c) */
+void render_ui_widgets_over_views(
+	rectangle2d const *window_bounds)
+{
+	long widget_index;
+
+	if (we_are_at_the_main_menu || virtual_keyboard_active() || bink_playback_ui_rendering_inhibited())
+		return;
+	ui_widget_port_wide_layout(window_bounds->x1 - window_bounds->x0);
+	for (widget_index = 0; widget_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; widget_index++)
+	{
+		struct widget_instance *widget = widget_globals.active_widgets[widget_index];
+		rectangle2d bounds;
+		point2d offset;
+
+		if (!widget || !menu_view_over_views(widget))
+			continue;
+		local_player_index_for_draw_string_and_hack_in_icons = widget->local_player_index;
+		menu_view_begin(widget, &ui_widget_definition_get(widget->definition_tag_index)->bounds, window_bounds,
+			&bounds, &offset);
+		widget_instance_render_recursive(widget, &bounds, offset, TRUE, FALSE);
+		menu_view_end();
+	}
 }
 
 /* ---------- private code */
@@ -10740,7 +10768,9 @@ static boolean ui_check_for_pause_game(
 					}
 					if (widget_name &&
 						!ui_widget_load_by_name_or_tag(
-							widget_name,
+							/* port: the menu engine's pause menu in its
+							place (port/linux/game/menu_screen.c) */
+							menu_screen_pause_name(widget_name),
 							NONE,
 							NULL,
 							controller_index,
@@ -10781,7 +10811,8 @@ static boolean ui_check_for_pause_game(
 					tag_loaded(UI_WIDGET_DEFINITION_TAG, "ui\\shell\\multiplayer_game\\pause_game\\1p_pause_game") != NONE)
 				{
 					if (!ui_widget_load_by_name_or_tag(
-						"ui\\shell\\multiplayer_game\\pause_game\\1p_pause_game",
+						/* port: (menu_screen_pause_name, as above) */
+						menu_screen_pause_name("ui\\shell\\multiplayer_game\\pause_game\\1p_pause_game"),
 						NONE,
 						NULL,
 						controller_index,
@@ -10795,7 +10826,8 @@ static boolean ui_check_for_pause_game(
 					}
 				}
 				else if (!ui_widget_load_by_name_or_tag(
-					"ui\\shell\\solo_game\\pause_game\\pause_game",
+					/* port: (menu_screen_pause_name, as above) */
+					menu_screen_pause_name("ui\\shell\\solo_game\\pause_game\\pause_game"),
 					NONE,
 					NULL,
 					controller_index,
@@ -10817,7 +10849,8 @@ static boolean ui_check_for_pause_game(
 				else if (!game_time_get_paused())
 				{
 					if (!ui_widget_load_by_name_or_tag(
-						"ui\\shell\\solo_game\\pause_game\\pause_game_split_screen",
+						/* port: (menu_screen_pause_name, as above) */
+						menu_screen_pause_name("ui\\shell\\solo_game\\pause_game\\pause_game_split_screen"),
 						NONE,
 						NULL,
 						controller_index,

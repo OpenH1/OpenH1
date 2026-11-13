@@ -413,6 +413,9 @@ SETTINGS_STILL_RADIUS, SETTINGS_STILL_RIM = 4.75, 1.5
 SETTINGS_PICTURE_RIM = "#2995ff"
 SETTINGS_BLUE = "#FF2896FF"
 SETTINGS_DIM = "#FF6F9CD0"
+# the profile Settings edits, in its title's band: its words' box, at the band's right (as the hand-written
+# screens' <header detail=>: menu_screen_tall.inc's TALL_DETAIL_X and _Y)
+SETTINGS_PROFILE_X, SETTINGS_PROFILE_Y, SETTINGS_PROFILE_WIDTH = 372, 11, 240
 SETTINGS = "main_menu/settings"
 SETTINGS_TITLE = f"{SETTINGS}/header_settings"
 # (Settings' tabs' prompts, its own: _settings_shared)
@@ -2551,6 +2554,8 @@ def _settings_page(folder: str, page: dict, g: SettingsLayout = SETTINGS_CLASSIC
                       # (the search, the menu engine's: SETTINGS_SEARCH)
                       '<on event="y" run="port settings search"/>',
                       f'<child widget="{header}"/>',
+                      # (the profile it edits, at the title's right: SETTINGS_PROFILE)
+                      f'<child widget="{SETTINGS}/profile"/>',
                       *([f'<child widget="{SETTINGS_TAB_PROMPTS}/tab_prompt_previous" x="{WIDE_MARGIN}" '
                          f'y="{g.tabs_top}"/>',
                          f'<child widget="{SETTINGS_TAB_PROMPTS}/tab_prompt_next" '
@@ -2650,6 +2655,15 @@ def _settings_shared(g: SettingsLayout = SETTINGS_CLASSIC) -> list:
     else:
         lines = _widget(SETTINGS_TITLE, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
                                          ("bitmap", SETTINGS_TITLE), ("wide", WIDE_LEFT)], [])
+    # the profile Settings edits, at the right of its title's band, as Select Profile's band has player 1's
+    # (menu_functions.c's settings_profile_text: PROFILE: and its name; a split screen game's player's,
+    # PLAYER 2 and its name), past 16:9 at the screen's right as the title is at its left
+    lines += _settings_text(f"{SETTINGS}/profile", [("left", SETTINGS_PROFILE_X), ("top", SETTINGS_PROFILE_Y),
+                                                    ("width", SETTINGS_PROFILE_WIDTH), ("height", 18),
+                                                    ("color", SETTINGS_DIM), ("align", "right"),
+                                                    ("text_flags", "no_focus_test"), ("wide", WIDE_RIGHT),
+                                                    ("past", gp(PAST_HALF))],
+                            ['<data input="port settings profile"/>'])
     for kind, top in (("tab", g.tab_top), ("page", g.page_top)):
         # (menu_functions.c's settings_panel_show fills it in, and shows the
         # Quality row's pictures)
@@ -5581,7 +5595,7 @@ def lobby_pictures(framed, highlight) -> list:
 # and an outlined button's
 SCREEN_LANES = {"computer": (404, 74, 436), "touch": (364, 76, 410)}
 SCREEN_LANE_GAP, SCREEN_LANE_INSET, SCREEN_LANE_ROW = 12, 8, 18
-SCREEN_CHOICE_HEIGHTS = {"computer": (148, 22), "touch": (188, 40)}
+SCREEN_CHOICE_HEIGHTS = {"computer": (148, 22), "touch": (188, 32)}
 SCREEN_PANEL_BUTTON = (148, 24)
 # a chat under a table (<chat>: the lobby's, 5 lines), on the computer and on a touchscreen: its line's and its line
 # typed's heights, its inner margin and the gap over it (the table's foot over it)

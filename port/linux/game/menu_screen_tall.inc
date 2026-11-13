@@ -106,7 +106,7 @@ them, the search at the top's right, the bar's top and its buttons' widths */
 #define TOUCH_TABLE_WIDTH 364
 #define TOUCH_ROWS_BOTTOM 410
 #define TOUCH_DETAIL_X 66
-#define TOUCH_DETAIL_Y 4
+#define TOUCH_DETAIL_Y 46
 #define TOUCH_EMPTY_Y 230
 #define TOUCH_TABLE_BUTTON_Y 316
 #define TOUCH_TABLE_BUTTON_WIDTH 200
@@ -172,10 +172,10 @@ own) */
 between the arrows from its left, the arrows' size; a touchscreen's
 height; the panel's buttons' gap one over another */
 #define PANEL_CHOICE_HEIGHT 22
-#define TOUCH_PANEL_CHOICE_HEIGHT 40
+#define TOUCH_PANEL_CHOICE_HEIGHT 32
 #define PANEL_CHOICE_LABEL_X 8
 #define PANEL_CHOICE_LABEL_WIDTH 58
-#define PANEL_CHOICE_VALUE_X 66
+#define PANEL_CHOICE_VALUE_X 58
 #define PANEL_CHOICE_ARROW 6
 #define PANEL_CHOICE_GAP 0
 #define PANEL_BUTTON_GAP 4
@@ -930,9 +930,10 @@ static void tall_build_table(struct screen_tall *tall, struct menu_screen const 
 	short table_width = touch ? TOUCH_TABLE_WIDTH : TALL_TABLE_WIDTH;
 
 	tall->table = &file->blocks[table_index];
-	/* (a table of lanes': its columns from its rows' left, with no titles) */
+	/* (a table of lanes': its columns from its rows' left (in from its
+	rounded end), with no titles) */
 	if (tall->table->lanes > 1)
-		x = 0;
+		x = TALL_LANE_ROW_INSET;
 	for (index = 0; index < NUMBEROF(screen_source_names); index++)
 	{
 		if (tall->table->source && !strcmp(tall->table->source, screen_source_names[index]))
@@ -1090,11 +1091,19 @@ static void tall_build_table(struct screen_tall *tall, struct menu_screen const 
 			if (laned)
 			{
 				/* (in its lane's row, from the row's left: its columns' moves
-				and growth the lane's) */
+				and growth the lane's; on a touchscreen, its touch place's x,
+				width, move and growth, where it has one) */
 				cx = (short)(row_x + column->x);
 				cy = (short)(y + TALL_LANE_CELL_Y);
 				cmove = (short)(row_move + column->move);
 				icon_y = (short)(-TALL_LANE_CELL_Y + (tall->row_height - TALL_LANE_DOT) / 2);
+				if (touch && block->touch_width)
+				{
+					cx = (short)(row_x + block->touch_x);
+					cw = block->touch_width;
+					cmove = (short)(row_move + block->touch_move);
+					cgrow = block->touch_grow;
+				}
 			}
 			else if (touch)
 			{
@@ -1448,6 +1457,7 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 	short y = touch ? TOUCH_BAR_Y : TALL_BAR_Y;
 	short slot_x[TALL_MAXIMUM_PROMPTS], slot_width[TALL_MAXIMUM_PROMPTS], widths[TALL_MAXIMUM_PROMPTS];
 	short grown[TALL_MAXIMUM_PROMPTS];
+	boolean on_left[TALL_MAXIMUM_PROMPTS];
 	short right_width = 0;
 	char const *previous_key = NULL;
 	long index, count = 0;
@@ -1482,7 +1492,8 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 		time, by their ifs) */
 		shared = previous_key && !strcmp(previous_key, button->key);
 		if (touch)
-			width = !strcmp(button->key, "back") ? TOUCH_BACK_WIDTH : TOUCH_PROMPT_WIDTH;
+			width = button->touch_width ? button->touch_width : !strcmp(button->key, "back") ? TOUCH_BACK_WIDTH :
+				TOUCH_PROMPT_WIDTH;
 		else
 			width = tall_prompt_width(tall, button);
 		/* (the right end's first: from where they end at the right margin) */
@@ -1539,12 +1550,16 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 	for (index = 0; index < count; index++)
 	{
 		struct screen_box *box = tall_box_of(tall, tall->prompts[index].widget);
-		boolean left = slot_x[index] + slot_width[index] / 2 < 320;
 
+		/* (side="right"'s at the right edge, wherever their place; on a
+		touchscreen, BACK at the right edge, the rest in a row from the
+		left) */
+		on_left[index] = touch ? strcmp(tall->prompts[index].key, "back") != 0 :
+			slot_x[index] + slot_width[index] / 2 < 320 && !tall_prompt_right(tall->prompts[index].block);
 		if (!box)
 			continue;
 		box->centred = TRUE;
-		box->dx = (short)(left ? -106 : 106);
+		box->dx = (short)(on_left[index] ? -106 : 106);
 	}
 	if (any_grown)
 	{
@@ -1560,7 +1575,7 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 
 			if (index && slot_x[index] == slot_x[index - 1])
 				continue;
-			if (slot_x[index] + slot_width[index] / 2 >= 320)
+			if (!on_left[index])
 				continue;
 			for (other = index; other < count && slot_x[other] == slot_x[index]; other++)
 				slot_grown = (short)MAX(slot_grown, grown[other]);
@@ -1582,7 +1597,7 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 			long other;
 			short most = 0;
 
-			if (slot_x[index] + slot_width[index] / 2 < 320)
+			if (on_left[index])
 				continue;
 			for (other = 0; other < count; other++)
 			{
@@ -1597,7 +1612,7 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 			short slot_grown = 0;
 			long other;
 
-			if (slot_x[place] + slot_width[place] / 2 < 320 || (place && slot_x[place] == slot_x[place - 1]))
+			if (on_left[place] || (place && slot_x[place] == slot_x[place - 1]))
 				continue;
 			for (other = place; other < count && slot_x[other] == slot_x[place]; other++)
 				slot_grown = (short)MAX(slot_grown, grown[other]);
@@ -2329,7 +2344,7 @@ static void tall_choice_frame(struct screen_tall *tall, struct screen_line *line
 		unsigned short wide_text[MENU_SCREEN_MAXIMUM_TEXT * 2];
 
 		tall_utf16(text, wide_text, NUMBEROF(wide_text));
-		pc_menu_text_fit(line->value, wide_text, (short)(tall_width(tall, line->value) - 2 * (PANEL_CHOICE_ARROW + 6)));
+		pc_menu_text_fit(line->value, wide_text, (short)(tall_width(tall, line->value) - 2 * (PANEL_CHOICE_ARROW + 2)));
 	}
 	if (dimmed && tall->body->focused_child == line->widget)
 		tall->body->focused_child = NULL;
@@ -2556,9 +2571,12 @@ static void tall_frame(struct screen_open *open)
 	if (tall->detail)
 	{
 		char text[MENU_SCREEN_MAXIMUM_TEXT];
+		unsigned short wide_text[MENU_SCREEN_MAXIMUM_TEXT];
 
+		/* (cut short with "..." where it is wider than its place) */
 		tall_text(tall, tall->header->empty, text, sizeof(text));
-		tall_text_set(tall->detail, text);
+		tall_utf16(text, wide_text, NUMBEROF(wide_text));
+		pc_menu_text_fit(tall->detail, wide_text, tall_width(tall, tall->detail));
 	}
 	if (open->header)
 	{

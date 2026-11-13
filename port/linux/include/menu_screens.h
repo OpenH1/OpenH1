@@ -13,8 +13,9 @@ screen down: <title-art/>, <header> (title, picture, detail, a <button>),
 <cards> holding <card>s, <tabs> (current) holding <tab>s, <table> (source,
 sorted, do, empty, lanes, left, right) holding <lane>s, <column>s (each a <search> in its title) and a
 <button>, <search>, <panel> holding <heading>, <text>, <pills> of <pill>s,
-<pair>, <choice>, <spartan> and <button>s, <chat> (source, lines, do, if), <space/>, and <buttons> holding <button>s (key, label,
-do, width, if). Texts may hold bindings, {name}, filled from C; a do and the
+<pair>, <choice>, <spartan> and <button>s, <chat> (source, lines, do, if), <space/>, <box> (x, y, width, align) holding a
+<list> and a <legend> (x), <objectives> (title), and <buttons> holding
+<button>s (key, label, do, width, if). Texts may hold bindings, {name}, filled from C; a do and the
 screen's back are actions, a table's source a row source, an if, a current,
 a sorted and a search's value bindings: names the game knows. All are
 checked as the file is read against the names the game gave
@@ -71,7 +72,18 @@ enum menu_screen_block_kind
 	/* (a panel's choice: its label, its value between arrows, stepped) */
 	MENU_SCREEN_CHOICE,
 	/* (a chat's lines, under a tall screen's table, and the line typed) */
-	MENU_SCREEN_CHAT
+	MENU_SCREEN_CHAT,
+	/* (a framed box, the pause menu's: its <list> in it, its rows as many
+	as are shown, and its <legend> under them; the box as tall as they need,
+	from the top or about its middle (align: side), its x and width the
+	menus' (box_x, box_width), its top or middle box_y) */
+	MENU_SCREEN_BOX,
+	/* (a box's legend row: B = CANCEL, A = SELECT, as the Xbox's pause menu
+	has it under its rows, its left box_x into the box) */
+	MENU_SCREEN_LEGEND,
+	/* (a framed box beside the box before it, as tall: its title (label)
+	and the mission's objectives, a line each) */
+	MENU_SCREEN_OBJECTIVES
 };
 
 /* a <spartan>'s color: the focused <colors> item's, the profile's, or a

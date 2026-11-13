@@ -55,6 +55,7 @@ looks", below).
 #include "basic_training.h"
 #include "halo_keyboard.h"
 #include "menu_models.h"
+#include "menu_view.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -412,7 +413,8 @@ short ui_widget_port_anchor_extra(void)
 {
 	if (!ui_widget_port_touch_menus())
 		return 0;
-	return (short)MAX((halo_screen_width() - 640) / 2, 0);
+	/* (the canvas the menus are drawn in: menu_view.c's) */
+	return (short)MAX(menu_view_side(), 0);
 }
 
 /* anchor_left: the widget (and what is in it) moved to the screen's left
@@ -686,6 +688,8 @@ static char const *const port_game_data_input_names[] =
 	"port campaign restart update",
 	/* (the main menu's 2V2 browser: doubles_browser.inc) */
 	"port doubles update",
+	/* (Settings' band's right: the profile it edits) */
+	"port settings profile",
 };
 
 /* a pause box made wider while the keyboard plays (pause_boxes_fit) */
@@ -2864,7 +2868,9 @@ boolean menu_tags_open(
 	size_t index;
 
 	*deleted = FALSE;
-	snprintf(name, sizeof(name), PC_MENU_TAG_PREFIX "%s", screen);
+	/* (a map's own screen by its tag's name, with its backslashes: the
+	campaign's questions, which the pause menu opens) */
+	snprintf(name, sizeof(name), strchr(screen, '\\') ? "%s" : PC_MENU_TAG_PREFIX "%s", screen);
 	for (index = 0; name[index]; index++)
 	{
 		if (name[index] == '/')
@@ -2879,6 +2885,17 @@ boolean menu_tags_open(
 	SET_FLAG(handler.flags, _event_handler_open_widget_bit, TRUE);
 	ui_widget_port_handler_run(widget, event, &handler, deleted);
 	return TRUE;
+}
+
+/* a widget definition's flags (its pause_game: whether a pause menu
+pauses the game, menu_screen.c's menu_screen_pause_name), 0 for none */
+long menu_tags_flags(
+	long tag_index)
+{
+	struct ui_widget_definition const *definition = tag_index != NONE ?
+		tag_get(UI_WIDGET_DEFINITION_TAG, tag_index) : NULL;
+
+	return definition ? definition->flags : 0;
 }
 
 /* a widget's background's bitmap tag, NONE for none: the hand-written tall
@@ -3351,6 +3368,41 @@ static short pause_legends_growth(long legends_tag)
 	if (growth > 0)
 		tag_value_set(menu_tags.legend_rooms, &menu_tags.legend_room_count, legends_tag, growth);
 	return growth;
+}
+
+/* how much wider a pause box is made for the legends' row under it while
+the keyboard's keys are drawn in it (pause_legends_growth), for the
+hand-written pause menu's box (menu_screen.c) */
+short menu_tags_legend_growth(
+	long legends_tag)
+{
+	return legends_tag == NONE ? 0 : pause_legends_growth(legends_tag);
+}
+
+/* the rows the pause menu adds for this machine, as pause_patch and
+pause_campaign_patch add them to the map's (network_host_controls_pause_rows_for):
+the hand-written pause menu's (menu_screen.c's pause.* bindings) */
+static boolean network_coop_campaign_map(void);
+
+unsigned long menu_tags_pause_rows(void)
+{
+	struct host_controls_pause_view view;
+	/* (a network co-op game's map: its pause menu's FRIENDLY FIRE too) */
+	boolean coop = network_coop_campaign_map();
+	/* (the screens by their tags: the menus' files are let go of once their
+	tags are made) */
+	boolean host_controls = tag_loaded(UI_WIDGET_DEFINITION_TAG,
+		PC_MENU_TAG_PREFIX "main_menu\\host_controls\\host_controls_screen") != NONE;
+	boolean training = tag_loaded(UI_WIDGET_DEFINITION_TAG, PC_MENU_TAG_PREFIX "main_menu\\training\\training_screen") != NONE;
+
+	view.host = coop ? global_network_game_server_get() != NULL : global_network_game_server_get() != NULL ||
+		(network_admin_was_remote() && host_controls);
+	view.coop = coop;
+	view.local = network_game_is_splitscreen_local();
+	view.training = basic_training_active();
+	view.host_controls_screen = host_controls;
+	view.training_screen = training;
+	return network_host_controls_pause_rows_for(&view);
 }
 
 static void pause_patch(struct cache_file_tag_instance *instances)

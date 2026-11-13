@@ -224,7 +224,7 @@ picture, the line, the words for no rows) -->
 	<widget name="screens/pair_label" type="text" width="70" height="20" font="ui\small_ui" color="#FF6F9CD0" text_flags="no_focus_test"/>
 	<widget name="screens/pair_value" type="text" width="148" height="24" font="ui\large_ui" color="#FFFFFFFF" align="right" text_flags="no_focus_test"/>
 	<widget name="screens/pill" type="text" width="64" height="16" bitmap="main_menu/parts/pill_64" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="-1" text_flags="no_focus_test"/>
-	<widget name="screens/panel_button" type="text" width="148" height="24" flags="keep_ends" bitmap="main_menu/parts/button_148x24" font="ui\small_ui" color="#FFFFFFFF" text_x="12" text_y="3">
+	<widget name="screens/panel_button" type="text" width="148" height="24" flags="keep_ends" bitmap="main_menu/parts/button_148x24" font="ui\small_ui" color="#FFFFFFFF" text_x="6" text_y="3">
 		<on event="a" run="port screen do"/>
 		<on event="start" run="port screen do"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -285,5 +285,47 @@ picture, the line, the words for no rows) -->
 		<on event="a" run="port screen do"/>
 		<on event="start" run="port screen do"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<!-- The pause menu's blocks (screens/pause.xml, screens/pause_campaign.xml): a framed box (<box>) of
+	the Xbox's pause menu, its rows and its legend under them, and the mission objectives' box beside it
+	(<objectives>), drawn as the Xbox's widgets draw them (menu_screen.c places them). -->
+	<!-- the screens the pause menu opens as, in place of the game's own (menu_screen_pause_name): a
+	campaign's, or a multiplayer game's; pausing the game, as a single player's pause menu does, or not,
+	as a network game's (the dim, as the Xbox's: menu_view.c spreads it over the player's view) -->
+	<widget name="screens/pause" width="640" height="480" flags="pass_unhandled_to_focused_child pause_game" bitmap="ui\shell\bitmaps\semi_transparent_grey"/>
+	<widget name="screens/pause_live" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="ui\shell\bitmaps\semi_transparent_grey"/>
+	<widget name="screens/pause_campaign" width="640" height="480" flags="pass_unhandled_to_focused_child pause_game" bitmap="ui\shell\bitmaps\semi_transparent_grey"/>
+	<widget name="screens/pause_campaign_live" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="ui\shell\bitmaps\semi_transparent_grey"/>
+	<!-- a box's frame, the port's rounded box (tools/port_settings.py's pause pictures): its left, its
+	middle (as wide as menu_screen.c makes it) and its right, a frame for each number of rows from 3 -->
+	<bitmap name="screens/box_left" frames="ce/port/pause/pausebox_left__0.png ce/port/pause/pausebox_left__1.png ce/port/pause/pausebox_left__2.png ce/port/pause/pausebox_left__3.png ce/port/pause/pausebox_left__4.png" width="16" height="256"/>
+	<bitmap name="screens/box_center" frames="ce/port/pause/pausebox_center__0.png ce/port/pause/pausebox_center__1.png ce/port/pause/pausebox_center__2.png ce/port/pause/pausebox_center__3.png ce/port/pause/pausebox_center__4.png" width="4" height="256"/>
+	<bitmap name="screens/box_right" frames="ce/port/pause/pausebox_right__0.png ce/port/pause/pausebox_right__1.png ce/port/pause/pausebox_right__2.png ce/port/pause/pausebox_right__3.png ce/port/pause/pausebox_right__4.png" width="16" height="256"/>
+	<widget name="screens/box_left" width="16" height="256" bitmap="screens/box_left"/>
+	<widget name="screens/box_center" width="194" height="256" bitmap="screens/box_center"/>
+	<widget name="screens/box_right" width="16" height="256" bitmap="screens/box_right"/>
+	<!-- a box's list and its rows, the Xbox's pause menu's: framed while focused (the game map's menu_bkds'
+	frames, which menu_screen.c gives them: ui.map has none), its words white -->
+	<widget name="screens/box_list" type="column_list" width="202" height="240" flags="pass_unhandled_to_focused_child up_down_tabs_items"/>
+	<widget name="screens/box_item" type="text" width="202" height="27" font="ui\large_ui" color="#FF2896FF" align="center" text_y="3">
+		<on event="a" run="port screen do"/>
+		<on event="start" run="port screen do"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<!-- a box's legend row (<legend>): the game map's B = CANCEL, A = SELECT (button_key_sm, the keyboard's
+	keys in place of the controller's buttons while it plays), which menu_screen.c puts in it: ui.map,
+	which these files are made on too, has none -->
+	<widget name="screens/legend" width="200" height="20"/>
+	<!-- the objectives' box beside a box (<objectives>): its frame (a frame for 5, 6 and 7 rows), its
+	title and the mission's objectives, the game's, a line each -->
+	<bitmap name="screens/objectives_left" frames="ce/port/pause/objectives_left__0.png ce/port/pause/objectives_left__1.png ce/port/pause/objectives_left__2.png" width="16" height="256"/>
+	<bitmap name="screens/objectives_center" frames="ce/port/pause/objectives_center__0.png ce/port/pause/objectives_center__1.png ce/port/pause/objectives_center__2.png" width="4" height="256"/>
+	<bitmap name="screens/objectives_right" frames="ce/port/pause/objectives_right__0.png ce/port/pause/objectives_right__1.png ce/port/pause/objectives_right__2.png" width="16" height="256"/>
+	<widget name="screens/objectives_left" width="16" height="256" bitmap="screens/objectives_left"/>
+	<widget name="screens/objectives_center" width="253" height="256" bitmap="screens/objectives_center"/>
+	<widget name="screens/objectives_right" width="16" height="256" bitmap="screens/objectives_right"/>
+	<widget name="screens/objectives_title" type="text" width="204" height="22" font="ui\large_ui" color="#FF2896FF"/>
+	<widget name="screens/objectives_text" type="text" width="270" height="94" font="ui\small_ui" color="#FF0080FF">
+		<data input="solo game objective text"/>
 	</widget>
 </menus>

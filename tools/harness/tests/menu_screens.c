@@ -683,7 +683,7 @@ int main(int argc, char **argv)
 			rights += block->kind == MENU_SCREEN_BUTTON && block->side && !strcmp(block->side, "right");
 		}
 		CHECK(choices == 3 && panel_buttons == 3, "%d choices, %d panel buttons", choices, panel_buttons);
-		CHECK(rights == 5, "%d buttons at the bar's right", rights);
+		CHECK(rights == 6, "%d buttons at the bar's right", rights);
 		CHECK(kind_first(&screen, MENU_SCREEN_CHAT) >= 0 &&
 			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_CHAT)].source, "lobby.chat"), "the lobby's chat");
 		menu_screen_free(&screen);
@@ -709,8 +709,64 @@ int main(int argc, char **argv)
 			"no binding {nothing.here}");
 		refused("<screen name=\"t\"><buttons><button key=\"x\" label=\"A\" width=\"0\"/></buttons></screen>",
 			"width is a number");
+		refused("<screen name=\"t\"><buttons><button key=\"x\" label=\"A\" touch-width=\"0\"/></buttons></screen>",
+			"touch-width is a number");
+		CHECK(read_text("<screen name=\"t\"><buttons><button key=\"x\" label=\"A\" touch-width=\"80\"/></buttons>"
+			"</screen>", &screen, problem) && screen.blocks[kind_first(&screen, MENU_SCREEN_BUTTON)].touch_width == 80,
+			"a button's touch-width is not read: %s", problem);
+		menu_screen_free(&screen);
 		refused("<screen name=\"t\"><header title=\"T\"><button key=\"view\" label=\"{nothing.here}\"/></header>"
 			"</screen>", "no binding {nothing.here}");
+	}
+	else if (!strcmp(name, "box"))
+	{
+		/* the pause menus' files: a <box> of rows (an if each may have),
+		its legend, and the campaign's objectives beside it */
+		struct menu_screen_block const *box, *list, *legend;
+		int box_index, list_index;
+
+		CHECK(read_text(pause_xml, &screen, problem), "the pause menu's file is refused: %s", problem);
+		box_index = kind_first(&screen, MENU_SCREEN_BOX);
+		list_index = kind_first(&screen, MENU_SCREEN_LIST);
+		CHECK(box_index >= 0 && list_index >= 0, "no box, or no list");
+		box = &screen.blocks[box_index];
+		list = &screen.blocks[list_index];
+		CHECK(box->box_x == 206 && box->box_y == 243 && box->box_width == 226 && box->side &&
+			!strcmp(box->side, "middle"), "the box's place %ld %ld %ld", box->box_x, box->box_y, box->box_width);
+		CHECK(list->parent == box_index, "the list not in the box");
+		CHECK(kind_total(&screen, MENU_SCREEN_ITEM, list_index) == 6, "%d rows",
+			kind_total(&screen, MENU_SCREEN_ITEM, list_index));
+		CHECK(block_of(&screen, "host") && block_of(&screen, "host")->condition &&
+			!strcmp(block_of(&screen, "host")->condition, "pause.host_controls"), "HOST CONTROLS' if");
+		CHECK(!block_of(&screen, "resume")->condition, "RESUME GAME has an if");
+		legend = &screen.blocks[kind_first(&screen, MENU_SCREEN_LEGEND)];
+		CHECK(legend->parent == box_index && legend->box_x == 29, "the legend");
+		CHECK(kind_total(&screen, MENU_SCREEN_OBJECTIVES, -2) == 0, "objectives in the multiplayer pause menu");
+		menu_screen_free(&screen);
+		CHECK(read_text(pause_campaign_xml, &screen, problem), "the campaign's pause menu's file is refused: %s",
+			problem);
+		CHECK(kind_total(&screen, MENU_SCREEN_OBJECTIVES, -1) == 1 &&
+			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_OBJECTIVES)].label, "MISSION OBJECTIVES:"),
+			"the campaign's objectives");
+		CHECK(!screen.blocks[kind_first(&screen, MENU_SCREEN_BOX)].side, "the campaign's box aligned");
+		CHECK(block_of(&screen, "friendly_fire") && !strcmp(block_of(&screen, "friendly_fire")->label,
+			"{pause.friendly_fire}"), "FRIENDLY FIRE's label");
+		menu_screen_free(&screen);
+		/* (what a box must have and may not) */
+		refused("<screen name=\"t\"><box y=\"10\" width=\"200\"><list><item label=\"A\" do=\"quit\"/></list>"
+			"</box></screen>", "x, y and width");
+		refused("<screen name=\"t\"><box x=\"1\" y=\"10\" width=\"200\" align=\"bottom\"><list><item label=\"A\" "
+			"do=\"quit\"/></list></box></screen>", "align is top or middle");
+		refused("<screen name=\"t\"><box x=\"1\" y=\"10\" width=\"20\"><list><item label=\"A\" do=\"quit\"/></list>"
+			"</box></screen>", "width is a number");
+		refused("<screen name=\"t\"><box x=\"1\" y=\"10\" width=\"200\"><legend/></box></screen>", "has a <list>");
+		refused("<screen name=\"t\"><legend/></screen>", "<legend> is not one of");
+		refused("<screen name=\"t\"><objectives title=\"O\"/><box x=\"1\" y=\"10\" width=\"200\"><list>"
+			"<item label=\"A\" do=\"quit\"/></list></box></screen>", "beside a <box>");
+		refused("<screen name=\"t\"><box x=\"1\" y=\"10\" width=\"200\"><list><item label=\"A\" do=\"quit\" "
+			"if=\"nothing.here\"/></list></box></screen>", "no binding {nothing.here}");
+		refused("<screen name=\"t\"><box x=\"1\" y=\"10\" width=\"200\"><list><item label=\"A\" do=\"quit\"/>"
+			"</list></box><box x=\"1\" y=\"10\" width=\"200\"/></screen>", "one <box>");
 	}
 	else
 	{
