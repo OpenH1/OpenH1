@@ -591,7 +591,7 @@ static boolean command_status(char const *line, long count, char **words)
 		server_json_free(&json);
 		return TRUE;
 	}
-	say("%s: %s, up %ldh%02ldm, %ld game%s played; OpenH1 %s, network version %d", config_string("server.name"),
+	say("%s: %s, up %ldh%02ldm, %ld game%s played; GOAT H1 %s, network version %d", config_string("server.name"),
 		server_status_state_name(server_director_state()), uptime / 3600, (uptime / 60) % 60,
 		server_director_games_hosted(), server_director_games_hosted() == 1 ? "" : "s", server_mode_build(),
 		HALO_PORT_NETWORK_VERSION);
@@ -599,7 +599,7 @@ static boolean command_status(char const *line, long count, char **words)
 		char mode[16], title[64];
 
 		server_director_game_mode(mode, sizeof(mode), title, sizeof(title), NULL);
-		say("games: %s (%s; OpenH1 protocol version %d)", title, mode, HALO_PORT_STANDARD_NETWORK_VERSION);
+		say("games: %s (%s; GOAT H1 protocol version %d)", title, mode, HALO_PORT_STANDARD_NETWORK_VERSION);
 		if (strcmp(mode, config_string("server.game_mode")))
 			say("server.game_mode %s waits for the server to be empty in its lobby", config_string("server.game_mode"));
 	}
@@ -1175,7 +1175,7 @@ static boolean command_settings(char const *line, long count, char **words)
 
 static boolean command_version(char const *line, long count, char **words)
 {
-	say("OpenH1 %s, network version %d", server_mode_build(), HALO_PORT_NETWORK_VERSION);
+	say("GOAT H1 %s, network version %d", server_mode_build(), HALO_PORT_NETWORK_VERSION);
 	return TRUE;
 }
 
@@ -1868,7 +1868,7 @@ static boolean command_team(char const *line, long count, char **words)
 
 		if (player_index == NONE || !network_host_controls_move_team(player_index))
 		{
-			say("sv_team: %s cannot move now (players move teams in an OpenH1 game of OpenH1 machines alone)", name);
+			say("sv_team: %s cannot move now (players move teams in a GOAT H1 game of GOAT H1 machines alone)", name);
 			return FALSE;
 		}
 	}
@@ -1902,7 +1902,7 @@ static boolean command_teams(char const *line, long count, char **words)
 	moved = server_director_playing() ? network_host_game_teams_arrange(how) : NONE;
 	if (moved == NONE)
 	{
-		say("sv_teams: the teams are arranged in a team game being played, of OpenH1 machines alone");
+		say("sv_teams: the teams are arranged in a team game being played, of GOAT H1 machines alone");
 		return FALSE;
 	}
 	say("teams %s: %d moved", how == _host_game_shuffle ? "shuffled" : "balanced", moved);
@@ -1981,7 +1981,7 @@ static boolean command_admin(char const *line, long count, char **words)
 		game = server_game();
 		if (!network_admin_machine_key(game->players[slot].machine_index, key_hex, key_id, &admin))
 		{
-			say("sv_admin: that player's game proved no admin key (an OpenH1 game of this version, in an OpenH1 "
+			say("sv_admin: that player's game proved no admin key (a GOAT H1 game of this version, in a GOAT H1 "
 				"game, proves it as it joins)");
 			return FALSE;
 		}

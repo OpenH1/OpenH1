@@ -226,7 +226,7 @@
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/help_strings">
 		<string text=""/>
 		<string text=""/>
-		<string text="Whether a controller with a gyroscope is connected: a DualSense, a DualShock 4, a Switch Pro Controller or Joy-Cons, a Steam Deck.|With Steam Input, turn it off for OpenH1."/>
+		<string text="Whether a controller with a gyroscope is connected: a DualSense, a DualShock 4, a Switch Pro Controller or Joy-Cons, a Steam Deck.|With Steam Input, turn it off for GOAT H1."/>
 		<string text="Aim by turning the controller, as a mouse; the stick still works. Hold to Aim: only while the gyro button is held. Hold to Pause: except while it is held, to re-center. Thumb on Stick: while your thumb is on the right stick (Steam Deck, Steam Controller).|No aim assist on the gyro's aim."/>
 		<string text="The button that Hold to Aim and Hold to Pause hold. It still does its own action too: Button Remapping can move that."/>
 		<string text="How far the view turns for each degree you turn the controller: 1 as far, 2 twice as far. Press A, or click the number, to type a value.|Zoomed in: as Zoom Aim Speed sets."/>

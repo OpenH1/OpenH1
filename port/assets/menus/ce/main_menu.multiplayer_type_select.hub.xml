@@ -238,7 +238,7 @@
 		<child widget="main_menu/multiplayer_type_select/hub/multiplayer_options_txt"/>
 	</widget>
 	<strings name="main_menu/multiplayer_type_select/hub/descriptions">
-		<string text="Every public game on the Internet, OpenH1 and Legacy. Press %a-button to see them all."/>
+		<string text="Every public game on the Internet, GOAT H1 and Legacy. Press %a-button to see them all."/>
 		<string text="Games hosted on your Wi-Fi or local network appear here as they open."/>
 		<string text="Join a friend's game with the invite link they sent you."/>
 		<string text="Host a game on the Internet: friends join with your invite link."/>

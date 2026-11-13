@@ -988,7 +988,7 @@ class Sim:
         mode = self.value("server.game_mode")
         opence = mode == "legacy" or bool(self.value("network.allow_opence"))
         mode_name = "Legacy" if mode == "legacy" else \
-            f"OpenH1 {GAME_MODES.get(mode, 30)} Tick" + (", OpenCE can join" if opence else "")
+            f"GOAT H1 {GAME_MODES.get(mode, 30)} Tick" + (", OpenCE can join" if opence else "")
         return {
             "ok": True, "time": now_ms(), "name": self.value("server.name"), "state": self.state,
             "build": BUILD, "network_version": NETWORK_VERSION, "openh1_version": OPENH1_VERSION,

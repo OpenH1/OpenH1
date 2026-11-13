@@ -117,7 +117,7 @@ struct lobby_board_controls
 
 static wchar_t const *const lobby_tag_words[NUMBER_OF_LOBBY_TAGS] =
 {
-	L"", L"HOST", L"BOT", L"PARTY", L"OPENH1", L"OPENCE",
+	L"", L"HOST", L"BOT", L"PARTY", L"GOAT H1", L"OPENCE",
 };
 
 static struct
@@ -767,7 +767,7 @@ static void lobby_board_update(struct widget_instance *list)
 		if ((pill = named(panel, "board_kind", 0)) != NULL)
 		{
 			pill->animation.current_frame_index = standard ? 0 : 1;
-			text_set(pill, standard ? L"OPENH1" : L"LEGACY");
+			text_set(pill, standard ? L"GOAT H1" : L"LEGACY");
 		}
 		if ((pill = named(panel, "board_tick", 0)) != NULL)
 		{

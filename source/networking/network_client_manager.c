@@ -2415,9 +2415,9 @@ static wchar_t const *network_game_client_rejection_text(
 	switch (rejection_code)
 	{
 	case _rejection_code_version_too_old:
-		return L"This game is on a newer version of OpenH1 or OpenCE. Update OpenH1 to join it, or if no update is out yet, try again soon.";
+		return L"This game is on a newer version of GOAT H1 or OpenCE. Update GOAT H1 to join it, or if no update is out yet, try again soon.";
 	case _rejection_code_version_too_new:
-		return L"This game is on an older version of OpenH1. Ask the host to update to the latest version.";
+		return L"This game is on an older version of GOAT H1. Ask the host to update to the latest version.";
 	case _rejection_code_bad_password:
 		return L"That isn't this game's password. Ask the host for it, then try again.";
 	case _rejection_code_game_is_full:
@@ -3404,10 +3404,10 @@ boolean network_game_client_advertised_game_compatible(
 		}
 		/* port: (the versions in the log, the player told what to do) */
 		csprintf(message,
-			"This game is on %s version of OpenH1.\n\n"
+			"This game is on %s version of GOAT H1.\n\n"
 			"%s",
 			theirs > ours ? "a newer" : "an older",
-			theirs > ours ? "Update OpenH1 to join it." : "Ask the host to update to the latest version.");
+			theirs > ours ? "Update GOAT H1 to join it." : "Ask the host to update to the latest version.");
 		if (tell)
 		{
 			network_event("not joining an OpenH1 %u Tick host of protocol version %u (this machine's is %u)",
@@ -3457,20 +3457,20 @@ void network_game_client_tell_version(
 	if (theirs == ours)
 	{
 		csprintf(message,
-			"This server runs an older Halo version that OpenH1 can't join.\n\n"
-			"Join another game, or ask the host to update to the latest OpenH1.");
+			"This server runs an older Halo version that GOAT H1 can't join.\n\n"
+			"Join another game, or ask the host to update to the latest GOAT H1.");
 	}
 	else if (theirs > ours)
 	{
 		csprintf(message,
-			"This game is on a newer version of OpenH1 or OpenCE.\n\n"
-			"Update OpenH1 to join it. If no update is out yet, OpenH1 will catch up soon.");
+			"This game is on a newer version of GOAT H1 or OpenCE.\n\n"
+			"Update GOAT H1 to join it. If no update is out yet, GOAT H1 will catch up soon.");
 	}
 	else
 	{
 		csprintf(message,
-			"This game is on an older version of OpenH1, OpenCE or Halo that this one can't join.\n\n"
-			"Join another game, or ask the host to update to the latest OpenH1.");
+			"This game is on an older version of GOAT H1, OpenCE or Halo that this one can't join.\n\n"
+			"Join another game, or ask the host to update to the latest GOAT H1.");
 	}
 	network_event("not joining a host of network version %u%s (this machine's is %u)", theirs,
 		distributed ? "" : " with the lockstep netcode", ours);

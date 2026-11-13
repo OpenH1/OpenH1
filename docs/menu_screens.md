@@ -164,7 +164,7 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | `{browser.title}`, `{browser.counts}`, `{browser.empty}`, `{browser.host}` | The server browser's title (SERVER BROWSER, LOCAL NETWORK, JOIN BY LINK), its counts (`20 GAMES    24 PLAYERS`, `2 OF 18 GAMES ...` while some are hidden), its words while it lists none, its HOST button's (HOST & MORE, HOST CO-OP) |
 | `{browser.tab}`, `{browser.sort}`, `{browser.sort.title}` | The tab shown (`all`, `coop`...), the sort (`players down`), its column's title (PLAYERS) |
 | `{browser.search.server}`, `{browser.search.map}`, `{browser.search.any}` | The searches' words (set as they are typed) |
-| `{browser.panel.title}` ... `{browser.panel.status}` | The chosen game's name (or the list's title), where (map and mode), kind (OPENH1, LEGACY) and its `tone`, tick rate, OPENCE CAN JOIN, players, ping, and its status line |
+| `{browser.panel.title}` ... `{browser.panel.status}` | The chosen game's name (or the list's title), where (map and mode), kind (GOAT H1, LEGACY) and its `tone`, tick rate, OPENCE CAN JOIN, players, ping, and its status line |
 | `{browser.searched}`, `{browser.joinable}`, `{browser.server}`, `{browser.link}`, `{browser.filtered}` | (for `if`s) the searches hide every game; a game to join is chosen; the server browser's list; Join by Link's; a list filtered and searched (not Join by Link's) |
 
 ## Actions

@@ -348,21 +348,21 @@ int main(int argc, char **argv)
 		players host, then the Legacy ones; in each part the favorites
 		first, then by players) */
 		grouped(_browser_tab_all, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
-		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] project projectempty communitystar* openh1empty "
+		CHECK(!strcmp(names, "[GOAT H1 Dedicated Servers] project projectempty communitystar* openh1empty "
 			"[Hosted Servers] openh1star* openh1 [Legacy (Slow) Servers] legacystar* legacyhosted "),
 			"ALL lists %s", names);
 		/* (none of the project's: the dedicated servers as the others) */
 		grouped(_browser_tab_all, _browser_sort_players, TRUE, FALSE, names, sizeof(names));
-		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] communitystar* project openh1empty projectempty "
+		CHECK(!strcmp(names, "[GOAT H1 Dedicated Servers] communitystar* project openh1empty projectempty "
 			"[Hosted Servers] openh1star* openh1 [Legacy (Slow) Servers] legacystar* legacyhosted "),
 			"ALL without the project's servers lists %s", names);
 		/* (each part sorted by the column chosen, the other way too) */
 		grouped(_browser_tab_all, _browser_sort_name, FALSE, TRUE, names, sizeof(names));
-		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] project projectempty communitystar* openh1empty "
+		CHECK(!strcmp(names, "[GOAT H1 Dedicated Servers] project projectempty communitystar* openh1empty "
 			"[Hosted Servers] openh1star* openh1 [Legacy (Slow) Servers] legacystar* legacyhosted "),
 			"by name lists %s", names);
 		grouped(_browser_tab_all, _browser_sort_players, FALSE, TRUE, names, sizeof(names));
-		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] projectempty project communitystar* openh1empty "
+		CHECK(!strcmp(names, "[GOAT H1 Dedicated Servers] projectempty project communitystar* openh1empty "
 			"[Hosted Servers] openh1star* openh1 [Legacy (Slow) Servers] legacystar* legacyhosted "),
 			"fewest first lists %s", names);
 		/* (LEGACY's lists nothing else: no heading; a group with no games
@@ -370,10 +370,10 @@ int main(int argc, char **argv)
 		grouped(_browser_tab_legacy, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
 		CHECK(!strcmp(names, "legacystar* legacyhosted "), "LEGACY lists %s", names);
 		grouped(_browser_tab_openh1, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
-		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] project projectempty communitystar* openh1empty "
+		CHECK(!strcmp(names, "[GOAT H1 Dedicated Servers] project projectempty communitystar* openh1empty "
 			"[Hosted Servers] openh1star* openh1 "), "OPENH1 lists %s", names);
 		grouped(_browser_tab_dedicated, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
-		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] project projectempty communitystar* openh1empty "),
+		CHECK(!strcmp(names, "[GOAT H1 Dedicated Servers] project projectempty communitystar* openh1empty "),
 			"DEDICATED lists %s", names);
 		/* (the filters still hide games, and a group they empty has no
 		heading) */
@@ -381,7 +381,7 @@ int main(int argc, char **argv)
 		browser_filters_read(&browser_filters);
 		browser_filtering = TRUE;
 		grouped(_browser_tab_all, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
-		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] project communitystar* [Hosted Servers] openh1star* "
+		CHECK(!strcmp(names, "[GOAT H1 Dedicated Servers] project communitystar* [Hosted Servers] openh1star* "
 			"openh1 [Legacy (Slow) Servers] legacystar* legacyhosted "), "SHOW EMPTY GAMES: NO lists %s", names);
 		CHECK(browser_filtered_count == 2, "%d hidden counted, not 2", browser_filtered_count);
 		config_set("network.browser_show_full", "false");
@@ -416,7 +416,7 @@ int main(int argc, char **argv)
 			"the local network's empty list says %ls", text);
 		browser_empty_text(_multiplayer_mode_lan, _browser_tab_openh1, TRUE, TRUE, FALSE, 0, 0, 0, text,
 			NUMBEROF(text));
-		CHECK(contains(text, L"No OpenH1 games on your network."), "OPENH1's says %ls", text);
+		CHECK(contains(text, L"No GOAT H1 games on your network."), "OPENH1's says %ls", text);
 		browser_empty_text(_multiplayer_mode_lan, _browser_tab_favorites, TRUE, TRUE, FALSE, 0, 0, 0, text,
 			NUMBEROF(text));
 		CHECK(contains(text, L"favorites") && contains(text, L"FAVORITE on a game"), "FAVORITES' says %ls", text);

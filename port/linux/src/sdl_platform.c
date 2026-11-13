@@ -529,7 +529,7 @@ static void assets_check(void)
 		return;
 	snprintf(message, sizeof(message),
 		"The game's own files are incomplete: %s.\n\nIt holds the menus, the high-res HUD and the text. "
-		"Reinstall or update OpenH1 so that the " EMBEDDED_ASSETS_FILE " that came with this version is "
+		"Reinstall or update GOAT H1 so that the " EMBEDDED_ASSETS_FILE " that came with this version is "
 		"beside it.", problem);
 	platform_log("assets: %s: quitting", problem);
 	if (!quiet)
