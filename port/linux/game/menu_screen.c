@@ -50,6 +50,7 @@ int pc_menu_browser_visit_kind(void);
 void pc_menu_main_menu_shown(struct widget_instance *screen);
 int halo_keyboard_prompts(void);
 long ui_widget_port_text_box_font(struct widget_instance *widget, short *width);
+short ui_widget_port_past_extra(void);
 boolean ui_widget_port_pointer_focused(void);
 
 /* ---------- constants */
@@ -265,7 +266,7 @@ struct screen_open
 	/* (its button bar's right side, its keys and words, which is placed to
 	end at the screen's right margin each frame: the keys' pictures differ by
 	the device) */
-	struct widget_instance *buttons_right;
+	struct widget_instance *buttons_right, *buttons_left;
 	char right_keys[SCREEN_MAXIMUM_BUTTONS][SCREEN_ID_LENGTH];
 	char right_labels[SCREEN_MAXIMUM_BUTTONS][SCREEN_ID_LENGTH];
 	long right_count;
@@ -687,6 +688,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 			bar = text[0] ? screen_widget_add(widget, screens.buttons_tag, 0, (short)(top + BUTTONS_TOP)) : NULL;
 			if (bar)
 				screen_text_set(bar, text);
+			open->buttons_left = bar;
 			screen_buttons_text(screen, index, TRUE, text, sizeof(text));
 			bar = text[0] ? screen_widget_add(widget, screens.buttons_right_tag, 0, (short)(top + BUTTONS_TOP)) :
 				NULL;
@@ -845,7 +847,8 @@ static void screen_buttons_right_place(struct screen_open *open)
 	width = (short)(text_bounds.x1 - text_bounds.x0);
 	if (width <= 0 || width > SCREEN_WIDTH)
 		return;
-	bar->horizontal_offset = (short)(open->widget->horizontal_offset + SCREEN_WIDTH - BUTTONS_MARGIN - width);
+	bar->horizontal_offset = (short)(open->widget->horizontal_offset + SCREEN_WIDTH - BUTTONS_MARGIN - width +
+		ui_widget_port_past_extra() / 2);
 }
 
 /* the item focused now (its index, NONE for none) */
@@ -894,6 +897,12 @@ void menu_screen_frame(struct widget_instance *widget)
 	}
 	if (open->buttons_right)
 		screen_buttons_right_place(open);
+	/* (past 16:9, the band's title and the bar's left side to the screen's
+	left edge, as the tall layout's titles: its right side, above) */
+	if (open->header && open->header_picture == NONE)
+		open->header->horizontal_offset = (short)(widget->horizontal_offset - ui_widget_port_past_extra() / 2);
+	if (open->buttons_left)
+		open->buttons_left->horizontal_offset = (short)(widget->horizontal_offset - ui_widget_port_past_extra() / 2);
 	focused = screen_focused(open);
 	for (index = 0; index < open->item_count; index++)
 	{

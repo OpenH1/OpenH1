@@ -64,7 +64,7 @@
 	<look name="main_menu/campaign/campaign_prompts" type="column_list" box="0 0 640 28">
 		<at widget="main_menu/campaign/prompt_back" x="516" y="1"/>
 	</look>
-	<look name="main_menu/campaign/prompt_back" type="text" box="0 0 96 24" wide="-106 0" picture="main_menu/parts/item_96x24">
+	<look name="main_menu/campaign/prompt_back" type="text" box="0 0 96 24" wide="-106 0" past="-143 0" picture="main_menu/parts/item_96x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%b-button BACK"/>
 	</look>
 	<look name="main_menu/campaign/restart_screen" box="180 160 460 320" picture="bitmaps/alert_bkd">
@@ -111,40 +111,59 @@
 		<at widget="main_menu/campaign/mission_dot_14" x="0" y="0"/>
 		<at widget="main_menu/campaign/mission_dot_15" x="0" y="0"/>
 		<at widget="main_menu/campaign/mission_empty" x="0" y="0"/>
+		<at widget="main_menu/campaign/mission_resume" x="73" y="48"/>
 		<at widget="main_menu/campaign/mission_prompts" x="0" y="448"/>
 	</look>
+	<look name="main_menu/campaign/mission_resume" box="0 0 494 52" picture="main_menu/campaign/continue_494x52">
+		<at widget="main_menu/campaign/resume_art" x="0" y="0"/>
+		<at widget="main_menu/campaign/resume_label" x="0" y="0"/>
+		<at widget="main_menu/campaign/resume_title" x="0" y="0"/>
+		<at widget="main_menu/campaign/resume_difficulty" x="0" y="0"/>
+		<at widget="main_menu/campaign/resume_badge" x="0" y="0"/>
+	</look>
+	<look name="main_menu/campaign/resume_art" box="6 0 70 52" picture="main_menu/campaign/art_64x52" radius="5"/>
+	<look name="main_menu/campaign/resume_label" type="text" box="82 6 322 22">
+		<text font="ui\small_ui" color="#FF6F9CD0" flags="no_focus_test" text="CONTINUE"/>
+	</look>
+	<look name="main_menu/campaign/resume_title" type="text" box="82 22 360 46">
+		<text font="ui\large_ui" color="#FF2890F8" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/campaign/resume_difficulty" type="text" box="366 17 450 35">
+		<text font="ui\small_ui" color="#FF2890F8" align="right" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/campaign/resume_badge" box="456 12 484 40" picture="main_menu/campaign/badges_28"/>
 	<look name="main_menu/campaign/header_missions" type="text" box="24 0 616 40" wide="-106 0" past="-143 0">
 		<text font="heading" color="#FF2995FD" at="0 9" string_list="main_menu/campaign/tall_titles" scale="1.4 1.4"/>
 	</look>
-	<look name="main_menu/campaign/source_prompt_previous" type="text" box="380 9 410 31" wide="106 0">
+	<look name="main_menu/campaign/source_prompt_previous" type="text" box="380 9 410 31" wide="106 0" past="143 0">
 		<text font="ui\small_ui" color="#FF2896FF" at="0 2" flags="no_focus_test" text="%white-button"/>
 	</look>
-	<look name="main_menu/campaign/source_prompt_next" type="text" box="588 9 618 31" wide="106 0">
+	<look name="main_menu/campaign/source_prompt_next" type="text" box="588 9 618 31" wide="106 0" past="143 0">
 		<text font="ui\small_ui" color="#FF2896FF" at="0 2" flags="no_focus_test" text="%black-button"/>
 	</look>
 	<look name="main_menu/campaign/source_tabs" type="column_list" box="0 0 176 22">
 		<at widget="main_menu/campaign/tab_halo" x="0" y="0"/>
 		<at widget="main_menu/campaign/tab_custom" x="88" y="0"/>
 	</look>
-	<look name="main_menu/campaign/tab_halo" type="text" box="0 0 86 22" wide="106 0" place="keep_ends" picture="main_menu/parts/tab">
+	<look name="main_menu/campaign/tab_halo" type="text" box="0 0 86 22" wide="106 0" past="143 0" place="keep_ends" picture="main_menu/parts/tab">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" text="HALO"/>
 	</look>
-	<look name="main_menu/campaign/tab_custom" type="text" box="0 0 86 22" wide="106 0" place="keep_ends" picture="main_menu/parts/tab">
+	<look name="main_menu/campaign/tab_custom" type="text" box="0 0 86 22" wide="106 0" past="143 0" place="keep_ends" picture="main_menu/parts/tab">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" text="CUSTOM"/>
 	</look>
 	<look name="main_menu/campaign/mission_cards" type="column_list">
-		<at widget="main_menu/campaign/card_big_0" x="0" y="68"/>
-		<at widget="main_menu/campaign/card_small_0" x="0" y="68"/>
-		<at widget="main_menu/campaign/card_big_1" x="0" y="68"/>
-		<at widget="main_menu/campaign/card_small_1" x="0" y="68"/>
-		<at widget="main_menu/campaign/card_big_2" x="0" y="68"/>
-		<at widget="main_menu/campaign/card_small_2" x="0" y="68"/>
-		<at widget="main_menu/campaign/arrow_previous" x="17" y="201"/>
-		<at widget="main_menu/campaign/arrow_next" x="599" y="201"/>
+		<at widget="main_menu/campaign/card_big_0" x="0" y="78"/>
+		<at widget="main_menu/campaign/card_small_0" x="0" y="78"/>
+		<at widget="main_menu/campaign/card_big_1" x="0" y="78"/>
+		<at widget="main_menu/campaign/card_small_1" x="0" y="78"/>
+		<at widget="main_menu/campaign/card_big_2" x="0" y="78"/>
+		<at widget="main_menu/campaign/card_small_2" x="0" y="78"/>
+		<at widget="main_menu/campaign/arrow_previous" x="17" y="209"/>
+		<at widget="main_menu/campaign/arrow_next" x="599" y="209"/>
 	</look>
 	<look name="main_menu/campaign/arrow_previous" box="0 0 24 64" wide="-26 0" picture="main_menu/campaign/arrow_left"/>
 	<look name="main_menu/campaign/arrow_next" box="0 0 24 64" wide="26 0" picture="main_menu/campaign/arrow_right"/>
-	<look name="main_menu/campaign/card_big_0" box="0 0 158 330" picture="main_menu/campaign/card_158x330">
+	<look name="main_menu/campaign/card_big_0" box="0 0 158 326" picture="main_menu/campaign/card_158x326">
 		<at widget="main_menu/campaign/card_art_back_big" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_art_big" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_custom_art_big" x="0" y="0"/>
@@ -182,15 +201,15 @@
 	<look name="main_menu/campaign/card_title_big" type="text" box="10 147 148 193">
 		<text font="ui\large_ui" color="#FF2890F8" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/campaign/card_objective_big" type="text" box="10 195 148 300">
+	<look name="main_menu/campaign/card_objective_big" type="text" box="10 195 148 296">
 		<text font="ui\small_ui" color="#FF2890F8" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/campaign/card_badge_shape_big" box="0 294 28 322" picture="main_menu/campaign/badge_shape_28"/>
-	<look name="main_menu/campaign/card_badge_big" box="0 294 28 322" picture="main_menu/campaign/badges_28"/>
-	<look name="main_menu/campaign/card_unbeaten_big" type="text" box="10 274 148 292">
+	<look name="main_menu/campaign/card_badge_shape_big" box="0 290 28 318" picture="main_menu/campaign/badge_shape_28"/>
+	<look name="main_menu/campaign/card_badge_big" box="0 290 28 318" picture="main_menu/campaign/badges_28"/>
+	<look name="main_menu/campaign/card_unbeaten_big" type="text" box="10 270 148 288">
 		<text font="ui\small_ui" color="#FF6F9CD0" align="center" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/campaign/card_small_0" box="0 0 158 330" picture="main_menu/campaign/card_158x330">
+	<look name="main_menu/campaign/card_small_0" box="0 0 158 326" picture="main_menu/campaign/card_158x326">
 		<at widget="main_menu/campaign/card_art_back_small" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_art_small" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_custom_art_small" x="0" y="0"/>
@@ -228,15 +247,15 @@
 	<look name="main_menu/campaign/card_title_small" type="text" box="10 147 148 193">
 		<text font="ui\large_ui" color="#FF2890F8" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/campaign/card_objective_small" type="text" box="10 195 148 300">
+	<look name="main_menu/campaign/card_objective_small" type="text" box="10 195 148 296">
 		<text font="ui\small_ui" color="#FF2890F8" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/campaign/card_badge_shape_small" box="0 294 28 322" picture="main_menu/campaign/badge_shape_28"/>
-	<look name="main_menu/campaign/card_badge_small" box="0 294 28 322" picture="main_menu/campaign/badges_28"/>
-	<look name="main_menu/campaign/card_unbeaten_small" type="text" box="10 274 148 292">
+	<look name="main_menu/campaign/card_badge_shape_small" box="0 290 28 318" picture="main_menu/campaign/badge_shape_28"/>
+	<look name="main_menu/campaign/card_badge_small" box="0 290 28 318" picture="main_menu/campaign/badges_28"/>
+	<look name="main_menu/campaign/card_unbeaten_small" type="text" box="10 270 148 288">
 		<text font="ui\small_ui" color="#FF6F9CD0" align="center" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/campaign/card_big_1" box="0 0 158 330" picture="main_menu/campaign/card_158x330">
+	<look name="main_menu/campaign/card_big_1" box="0 0 158 326" picture="main_menu/campaign/card_158x326">
 		<at widget="main_menu/campaign/card_art_back_big" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_art_big" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_custom_art_big" x="0" y="0"/>
@@ -256,7 +275,7 @@
 		<at widget="main_menu/campaign/card_badge_big" x="111" y="0"/>
 		<at widget="main_menu/campaign/card_unbeaten_big" x="0" y="0"/>
 	</look>
-	<look name="main_menu/campaign/card_small_1" box="0 0 158 330" picture="main_menu/campaign/card_158x330">
+	<look name="main_menu/campaign/card_small_1" box="0 0 158 326" picture="main_menu/campaign/card_158x326">
 		<at widget="main_menu/campaign/card_art_back_small" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_art_small" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_custom_art_small" x="0" y="0"/>
@@ -276,7 +295,7 @@
 		<at widget="main_menu/campaign/card_badge_small" x="111" y="0"/>
 		<at widget="main_menu/campaign/card_unbeaten_small" x="0" y="0"/>
 	</look>
-	<look name="main_menu/campaign/card_big_2" box="0 0 158 330" picture="main_menu/campaign/card_158x330">
+	<look name="main_menu/campaign/card_big_2" box="0 0 158 326" picture="main_menu/campaign/card_158x326">
 		<at widget="main_menu/campaign/card_art_back_big" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_art_big" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_custom_art_big" x="0" y="0"/>
@@ -296,7 +315,7 @@
 		<at widget="main_menu/campaign/card_badge_big" x="111" y="0"/>
 		<at widget="main_menu/campaign/card_unbeaten_big" x="0" y="0"/>
 	</look>
-	<look name="main_menu/campaign/card_small_2" box="0 0 158 330" picture="main_menu/campaign/card_158x330">
+	<look name="main_menu/campaign/card_small_2" box="0 0 158 326" picture="main_menu/campaign/card_158x326">
 		<at widget="main_menu/campaign/card_art_back_small" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_art_small" x="0" y="0"/>
 		<at widget="main_menu/campaign/card_custom_art_small" x="0" y="0"/>
@@ -375,10 +394,10 @@
 		<at widget="main_menu/campaign/prompt_back" x="24" y="1"/>
 		<at widget="main_menu/campaign/prompt_restart" x="360" y="1"/>
 	</look>
-	<look name="main_menu/campaign/prompt_select" type="text" box="0 0 124 24" wide="106 0" picture="main_menu/parts/item_124x24">
+	<look name="main_menu/campaign/prompt_select" type="text" box="0 0 124 24" wide="106 0" past="143 0" picture="main_menu/parts/item_124x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3"/>
 	</look>
-	<look name="main_menu/campaign/prompt_restart" type="text" box="0 0 124 24" wide="106 0" picture="main_menu/parts/item_124x24">
+	<look name="main_menu/campaign/prompt_restart" type="text" box="0 0 124 24" wide="106 0" past="143 0" picture="main_menu/parts/item_124x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%y-button RESTART"/>
 	</look>
 	<look name="main_menu/campaign/difficulty_screen" picture="main_menu/parts/background_tall">
@@ -386,7 +405,7 @@
 		<at widget="main_menu/difficulty_select/header_choose_difficulty" x="0" y="0"/>
 		<at widget="main_menu/campaign/difficulty_mission" x="0" y="0"/>
 	</look>
-	<look name="main_menu/campaign/difficulty_mission" type="text" box="24 52 584 70" wide="-106 0">
+	<look name="main_menu/campaign/difficulty_mission" type="text" box="24 52 584 70" wide="-106 0" past="-143 0">
 		<text font="ui\small_ui" color="#FF6F9CD0" flags="no_focus_test"/>
 	</look>
 	<look name="main_menu/campaign/difficulty_list" type="column_list">
@@ -444,7 +463,7 @@
 		<at widget="main_menu/campaign/prompt_play" x="492" y="1"/>
 		<at widget="main_menu/campaign/prompt_back" x="24" y="1"/>
 	</look>
-	<look name="main_menu/campaign/prompt_play" type="text" box="0 0 124 24" wide="106 0" picture="main_menu/parts/item_124x24">
+	<look name="main_menu/campaign/prompt_play" type="text" box="0 0 124 24" wide="106 0" past="143 0" picture="main_menu/parts/item_124x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%a-button PLAY"/>
 	</look>
 </model>

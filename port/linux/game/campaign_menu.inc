@@ -66,7 +66,13 @@ MISSION_TALL_TOP): three of one size, the chosen one outlined, each with its
 mission's objective and, at its foot, the hardest difficulty it is beaten on;
 no dots and no panel under them */
 #define MISSION_TALL_WIDTH 158
-#define MISSION_TALL_TOP 68
+#define MISSION_TALL_TOP 78
+#define MISSION_TALL_HEIGHT 326
+/* the tall layout's CONTINUE over the cards, with a saved game
+(port_settings.py's MISSION_RESUME_CARDS_TOP): the cards under it; and the
+row's arrows' height (MISSION_ARROW) */
+#define MISSION_RESUME_CARDS_TOP 108
+#define MISSION_ARROW_HEIGHT 64
 #define MISSION_TALL_OBJECTIVE_LINES 5
 /* (a badge of a difficulty the mission is not beaten on, at a tall card's foot) */
 #define MISSION_TALL_BADGE_FAINT 0.3f
@@ -124,7 +130,9 @@ static struct
 	short shown_first;
 	real slide_from;
 	unsigned long slide_start;
-} campaign_cards = { FALSE, 0, 0, 0, NONE, NONE, 1, NONE, 0.0f, 0 };
+	/* the tall layout's CONTINUE to have the focus as the screen opens */
+	boolean resume_focus;
+} campaign_cards = { FALSE, 0, 0, 0, NONE, NONE, 1, NONE, 0.0f, 0, FALSE };
 
 /* the mission the question asks about (the saved game's), else NONE */
 static short campaign_restart_level = NONE;
@@ -617,6 +625,8 @@ static boolean campaign_missions_initialize(struct widget_instance *list, short 
 	campaign_cards.chosen = campaign_cards.opening_level;
 	campaign_cards.first = mission_cards_first(campaign_cards.chosen, campaign_mission_count());
 	list->focused_child = NULL;
+	/* (the tall layout's CONTINUE, with a saved game: the focus on it first) */
+	campaign_cards.resume_focus = TRUE;
 	return TRUE;
 }
 
@@ -797,7 +807,7 @@ static void mission_card_show(struct widget_instance *card, short mission, boole
 		menu_text_box_wrap(named(card, name, 0), text, MISSION_TALL_OBJECTIVE_LINES);
 	}
 	snprintf(name, sizeof(name), "card_resume_%s", kind);
-	visible_set(named(card, name, 0), mission == campaign.saved_level);
+	visible_set(named(card, name, 0), mission == campaign.saved_level && !menu_engine_looks());
 	{
 		char badge[48], shape[48];
 		byte beaten = campaign.levels[mission].beaten;
@@ -881,6 +891,8 @@ static void campaign_missions_update(struct widget_instance *list)
 	short focused_slot = mission_card_slot(list->focused_child);
 	/* (the new engine's tall layout: port_settings.py's _missions_tall_widgets) */
 	boolean tall = menu_engine_looks();
+	boolean resume_shown = !campaign_cards.custom && campaign.saved_level != NONE && count > 0;
+	short cards_top = resume_shown ? MISSION_RESUME_CARDS_TOP : MISSION_TALL_TOP;
 	/* (a card the pointer passes over: lit, and kept the focus, but not
 	chosen) */
 	boolean hovered = focused_slot != NONE && ui_widget_port_hover_focused();
@@ -941,12 +953,12 @@ static void campaign_missions_update(struct widget_instance *list)
 		if (big)
 		{
 			big->horizontal_offset = slot_x[slot];
-			big->vertical_offset = tall ? MISSION_TALL_TOP : MISSION_CARDS_TOP;
+			big->vertical_offset = tall ? cards_top : MISSION_CARDS_TOP;
 		}
 		if (small)
 		{
 			small->horizontal_offset = slot_x[slot];
-			small->vertical_offset = tall ? MISSION_TALL_TOP :
+			small->vertical_offset = tall ? cards_top :
 				(short)(MISSION_CARDS_TOP + (MISSION_BIG_HEIGHT - MISSION_SMALL_HEIGHT) / 2);
 		}
 		mission_card_show(chosen ? big : small, mission, chosen);
@@ -956,6 +968,16 @@ static void campaign_missions_update(struct widget_instance *list)
 		/* (the focus on the chosen card, which is the larger one) */
 		if (chosen && focus_on_card && big)
 			list->focused_child = big;
+	}
+	/* (the tall layout's arrows on the middle of its cards, wherever they are) */
+	if (tall)
+	{
+		if (named(list, "arrow_previous", 0))
+			named(list, "arrow_previous", 0)->vertical_offset =
+				(short)(cards_top + (MISSION_TALL_HEIGHT - MISSION_ARROW_HEIGHT) / 2);
+		if (named(list, "arrow_next", 0))
+			named(list, "arrow_next", 0)->vertical_offset =
+				(short)(cards_top + (MISSION_TALL_HEIGHT - MISSION_ARROW_HEIGHT) / 2);
 	}
 	visible_set(named(list, "arrow_previous", 0), campaign_cards.chosen > 0);
 	visible_set(named(list, "arrow_next", 0), campaign_cards.chosen < count - 1);
@@ -985,11 +1007,62 @@ static void campaign_missions_update(struct widget_instance *list)
 	}
 	visible_set(named(screen, "mission_empty", 0), count <= 0);
 	menu_tabs_show(named(screen, "source_tabs", 0), campaign_cards.custom ? 1 : 0);
+	/* (the tall layout's CONTINUE over the row, with a saved game: its
+	picture, mission and difficulty; the cards under it lower; the focus on it
+	as the screen opens; lit while it has the focus) */
+	{
+		struct widget_instance *resume = named(screen, "mission_resume", 0);
+		boolean shown = tall && resume_shown;
+
+		visible_set(resume, shown);
+		if (shown)
+		{
+			if (campaign_cards.resume_focus)
+				screen->focused_child = resume;
+			campaign_level_title(campaign.saved_level, TRUE, text, MISSION_TEXT_LENGTH);
+			menu_text_box_fit(named(resume, "resume_title", 0), text, 0);
+			{
+				char label[32];
+
+				snprintf(label, sizeof(label), "CONTINUE  \xB7  MISSION %02d", campaign.saved_level + 1);
+				campaign_widen(label, text, MISSION_TEXT_LENGTH);
+				menu_text_box_fit(named(resume, "resume_label", 0), text, 0);
+			}
+			if (named(resume, "resume_art", 0))
+				named(resume, "resume_art", 0)->animation.current_frame_index = campaign.saved_level;
+			if (campaign.saved_difficulty != NONE)
+			{
+				campaign_difficulty_name(campaign.saved_difficulty, text, MISSION_TEXT_LENGTH);
+				menu_text_box_fit(named(resume, "resume_difficulty", 0), text, 0);
+			}
+			visible_set(named(resume, "resume_badge", 0), campaign.saved_difficulty != NONE &&
+				tag_loaded('bitm', MISSION_BADGES) != NONE);
+			if (named(resume, "resume_badge", 0))
+				named(resume, "resume_badge", 0)->animation.current_frame_index =
+					(short)MAX(campaign.saved_difficulty, 0);
+			resume->animation.current_frame_index = screen->focused_child == resume ? 1 : 0;
+			/* (one thing lit: the chosen card resting while CONTINUE has the focus) */
+			if (screen->focused_child == resume)
+			{
+				for (slot = 0; slot < MISSION_SLOTS; slot++)
+				{
+					struct widget_instance *big = mission_card(list, slot, TRUE);
+
+					if (big)
+						big->animation.current_frame_index = MISSION_CARD_RESTING;
+				}
+			}
+		}
+		else if (screen->focused_child == resume)
+			screen->focused_child = list;
+		campaign_cards.resume_focus = FALSE;
+	}
 	/* (RESTART on the saved game's card) */
 	visible_set(named(screen, "prompt_restart", 0), count > 0 &&
 		campaign_restart_offered(campaign.saved_level, campaign_cards.custom, campaign_cards.chosen));
 	campaign_text_set_ascii(named(screen, "prompt_select", 0),
-		!campaign_cards.custom && count > 0 && campaign_cards.chosen == campaign.saved_level ?
+		!campaign_cards.custom && count > 0 && (tall ? resume_shown && screen->focused_child == named(screen,
+			"mission_resume", 0) : campaign_cards.chosen == campaign.saved_level) ?
 		"%a-button RESUME" : "%a-button SELECT");
 	profile_name_show(screen);
 }
@@ -1014,6 +1087,20 @@ static boolean campaign_missions_step(struct widget_instance *widget, short step
 	/* (a card focused moves to the chosen one: the update) */
 	if (list && mission_card_slot(list->focused_child) != NONE)
 		list->focused_child = NULL;
+	ui_play_audio_feedback_sound(SOUND_CURSOR);
+	return TRUE;
+}
+
+/* "port campaign up", "down": Choose Mission's CONTINUE (up, while it is
+shown) or the cards (down) given the focus */
+static boolean campaign_missions_up_down(struct widget_instance *widget, boolean up)
+{
+	struct widget_instance *screen = screen_of(widget);
+	struct widget_instance *target = named(screen, up ? "mission_resume" : "mission_cards", 0);
+
+	if (!target || !target->visible || screen->focused_child == target)
+		return TRUE;
+	screen->focused_child = target;
 	ui_play_audio_feedback_sound(SOUND_CURSOR);
 	return TRUE;
 }
@@ -1074,7 +1161,9 @@ static boolean campaign_missions_choose(struct widget_instance *widget, short co
 		ui_play_audio_feedback_sound(SOUND_FORWARD);
 		return TRUE;
 	}
-	if (mission == campaign.saved_level)
+	/* (the saved game's mission goes on with it; but in the tall layout,
+	whose CONTINUE does that, its card is a mission to start, as any other) */
+	if (mission == campaign.saved_level && !menu_engine_looks())
 	{
 		campaign_continue(controller);
 		return FALSE;
@@ -1316,6 +1405,8 @@ static boolean campaign_menu_event(struct widget_instance *widget, char const *n
 		return campaign_missions_choose(widget, controller);
 	if (!strcmp(name, "difficulty init"))
 		return campaign_difficulty_initialize(widget, controller);
+	if (!strcmp(name, "up") || !strcmp(name, "down"))
+		return campaign_missions_up_down(widget, !strcmp(name, "up"));
 	if (!strcmp(name, "difficulty previous"))
 		return campaign_difficulty_step(widget, -1);
 	if (!strcmp(name, "difficulty next"))

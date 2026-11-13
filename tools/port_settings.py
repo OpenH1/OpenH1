@@ -7746,7 +7746,12 @@ MISSION_CARDS_TOP = 84
 # the tall layout's cards (the new engine's: _MISSIONS_TALL): three of one size, the chosen one outlined, as tall as
 # the room between the band and the footer lets them, the mission's objective in each and, at its foot, the hardest
 # difficulty it has been beaten on (campaign_menu.inc's MISSION_TALL_*)
-MISSION_TALL, MISSION_TALL_TOP = (158, 330), 68
+MISSION_TALL, MISSION_TALL_TOP = (158, 326), 78
+# Choose Mission's CONTINUE (the tall layout's, with a saved game): a bar across the row of cards over them, the
+# saved game's picture, mission and difficulty; the cards under it, lower (campaign_menu.inc's MISSION_RESUME_*)
+MISSION_RESUME = (3 * 158 + 2 * 10, 52)
+MISSION_RESUME_TOP, MISSION_RESUME_CARDS_TOP = 48, 108
+MISSION_RESUME_ART = campaign_art_size(64)
 MISSION_TALL_BLUE = "#FF2890F8"
 MISSION_TALL_DIM = "#FF6F9CD0"
 MISSION_CARD_GAP = 10
@@ -7842,6 +7847,10 @@ def campaign_pictures() -> list:
         art = campaign_art_size(size[0] - 2 * MISSION_ART_INSET)
         pictures.append((f"{CAMPAIGN}/art_back_{art[0]}x{art[1]}",
                          [framed(*art, "#12304a", 1.0, "none", ART_CORNER_RADIUS, 0)]))
+    width, height = MISSION_RESUME
+    pictures.append((f"{CAMPAIGN}/continue_{width}x{height}", [
+        framed(width, height, "#0a1b2e", 0.85, "#1e3f5e"),
+        framed(width, height, "#0f2a44", 0.95, "#4fb3ff", 10, 2.5)]))
     pictures.append((f"{CAMPAIGN}/art_back_{CAMPAIGN_ART[0]}x{CAMPAIGN_ART[1]}",
                      [framed(*CAMPAIGN_ART, "#12304a", 1.0, "none", ART_CORNER_RADIUS, 0)]))
     arrow_w, arrow_h = MISSION_ARROW
@@ -8184,6 +8193,13 @@ def _missions_tall_widgets() -> list:
                                                *CAMPAIGN_PROMPT_BACK[3:])]))
     finally:
         _MISSIONS_TALL = False
+    # (past 16:9, the footer's prompts and the band's tabs to the screen's edges, as the title is)
+    for name, dx in ((f"{CAMPAIGN}/prompt_back", -PAST_HALF), (f"{CAMPAIGN}/prompt_play", PAST_HALF),
+                     (f"{CAMPAIGN}/tab_halo", PAST_HALF), (f"{CAMPAIGN}/tab_custom", PAST_HALF),
+                     (f"{CAMPAIGN}/source_prompt_previous", PAST_HALF), (f"{CAMPAIGN}/source_prompt_next", PAST_HALF),
+                     (f"{CAMPAIGN}/difficulty_mission", -PAST_HALF)):
+        if name in tall:
+            tall[name].set("past", past(dx))
     lines = []
     for name, element in tall.items():
         if name == f"{CAMPAIGN}/campaign_prompts":
@@ -8191,6 +8207,40 @@ def _missions_tall_widgets() -> list:
         if name not in classic or ElementTree.tostring(element) != ElementTree.tostring(classic[name]):
             element.tail = None
             lines.append(ElementTree.tostring(element, encoding="unicode"))
+    return lines
+
+
+def _mission_resume() -> list:
+    """Choose Mission's CONTINUE: the saved game's level's picture, CONTINUE over its mission's number and name,
+    and its difficulty's badge and name at the right, in the cards' blue; A (or a click) goes on with it, as the
+    Campaign menu's CONTINUE did. Shown in the tall layout alone, with a saved game (campaign_menu.inc)"""
+    base = CAMPAIGN
+    width, height = MISSION_RESUME
+    art_w, art_h = MISSION_RESUME_ART
+    badge = MISSION_BADGE[MISSION_SMALL][0]
+    text_x = 6 + art_w + 12
+    lines = _widget(f"{base}/mission_resume", [("width", width), ("height", height),
+                                               ("bitmap", f"{base}/continue_{width}x{height}")],
+                    [*(f'<on event="{event}" run="port campaign continue"/>' for event in ("a", "start")),
+                     '<on event="left_mouse" run="mouse emit accept event"/>',
+                     *(f'<child widget="{base}/resume_{part}"/>'
+                       for part in ("art", "label", "title", "difficulty", "badge"))])
+    lines += _widget(f"{base}/resume_art", [("controller", 1), ("left", 6), ("top", (height - art_h) // 2),
+                                            ("width", art_w), ("height", art_h),
+                                            ("bitmap", f"{base}/art_{art_w}x{art_h}"), ("radius", ART_CORNER_RADIUS)],
+                     [])
+    lines += _level_pictures(f"{base}/art_{art_w}x{art_h}", art_w, art_h)
+    # (CONTINUE and the mission's number over its name; its difficulty's name and badge at the right)
+    difficulty_w = 84
+    lines += _campaign_text(f"{base}/resume_label", text_x, 6, 240, 16, "ui\\small_ui", MISSION_TALL_DIM,
+                            words="CONTINUE")
+    lines += _campaign_text(f"{base}/resume_title", text_x, 22, width - text_x - 10 - badge - 6 - difficulty_w - 6,
+                            24, CAMPAIGN_TITLE_FONT, MISSION_TALL_BLUE)
+    lines += _campaign_text(f"{base}/resume_difficulty", width - 10 - badge - 6 - difficulty_w, (height - 18) // 2,
+                            difficulty_w, 18, "ui\\small_ui", MISSION_TALL_BLUE, align="right")
+    lines += _widget(f"{base}/resume_badge", [("controller", 1), ("left", width - 10 - badge),
+                                              ("top", (height - badge) // 2), ("width", badge), ("height", badge),
+                                              ("bitmap", f"{base}/badges_{badge}")], [])
     return lines
 
 
@@ -8219,6 +8269,9 @@ def _missions() -> list:
                      # footer's prompts or the tabs the pointer passed over; up and down none)
                      *(f'<on event="{event}" run="port campaign previous"/>' for event in ("left", "stick_left")),
                      *(f'<on event="{event}" run="port campaign next"/>' for event in ("right", "stick_right")),
+                     # (up and down: CONTINUE, the tall layout's with a saved game, and the cards under it)
+                     *(f'<on event="{event}" run="port campaign up"/>' for event in ("up", "stick_up")),
+                     *(f'<on event="{event}" run="port campaign down"/>' for event in ("down", "stick_down")),
                      '<on event="white" run="port campaign tab previous"/>',
                      '<on event="black" run="port campaign tab next"/>',
                      f'<on event="y" run="port campaign missions restart" open="{base}/restart_screen"/>',
@@ -8229,7 +8282,10 @@ def _missions() -> list:
                      f'<child widget="{base}/source_tabs" x="{640 - 28 - 2 * SETTINGS_TAB_STEP - 26}" y="{tabs_y}"/>',
                      *(f'<child widget="{base}/mission_dot_{index}"/>' for index in range(MISSION_DOTS)),
                      f'<child widget="{base}/mission_empty"/>',
+                     f'<child widget="{base}/mission_resume" x="{(640 - MISSION_RESUME[0]) // 2}" '
+                     f'y="{MISSION_RESUME_TOP}"/>',
                      f'<child widget="{base}/mission_prompts" y="{prompts_y}"/>'])
+    lines += _mission_resume()
     if tall:
         lines += tall_title(f"{base}/header_missions", MISSIONS_TALL_TITLES, 0)
     else:
@@ -8339,6 +8395,7 @@ def _missions() -> list:
                       f'<child widget="{base}/{CAMPAIGN_PROMPT_RESTART[0]}" x="{restart_x}" y="1"/>'])
     lines += _widget(f"{base}/prompt_select", [("type", "text"), ("width", 124), ("height", PART_PROMPT_HEIGHT),
                                                ("wide", prompt_wide(select_x, 124)),
+                                               ("past", past(PAST_HALF) if tall else None),
                                                ("bitmap", part_highlight(124, PART_PROMPT_HEIGHT)),
                                                ("font", "ui\\small_ui"), ("color", PART_TEXT), ("text_x", 8),
                                                ("text_y", caps_text_y(PART_PROMPT_HEIGHT))],
@@ -8350,6 +8407,7 @@ def _missions() -> list:
     name, words, x, width, handler = _prompt_fitted(CAMPAIGN_PROMPT_RESTART, 8, False)
     lines += _widget(f"{base}/{name}", [("type", "text"), ("width", width), ("height", PART_PROMPT_HEIGHT),
                                         ("wide", prompt_wide(restart_x if tall else x, width)),
+                                        ("past", past(PAST_HALF) if tall else None),
                                         ("bitmap", part_highlight(width, PART_PROMPT_HEIGHT)), ("text", words),
                                         ("font", "ui\\small_ui"), ("color", PART_TEXT), ("text_x", 8),
                                         ("text_y", caps_text_y(PART_PROMPT_HEIGHT))],
@@ -8699,7 +8757,7 @@ MENU_ITEM_SPACES = {"VR": 0.3, "R ": 6.0, " T": 6.0, "TU": 2.12, "UT": 1.66, "TO
                     "IA": 1.3, "AL": 1.58, "2V": 1.2, "V2": 1.2,
                     "PR": 3.16, "RO": 1.85, "O ": 6.0, " 2": 6.0,
                     "VE": 1.2, "ER": 3.0, "RS": 3.0, "SU": 2.0, "US": 1.7,
-                    "SO": 2.0, "OL": 2.2, "LO": 0.9, "CO": 2.0, "OO": 2.0, "OP": 2.4}
+                    "SO": 2.0, "OL": 2.2, "LO": 0.9, "CO": 2.0, "OO": 2.0, "OP": 2.4, "O-": 2.0, "-O": 2.0}
 # a space's own width (none: the spaces about it are its pairs')
 MENU_ITEM_SPACE_WIDTH = 0.0
 # the mods' status icons (port/assets/icons/lucide): a mod out of the order it
@@ -8734,7 +8792,9 @@ def menu_item_frames(text: str, redraws: Path) -> list:
     from fontTools.pens.boundsPen import BoundsPen
     from fontTools.svgLib.path import parse_path
 
-    letters = redraw_letters(redraws)
+    letters = dict(redraw_letters(redraws))
+    # (a hyphen, which the redraws have none of: E's middle bar's height and thickness, half its width)
+    letters.setdefault("-", "M0,8.82L9,8.82L9,12.53L0,12.53Z")
     widths = []
     for letter in text:
         if letter == " ":
