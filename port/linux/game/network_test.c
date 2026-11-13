@@ -135,6 +135,7 @@ Called from the main loop every frame (main.c).
 const char *config_string(char const *name);
 /* a player profile's own settings (port_config.h; player_settings.c) */
 int config_profile_write(char const *folder, char const *name, char const *value);
+int config_profile_viewmodel_weapon_write(char const *folder, char const *path, double const values[6]);
 int player_settings_profile_folder(long profile_index, char *folder, unsigned long size);
 void player_settings_update(void);
 int config_boolean(char const *name);
@@ -1197,7 +1198,27 @@ static void network_test_profiles(
 			if (!equals)
 				continue;
 			*equals = 0;
-			if (config_profile_write(folder, setting, equals + 1))
+			/* (a weapon's own offsets: display.viewmodel_weapon.<tag path>=x|y|z|pitch|yaw|roll) */
+			if (!strncmp(setting, "display.viewmodel_weapon.", 25))
+			{
+				double values[6] = { 0 };
+				char *value = equals + 1;
+				short index;
+
+				for (index = 0; index < 6 && *value; index++)
+				{
+					values[index] = atof(value);
+					value += strcspn(value, "|");
+					value += *value == '|';
+				}
+				if (config_profile_viewmodel_weapon_write(folder, setting + 25, values))
+					platform_log("network test: player %d's profile has %s's offsets %s", local_player_index + 1,
+						setting + 25, equals + 1);
+				else
+					platform_log("network test: player %d's profile cannot have %s's offsets", local_player_index + 1,
+						setting + 25);
+			}
+			else if (config_profile_write(folder, setting, equals + 1))
 				platform_log("network test: player %d's profile has %s = %s", local_player_index + 1, setting,
 					equals + 1);
 			else

@@ -2166,7 +2166,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test_profiles", _config_string, "\"\"", "HALO_NETWORK_TEST_PROFILES", _environment_value,
 		_platform_all,
 		"Each local player's own settings in an automated test game,\n"
-		"\"<player>:<setting>=<value>,...;...\" (\"2:display.fov=120\"): a player\n"
+		"\"<player>:<setting>=<value>,...;...\" (\"2:display.fov=120\"; a weapon's own\n"
+		"offsets: display.viewmodel_weapon.<tag path>=<x>|<y>|<z>|<pitch>|<yaw>|<roll>): a player\n"
 		"named plays with a profile of their own (\"Player <n>\", made if they\n"
 		"have none) with those values in it, as Settings sets them; empty\n"
 		"none." },
