@@ -285,11 +285,23 @@ static boolean models_check(
 	{
 		return FALSE;
 	}
-	if (!tag_validate_tags_apart(file + header->tags_offset, (long)header->tags_size, (long)size,
-		MENU_MODELS_FOLDER "\\" MENU_MODELS_FILE ".bin", corrections))
 	{
-		*why = "the validator refused its tags";
-		return FALSE;
+		void *saved = malloc(tag_validate_apart_size());
+		boolean valid;
+
+		if (!saved)
+		{
+			*why = "out of memory";
+			return FALSE;
+		}
+		valid = tag_validate_tags_apart(file + header->tags_offset, (long)header->tags_size, (long)size,
+			MENU_MODELS_FOLDER "\\" MENU_MODELS_FILE ".bin", saved, corrections);
+		models_free(saved);
+		if (!valid)
+		{
+			*why = "the validator refused its tags";
+			return FALSE;
+		}
 	}
 	return TRUE;
 }
