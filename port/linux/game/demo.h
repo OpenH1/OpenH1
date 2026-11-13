@@ -94,6 +94,7 @@ enum
 	_demo_rule_enhanced_animations_bit,
 	_demo_rule_turns_with_aim_bit,
 	_demo_rule_walk_over_pickup_bit,
+	_demo_rule_simulation_fixes_bit,
 };
 boolean demo_playback_rules(unsigned long *rules);
 /* the connection the ticks of the demo playing run as (main.c's

@@ -100,6 +100,12 @@ _network_game_classic_turning_bit) in an OpenH1 game, both on the host
 and its clients; this machine's setting as the map began in a game of its
 own and a Legacy game; a demo's recording's in its playback */
 boolean network_standard_enhanced_animations(void);
+/* whether the game plays OpenH1's fixes of the original's glitches that
+change the simulation (items.c's item_move_substep: an item struck where it
+already was lifted off the surface): every game but a Legacy one, whose
+machines (OpenCE's among them) all play the original's; a demo's
+recording's in its playback */
+boolean network_standard_simulation_fixes(void);
 /* the rules above as the game has them, for a demo's header (demo.h's
 _demo_rule_*) */
 unsigned long network_standard_demo_rules(void);

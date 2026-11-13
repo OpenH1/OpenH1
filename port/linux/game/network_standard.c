@@ -754,7 +754,28 @@ unsigned long network_standard_demo_rules(
 	SET_FLAG(rules, _demo_rule_enhanced_animations_bit, network_standard_enhanced_animations());
 	SET_FLAG(rules, _demo_rule_turns_with_aim_bit, network_standard_turns_with_aim(NONE));
 	SET_FLAG(rules, _demo_rule_walk_over_pickup_bit, network_standard_walk_over_pickup(NONE));
+	SET_FLAG(rules, _demo_rule_simulation_fixes_bit, network_standard_simulation_fixes());
 	return rules;
+}
+
+boolean network_standard_simulation_fixes(
+	void)
+{
+	unsigned long rules;
+
+	/* (a demo's playback: its recording's game's, demo.c) */
+	if (demo_playback_rules(&rules))
+		return TEST_FLAG(rules, _demo_rule_simulation_fixes_bit);
+	switch (game_connection())
+	{
+	case _game_connection_network_server:
+		/* (a Legacy game's machines all play the original's: OpenCE's do) */
+		return network_standard_globals.hosting;
+	case _game_connection_network_client:
+		return network_standard_globals.joined;
+	default:
+		return TRUE;
+	}
 }
 
 boolean network_standard_walk_over_pickup(
