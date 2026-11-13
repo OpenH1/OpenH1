@@ -10,12 +10,12 @@ in the panel beside it the focused color's name, its Spartan in that color
 cannot be; Random's cycling through the colors), Current color while it is
 the profile's own (its place kept, so the Spartan stays put), and what it
 does. BACK at the bar's left, SELECT at its right. The colors and what A does are menu_functions.c's (the row source
-profile.colors, the color.* bindings, the action color choose): A chooses
+profile.colors, the color.* bindings, the action profile color): A chooses
 the row's color for the profile being edited and goes back, B goes back
 without one. -->
 <screen name="profile_color">
 	<header title="PROFILE COLOR" detail="PROFILE: {color.profile}"/>
-	<table source="profile.colors" do="color choose">
+	<table source="profile.colors" do="profile color">
 		<column id="swatch" kind="swatch" width="16" gap="2" touch="12 18 16 0 0"/>
 		<column id="name" label="COLOR" kind="strong" width="374" grow="144" touch="40 14 312 0 144"/>
 	</table>

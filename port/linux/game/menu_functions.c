@@ -12544,7 +12544,7 @@ int pc_menu_color_value(char const *name, char *value, unsigned long size)
 	return value[0] != 0;
 }
 
-/* "color choose" (A, a click or a tap on a row, or SELECT): the row's
+/* "profile color" (A, a click or a tap on a row, or SELECT): the row's
 color (the chosen one's, for NONE) made the edited profile's, as the PC
 version's picker's player_profile_color_picker_select_color (Random: NONE,
 a new profile's); FALSE with no profile being edited */

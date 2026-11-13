@@ -287,7 +287,7 @@ sounds and the fades are the game's.
 | `profile select` | The row's profile (OK: the chosen one's) made player 1's, and back to the screen before; on the row that makes one, the question whether to make one |
 | `profile new` | A new profile's name asked (CREATE NEW) |
 | `profile delete` | The question whether to delete the chosen profile (DELETE) |
-| `color choose` | The row's color (SELECT: the focused one's) made the profile being edited's, and back to the screen before; Random its color none, a new profile's |
+| `profile color` | The row's color (SELECT: the focused one's) made the profile being edited's, and back to the screen before; Random its color none, a new profile's |
 | `lobby row` | A lobby's row chosen: a click on it puts this player on its lane's team (in a team game), as a click on the generated lobby's column; A (Start) starts the game (the host's) |
 | `lobby start`, `lobby team red`, `lobby team blue`, `lobby team toggle` | The game started (START GAME); this player put on red's or blue's team (left and right on the players), or the other (CHANGE TEAM) |
 | `lobby invite`, `lobby settings`, `lobby host`, `lobby add player` | The invite copied; Server Setup in the lobby's place (GAME SETTINGS); Host Controls (HOST CONTROLS); another player of this machine added (ADD PLAYER) |

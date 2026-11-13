@@ -314,7 +314,7 @@ static struct screen_action const screen_actions[] =
 		"error/confirm_delete_profile_modal_fullscreen", NULL },
 	/* (Profile Color's, screens/profile_color.xml: the row's color made
 	the edited profile's, and back to the screen before) */
-	{ "color choose", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_color },
+	{ "profile color", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_color },
 	/* (the lobby's, screens/lobby.xml, as the generated lobby's
 	(menu_functions.c's lobby_menu.inc): a row chosen (a click its lane's
 	team, else the host's start), the start, a team (left and right on the
@@ -374,7 +374,7 @@ static char const *const screen_action_names[] =
 	"browser tab dedicated", "browser tab openh1", "browser tab legacy", "browser tab coop", "browser tab favorites",
 	"browser sort players", "browser sort ping", "browser sort server", "browser sort map", "browser sort mode",
 	"browser sort next", "browser favorite", "browser join", "browser refresh", "browser filters", "profile select",
-	"profile new", "profile delete", "color choose", "lobby row", "lobby start", "lobby team red", "lobby team blue",
+	"profile new", "profile delete", "profile color", "lobby row", "lobby start", "lobby team red", "lobby team blue",
 	"lobby team toggle", "lobby invite", "lobby settings", "lobby host", "lobby add player", "lobby bots left",
 	"lobby bots right", "lobby skill left", "lobby skill right", "lobby teams left", "lobby teams right",
 	"lobby chat", "lobby card", "lobby card friend", "lobby card mute", "lobby card kick", "lobby friends",
@@ -1948,21 +1948,27 @@ static boolean screen_call_profile(struct widget_instance *widget, struct event_
 	return TRUE;
 }
 
-/* Profile Color's "color choose" (menu_functions.c's model): the row's
+/* Profile Color's "profile color" (menu_functions.c's model): the row's
 color (the chosen one's, for SELECT) made the edited profile's and back to
 the screen before, as the PC version's picker's A */
 static boolean screen_call_color(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted)
 {
 	*deleted = FALSE;
-	if (strcmp(name, "color choose"))
+	if (strcmp(name, "profile color"))
 		return FALSE;
 	if (!pc_menu_color_choose(screen_action_row))
 	{
 		platform_log("menus: a color is chosen with no profile being edited");
 		return FALSE;
 	}
-	platform_log("menus: the profile's color chosen");
+	{
+		char word[16];
+
+		if (!pc_menu_color_value("color.spartan", word, sizeof(word)))
+			word[0] = 0;
+		platform_log("menus: the profile's color %s chosen", word);
+	}
 	menu_tags_back(widget, event, deleted);
 	return TRUE;
 }

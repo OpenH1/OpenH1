@@ -467,7 +467,7 @@ int main(int argc, char **argv)
 		table_index = kind_first(&screen, MENU_SCREEN_TABLE);
 		CHECK(table_index >= 0, "no table");
 		table = &screen.blocks[table_index];
-		CHECK(!strcmp(table->source, "profile.colors") && !strcmp(table->action, "color choose"),
+		CHECK(!strcmp(table->source, "profile.colors") && !strcmp(table->action, "profile color"),
 			"the table's source or do");
 		swatch = &screen.blocks[kind_first(&screen, MENU_SCREEN_COLUMN)];
 		CHECK(swatch->parent == table_index && swatch->cell == MENU_SCREEN_CELL_SWATCH && !strcmp(swatch->id, "swatch"),
