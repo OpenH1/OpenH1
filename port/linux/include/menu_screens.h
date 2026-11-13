@@ -197,6 +197,10 @@ struct menu_screen
 	the screen: an action, NULL for its widgets') */
 	char const *back;
 	char const *start;
+	/* (a tall screen's background: the tall layout's over the generated
+	screen's own, background="tall"; else the generated screen's, the tall
+	layout's where it has none) */
+	int tall_background;
 	char const *file;
 	struct menu_screen_block blocks[MENU_SCREEN_MAXIMUM_BLOCKS];
 	int block_count;

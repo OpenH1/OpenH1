@@ -462,7 +462,8 @@ int main(int argc, char **argv)
 		colors, each its swatch and name; its panel with the focused color's
 		Spartan; BACK at the bar's left, SELECT at its right) */
 		CHECK(read_text(profile_color_xml, &screen, problem), "Profile Color's file is refused: %s", problem);
-		CHECK(!strcmp(screen.name, "profile_color") && !screen.back, "its name or back");
+		CHECK(!strcmp(screen.name, "profile_color") && !screen.back && screen.tall_background,
+			"its name, back or background");
 		CHECK(kind_total(&screen, MENU_SCREEN_COLORS, -2) == 0, "it still has <colors>");
 		table_index = kind_first(&screen, MENU_SCREEN_TABLE);
 		CHECK(table_index >= 0, "no table");
@@ -482,6 +483,9 @@ int main(int argc, char **argv)
 		/* (a column of a kind there is none of refused, naming the kinds) */
 		refused("<screen name=\"main\"><table source=\"test.rows\"><column id=\"a\" kind=\"chip\" width=\"9\"/>"
 			"</table></screen>", "text, strong, ping, star, dot or swatch");
+		/* (a background neither own nor tall refused) */
+		refused("<screen name=\"main\" background=\"blue\"><list><item label=\"A\" do=\"quit\"/></list></screen>",
+			"background is own or tall");
 	}
 	else if (!strcmp(name, "browser"))
 	{

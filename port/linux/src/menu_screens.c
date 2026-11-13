@@ -921,7 +921,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	if (!strcmp(name, "screen") && parent_element == -1)
 	{
-		static char const *const names[] = { "name", "back", "start", NULL };
+		static char const *const names[] = { "name", "back", "start", "background", NULL };
 
 		element = _element_screen;
 		attributes_read(reader, name, attributes, names, values);
@@ -934,6 +934,9 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			action_check(reader, screen->back);
 		if (!reader->failed && screen->start)
 			action_check(reader, screen->start);
+		if (!reader->failed && values[3] && strcmp(values[3], "own") && strcmp(values[3], "tall"))
+			reader_problem(reader, "a <screen>'s background is own or tall: \"%s\"", values[3]);
+		screen->tall_background = values[3] && !strcmp(values[3], "tall");
 	}
 	else if (parent_element == _element_screen && (!strcmp(name, "title-art") || !strcmp(name, "space")))
 	{
