@@ -11,11 +11,11 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from harness import CHECK_FAILED, build, function, mutated, read, run  # noqa: E402
+from harness import CHECK_FAILED, build, function, mutated, player_settings_slots, read, run  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[3]
 CASES = ["off", "lands_on_the_reticle", "screen_offset", "hud_scale", "aim_camera", "zoom", "not_the_aim", "range",
-         "changed", "panini"]
+         "changed", "panini", "players"]
 CONTROLS = [
     # the view drawn through display.panini taken as drawn as it is: the reticle lower than asked, by the middle's
     # magnification
@@ -25,7 +25,7 @@ CONTROLS = [
     ("panini_projection_inverse(&projection, 0.0f, screen_tangent, &aim_across, &aim_tangent);",
      "panini_projection_inverse(&projection, screen_tangent, 0.0f, &aim_tangent, &aim_across);", "panini"),
     # the setting's switch unread: lowered when off
-    ('config_boolean("display.lowered_reticle") ? ', "1 ? ", "off"),
+    ('config_player_boolean(local_player_index, "display.lowered_reticle") ?', "1 ?", "off"),
     # the lift as a fraction of the half height, not of the whole
     ("screen_tangent = 2.0f * fraction * tangent_y;", "screen_tangent = fraction * tangent_y;",
      "lands_on_the_reticle"),
@@ -55,7 +55,13 @@ CONTROLS = [
     # not held at the range
     ("\t\tif (percent > LOWERED_RETICLE_MAXIMUM_PERCENT)\n", "\t\tif (FALSE)\n", "range"),
     # read once, not on a change
-    ("if (!initialized || read_at != changes)", "if (!initialized || !read_at)", "changed"),
+    ("if (!players[slot].initialized || players[slot].read_at != changes)",
+     "if (!players[slot].initialized || !players[slot].read_at)", "changed"),
+    # one value kept for every player
+    ("short slot = PLAYER_SETTINGS_SLOT(local_player_index);", "short slot = 0;", "players"),
+    # player 1's setting for every player
+    ("\tfraction = lowered_reticle_fraction(local_player_index);", "\tfraction = lowered_reticle_fraction(0);",
+     "players"),
 ]
 
 
@@ -65,7 +71,7 @@ def generated(fault=None):
     if fault:
         section = mutated(section, *fault)
     # (display.panini's arithmetic, the game's own header)
-    return (("under_test.inc", section), ("panini_projection.h", read("port/linux/include/panini_projection.h")))
+    return (("under_test.inc", player_settings_slots() + section), ("panini_projection.h", read("port/linux/include/panini_projection.h")))
 
 
 @pytest.mark.parametrize("case", CASES)

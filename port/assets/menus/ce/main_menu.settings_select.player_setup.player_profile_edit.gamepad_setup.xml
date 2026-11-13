@@ -252,7 +252,7 @@
 		<string text="How fast the right stick turns the view."/>
 		<string text="Pushing the right stick up looks down."/>
 		<string text="Pushing the right stick right turns the view left. For every controller on this device."/>
-		<string text="Aim by turning a controller that has a gyroscope, and the right stick as a flick stick."/>
+		<string text="Aim by turning a controller that has a gyroscope; the right stick's aim style (Classic or Modern), and the right stick as a flick stick."/>
 		<string text="Flying vehicles pitch as aircraft do: pushing up flies down."/>
 		<string text="Levels the view while you walk."/>
 		<string text=""/>

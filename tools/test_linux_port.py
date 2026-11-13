@@ -345,7 +345,11 @@ def config_check_build(tmp_path, defines):
         result = subprocess.run([str(program), str(data), *command], capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
         return result.stdout.strip()
+    def status(*command):
+        """a command's exit status alone (1: refused)"""
+        return subprocess.run([str(program), str(data), *command], capture_output=True, text=True).returncode
     run.config = data / "config.toml"
+    run.status = status
     return run
 
 
@@ -376,6 +380,82 @@ def test_config_writes_defaults_commented_out(config_check):
     assert len(re.findall(r"^(# )?hands = ", written, re.M)) == 1
     assert config_check("get", "vr.hands") == "floating"
     assert config_check.config.read_text() == written
+
+
+def test_config_player_settings_upgrade(config_check, tmp_path):
+    """an older config.toml's values are every player's, with or without a profile, until a profile has its own:
+    nothing changes on upgrade, and nothing is written into the profile's folder"""
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    config_check.config.write_text('[display]\nfov = 100.0\nviewmodel_offset_x = 4.0\nvsync = false\n')
+    assert config_check("player", "0", "", "display.fov") == "100"
+    assert config_check("player", "1", str(profile), "display.fov") == "100"
+    assert config_check("player", "1", str(profile), "display.viewmodel_offset_x") == "4"
+    assert config_check("player", "1", str(profile), "display.lowered_reticle") == "false"
+    assert not (profile / "settings.toml").exists()
+    assert config_check.status("profile-get", str(profile), "display.fov") == 1
+
+
+def test_config_player_settings_profile(config_check, tmp_path):
+    """a profile's own value, written into its settings.toml, is its player's alone; the others' and config.toml's
+    stay; a setting that is the machine's (display.vsync) is never a profile's"""
+    one, two = tmp_path / "one", tmp_path / "two"
+    one.mkdir()
+    two.mkdir()
+    config_check.config.write_text('[display]\nfov = 100.0\n')
+    config_check("profile-write", str(two), "display.fov", "120")
+    config_check("profile-write", str(two), "display.viewmodel_offset_x", "-3.5")
+    config_check("profile-write", str(two), "display.vehicle_fov", "match")
+    text = (two / "settings.toml").read_text()
+    assert "\n[display]\nfov = 120.0\nviewmodel_offset_x = -3.5\nvehicle_fov = \"match\"\n" in text
+    assert config_check("profile-get", str(two), "display.fov") == "120"
+    assert config_check("player", "1", str(two), "display.fov") == "120"
+    assert config_check("player", "1", str(two), "display.vehicle_fov") == "match"
+    assert config_check("player", "0", str(one), "display.fov") == "100"
+    assert config_check("player", "1", "", "display.fov") == "100"
+    assert config_check("get", "display.fov") == "100"
+    assert "fov = 120" not in config_check.config.read_text()
+    # (written again in place, not twice)
+    config_check("profile-write", str(two), "display.fov", "90")
+    assert config_check("player", "1", str(two), "display.fov") == "90"
+    assert re.findall(r"^fov = .*$", (two / "settings.toml").read_text(), re.M) == ["fov = 90.0"]
+    assert config_check.status("profile-write", str(two), "display.vsync", "true") == 1
+    assert "vsync" not in (two / "settings.toml").read_text()
+    # (a key that is no player's in the file: config.toml's is used)
+    vsync = config_check("get", "display.vsync")
+    (one / "settings.toml").write_text(f"[display]\nvsync = {'false' if vsync == 'true' else 'true'}\nfov = 70.0\n")
+    assert config_check("player", "0", str(one), "display.fov") == "70"
+    assert config_check("player", "0", str(one), "display.vsync") == vsync
+
+
+def test_config_player_settings_weapon(config_check, tmp_path):
+    """a weapon's own offsets in a profile's settings.toml are its player's alone, its 0s too (in place of
+    config.toml's); a profile without the weapon's table, or no profile, has config.toml's"""
+    one, two = tmp_path / "one", tmp_path / "two"
+    one.mkdir()
+    two.mkdir()
+    pistol = "weapons\\pistol\\pistol"
+    config_check.config.write_text('[display.viewmodel_weapon."weapons\\\\pistol\\\\pistol"]\nx = 2.0\nyaw = 4.0\n')
+    assert config_check("player-weapon", "0", "", pistol) == "2 0 0 0 4 0"
+    assert config_check("player-weapon", "0", str(one), pistol) == "2 0 0 0 4 0"
+    config_check("profile-weapon-write", str(two), "weapons/pistol/pistol", "0", "0", "0", "0", "0", "0")
+    assert config_check("player-weapon", "1", str(two), pistol) == "0 0 0 0 0 0"
+    config_check("profile-weapon-write", str(two), pistol, "-3", "0", "1.5", "0", "0", "0")
+    assert config_check("player-weapon", "1", str(two), pistol) == "-3 0 1.5 0 0 0"
+    assert config_check("player-weapon", "0", str(one), pistol) == "2 0 0 0 4 0"
+    text = (two / "settings.toml").read_text()
+    assert text.count("[display.viewmodel_weapon.") == 1 and "x = -3.0" in text
+    assert "x = 2.0" in config_check.config.read_text()
+
+
+def test_config_player_settings_environment(config_check, tmp_path, monkeypatch):
+    """a setting's environment variable wins over a profile's own value, as over config.toml's"""
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    (profile / "settings.toml").write_text("[display]\nfov = 120.0\n")
+    assert config_check("player", "0", str(profile), "display.fov") == "120"
+    monkeypatch.setenv("HALO_FOV", "75")
+    assert config_check("player", "0", str(profile), "display.fov") == "75"
 
 
 def test_config_keeps_an_older_file(config_check):

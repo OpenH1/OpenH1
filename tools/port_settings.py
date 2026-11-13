@@ -651,6 +651,11 @@ SETTINGS_PAST_VALUES = SETTINGS_PAST_ROWS - SETTINGS_PAST_LABELS
 DISPLAY_MODES = [("FULLSCREEN", "fullscreen"), ("BORDERLESS", "borderless"), ("WINDOWED", "windowed")]
 # input.left_stick_dead_zone's and right's: the game's own (-1), or a part of
 # the stick's travel
+# Modern aim's acceleration zone (input.aim_style "modern"): its angle from
+# side to side, in degrees, and the push that starts it, in percent of the
+# stick's travel (-1 the game's own)
+MODERN_AIM_ANGLES = [(str(degrees), str(degrees)) for degrees in range(0, 46, 5)]
+MODERN_AIM_THRESHOLDS = [("DEFAULT", "-1")] + [(f"{percent}%", str(percent)) for percent in range(50, 101, 5)]
 STICK_DEAD_ZONES = [("DEFAULT (27%)", "-1")] + [(f"{percent}%", str(percent)) for percent in range(0, 51, 5)]
 # display.fov's stops: the game's own (0), or degrees; any of 20 to 160
 # typed, above 150 drawn only with Panini Projection on (panini_projection.h's
@@ -1419,7 +1424,8 @@ PAGES = {
             ("INVERT TURNING", "input.invert_look_horizontal", YES_NO,
              "Pushing the right stick right turns the view left. For every controller on this device.", None),
             ("GYRO & FLICK STICK ›", None, _page_screen(*GYRO),
-             "Aim by turning a controller that has a gyroscope, and the right stick as a flick stick.", None),
+             "Aim by turning a controller that has a gyroscope; the right stick's aim style (Classic or "
+             "Modern), and the right stick as a flick stick.", None),
             ("INVERT FLIGHT", "profile.flight_inversion", YES_NO,
              "Flying vehicles pitch as aircraft do: pushing up flies down.", None),
             ("AUTO-CENTER LOOK", "profile.autocenter", YES_NO, "Levels the view while you walk.", None),
@@ -1526,6 +1532,16 @@ PAGES = {
              "for a second and a half.|It also does so whenever it is held still.", None,
              "gyro_calibrate", "port settings gyro calibrate"),
             (SECTION, "RIGHT STICK"),
+            ("AIM STYLE", "input.aim_style", [("CLASSIC", "classic"), ("MODERN", "modern")],
+             "Classic aims as the original: a diagonal turns faster, and can speed up the turn as a full push "
+             "does. Modern aims as MCC's: the same speed whichever way you push, and only a push straight to the "
+             "side speeds up the turn.|The mouse and touch controls are not changed.", None),
+            ("ACCELERATION ANGLE", "input.modern_aim_acceleration_angle", MODERN_AIM_ANGLES,
+             "Modern aim: how far from straight to the side, in degrees, a full push still speeds up the turn. "
+             "Lower keeps more diagonals from speeding it up.", None),
+            ("ACCELERATION START", "input.modern_aim_acceleration_threshold", MODERN_AIM_THRESHOLDS,
+             "Modern aim: how far you push the stick before the turn speeds up. Default is the game's own, as "
+             "Classic's.", None),
             ("FLICK STICK", "input.flick_stick", ON_OFF,
              "Point the right stick and you turn at once to face that way: right, a quarter turn; down, about "
              "face. Turn it round its rim and you turn with it. Aim up and down with the gyro.|With the default "
@@ -1728,6 +1744,8 @@ SETTINGS_SEARCH_WORDS = {
     "crosshair": ["lowered_reticle", "lowered_reticle_amount"],
     "viewmodel": ["viewmodel_visible", "viewmodel_fov", "weapon_position"],
     "gun": ["viewmodel_visible", "viewmodel_fov", "weapon_position"],
+    "aim": ["aim_style", "modern_aim_acceleration_angle", "modern_aim_acceleration_threshold"],
+    "acceleration": ["aim_style", "modern_aim_acceleration_angle", "modern_aim_acceleration_threshold"],
     "deadzone": ["stick_dead_zones", "left_stick_dead_zone", "right_stick_dead_zone"],
     "rumble": ["vibration"],
     "keybinds": ["key_bindings"], "keys": ["key_bindings"],
@@ -2262,6 +2280,9 @@ SETTINGS_ROW_ENABLED = {
     # while it is on)
     "vrr": "!vrr_system",
     "vrr_cap_margin": "vrr=on+!vrr_system vrr=auto+vrr_found+!vrr_system",
+    # (Modern aim's tunables only while it aims: input.aim_style)
+    "modern_aim_acceleration_angle": "aim_style=modern",
+    "modern_aim_acceleration_threshold": "aim_style=modern",
 }
 
 

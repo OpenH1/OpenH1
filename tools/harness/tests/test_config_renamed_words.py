@@ -49,7 +49,7 @@ def generated(fault=None, faulty_function=None):
     types = "\n\n".join([
         "#include <stdarg.h>", "#include \"tomlc17.h\"",
         enum_with(source, "_config_boolean,"), enum_with(source, "_environment_set_is_true,"),
-        enum_with(source, "_platform_desktop = 1"), structure(source, "config_setting"),
+        enum_with(source, "_platform_desktop = 1"), enum_with(source, "\t_scope_player"), structure(source, "config_setting"),
         structure(source, "config_value"), structure(source, "config_text"),
     ]) + "\n"
     words = table(source, "config_words") + "\n#define NUMBER_OF_CONFIG_WORDS (sizeof(config_words) / sizeof(config_words[0]))\n"

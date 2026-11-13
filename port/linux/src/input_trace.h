@@ -73,6 +73,9 @@ void input_trace_pad(int substep, unsigned int buttons, int left_x, int left_y, 
 /* the player's move and look as the game read them (input_abstraction.c),
 for a frame or a sub-step */
 void input_trace_player(int controller, int substep, float forward, float strafe, float yaw, float pitch);
+/* the look stick's acceleration as the game took it a tick (player_control.c): the aim style, whether the turn
+accelerates, and the look_acceleration_time it has reached */
+void input_trace_aim(int controller, int modern, int accelerating, float acceleration_seconds);
 
 /* the trace as text, of the last seconds (malloc()'s, with its size; NULL if
 it could not be) */

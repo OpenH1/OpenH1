@@ -922,7 +922,7 @@ boolean spartan_link_feed_begin(
 		1.0f);
 	camera->mirrored = FALSE;
 	camera->z_near = rasterizer_globals.near_clip_distance;
-	camera->z_far = render_far_clip_distance();
+	camera->z_far = render_far_clip_distance(local_player_index);
 	/* its window: its size on the screen, from the screen's top left */
 	width = (unsigned long)floorf(rectangles[spartan_link.last_feed].x1 - rectangles[spartan_link.last_feed].x0 + 0.5f);
 	height = (unsigned long)floorf(rectangles[spartan_link.last_feed].y1 - rectangles[spartan_link.last_feed].y0 + 0.5f);

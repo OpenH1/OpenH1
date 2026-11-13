@@ -1473,7 +1473,8 @@ int halo_keyboard_prompts(void)
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
-		snprintf(setting, sizeof(setting), "%s", config_string("input.button_prompts"));
+		/* (the keyboard's player's, player 1's: their profile's) */
+		snprintf(setting, sizeof(setting), "%s", config_player_string(0, "input.button_prompts"));
 	}
 #ifdef HALO_VR
 	/* (in the headset, the hands' controllers: port/linux/game/

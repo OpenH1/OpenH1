@@ -77,6 +77,26 @@ enum
 	_platform_server = 64,
 };
 
+/* Whose a setting is. The machine's (_scope_machine, the table's default,
+left out) are config.toml's alone, the same for every player on it: what
+one screen cannot have two of (the window, the resolution, VSync and the
+frame rate, HDR, anti-aliasing and the rest of the drawing's quality), the
+sound, the network, the server's, and what the simulation's own effects
+follow (display.overshield_effect: a hit on an overshield plays an Elite's
+shield's effect). Settings sets them whoever opened it, as player 1's are. A player's own (_scope_player) may differ between the
+players of one split screen: each player profile can keep a value of its
+own (its settings.toml, beside its blam.sav: config_player_profile), which
+that profile's player sees and plays with (config_player_boolean and the
+rest); a profile without one, or a player without a profile, has
+config.toml's. So an older config.toml's values are every profile's until
+a profile is given one of its own, and nothing changes as a player
+upgrades. */
+enum config_scope
+{
+	_scope_machine,
+	_scope_player,
+};
+
 struct config_setting
 {
 	const char *name;
@@ -88,6 +108,8 @@ struct config_setting
 	enum config_environment environment_style;
 	unsigned platforms;
 	const char *comment;
+	/* whose it is (left out: the machine's) */
+	enum config_scope scope;
 };
 
 /* crouching's keys */
@@ -278,79 +300,79 @@ static const struct config_setting config_settings[] =
 		"first person, in degrees across at 16:9 (20 to 150, or to 160 with\n"
 		"display.panini on); 0 keeps the stock view. The third-person seats\n"
 		"take display.vehicle_fov's. Cinematics and scripted cameras keep\n"
-		"their own." },
+		"their own.", _scope_player },
 	{ "display.vehicle_fov", _config_string, "\"default\"", "HALO_VEHICLE_FOV", _environment_value, _platform_all,
 		"The view's field of view in a vehicle's seat seen in third person (a\n"
 		"driver's, a gunner's), getting in and out too: \"default\" keeps the\n"
 		"stock view, \"match\" takes display.fov's, and a number is degrees\n"
 		"across at 16:9 (20 to 150, or to 160 with display.panini on). A seat\n"
-		"seen in first person (a passenger's) takes display.fov's." },
+		"seen in first person (a passenger's) takes display.fov's.", _scope_player },
 	{ "display.scale_scoped_fov", _config_boolean, "false", "HALO_SCALE_SCOPED_FOV", _environment_value, _platform_all,
 		"Zoom a scope from the view's own field of view (display.fov,\n"
 		"display.vehicle_fov): each zoom level magnifies it as much as the\n"
 		"Xbox's magnifies the stock view (the tangent of half the angle\n"
 		"scaled by the player's over the stock one's). false keeps the\n"
-		"Xbox's: every zoom level is the weapon's own, whatever the view." },
+		"Xbox's: every zoom level is the weapon's own, whatever the view.", _scope_player },
 	{ "display.panini", _config_real, "0.0", "HALO_PANINI", _environment_value, _platform_all,
 		"Draw the 3D view through the Panini projection, at this strength\n"
 		"(Panini's d), 0 to 1; 0 off. At a wide field of view what is at the\n"
 		"sides keeps its shape instead of stretching: 1 keeps it true along\n"
 		"the horizon. The view sees as far to the sides; its middle is drawn\n"
-		"larger. The HUD and the menus are not curved. Not in the VR build." },
+		"larger. The HUD and the menus are not curved. Not in the VR build.", _scope_player },
 	{ "display.panini_vertical", _config_real, "0.0", "HALO_PANINI_VERTICAL", _environment_value, _platform_all,
 		"With display.panini, its vertical compression (Panini's s), 0 to 1:\n"
 		"0 keeps the shapes at the sides; more straightens the floors and\n"
-		"ceilings above and below the middle, stretching the sides taller." },
+		"ceilings above and below the middle, stretching the sides taller.", _scope_player },
 	{ "display.draw_distance", _config_real, "1024.0", "HALO_DRAW_DISTANCE", _environment_value, _platform_all,
 		"How far the world is drawn: the far clip plane, in world units\n"
 		"(about 3 m each), 1024 (the game's own) to 10000. Drawing alone: the\n"
-		"game plays the same. A script's nearer far clip is kept." },
+		"game plays the same. A script's nearer far clip is kept.", _scope_player },
 	{ "display.viewmodel_fov", _config_real, "0.0", "HALO_VIEWMODEL_FOV", _environment_value, _platform_all,
 		"The first-person weapon's and hands' field of view, in degrees across\n"
 		"at 16:9 (20 to 150); 0 keeps the weapon's stock view, also when\n"
-		"display.fov widens the world." },
+		"display.fov widens the world.", _scope_player },
 	{ "display.viewmodel_offset_x", _config_real, "0.0", "HALO_VIEWMODEL_OFFSET_X", _environment_value, _platform_all,
 		"The first-person weapon and hands moved right (negative: left) on\n"
 		"the screen, in centimeters (-20 to 20), for every weapon; 0 keeps them\n"
 		"where the game draws them. With display.viewmodel_fov, as far on the\n"
-		"screen as at the weapon's stock view. Not in VR." },
+		"screen as at the weapon's stock view. Not in VR.", _scope_player },
 	{ "display.viewmodel_offset_y", _config_real, "0.0", "HALO_VIEWMODEL_OFFSET_Y", _environment_value, _platform_all,
 		"The first-person weapon and hands moved up (negative: down), in\n"
 		"centimeters (-20 to 20), as far on the screen at any\n"
-		"display.viewmodel_fov; 0 keeps them where the game draws them." },
+		"display.viewmodel_fov; 0 keeps them where the game draws them.", _scope_player },
 	{ "display.viewmodel_offset_z", _config_real, "0.0", "HALO_VIEWMODEL_OFFSET_Z", _environment_value, _platform_all,
 		"The first-person weapon and hands moved forward, away from the view\n"
 		"(negative: closer), in centimeters (-20 to 20); 0 keeps them where\n"
-		"the game draws them." },
+		"the game draws them.", _scope_player },
 	{ "display.viewmodel_pitch", _config_real, "0.0", "HALO_VIEWMODEL_PITCH", _environment_value, _platform_all,
 		"The first-person weapon and hands turned, muzzle up (negative: down),\n"
 		"in degrees (-15 to 15), about their middle, for every weapon; 0 keeps\n"
 		"them as the game draws them. The aim does not move. Not in VR.\n"
 		"Each weapon's own offsets, added to these: [display.viewmodel_weapon.\n"
 		"\"<tag path>\"] tables of x, y, z, pitch, yaw and roll (Settings, in a\n"
-		"game: First Person's WEAPON POSITION, THIS WEAPON)." },
+		"game: First Person's WEAPON POSITION, THIS WEAPON).", _scope_player },
 	{ "display.viewmodel_yaw", _config_real, "0.0", "HALO_VIEWMODEL_YAW", _environment_value, _platform_all,
 		"The first-person weapon and hands turned, muzzle right (negative:\n"
-		"left), in degrees (-15 to 15); 0 keeps them as the game draws them." },
+		"left), in degrees (-15 to 15); 0 keeps them as the game draws them.", _scope_player },
 	{ "display.viewmodel_roll", _config_real, "0.0", "HALO_VIEWMODEL_ROLL", _environment_value, _platform_all,
 		"The first-person weapon and hands tilted, top to the right (negative:\n"
-		"left), in degrees (-15 to 15); 0 keeps them as the game draws them." },
+		"left), in degrees (-15 to 15); 0 keeps them as the game draws them.", _scope_player },
 	{ "display.lowered_reticle", _config_boolean, "false", "HALO_LOWERED_RETICLE", _environment_value, _platform_all,
 		"Draw the reticle below the middle of the view, as Halo 2 and 3 do\n"
 		"(display.lowered_reticle_amount: how far). The view looks a little\n"
 		"above the aim, so shots go where the reticle points; a scope's zoom\n"
 		"brings it back to the middle. Only this machine's view changes. Not\n"
-		"in VR." },
+		"in VR.", _scope_player },
 	{ "display.lowered_reticle_amount", _config_real, "10.0", "HALO_LOWERED_RETICLE_AMOUNT", _environment_value,
 		_platform_all,
 		"With display.lowered_reticle, how far below the middle the reticle\n"
 		"is, in percent of the view's height (0 to 30); 10 is about Halo 2's\n"
-		"and Halo 3's." },
+		"and Halo 3's.", _scope_player },
 	{ "display.viewmodel_visible", _config_boolean, "true", "HALO_VIEWMODEL_VISIBLE", _environment_value, _platform_all,
 		"Draw the first-person weapon, hands and what is attached to them.\n"
-		"Off, they are not drawn; firing, animation, sound and lights go on." },
+		"Off, they are not drawn; firing, animation, sound and lights go on.", _scope_player },
 	{ "display.passenger_third_person", _config_boolean, "false", "HALO_PASSENGER_THIRD_PERSON", _environment_value, _platform_all,
-		"Third-person Warthog and Scorpion passengers. Weapon zoom is disabled." },
+		"Third-person Warthog and Scorpion passengers. Weapon zoom is disabled.", _scope_player },
 	{ "display.high_res_hud", _config_boolean, "true", "HALO_HIGH_RES_HUD", _environment_value, _platform_all,
 		"Draw the HUD (meters, counters, panels, motion sensor, reticles,\n"
 		"waypoints, scopes, message icons) from the high-res assets: Aerocatia's\n"
@@ -365,7 +387,7 @@ static const struct config_setting config_settings[] =
 	{ "display.hud_button_style", _config_string, "\"classic\"", "HALO_HUD_BUTTON_STYLE", _environment_value, _platform_all,
 		"High-res gameplay controller buttons: classic uses the Xbox's stencils;\n"
 		"gems uses shaded Xbox faces; menu_gems uses the menu's button art.\n"
-		"Requires display.high_res_hud." },
+		"Requires display.high_res_hud.", _scope_player },
 	{ "display.menu_pictures", _config_boolean, "true", "HALO_MENU_PICTURES", _environment_value, _platform_desktop,
 		"Draw the menus' pictures of the missions and the multiplayer maps again,\n"
 		"sharp, from your own maps: once, as the main menu first shows (\"Preparing\n"
@@ -1030,7 +1052,7 @@ static const struct config_setting config_settings[] =
 		"touch controls) was; \"controller\" always the controller's buttons, as\n"
 		"the Xbox; \"keyboard\" always the keys. In VR (but \"controller\"):\n"
 		"what presses it on the controllers in the hands, as the runtime names\n"
-		"it (\"A Button\", \"Right Hand Trigger\"), or the gesture that does." },
+		"it (\"A Button\", \"Right Hand Trigger\"), or the gesture that does.", _scope_player },
 	{ "input.controller_p1", _config_string, "\"\"", "HALO_CONTROLLER_P1", _environment_value, _platform_all,
 		"P1 custom controller layout; empty uses the profile's preset. Edit in\n"
 		"Settings > Controls > Controller > Button Remapping. v4: 27 physical\n"
@@ -1057,6 +1079,21 @@ static const struct config_setting config_settings[] =
 		"A controller's look turns the other way: pushing the stick that looks to\n"
 		"the right turns the view left. The profile's INVERT LOOK is the up and\n"
 		"down; this is the side to side, for every controller." },
+	{ "input.aim_style", _config_string, "\"classic\"", "HALO_AIM_STYLE", _environment_value, _platform_all,
+		"How a controller's look stick aims: \"classic\", the original's (each\n"
+		"direction curved on its own, so a diagonal turns faster, and pushed far\n"
+		"enough it accelerates the turn); \"modern\", as MCC's Modern aiming:\n"
+		"the push curved as one, the same speed whichever way it points, and the\n"
+		"turn accelerated only near side to side. The mouse and the touch\n"
+		"controls are not changed.", _scope_player },
+	{ "input.modern_aim_acceleration_angle", _config_integer, "20", "HALO_MODERN_AIM_ACCELERATION_ANGLE",
+		_environment_value, _platform_all,
+		"Modern aim: how far from side to side, in degrees (0 to 45), the look\n"
+		"stick can point and still accelerate the turn when pushed fully.", _scope_player },
+	{ "input.modern_aim_acceleration_threshold", _config_integer, "-1", "HALO_MODERN_AIM_ACCELERATION_THRESHOLD",
+		_environment_value, _platform_all,
+		"Modern aim: how far the look stick is pushed, in percent of its travel\n"
+		"(0 to 100), before the turn accelerates; -1 for the game's own.", _scope_player },
 	{ "input.gyro_aim", _config_string, "\"off\"", "HALO_GYRO_AIM", _environment_value, _platform_all,
 		"Aiming by turning a controller that has a gyroscope (a DualSense, a\n"
 		"DualShock 4, a Switch Pro Controller or Joy-Cons, a Steam Deck with\n"
@@ -1297,7 +1334,7 @@ static const struct config_setting config_settings[] =
 		"The energy shield's flare on the first-person arms too, as on the body\n"
 		"(the stock game draws it on the body only): it shows as the shield\n"
 		"takes hits and fades after them; a full shield untouched shows none.\n"
-		"An overshield stays lit on the arms with display.overshield_effect." },
+		"An overshield stays lit on the arms with display.overshield_effect.", _scope_player },
 #ifdef HALO_VR
 	/* (the VR build's on: in the headset, your body under you, port/linux/README.md "Your body") */
 	{ "display.first_person_legs", _config_boolean, "true", "HALO_FIRST_PERSON_LEGS", _environment_value, _platform_all,
@@ -1305,7 +1342,7 @@ static const struct config_setting config_settings[] =
 	{ "display.first_person_legs", _config_boolean, "false", "HALO_FIRST_PERSON_LEGS", _environment_value, _platform_all,
 #endif
 		"Your own legs in first person, seen looking down: your body as others\n"
-		"see it, drawn from the belly down, moving as it moves, with its shadow." },
+		"see it, drawn from the belly down, moving as it moves, with its shadow.", _scope_player },
 	{ "display.overshield_effect", _config_boolean, "true", "HALO_OVERSHIELD_EFFECT", _environment_value, _platform_all,
 		"The overshield as this machine draws it: its flare lit as it charges\n"
 		"and staying lit for as long as it lasts, its energy slower, in its own\n"
@@ -1356,7 +1393,7 @@ static const struct config_setting config_settings[] =
 		"Your energy shield's color, as this machine draws it: \"default\" (the\n"
 		"shield's own) or a multiplayer armor color: white, black, red, blue,\n"
 		"gray, yellow, green, pink, purple, cyan, cobalt, orange, teal, sage,\n"
-		"brown, tan, maroon or salmon." },
+		"brown, tan, maroon or salmon.", _scope_player },
 
 	{ "game.unlock_all_levels", _config_boolean, "false", "HALO_UNLOCK_ALL_LEVELS", _environment_value, _platform_all,
 		"true: a profile made from now on starts with every campaign level\n"
@@ -2141,6 +2178,14 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test_name", _config_string, "\"\"", "HALO_NETWORK_TEST_NAME", _environment_value, _platform_all,
 		"The name this machine's player takes in an automated test game (ASCII);\n"
 		"empty keeps its profile's." },
+	{ "debug.network_test_profiles", _config_string, "\"\"", "HALO_NETWORK_TEST_PROFILES", _environment_value,
+		_platform_all,
+		"Each local player's own settings in an automated test game,\n"
+		"\"<player>:<setting>=<value>,...;...\" (\"2:display.fov=120\"; a weapon's own\n"
+		"offsets: display.viewmodel_weapon.<tag path>=<x>|<y>|<z>|<pitch>|<yaw>|<roll>): a player\n"
+		"named plays with a profile of their own (\"Player <n>\", made if they\n"
+		"have none) with those values in it, as Settings sets them; empty\n"
+		"none." },
 	{ "debug.network_test_pickup_weapon", _config_string, "\"\"", "HALO_NETWORK_TEST_PICKUP_WEAPON", _environment_value,
 		_platform_all,
 		"The weapon network_test_pickup stands the player on: the first whose tag\n"
@@ -2817,6 +2862,9 @@ static struct config_value config_values[NUMBER_OF_CONFIG_SETTINGS];
 variable or by config_write; display.graphics chooses the others it covers
 (config_graphics_apply) */
 static unsigned char config_set[NUMBER_OF_CONFIG_SETTINGS];
+/* whether its environment variable sets it for this run: it wins over a
+player profile's own value too (config_player_read) */
+static unsigned char config_pinned[NUMBER_OF_CONFIG_SETTINGS];
 static int config_loaded = 0;
 static pthread_mutex_t config_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -3135,6 +3183,8 @@ static void config_append_setting(struct config_text *text, const struct config_
 		if (*line)
 			line++;
 	}
+	if (setting->scope == _scope_player)
+		config_append(text, "# A player profile may keep its own (Settings), in its settings.toml.\n");
 #ifndef HALO_ANDROID
 	/* (Android apps have no environment to set; a setting without a variable
 	names none) */
@@ -3862,6 +3912,10 @@ static void config_set_from_table_text(struct config_value *value, enum config_t
 		config_set_from_text(value, type, text);
 }
 
+/* the file being read, for the log: config.toml, or a player profile's
+settings.toml (config_profile_read) */
+static const char *config_file_read_now = "config.toml";
+
 /* the value in the file, if it is there and of the setting's type: 1 if it
 was */
 static int config_set_from_file(struct config_value *value, const struct config_setting *setting,
@@ -3919,7 +3973,7 @@ static int config_set_from_file(struct config_value *value, const struct config_
 	{
 		static const char *const expected[] = { "true or false", "a whole number", "a number", "a quoted string" };
 
-		platform_log("config.toml line %d: %s should be %s; using %s", datum.lineno, setting->name,
+		platform_log("%s line %d: %s should be %s; using %s", config_file_read_now, datum.lineno, setting->name,
 			expected[setting->type], setting->default_value);
 	}
 	return !wrong_type;
@@ -4655,7 +4709,8 @@ static void config_apply_server_mode(void)
 }
 #endif
 
-static void config_weapons_read(toml_datum_t table);
+/* config.toml's weapons' tables read (config_weapons_read) */
+static void config_weapons_read_global(toml_datum_t table);
 
 static void config_load(void)
 {
@@ -4802,7 +4857,7 @@ static void config_load(void)
 			for (index = 0; index < NUMBER_OF_CONFIG_SETTINGS; index++)
 				config_set[index] = (unsigned char)config_set_from_file(&config_values[index], &config_settings[index],
 					result.toptab);
-			config_weapons_read(result.toptab);
+			config_weapons_read_global(result.toptab);
 #ifndef HALO_ANDROID
 			if (config_values[config_setting_index("server.enabled")].boolean && !config_probe_mode)
 				config_server_mode = 1;
@@ -4863,6 +4918,7 @@ static void config_load(void)
 			break;
 		}
 		config_set[index] = 1;
+		config_pinned[index] = 1;
 	}
 
 	{
@@ -5116,6 +5172,60 @@ static char *config_set_line(const char *text, const char *section, const char *
 	return out.buffer;
 }
 
+/* a setting's line in a file, "key = value" and its new line (its value as
+TOML has it: a string's quoted and escaped); line_size: at least
+strlen(key) + 6 times the value's length + 64 */
+static void config_value_line(long index, const struct config_value *value, const char *key, char *line_text,
+	size_t line_size)
+{
+	switch (config_settings[index].type)
+	{
+	case _config_boolean:
+		snprintf(line_text, line_size, "%s = %s\n", key, value->boolean ? "true" : "false");
+		break;
+	case _config_integer:
+		snprintf(line_text, line_size, "%s = %ld\n", key, value->integer);
+		break;
+	case _config_real:
+		/* (with its point: TOML reads 1 as an integer) */
+		snprintf(line_text, line_size, "%s = %.15g", key, value->real);
+		if (!strpbrk(line_text + strlen(key) + 3, ".en"))
+			strcat(line_text, ".0");
+		strcat(line_text, "\n");
+		break;
+	case _config_string:
+	{
+		char *end;
+		const char *character;
+
+		/* (a number unquoted, for one that takes a word or a number) */
+		if (config_string_takes_number(&config_settings[index]) &&
+			config_text_is_number(value->string))
+		{
+			snprintf(line_text, line_size, "%s = %s\n", key, value->string);
+			break;
+		}
+		end = line_text + snprintf(line_text, line_size, "%s = \"", key);
+
+		/* (a TOML basic string: quotes and backslashes escaped, and control
+		characters, so that a value cannot end its line) */
+		for (character = value->string; *character; character++)
+		{
+			if ((unsigned char)*character < 0x20 || *character == 0x7F)
+			{
+				end += sprintf(end, "\\u%04x", (unsigned)(unsigned char)*character);
+				continue;
+			}
+			if (*character == '"' || *character == '\\')
+				*end++ = '\\';
+			*end++ = *character;
+		}
+		strcpy(end, "\"\n");
+		break;
+	}
+	}
+}
+
 /* the longest string config_write takes */
 #define CONFIG_MAXIMUM_WRITTEN_STRING 4096
 
@@ -5162,52 +5272,7 @@ int config_write(const char *name, const char *value)
 	}
 	snprintf(section, sizeof(section), "%.*s", (int)(dot - name), name);
 	snprintf(key, sizeof(key), "%s", dot + 1);
-	switch (config_settings[index].type)
-	{
-	case _config_boolean:
-		snprintf(line_text, line_size, "%s = %s\n", key, config_values[index].boolean ? "true" : "false");
-		break;
-	case _config_integer:
-		snprintf(line_text, line_size, "%s = %ld\n", key, config_values[index].integer);
-		break;
-	case _config_real:
-		/* (with its point: TOML reads 1 as an integer) */
-		snprintf(line_text, line_size, "%s = %.15g", key, config_values[index].real);
-		if (!strpbrk(line_text + strlen(key) + 3, ".en"))
-			strcat(line_text, ".0");
-		strcat(line_text, "\n");
-		break;
-	case _config_string:
-	{
-		char *end;
-		const char *character;
-
-		/* (a number unquoted, for one that takes a word or a number) */
-		if (config_string_takes_number(&config_settings[index]) &&
-			config_text_is_number(config_values[index].string))
-		{
-			snprintf(line_text, line_size, "%s = %s\n", key, config_values[index].string);
-			break;
-		}
-		end = line_text + snprintf(line_text, line_size, "%s = \"", key);
-
-		/* (a TOML basic string: quotes and backslashes escaped, and control
-		characters, so that a value cannot end its line) */
-		for (character = config_values[index].string; *character; character++)
-		{
-			if ((unsigned char)*character < 0x20 || *character == 0x7F)
-			{
-				end += sprintf(end, "\\u%04x", (unsigned)(unsigned char)*character);
-				continue;
-			}
-			if (*character == '"' || *character == '\\')
-				*end++ = '\\';
-			*end++ = *character;
-		}
-		strcpy(end, "\"\n");
-		break;
-	}
-	}
+	config_value_line(index, &config_values[index], key, line_text, line_size);
 	/* (one display.graphics chooses, at the value it gives it: left to it,
 	commented out) */
 	config_set[index] = 1;
@@ -5277,16 +5342,9 @@ int config_write_boolean(const char *name, int value)
 	return index >= 0 && config_settings[index].type == _config_boolean && config_write(name, value ? "true" : "false");
 }
 
-/* a setting's value as text ("true", "60", "1.5", "all"): 0 if there is no
-such setting */
-int config_text(const char *name, char *text, size_t size)
+/* a value as text ("true", "60", "1.5", "all") */
+static void config_value_text(long index, const struct config_value *value, char *text, size_t size)
 {
-	long index = config_setting_index(name);
-	const struct config_value *value;
-
-	if (index < 0)
-		return 0;
-	value = config_value(name, config_settings[index].type);
 	switch (config_settings[index].type)
 	{
 	case _config_boolean:
@@ -5302,6 +5360,19 @@ int config_text(const char *name, char *text, size_t size)
 		snprintf(text, size, "%s", value->string ? value->string : "");
 		break;
 	}
+}
+
+/* a setting's value as text ("true", "60", "1.5", "all"): 0 if there is no
+such setting */
+int config_text(const char *name, char *text, size_t size)
+{
+	long index = config_setting_index(name);
+	const struct config_value *value;
+
+	if (index < 0)
+		return 0;
+	value = config_value(name, config_settings[index].type);
+	config_value_text(index, value, text, size);
 	return 1;
 }
 
@@ -5414,7 +5485,7 @@ int config_reload(const char *prefix)
 	}
 	/* (each weapon's offsets: display.viewmodel_weapon) */
 	if (!strncmp(CONFIG_WEAPON_TABLE, prefix, length))
-		config_weapons_read(result.toptab);
+		config_weapons_read_global(result.toptab);
 #ifndef HALO_ANDROID
 	/* (what the run forces, forced again: a server started by --server
 	stays one whatever the file's server.enabled says, and its router asked
@@ -5462,8 +5533,13 @@ struct config_weapon
 	double values[CONFIG_WEAPON_VALUES];
 };
 
-static struct config_weapon *config_weapons;
-static int config_weapon_count;
+/* (config.toml's; a player profile's are its own: config_profile) */
+struct config_weapons
+{
+	struct config_weapon *list;
+	int count;
+};
+static struct config_weapons config_weapons;
 
 /* whether two tag paths are the same tag's: tags' paths are the same in
 any case, and a / is taken for the \ the maps write */
@@ -5481,34 +5557,36 @@ static int config_weapon_paths_same(const char *a, const char *b)
 	}
 }
 
-static int config_weapon_find(const char *path)
+static int config_weapon_find(const struct config_weapons *weapons, const char *path)
 {
 	int index;
 
-	for (index = 0; index < config_weapon_count; index++)
+	for (index = 0; index < weapons->count; index++)
 	{
-		if (config_weapon_paths_same(config_weapons[index].path, path))
+		if (config_weapon_paths_same(weapons->list[index].path, path))
 			return index;
 	}
 	return -1;
 }
 
-static void config_weapons_clear(void)
+static void config_weapons_clear(struct config_weapons *weapons)
 {
 	int index;
 
-	for (index = 0; index < config_weapon_count; index++)
-		free(config_weapons[index].path);
-	free(config_weapons);
-	config_weapons = NULL;
-	config_weapon_count = 0;
+	for (index = 0; index < weapons->count; index++)
+		free(weapons->list[index].path);
+	free(weapons->list);
+	weapons->list = NULL;
+	weapons->count = 0;
 }
 
-/* one weapon's values set (all 0: none kept); 0 if out of memory */
-static int config_weapon_store(const char *path, const double values[CONFIG_WEAPON_VALUES])
+/* one weapon's values set (all 0: none kept, unless keep_zero: a profile's,
+whose 0 stands in place of config.toml's); 0 if out of memory */
+static int config_weapon_store(struct config_weapons *weapons, const char *path,
+	const double values[CONFIG_WEAPON_VALUES], int keep_zero)
 {
-	int index = config_weapon_find(path);
-	int value, any = 0;
+	int index = config_weapon_find(weapons, path);
+	int value, any = keep_zero;
 
 	for (value = 0; value < CONFIG_WEAPON_VALUES; value++)
 		any |= values[value] != 0.0;
@@ -5516,44 +5594,46 @@ static int config_weapon_store(const char *path, const double values[CONFIG_WEAP
 	{
 		if (index >= 0)
 		{
-			free(config_weapons[index].path);
-			config_weapons[index] = config_weapons[--config_weapon_count];
+			free(weapons->list[index].path);
+			weapons->list[index] = weapons->list[--weapons->count];
 		}
 		return 1;
 	}
 	if (index < 0)
 	{
-		struct config_weapon *grown = realloc(config_weapons, sizeof(*grown) * (size_t)(config_weapon_count + 1));
+		struct config_weapon *grown = realloc(weapons->list, sizeof(*grown) * (size_t)(weapons->count + 1));
 		char *copy = strdup(path);
 
 		if (!grown || !copy)
 		{
 			free(copy);
 			if (grown)
-				config_weapons = grown;
+				weapons->list = grown;
 			return 0;
 		}
-		config_weapons = grown;
-		index = config_weapon_count++;
-		config_weapons[index].path = copy;
+		weapons->list = grown;
+		index = weapons->count++;
+		weapons->list[index].path = copy;
 	}
-	memcpy(config_weapons[index].values, values, sizeof(config_weapons[index].values));
+	memcpy(weapons->list[index].values, values, sizeof(weapons->list[index].values));
 	return 1;
 }
 
-/* the weapons' tables in the file (table, parsed): each number kept, any
-other value or key said in the log */
-static void config_weapons_read(toml_datum_t table)
+/* the weapons' tables in a file (table, parsed: config.toml's, or with
+keep_zero a profile's): each number kept, any other value or key said in
+the log */
+static void config_weapons_read(struct config_weapons *weapons_read, toml_datum_t table, int keep_zero)
 {
 	toml_datum_t weapons = toml_seek(table, CONFIG_WEAPON_TABLE);
 	int weapon;
 
-	config_weapons_clear();
+	config_weapons_clear(weapons_read);
 	if (weapons.type == TOML_UNKNOWN)
 		return;
 	if (weapons.type != TOML_TABLE)
 	{
-		platform_log("config.toml line %d: %s should be a table of weapons", weapons.lineno, CONFIG_WEAPON_TABLE);
+		platform_log("%s line %d: %s should be a table of weapons", config_file_read_now, weapons.lineno,
+			CONFIG_WEAPON_TABLE);
 		return;
 	}
 	for (weapon = 0; weapon < weapons.u.tab.size; weapon++)
@@ -5565,8 +5645,8 @@ static void config_weapons_read(toml_datum_t table)
 
 		if (entry.type != TOML_TABLE || !path[0] || strlen(path) > CONFIG_WEAPON_PATH_MAXIMUM)
 		{
-			platform_log("config.toml line %d: %s.\"%s\" should be a table (x, y, z, pitch, yaw, roll)",
-				entry.lineno, CONFIG_WEAPON_TABLE, path);
+			platform_log("%s line %d: %s.\"%s\" should be a table (x, y, z, pitch, yaw, roll)",
+				config_file_read_now, entry.lineno, CONFIG_WEAPON_TABLE, path);
 			continue;
 		}
 		for (key = 0; key < entry.u.tab.size; key++)
@@ -5578,18 +5658,24 @@ static void config_weapons_read(toml_datum_t table)
 				value++)
 				;
 			if (value == CONFIG_WEAPON_VALUES)
-				platform_log("config.toml line %d: %s is no weapon offset (x, y, z, pitch, yaw, roll)", datum.lineno,
-					entry.u.tab.key[key]);
+				platform_log("%s line %d: %s is no weapon offset (x, y, z, pitch, yaw, roll)", config_file_read_now,
+					datum.lineno, entry.u.tab.key[key]);
 			else if (datum.type == TOML_FP64)
 				values[value] = datum.u.fp64;
 			else if (datum.type == TOML_INT64)
 				values[value] = (double)datum.u.int64;
 			else
-				platform_log("config.toml line %d: %s should be a number; using 0", datum.lineno, entry.u.tab.key[key]);
+				platform_log("%s line %d: %s should be a number; using 0", config_file_read_now, datum.lineno,
+					entry.u.tab.key[key]);
 		}
 		/* (a path twice, as / and \: the later one's) */
-		config_weapon_store(path, values);
+		config_weapon_store(weapons_read, path, values, keep_zero);
 	}
+}
+
+static void config_weapons_read_global(toml_datum_t table)
+{
+	config_weapons_read(&config_weapons, table, 0);
 }
 
 int config_viewmodel_weapon(const char *path, double values[CONFIG_WEAPON_VALUES])
@@ -5598,9 +5684,9 @@ int config_viewmodel_weapon(const char *path, double values[CONFIG_WEAPON_VALUES
 
 	config_ensure_loaded();
 	pthread_mutex_lock(&config_lock);
-	index = path ? config_weapon_find(path) : -1;
+	index = path ? config_weapon_find(&config_weapons, path) : -1;
 	if (index >= 0)
-		memcpy(values, config_weapons[index].values, sizeof(config_weapons[index].values));
+		memcpy(values, config_weapons.list[index].values, sizeof(config_weapons.list[index].values));
 	else
 		memset(values, 0, sizeof(double) * CONFIG_WEAPON_VALUES);
 	pthread_mutex_unlock(&config_lock);
@@ -5748,7 +5834,7 @@ int config_viewmodel_weapon_write(const char *path, const double values[CONFIG_W
 	}
 	config_ensure_loaded();
 	pthread_mutex_lock(&config_lock);
-	if (!config_weapon_store(path, values))
+	if (!config_weapon_store(&config_weapons, path, values, 0))
 	{
 		pthread_mutex_unlock(&config_lock);
 		return 0;
@@ -5776,6 +5862,439 @@ int config_viewmodel_weapon_write(const char *path, const double values[CONFIG_W
 	pthread_mutex_unlock(&config_lock);
 	free(updated);
 	free(text);
+	return succeeded;
+}
+
+/* ---------- each player's own settings (_scope_player)
+
+A player profile's own values of the settings that are a player's are kept
+in its folder (beside its blam.sav: port/linux/game/player_settings.c
+names it), in settings.toml, with config.toml's sections and keys and only
+the values the profile was given:
+
+	[display]
+	fov = 100.0
+
+A local player's value is their profile's, else config.toml's
+(config_player_read); a setting's environment variable, and the menus'
+pictures' stock view (config_picture_view), still win over it. A profile is
+read once, as a local player takes it or Settings edits it, and kept
+(CONFIG_PROFILES of them: the local players' and a few more); a value
+written (config_profile_write) is written there too, and config_changes
+moves, so that what keeps a setting reads it again. */
+
+#define CONFIG_PROFILES 8
+#define CONFIG_PROFILE_FILE "settings.toml"
+#define CONFIG_LOCAL_PLAYERS 4
+/* (more than the settings that are a player's) */
+#define CONFIG_PROFILE_VALUES 160
+#define CONFIG_PROFILE_FOLDER_SIZE 1024
+#define CONFIG_PROFILE_HEAD \
+	"# This player profile's own settings: those of config.toml's that are each\n" \
+	"# player's, as Settings set them for this profile. One that is not here is\n" \
+	"# config.toml's.\n"
+
+struct config_profile_value
+{
+	long setting;
+	struct config_value value;
+};
+
+/* a profile's values: kept in place, and only added to while it is kept
+(config_profile_slot), so that a reader without the lock sees each whole */
+static struct config_profile
+{
+	/* "" unused */
+	char folder[CONFIG_PROFILE_FOLDER_SIZE];
+	struct config_profile_value values[CONFIG_PROFILE_VALUES];
+	int count;
+	/* each weapon's own offsets, the profile's (its 0s too, in place of
+	config.toml's: config_player_viewmodel_weapon) */
+	struct config_weapons weapons;
+	unsigned long used_at;
+} config_profiles[CONFIG_PROFILES];
+
+/* each local player's profile (config_profiles' index), -1 none */
+static int config_player_profiles[CONFIG_LOCAL_PLAYERS] = { -1, -1, -1, -1 };
+static unsigned long config_profile_clock;
+
+static long config_player_setting(const char *name)
+{
+	long index = config_setting_index(name);
+
+	return index >= 0 && config_settings[index].scope == _scope_player ? index : -1;
+}
+
+int config_per_player(const char *name)
+{
+	return config_player_setting(name) >= 0;
+}
+
+static void config_profile_path(const char *folder, char *path, size_t size)
+{
+	size_t length = strlen(folder);
+
+	snprintf(path, size, "%s%s" CONFIG_PROFILE_FILE, folder,
+		length && (folder[length - 1] == '/' || folder[length - 1] == '\\') ? "" : "/");
+}
+
+static struct config_value *config_profile_find(struct config_profile *profile, long setting)
+{
+	int index;
+
+	for (index = 0; index < profile->count; index++)
+	{
+		if (profile->values[index].setting == setting)
+			return &profile->values[index].value;
+	}
+	return NULL;
+}
+
+/* the keys of a profile's file that are no player's setting, said in the
+log (config.toml's are then) */
+static void config_profile_report(const char *path, toml_datum_t table)
+{
+	int section, key;
+
+	for (section = 0; section < table.u.tab.size; section++)
+	{
+		toml_datum_t keys = table.u.tab.value[section];
+
+		if (keys.type != TOML_TABLE)
+		{
+			platform_log("settings: %s line %d: %s is no setting of a player's", path, keys.lineno,
+				table.u.tab.key[section]);
+			continue;
+		}
+		for (key = 0; key < keys.u.tab.size; key++)
+		{
+			char name[128];
+
+			snprintf(name, sizeof(name), "%s.%s", table.u.tab.key[section], keys.u.tab.key[key]);
+			if (config_player_setting(name) < 0 && strcmp(name, CONFIG_WEAPON_TABLE))
+				platform_log("settings: %s line %d: %s is no setting of a player's; config.toml's is used", path,
+					keys.u.tab.value[key].lineno, name);
+		}
+	}
+}
+
+/* a profile's file read into a slot (with config_lock) */
+static void config_profile_read(struct config_profile *profile)
+{
+	char path[CONFIG_PROFILE_FOLDER_SIZE + 32];
+	size_t size = 0, index;
+	char *text;
+	toml_result_t result;
+
+	profile->count = 0;
+	config_weapons_clear(&profile->weapons);
+	config_profile_path(profile->folder, path, sizeof(path));
+	text = config_read_file(path, &size);
+	if (!text)
+		return;
+	result = toml_parse(text, (int)size);
+	if (!result.ok)
+	{
+		platform_log("settings: %s cannot be read (%s): config.toml's settings are used", path, result.errmsg);
+		toml_free(result);
+		free(text);
+		return;
+	}
+	config_file_read_now = path;
+	for (index = 0; index < NUMBER_OF_CONFIG_SETTINGS && profile->count < CONFIG_PROFILE_VALUES; index++)
+	{
+		struct config_profile_value *entry = &profile->values[profile->count];
+
+		if (config_settings[index].scope != _scope_player || !(config_settings[index].platforms & CONFIG_PLATFORM) ||
+			config_profile_find(profile, (long)index))
+		{
+			continue;
+		}
+		memset(&entry->value, 0, sizeof(entry->value));
+		entry->setting = (long)index;
+		if (config_set_from_file(&entry->value, &config_settings[index], result.toptab))
+			profile->count++;
+	}
+	config_weapons_read(&profile->weapons, result.toptab, 1);
+	config_file_read_now = "config.toml";
+	config_profile_report(path, result.toptab);
+	toml_free(result);
+	free(text);
+}
+
+/* the profile of a folder, read if it is not kept (with config_lock): in a
+slot unused, else in the one used longest ago that no local player has;
+NULL if every one is a local player's */
+static struct config_profile *config_profile_slot(const char *folder)
+{
+	struct config_profile *found = NULL;
+	int slot, player;
+
+	if (!folder || !folder[0] || strlen(folder) >= CONFIG_PROFILE_FOLDER_SIZE)
+		return NULL;
+	for (slot = 0; slot < CONFIG_PROFILES && !found; slot++)
+	{
+		if (!strcmp(config_profiles[slot].folder, folder))
+			found = &config_profiles[slot];
+	}
+	for (slot = 0; slot < CONFIG_PROFILES && !found; slot++)
+	{
+		struct config_profile *profile = &config_profiles[slot];
+
+		for (player = 0; player < CONFIG_LOCAL_PLAYERS && config_player_profiles[player] != slot; player++)
+		{
+		}
+		if (player < CONFIG_LOCAL_PLAYERS)
+			continue;
+		if (!profile->folder[0])
+		{
+			found = profile;
+			break;
+		}
+		if (!found || profile->used_at < found->used_at)
+			found = profile;
+	}
+	if (!found)
+		return NULL;
+	if (strcmp(found->folder, folder))
+	{
+		snprintf(found->folder, sizeof(found->folder), "%s", folder);
+		config_profile_read(found);
+	}
+	found->used_at = ++config_profile_clock;
+	return found;
+}
+
+void config_player_profile(int local_player, const char *folder)
+{
+	struct config_profile *profile;
+	int slot;
+
+	if (local_player < 0 || local_player >= CONFIG_LOCAL_PLAYERS)
+		return;
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	/* (the slot freed first: a player's new profile may take it) */
+	config_player_profiles[local_player] = -1;
+	profile = config_profile_slot(folder);
+	slot = profile ? (int)(profile - config_profiles) : -1;
+	config_player_profiles[local_player] = slot;
+	config_change_count++;
+	pthread_mutex_unlock(&config_lock);
+	if (profile)
+		platform_log("settings: player %d's own settings: %d, in %s", local_player + 1, profile->count, folder);
+	else
+		platform_log("settings: player %d has no profile's settings: config.toml's", local_player + 1);
+}
+
+/* a local player's value: their profile's, else config.toml's as the game
+reads it; the setting's environment variable, the menus' pictures' view and
+a player without a profile have config.toml's */
+static const struct config_value *config_player_read(int local_player, const char *name, enum config_type type)
+{
+	const struct config_value *value = config_read(name, type);
+	struct config_value const *own;
+	long index;
+	int slot;
+
+	if (local_player < 0 || local_player >= CONFIG_LOCAL_PLAYERS || config_picture_viewing)
+		return value;
+	slot = config_player_profiles[local_player];
+	index = config_player_setting(name);
+	if (slot < 0 || index < 0 || config_pinned[index] || config_settings[index].type != type)
+		return value;
+	own = config_profile_find(&config_profiles[slot], index);
+	return own ? own : value;
+}
+
+int config_player_boolean(int local_player, const char *name)
+{
+	return config_player_read(local_player, name, _config_boolean)->boolean;
+}
+
+long config_player_integer(int local_player, const char *name)
+{
+	return config_player_read(local_player, name, _config_integer)->integer;
+}
+
+double config_player_real(int local_player, const char *name)
+{
+	return config_player_read(local_player, name, _config_real)->real;
+}
+
+const char *config_player_string(int local_player, const char *name)
+{
+	const char *string = config_player_read(local_player, name, _config_string)->string;
+
+	return string ? string : "";
+}
+
+int config_player_viewmodel_weapon(int local_player, const char *path, double values[CONFIG_WEAPON_VALUES])
+{
+	int slot, index = -1;
+
+	if (local_player < 0 || local_player >= CONFIG_LOCAL_PLAYERS)
+		return config_viewmodel_weapon(path, values);
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	slot = config_player_profiles[local_player];
+	if (slot >= 0 && path && !config_picture_viewing)
+		index = config_weapon_find(&config_profiles[slot].weapons, path);
+	if (index >= 0)
+		memcpy(values, config_profiles[slot].weapons.list[index].values, sizeof(double) * CONFIG_WEAPON_VALUES);
+	pthread_mutex_unlock(&config_lock);
+	if (index < 0)
+		return config_viewmodel_weapon(path, values);
+	return 1;
+}
+
+int config_profile_viewmodel_weapon(const char *folder, const char *path, double values[CONFIG_WEAPON_VALUES])
+{
+	struct config_profile *profile;
+	int index = -1;
+
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	profile = config_profile_slot(folder);
+	if (profile && path)
+		index = config_weapon_find(&profile->weapons, path);
+	if (index >= 0)
+		memcpy(values, profile->weapons.list[index].values, sizeof(double) * CONFIG_WEAPON_VALUES);
+	pthread_mutex_unlock(&config_lock);
+	return index >= 0;
+}
+
+int config_profile_viewmodel_weapon_write(const char *folder, const char *path,
+	const double values[CONFIG_WEAPON_VALUES])
+{
+	struct config_profile *profile;
+	char file[CONFIG_PROFILE_FOLDER_SIZE + 32];
+	size_t size = 0, length = path ? strlen(path) : 0;
+	char *text, *updated;
+	int succeeded = 0, value;
+
+	if (!length || length > CONFIG_WEAPON_PATH_MAXIMUM)
+		return 0;
+	for (value = 0; value < (int)length; value++)
+	{
+		if ((unsigned char)path[value] < 0x20 || path[value] == 0x7F)
+			return 0;
+	}
+	for (value = 0; value < CONFIG_WEAPON_VALUES; value++)
+	{
+		if (!(values[value] == values[value]))
+			return 0;
+	}
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	profile = config_profile_slot(folder);
+	if (!profile || !config_weapon_store(&profile->weapons, path, values, 1))
+	{
+		pthread_mutex_unlock(&config_lock);
+		return 0;
+	}
+	config_change_count++;
+	if (config_answer_only)
+	{
+		pthread_mutex_unlock(&config_lock);
+		return 1;
+	}
+	config_profile_path(folder, file, sizeof(file));
+	text = config_read_file(file, &size);
+	/* (a profile's table kept at 0 too: its 0 in place of config.toml's) */
+	updated = config_weapon_set_table(text ? text : CONFIG_PROFILE_HEAD, path, values);
+	if (updated)
+	{
+		toml_result_t check = toml_parse(updated, (int)strlen(updated));
+
+		if (check.ok)
+			succeeded = config_write_file(file, updated);
+		else
+			platform_log("settings: %s's offsets not written: %s would not read (%s)", path, file, check.errmsg);
+		toml_free(check);
+	}
+	pthread_mutex_unlock(&config_lock);
+	free(updated);
+	free(text);
+	return succeeded;
+}
+
+int config_profile_text(const char *folder, const char *name, char *text, size_t size)
+{
+	long index = config_player_setting(name);
+	struct config_profile *profile;
+	struct config_value const *own = NULL;
+
+	if (index < 0)
+		return 0;
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	profile = config_profile_slot(folder);
+	if (profile)
+		own = config_profile_find(profile, index);
+	if (own)
+		config_value_text(index, own, text, size);
+	pthread_mutex_unlock(&config_lock);
+	return own != NULL;
+}
+
+int config_profile_write(const char *folder, const char *name, const char *value)
+{
+	long index = config_player_setting(name);
+	const char *dot = strchr(name, '.');
+	struct config_profile *profile;
+	struct config_value *own;
+	char section[64], key[64], path[CONFIG_PROFILE_FOLDER_SIZE + 32], *line_text, *text, *updated = NULL;
+	size_t size = 0, line_size;
+	int succeeded = 0;
+
+	if (index < 0 || !dot || (size_t)(dot - name) >= sizeof(section) || strlen(dot + 1) >= sizeof(key) ||
+		strlen(value) > 256)
+	{
+		return 0;
+	}
+	line_size = strlen(dot + 1) + 6 * strlen(value) + 64;
+	line_text = malloc(line_size);
+	if (!line_text)
+		return 0;
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	profile = config_profile_slot(folder);
+	own = profile ? config_profile_find(profile, index) : NULL;
+	if (profile && !own && profile->count < CONFIG_PROFILE_VALUES)
+	{
+		/* (whole before it is counted, for a reader without the lock) */
+		own = &profile->values[profile->count].value;
+		memset(own, 0, sizeof(*own));
+		profile->values[profile->count].setting = index;
+		config_set_from_text(own, config_settings[index].type, value);
+		__atomic_store_n(&profile->count, profile->count + 1, __ATOMIC_RELEASE);
+	}
+	else if (own)
+	{
+		config_set_from_text(own, config_settings[index].type, value);
+	}
+	if (own)
+	{
+		config_change_count++;
+		succeeded = 1;
+		if (!config_answer_only)
+		{
+			snprintf(section, sizeof(section), "%.*s", (int)(dot - name), name);
+			snprintf(key, sizeof(key), "%s", dot + 1);
+			config_value_line(index, own, key, line_text, line_size);
+			config_profile_path(folder, path, sizeof(path));
+			text = config_read_file(path, &size);
+			updated = config_set_line(text ? text : CONFIG_PROFILE_HEAD, section, key, line_text);
+			succeeded = updated && config_write_file(path, updated);
+			if (!succeeded)
+				platform_log("settings: cannot write %s", path);
+			free(text);
+		}
+	}
+	pthread_mutex_unlock(&config_lock);
+	free(updated);
+	free(line_text);
 	return succeeded;
 }
 

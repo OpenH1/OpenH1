@@ -39,7 +39,7 @@ the building blocks' widgets (read by menu_files.c, not here) */
 #define SCREENS_BLOCKS "screens/blocks.xml"
 /* the watched folder looked at no more often than this */
 #define SCREENS_POLL_MILLISECONDS 500
-#define SCREENS_MAXIMUM_DEPTH 4
+#define SCREENS_MAXIMUM_DEPTH 6
 
 /* ---------- reading */
 
@@ -57,7 +57,18 @@ enum reader_element
 	_element_card,
 	_element_header,
 	_element_colors,
-	_element_spartan
+	_element_spartan,
+	_element_tabs,
+	_element_tab,
+	_element_table,
+	_element_column,
+	_element_search,
+	_element_panel,
+	_element_panel_heading,
+	_element_panel_text,
+	_element_pills,
+	_element_pill,
+	_element_pair
 };
 
 struct reader
@@ -105,7 +116,7 @@ static char const *reader_string(struct reader *reader, char const *text)
 
 	if (screen->string_count >= MENU_SCREEN_MAXIMUM_STRINGS)
 	{
-		reader_problem(reader, "more than %s texts", "256");
+		reader_problem(reader, "more than %s texts", "640");
 		return NULL;
 	}
 	copy = strdup(text);
@@ -170,6 +181,52 @@ static void action_check(struct reader *reader, char const *action)
 		reader_problem(reader, "there is no action \"%s\"", action);
 }
 
+/* a binding named alone (an if, a tabs' current...), one the game knows */
+static void binding_check(struct reader *reader, char const *name)
+{
+	if (!name[0])
+		reader_problem(reader, "a binding's name is empty", NULL);
+	else if (screen_names && !name_known(screen_names->bindings, screen_names->binding_count, name, strlen(name)))
+		reader_problem(reader, "there is no binding {%s}", name);
+}
+
+static void source_check(struct reader *reader, char const *source)
+{
+	if (screen_names && !name_known(screen_names->sources, screen_names->source_count, source, strlen(source)))
+		reader_problem(reader, "there is no row source \"%s\"", source);
+}
+
+/* a number of an attribute's, from least to most (0, a problem) */
+static short number_read(struct reader *reader, char const *text, char const *what, long least, long most)
+{
+	char *end = NULL;
+	long number = strtol(text, &end, 10);
+
+	if (!end || end == text || *end || number < least || number > most)
+	{
+		char detail[128];
+
+		snprintf(detail, sizeof(detail), "%s is a number, %ld to %ld: \"%.32s\"", what, least, most, text);
+		reader_problem(reader, "%s", detail);
+		return 0;
+	}
+	return (short)number;
+}
+
+/* whether a key is one a <button> may name */
+static int key_known(char const *key)
+{
+	static char const *const keys[] = { "accept", "back", "x", "y", "lb", "rb", "lt", "rt", "r3", "view" };
+	unsigned index;
+
+	for (index = 0; key && index < sizeof(keys) / sizeof(keys[0]); index++)
+	{
+		if (!strcmp(keys[index], key))
+			return 1;
+	}
+	return 0;
+}
+
 /* a when: platforms the menus' files know (halo_menus_platform) */
 static void when_check(struct reader *reader, char const *when)
 {
@@ -220,7 +277,7 @@ static int block_add(struct reader *reader, int kind, int parent)
 
 	if (screen->block_count >= MENU_SCREEN_MAXIMUM_BLOCKS)
 	{
-		reader_problem(reader, "more than %s blocks", "32");
+		reader_problem(reader, "more than %s blocks", "96");
 		return -1;
 	}
 	block = &screen->blocks[screen->block_count];
@@ -241,6 +298,369 @@ static int kind_count(struct menu_screen const *screen, int kind)
 	return count;
 }
 
+/* the screen's one block of a kind (a second refused) */
+static void one_check(struct reader *reader, int kind, char const *element)
+{
+	if (!reader->failed && kind_count(reader->screen, kind))
+		reader_problem(reader, "a screen has one <%s>", element);
+}
+
+/* a text attribute's bindings checked, if it has one */
+static void text_attribute_check(struct reader *reader, char const *text)
+{
+	if (!reader->failed && text)
+		text_check(reader, text);
+}
+
+/* a block's if (a binding) and when (platforms), if it has them */
+static void shown_check(struct reader *reader, char const *condition, char const *when)
+{
+	if (!reader->failed && condition)
+		binding_check(reader, condition);
+	if (!reader->failed && when)
+		when_check(reader, when);
+}
+
+/* a column's touch place, "x y width move grow" */
+static void touch_read(struct reader *reader, struct menu_screen_block *column, char const *text)
+{
+	long numbers[5] = { 0, 0, 0, 0, 0 };
+	int count = 0;
+	char const *at = text;
+
+	while (*at && count < 5)
+	{
+		char *end = NULL;
+
+		numbers[count] = strtol(at, &end, 10);
+		if (!end || end == at)
+			break;
+		count++;
+		at = end;
+		while (*at == ' ')
+			at++;
+	}
+	if (count != 5 || *at || numbers[2] < 0 || numbers[2] > 640)
+	{
+		reader_problem(reader, "a <column>'s touch is \"x y width move grow\": \"%s\"", text);
+		return;
+	}
+	column->touch_x = (short)numbers[0];
+	column->touch_y = (short)numbers[1];
+	column->touch_width = (short)numbers[2];
+	column->touch_move = (short)numbers[3];
+	column->touch_grow = (short)numbers[4];
+}
+
+/* a button (in <buttons>, a <header>, a <table> or a <panel>): its key, its
+label, and what it does (do: an action; none, its key pressed) */
+static int button_read(struct reader *reader, XML_Char const **attributes, int parent_block)
+{
+	static char const *const names[] = { "key", "label", "side", "do", "width", "if", "when", NULL };
+	char const *values[8];
+	struct menu_screen *screen = reader->screen;
+	int block;
+
+	attributes_read(reader, "button", attributes, names, values);
+	block = block_add(reader, MENU_SCREEN_BUTTON, parent_block);
+	if (block >= 0 && !reader->failed)
+	{
+		struct menu_screen_block *button = &screen->blocks[block];
+
+		button->key = values[0];
+		button->label = values[1];
+		button->side = values[2];
+		button->action = values[3];
+		button->condition = values[5];
+		button->when = values[6];
+		if (!key_known(button->key))
+			reader_problem(reader, "<button>'s key is accept, back, x, y, lb, rb, lt, rt, r3 or view", NULL);
+		else if (!button->label || !button->label[0])
+			reader_problem(reader, "<button> has no label", NULL);
+		else if (button->side && strcmp(button->side, "left") && strcmp(button->side, "right"))
+			reader_problem(reader, "<button>'s side is left or right", NULL);
+		text_attribute_check(reader, button->label);
+		if (!reader->failed && button->action)
+			action_check(reader, button->action);
+		if (!reader->failed && values[4])
+			button->width = number_read(reader, values[4], "a <button>'s width", 1, 640);
+		shown_check(reader, button->condition, button->when);
+	}
+	return block;
+}
+
+/* the new blocks' elements (<tabs>, <table>, <panel>, <search> and what is
+in them): the element read into its block, or -2 if it is none of them */
+static int element_more(struct reader *reader, char const *name, XML_Char const **attributes, int parent_element,
+	int parent_block, int *element)
+{
+	struct menu_screen *screen = reader->screen;
+	char const *values[16];
+	int block = -1;
+
+	if (parent_element == _element_screen && !strcmp(name, "tabs"))
+	{
+		static char const *const names[] = { "id", "current", "if", "when", NULL };
+
+		*element = _element_tabs;
+		attributes_read(reader, name, attributes, names, values);
+		one_check(reader, MENU_SCREEN_TABS, "tabs");
+		block = block_add(reader, MENU_SCREEN_TABS, -1);
+		if (block >= 0 && !reader->failed)
+		{
+			screen->blocks[block].id = values[0];
+			screen->blocks[block].value = values[1];
+			screen->blocks[block].condition = values[2];
+			screen->blocks[block].when = values[3];
+			if (values[1])
+				binding_check(reader, values[1]);
+			shown_check(reader, values[2], values[3]);
+		}
+	}
+	else if (parent_element == _element_tabs && !strcmp(name, "tab"))
+	{
+		static char const *const names[] = { "id", "label", "do", "when", NULL };
+
+		*element = _element_tab;
+		attributes_read(reader, name, attributes, names, values);
+		block = block_add(reader, MENU_SCREEN_TAB, parent_block);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *tab = &screen->blocks[block];
+
+			tab->id = values[0];
+			tab->label = values[1];
+			tab->action = values[2];
+			tab->when = values[3];
+			if (!tab->id || !tab->id[0])
+				reader_problem(reader, "<tab> has no id", NULL);
+			else if (!tab->label || !tab->label[0])
+				reader_problem(reader, "<tab> has no label", NULL);
+			else if (!tab->action)
+				reader_problem(reader, "<tab> has no do", NULL);
+			text_attribute_check(reader, tab->label);
+			if (!reader->failed)
+				action_check(reader, tab->action);
+			shown_check(reader, NULL, tab->when);
+		}
+	}
+	else if (parent_element == _element_screen && !strcmp(name, "table"))
+	{
+		static char const *const names[] = { "id", "source", "sorted", "do", "empty", NULL };
+
+		*element = _element_table;
+		attributes_read(reader, name, attributes, names, values);
+		one_check(reader, MENU_SCREEN_TABLE, "table");
+		block = block_add(reader, MENU_SCREEN_TABLE, -1);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *table = &screen->blocks[block];
+
+			table->id = values[0];
+			table->source = values[1];
+			table->value = values[2];
+			table->action = values[3];
+			table->empty = values[4];
+			if (!table->source || !table->source[0])
+				reader_problem(reader, "<table> has no source", NULL);
+			else
+				source_check(reader, table->source);
+			if (!reader->failed && table->value)
+				binding_check(reader, table->value);
+			if (!reader->failed && table->action)
+				action_check(reader, table->action);
+			text_attribute_check(reader, table->empty);
+		}
+	}
+	else if (parent_element == _element_table && !strcmp(name, "column"))
+	{
+		static char const *const names[] = { "id", "label", "kind", "width", "grow", "align", "sort", "do", "touch",
+			"when", "gap", "title-width", NULL };
+		static char const *const kinds[] = { "text", "strong", "ping", "star" };
+
+		*element = _element_column;
+		attributes_read(reader, name, attributes, names, values);
+		block = block_add(reader, MENU_SCREEN_COLUMN, parent_block);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *column = &screen->blocks[block];
+			int kind;
+
+			column->id = values[0];
+			column->label = values[1];
+			column->sort = values[6];
+			column->action = values[7];
+			column->when = values[9];
+			column->cell = -1;
+			for (kind = 0; kind < 4 && values[2]; kind++)
+			{
+				if (!strcmp(values[2], kinds[kind]))
+					column->cell = kind;
+			}
+			if (!values[2])
+				column->cell = MENU_SCREEN_CELL_TEXT;
+			if (!column->id || !column->id[0])
+				reader_problem(reader, "<column> has no id", NULL);
+			else if (column->cell < 0)
+				reader_problem(reader, "a <column>'s kind is text, strong, ping or star: \"%s\"", values[2]);
+			else if (!values[3])
+				reader_problem(reader, "<column> has no width", NULL);
+			else
+				column->width = number_read(reader, values[3], "a <column>'s width", 1, 640);
+			if (!reader->failed && values[4])
+				column->grow = number_read(reader, values[4], "a <column>'s grow", 0, 640);
+			column->gap = 4;
+			if (!reader->failed && values[10])
+				column->gap = number_read(reader, values[10], "a <column>'s gap", 0, 640);
+			if (!reader->failed && values[11])
+				column->title_width = number_read(reader, values[11], "a <column>'s title-width", 1, 640);
+			if (!reader->failed && values[5] && strcmp(values[5], "left") && strcmp(values[5], "right"))
+				reader_problem(reader, "a <column>'s align is left or right", NULL);
+			column->right = values[5] && !strcmp(values[5], "right");
+			text_attribute_check(reader, column->label);
+			if (!reader->failed && column->sort)
+				action_check(reader, column->sort);
+			if (!reader->failed && column->action)
+				action_check(reader, column->action);
+			if (!reader->failed && values[8])
+				touch_read(reader, column, values[8]);
+			shown_check(reader, NULL, column->when);
+		}
+	}
+	else if ((parent_element == _element_column || parent_element == _element_screen) && !strcmp(name, "search"))
+	{
+		static char const *const names[] = { "value", "label", "when", "if", NULL };
+
+		*element = _element_search;
+		attributes_read(reader, name, attributes, names, values);
+		block = block_add(reader, MENU_SCREEN_SEARCH, parent_block);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *search = &screen->blocks[block];
+
+			search->value = values[0];
+			search->label = values[1];
+			search->when = values[2];
+			search->condition = values[3];
+			if (!search->value)
+				reader_problem(reader, "<search> has no value", NULL);
+			else
+				binding_check(reader, search->value);
+			text_attribute_check(reader, search->label);
+			shown_check(reader, search->condition, search->when);
+		}
+	}
+	else if (parent_element == _element_screen && !strcmp(name, "panel"))
+	{
+		static char const *const names[] = { "id", "if", NULL };
+
+		*element = _element_panel;
+		attributes_read(reader, name, attributes, names, values);
+		one_check(reader, MENU_SCREEN_PANEL, "panel");
+		block = block_add(reader, MENU_SCREEN_PANEL, -1);
+		if (block >= 0 && !reader->failed)
+		{
+			screen->blocks[block].id = values[0];
+			screen->blocks[block].condition = values[1];
+			shown_check(reader, values[1], NULL);
+		}
+	}
+	else if (parent_element == _element_panel && (!strcmp(name, "heading") || !strcmp(name, "text")))
+	{
+		static char const *const names[] = { "text", "lines", "touch-lines", "when", NULL };
+		int heading = !strcmp(name, "heading");
+
+		*element = heading ? _element_panel_heading : _element_panel_text;
+		attributes_read(reader, name, attributes, names, values);
+		block = block_add(reader, heading ? MENU_SCREEN_PANEL_HEADING : MENU_SCREEN_PANEL_TEXT, parent_block);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *text = &screen->blocks[block];
+
+			text->label = values[0];
+			text->when = values[3];
+			text->lines = 1;
+			if (!text->label)
+				reader_problem(reader, "<%s> has no text", name);
+			text_attribute_check(reader, text->label);
+			if (!reader->failed && values[1])
+				text->lines = number_read(reader, values[1], "a text's lines", 1, 8);
+			text->touch_lines = text->lines;
+			if (!reader->failed && values[2])
+				text->touch_lines = number_read(reader, values[2], "a text's touch-lines", 1, 8);
+			shown_check(reader, NULL, text->when);
+		}
+	}
+	else if (parent_element == _element_panel && !strcmp(name, "pills"))
+	{
+		static char const *const names[] = { NULL };
+
+		*element = _element_pills;
+		attributes_read(reader, name, attributes, names, values);
+		block = block_add(reader, MENU_SCREEN_PILLS, parent_block);
+	}
+	else if (parent_element == _element_pills && !strcmp(name, "pill"))
+	{
+		static char const *const names[] = { "text", "tone", "width", NULL };
+
+		*element = _element_pill;
+		attributes_read(reader, name, attributes, names, values);
+		block = block_add(reader, MENU_SCREEN_PILL, parent_block);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *pill = &screen->blocks[block];
+
+			pill->label = values[0];
+			pill->tone = values[1];
+			if (!pill->label)
+				reader_problem(reader, "<pill> has no text", NULL);
+			else if (!values[2])
+				reader_problem(reader, "<pill> has no width", NULL);
+			else
+				pill->width = number_read(reader, values[2], "a <pill>'s width", 1, 640);
+			text_attribute_check(reader, pill->label);
+			/* (a tone: a frame's number, or a binding that gives one) */
+			if (!reader->failed && pill->tone && (pill->tone[0] < '0' || pill->tone[0] > '9'))
+				binding_check(reader, pill->tone);
+			else if (!reader->failed && pill->tone)
+				number_read(reader, pill->tone, "a <pill>'s tone", 0, 15);
+		}
+	}
+	else if (parent_element == _element_panel && !strcmp(name, "pair"))
+	{
+		static char const *const names[] = { "label", "value", "when", NULL };
+
+		*element = _element_pair;
+		attributes_read(reader, name, attributes, names, values);
+		block = block_add(reader, MENU_SCREEN_PAIR, parent_block);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *pair = &screen->blocks[block];
+
+			pair->label = values[0];
+			pair->hints[0] = values[1];
+			pair->hint_count = values[1] != NULL;
+			pair->when = values[2];
+			if (!pair->label || !pair->label[0])
+				reader_problem(reader, "<pair> has no label", NULL);
+			else if (!values[1])
+				reader_problem(reader, "<pair> has no value", NULL);
+			text_attribute_check(reader, pair->label);
+			text_attribute_check(reader, values[1]);
+			shown_check(reader, NULL, pair->when);
+		}
+	}
+	else if ((parent_element == _element_header || parent_element == _element_table ||
+		parent_element == _element_panel) && !strcmp(name, "button"))
+	{
+		*element = _element_button;
+		block = button_read(reader, attributes, parent_block);
+	}
+	else
+		return -2;
+	return block;
+}
+
 static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char const **attributes)
 {
 	struct reader *reader = data;
@@ -249,7 +669,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	int parent_block = reader->depth ? reader->blocks[reader->depth - 1] : -1;
 	int element = -1;
 	int block = -1;
-	char const *values[8];
+	char const *values[16];
 
 	if (reader->failed)
 		return;
@@ -340,7 +760,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	else if (parent_element == _element_screen && !strcmp(name, "header"))
 	{
-		static char const *const names[] = { "title", "picture", NULL };
+		static char const *const names[] = { "title", "picture", "detail", NULL };
 
 		element = _element_header;
 		attributes_read(reader, name, attributes, names, values);
@@ -348,11 +768,14 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			reader_problem(reader, "a screen has one <header>", NULL);
 		if (!reader->failed && (!values[0] || !values[0][0]))
 			reader_problem(reader, "<header> has no title", NULL);
+		text_attribute_check(reader, values[0]);
+		text_attribute_check(reader, values[2]);
 		block = block_add(reader, MENU_SCREEN_HEADER, -1);
 		if (block >= 0)
 		{
 			screen->blocks[block].label = values[0];
 			screen->blocks[block].picture = values[1];
+			screen->blocks[block].empty = values[2];
 		}
 	}
 	else if (parent_element == _element_screen && !strcmp(name, "cards"))
@@ -440,10 +863,10 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			long *box[4];
 			int index;
 
-			box[0] = &spartan->x;
-			box[1] = &spartan->y;
-			box[2] = &spartan->width;
-			box[3] = &spartan->height;
+			box[0] = &spartan->box_x;
+			box[1] = &spartan->box_y;
+			box[2] = &spartan->box_width;
+			box[3] = &spartan->box_height;
 			for (index = 0; index < 4 && !reader->failed; index++)
 			{
 				char *end = NULL;
@@ -489,32 +912,11 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	else if (parent_element == _element_buttons && !strcmp(name, "button"))
 	{
-		static char const *const names[] = { "key", "label", "side", NULL };
-
 		element = _element_button;
-		attributes_read(reader, name, attributes, names, values);
-		block = block_add(reader, MENU_SCREEN_BUTTON, parent_block);
-		if (block >= 0 && !reader->failed)
-		{
-			struct menu_screen_block *button = &screen->blocks[block];
-
-			button->key = values[0];
-			button->label = values[1];
-			button->side = values[2];
-			if (!button->key || (strcmp(button->key, "accept") && strcmp(button->key, "back") &&
-				strcmp(button->key, "x") && strcmp(button->key, "y")))
-			{
-				reader_problem(reader, "<button>'s key is accept, back, x or y", NULL);
-			}
-			else if (!button->label || !button->label[0])
-			{
-				reader_problem(reader, "<button> has no label", NULL);
-			}
-			else if (button->side && strcmp(button->side, "left") && strcmp(button->side, "right"))
-			{
-				reader_problem(reader, "<button>'s side is left or right", NULL);
-			}
-		}
+		block = button_read(reader, attributes, parent_block);
+	}
+	else if ((block = element_more(reader, name, attributes, parent_element, parent_block, &element)) != -2)
+	{
 	}
 	else
 	{
@@ -559,6 +961,36 @@ static void XMLCALL element_end(void *data, XML_Char const *name)
 		{
 			text_check(reader, hint);
 			item->hints[item->hint_count++] = hint;
+		}
+	}
+	else if (element == _element_tabs || element == _element_table || element == _element_panel ||
+		element == _element_pills)
+	{
+		struct menu_screen *screen = reader->screen;
+		int self = reader->blocks[reader->depth];
+		int index, other, children = 0;
+		int child_kind = element == _element_tabs ? MENU_SCREEN_TAB : element == _element_table ? MENU_SCREEN_COLUMN :
+			element == _element_pills ? MENU_SCREEN_PILL : -1;
+
+		for (index = 0; index < screen->block_count && !reader->failed; index++)
+		{
+			struct menu_screen_block const *child = &screen->blocks[index];
+
+			if (child->parent != self || (child_kind >= 0 && child->kind != child_kind))
+				continue;
+			children++;
+			for (other = index + 1; child->id && child_kind >= 0 && other < screen->block_count; other++)
+			{
+				if (screen->blocks[other].parent == self && screen->blocks[other].id &&
+					!strcmp(screen->blocks[other].id, child->id))
+					reader_problem(reader, "two of its blocks' id is \"%s\"", child->id);
+			}
+		}
+		if (!reader->failed && !children)
+		{
+			reader_problem(reader, element == _element_tabs ? "a <tabs> has no <tab>" : element == _element_table ?
+				"a <table> has no <column>" : element == _element_pills ? "a <pills> has no <pill>" :
+				"a <panel> has nothing in it", NULL);
 		}
 	}
 	else if (element == _element_list || element == _element_cards)

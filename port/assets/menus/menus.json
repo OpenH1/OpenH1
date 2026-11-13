@@ -288,6 +288,7 @@
   "model/nodes.xml",
   "model/settings.xml",
   "screens/blocks.xml",
+  "screens/browser.xml",
   "screens/campaign.xml",
   "screens/main.xml",
   "screens/profile_color.xml",
