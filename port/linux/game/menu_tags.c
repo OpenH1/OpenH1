@@ -380,6 +380,8 @@ static char const *const widget_flag_names[] =
 above the screen's foot, to above a phone's safe area there (an iPhone's 21
 points: menu_layout.c's MENU_LAYOUT_PHONE_FOOT, 25.6 units) */
 #define TALL_FOOT_LIFT 16
+/* (a picture's name and _touch) */
+#define HALO_MENU_TOUCH_NAME 300
 
 /* whether the menus are laid out for a touchscreen: the touchscreens'
 builds, or debug.touch_menus (read again when a setting changes: the menu
@@ -1994,8 +1996,14 @@ static void *widget_build(long widget_index)
 	reference_clear(&definition->background_bitmap, BITMAP_GROUP_TAG);
 	if (source->bitmap)
 	{
+		char touch[HALO_MENU_TOUCH_NAME];
+
+		/* (on a touchscreen, its <bitmap>_touch where the menus have one, as
+		a look's picture is: look_make) */
+		snprintf(touch, sizeof(touch), "%s_touch", source->bitmap);
 		reference_set(&definition->background_bitmap, BITMAP_GROUP_TAG,
-			tag_named(BITMAP_GROUP_TAG, source->bitmap, source->file, source->line));
+			tag_named(BITMAP_GROUP_TAG, ui_widget_port_foot_lift() && !strchr(source->bitmap, '\\') &&
+				bitmap_named(touch) != NONE ? touch : source->bitmap, source->file, source->line));
 	}
 	/* the game data inputs */
 	for (count = 0, input = source->first_input; input != HALO_MENU_NONE; input = menus->inputs[input].next)

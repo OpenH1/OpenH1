@@ -9,11 +9,9 @@ screen file's, set on each widget as the screen is made. -->
 	<!-- a hand-written screen of its own (not one that takes a generated
 	screen's place): the screen the game opens, which the engine fills from its
 	file (menu_screen.c's screen_places) -->
-	<widget name="screens/campaign" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/background_tall" platform="pointer"/>
-	<!-- (on a touchscreen, the tall layout's footer raised: its line the
-	touch picture's, as the generated tall screens draw it, menu_tags.c's
-	look_make; port_settings.py's tall_foot) -->
-	<widget name="screens/campaign" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/background_tall_touch" platform="touch"/>
+	<!-- (on a touchscreen, drawn from background_tall_touch: its footer's line raised, as the tall screens' are,
+	menu_tags.c's widget_build) -->
+	<widget name="screens/campaign" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/background_tall"/>
 	<!-- a header's title in the tall layout's band, as Settings' and the browsers' titles (port_settings.py's tall_title) -->
 	<widget name="screens/header_text" type="text" left="24" width="592" height="40" font="heading" color="#FF2995FD" text_y="9" wide="-106 0" text_flags="no_focus_test"/>
 	<!-- an inner screen's header: its lettered picture (the file's picture=), where the campaign menu's is -->
