@@ -1269,7 +1269,7 @@ void report_where_text(const struct report_where *where, char *text, size_t size
 	{
 		WHERE_PRINT("- Network: %s, ", where->network == 1 ? "hosting" : "joined");
 		if (where->rate > 0)
-			WHERE_PRINT("OpenH1 %ld Tick", where->rate);
+			WHERE_PRINT("GOAT H1 %ld Tick", where->rate);
 		else
 			WHERE_PRINT("Legacy");
 		WHERE_PRINT(", %d player%s", where->players, where->players == 1 ? "" : "s");
@@ -1525,7 +1525,7 @@ void report_crash_summary(const char *session, const char *record, char *text, s
 	}
 #define REPORT_PRINT(...) \
 	(used += (size_t)snprintf(text + (used < size ? used : size - 1), used < size ? size - used : 1, __VA_ARGS__))
-	REPORT_PRINT("## The crash\n\nOpenH1 closed unexpectedly the last time it ran.\n\n");
+	REPORT_PRINT("## The crash\n\nGOAT H1 closed unexpectedly the last time it ran.\n\n");
 	REPORT_PRINT("- Build: %s\n", build[0] ? build : "unknown");
 	if (started[0])
 		REPORT_PRINT("- Started: %s\n", started);
@@ -2292,7 +2292,7 @@ static void report_finish(const char *note, int wait)
 	if (issue)
 	{
 		if (report_capture.crash)
-			snprintf(issue, issue_size, "**What happened:** OpenH1 closed unexpectedly.\n\n(Say what you were doing "
+			snprintf(issue, issue_size, "**What happened:** GOAT H1 closed unexpectedly.\n\n(Say what you were doing "
 				"when it closed, if you remember. Then drag %s.zip, from the reports folder that opened, into this "
 				"box.)\n\n%s", name, report_capture.text ? report_capture.text : "");
 		else if (note && note[0])

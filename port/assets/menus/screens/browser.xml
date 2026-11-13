@@ -18,7 +18,7 @@ rows of two lines, one search at the top and the footer's buttons. -->
 	<tabs current="browser.tab" if="browser.filtered">
 		<tab id="all" label="ALL" do="browser tab all"/>
 		<tab id="dedicated" label="DEDICATED" do="browser tab dedicated"/>
-		<tab id="openh1" label="OPENH1" do="browser tab openh1"/>
+		<tab id="openh1" label="GOAT H1" do="browser tab openh1"/>
 		<tab id="legacy" label="LEGACY" do="browser tab legacy"/>
 		<tab id="coop" label="CO-OP" do="browser tab coop"/>
 		<tab id="favorites" label="FAVORITES" do="browser tab favorites"/>

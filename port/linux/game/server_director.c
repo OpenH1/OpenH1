@@ -350,7 +350,7 @@ long server_director_game_mode(
 	if (title)
 	{
 		if (rate)
-			snprintf(title, (size_t)title_size, "OpenH1 %ld Tick%s", rate, joins ? ", OpenCE can join" : "");
+			snprintf(title, (size_t)title_size, "GOAT H1 %ld Tick%s", rate, joins ? ", OpenCE can join" : "");
 		else
 			snprintf(title, (size_t)title_size, "Legacy");
 	}
@@ -608,9 +608,9 @@ static void server_apply_game_settings(
 			wide[length++] = (wchar_t)(unsigned char)name[index];
 	}
 	wide[length] = 0;
-	/* (server.name's default: 13 characters, as the game's name holds) */
+	/* (server.name's default: 14 characters, as the game's name holds) */
 	if (!length)
-		ustrncpy(wide, L"OpenH1 Server", NETWORK_GAME_NAME_LENGTH - 1);
+		ustrncpy(wide, L"GOAT H1 Server", NETWORK_GAME_NAME_LENGTH - 1);
 	network_game_server_port_set_settings(wide, PIN(maximum, 2, HALO_PORT_MAXIMUM_NETWORK_PLAYERS - 1));
 	/* (a co-op game's clients told the host has no player: its loading zones
 	ask for most of them, network_coop_host_dedicated) */

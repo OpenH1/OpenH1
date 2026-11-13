@@ -767,7 +767,7 @@ BROWSER_PINGS = [("ANY", "0")] + [(f"UNDER {ms} MS", str(ms)) for ms in (300, 25
 # the Filters page's TICK RATE and GAME TYPE (network.browser_tick and
 # network.browser_game_type: menu_functions.c's browser_tick_words and
 # browser_type_words, in their order)
-BROWSER_TICKS = [("ANY", "any"), ("OPENH1 30", "30"), ("OPENH1 60", "60"), ("OPENH1 120", "120"),
+BROWSER_TICKS = [("ANY", "any"), ("GOAT H1 30", "30"), ("GOAT H1 60", "60"), ("GOAT H1 120", "120"),
                  ("LEGACY", "legacy")]
 BROWSER_GAME_TYPES = [("ANY", "any"), ("SLAYER", "slayer"), ("TEAM SLAYER", "team_slayer"),
                       ("CAPTURE THE FLAG", "ctf"), ("ODDBALL", "oddball"), ("KING OF THE HILL", "king"),
@@ -1122,8 +1122,8 @@ PAGES = {
              "GitHub issue filled in with it: say what happened, drag in the report's file, submit. F8 does the "
              "same in a game, its screenshot that moment.", None, "report", "port settings report"),
             (SECTION, "ABOUT"),
-            ("OPENH1", None, None,
-             "Halo: Combat Evolved, the Xbox game, on this computer, played from your own copy of its maps. OpenH1 "
+            ("GOAT H1", None, None,
+             "Halo: Combat Evolved, the Xbox game, on this computer, played from your own copy of its maps. GOAT H1 "
              "is a free fan project.", None, "about"),
         ],
     },
@@ -1207,7 +1207,7 @@ PAGES = {
             ("TICK RATE", "game.sim_rate", [("ORIGINAL (30)", "30"), ("60", "60"), ("120", "120")],
              "How often the world updates each second, in games on this device (campaign, split screen, bots). "
              "60 and 120 respond faster and take more of the processor. Online games play at their host's tick "
-             "rate: an OpenH1 game's (OpenH1 60 Tick), a Legacy game's 30.", None),
+             "rate: a GOAT H1 game's (GOAT H1 60 Tick), a Legacy game's 30.", None),
             # (game.enhanced_animations: the preset's, Classic's off, as the
             # Xbox played; a network game's turning is its host's:
             # network_standard_turns_with_aim)
@@ -1504,7 +1504,7 @@ PAGES = {
             (SECTION, "GYRO AIMING"),
             ("GYRO", None, None,
              "Whether a controller with a gyroscope is connected: a DualSense, a DualShock 4, a Switch Pro "
-             "Controller or Joy-Cons, a Steam Deck.|With Steam Input, turn it off for OpenH1.", None, "gyro_found"),
+             "Controller or Joy-Cons, a Steam Deck.|With Steam Input, turn it off for GOAT H1.", None, "gyro_found"),
             ("GYRO AIMING", "input.gyro_aim",
              [("OFF", "off"), ("ALWAYS ON", "on"), ("HOLD TO AIM", "hold"), ("HOLD TO PAUSE", "pause"),
               ("THUMB ON STICK", "touch")],
@@ -1619,7 +1619,7 @@ PAGES = {
              "network game's, a dedicated server's, one still being timed.", None),
             (SECTION, "GAME"),
             ("TICK RATE", "network.browser_tick", BROWSER_TICKS,
-             "Lists only the games of this tick rate.|OpenH1 games play at 30, 60 or 120 ticks a second; Legacy "
+             "Lists only the games of this tick rate.|GOAT H1 games play at 30, 60 or 120 ticks a second; Legacy "
              "games are OpenCE's netcode.", None),
             ("GAME TYPE", "network.browser_game_type", BROWSER_GAME_TYPES,
              "Lists only the games of this type.|Slayer is free for all; SWAT, Infection and Gun Game are "
@@ -3866,9 +3866,9 @@ def _password_screen() -> list:
 # (network.game_mode and network.sim_rate: menu_functions.c's
 # server_settings_game_modes, in this order), each choice's help
 GAME_MODES = [
-    ("OPENH1 30 TICK", "OpenH1 and OpenCE players, all at 30 ticks."),
-    ("OPENH1 60 TICK", "OpenH1 players at 60 ticks, OpenCE players at 30."),
-    ("OPENH1 120 TICK", "OpenH1 players at 120 ticks, OpenCE players at 30."),
+    ("GOAT H1 30 TICK", "GOAT H1 and OpenCE players, all at 30 ticks."),
+    ("GOAT H1 60 TICK", "GOAT H1 players at 60 ticks, OpenCE players at 30."),
+    ("GOAT H1 120 TICK", "GOAT H1 players at 120 ticks, OpenCE players at 30."),
     ("LEGACY", "OpenCE's own netcode for everyone, at 30 ticks."),
 ]
 # (each one line: the help shows one)
@@ -5240,7 +5240,7 @@ def part_dot(size: int) -> str:
 # the list's left and width, its rows, the details panel beside it, and each
 # column's place and width in a row (menu_functions.c's browser_row_show
 # places the tick badge and the lock after the name)
-BROWSER_TABS = [("tab_all", "ALL"), ("tab_dedicated", "DEDICATED"), ("tab_openh1", "OPENH1"),
+BROWSER_TABS = [("tab_all", "ALL"), ("tab_dedicated", "DEDICATED"), ("tab_openh1", "GOAT H1"),
                 ("tab_legacy", "LEGACY"), ("tab_coop", "CO-OP"), ("tab_favorites", "FAVORITES")]
 BROWSER_LIST_X, BROWSER_LIST_WIDTH = 28, 404
 BROWSER_HEADERS_TOP = 104
@@ -5430,7 +5430,7 @@ LOBBY_PROMPTS = [
 ]
 # the items' descriptions, in menu_functions.c's _multiplayer_item_* order
 HUB_DESCRIPTIONS = [
-    "Every public game on the Internet, OpenH1 and Legacy. Press %a-button to see them all.",
+    "Every public game on the Internet, GOAT H1 and Legacy. Press %a-button to see them all.",
     "Games hosted on your Wi-Fi or local network appear here as they open.",
     "Join a friend's game with the invite link they sent you.",
     "Host a game on the Internet: friends join with your invite link.",
@@ -9161,7 +9161,7 @@ def _crash() -> list:
     lines += _text_button(f"{base}/button_skip", "SKIP", [f'<on event="a" {dismiss}/>',
                                                           f'<on event="start" {dismiss}/>'])
     lines += _strings(f"{base}/crash_prompt",
-                      ["OpenH1 closed unexpectedly last time. Report it? A report is saved, and its GitHub issue "
+                      ["GOAT H1 closed unexpectedly last time. Report it? A report is saved, and its GitHub issue "
                        "opens for you to send."])
     return lines
 

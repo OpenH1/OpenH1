@@ -355,7 +355,7 @@ static wchar_t const *host_tag_name(short tag)
 	case _host_controls_tag_bot:
 		return L"BOT";
 	case _host_controls_tag_openh1:
-		return L"OPENH1";
+		return L"GOAT H1";
 	case _host_controls_tag_opence:
 		return L"OPENCE";
 	default:
@@ -2033,11 +2033,11 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 		else if (player->ping != NONE)
 		{
 			usnprintf(where, NUMBEROF(where) - 1, L"%s%s%ld ms", player->tag == _host_controls_tag_opence ?
-				L"OpenCE \x00B7 " : player->tag == _host_controls_tag_openh1 ? L"OpenH1 \x00B7 " : L"",
+				L"OpenCE \x00B7 " : player->tag == _host_controls_tag_openh1 ? L"GOAT H1 \x00B7 " : L"",
 				L"", player->ping);
 		}
 		else if (player->tag == _host_controls_tag_opence || player->tag == _host_controls_tag_openh1)
-			usnprintf(where, NUMBEROF(where) - 1, player->tag == _host_controls_tag_opence ? L"OpenCE" : L"OpenH1");
+			usnprintf(where, NUMBEROF(where) - 1, player->tag == _host_controls_tag_opence ? L"OpenCE" : L"GOAT H1");
 		if (host_game_teams() && player->team != NONE)
 		{
 			size_t length = ustrlen(where);
@@ -2053,7 +2053,7 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 			!TEST_FLAG(player->actions, _host_controls_move_team))
 		{
 			usnprintf(status, NUMBEROF(status) - 1, (host_remote() ? host_flag(_network_admin_flag_standard) :
-				network_standard_hosting()) ? L"Players move teams only when everyone is on OpenH1." :
+				network_standard_hosting()) ? L"Players move teams only when everyone is on GOAT H1." :
 				L"Players can't move teams in a Legacy game.");
 		}
 		break;

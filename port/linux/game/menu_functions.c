@@ -3487,10 +3487,10 @@ static boolean gyro_found_panel(struct widget_instance *row, wchar_t const **hel
 	if (!settings_row_is(row, "gyro_found") || halo_gyro_found() != 1)
 		return FALSE;
 	discord_widen(halo_steam_deck() ?
-		"Steam Input has the controls: it passes no gyro to OpenH1.|To aim with the Steam Deck's gyro: Steam > "
-		"OpenH1 > controller icon > Disable Steam Input, then start OpenH1 again." :
-		"Steam Input has the controller: it passes no gyro to OpenH1.|To aim with its gyro: in Steam, OpenH1's "
-		"Properties > Controller > Disable Steam Input, then start OpenH1 again.", words, SETTINGS_PANEL_TEXT_LENGTH);
+		"Steam Input has the controls: it passes no gyro to GOAT H1.|To aim with the Steam Deck's gyro: Steam > "
+		"GOAT H1 > controller icon > Disable Steam Input, then start GOAT H1 again." :
+		"Steam Input has the controller: it passes no gyro to GOAT H1.|To aim with its gyro: in Steam, GOAT H1's "
+		"Properties > Controller > Disable Steam Input, then start GOAT H1 again.", words, SETTINGS_PANEL_TEXT_LENGTH);
 	*help = words;
 	return TRUE;
 }
@@ -8494,7 +8494,7 @@ static wchar_t const *browser_group_heading(short group)
 	switch (group)
 	{
 	case _browser_group_dedicated:
-		return L"OpenH1 Dedicated Servers";
+		return L"GOAT H1 Dedicated Servers";
 	case _browser_group_hosted:
 		return L"Hosted Servers";
 	default:
@@ -9079,7 +9079,7 @@ static void browser_empty_text(short mode, short tab, boolean online, boolean pu
 {
 	static wchar_t const *const kinds[NUMBER_OF_BROWSER_TABS] =
 	{
-		L"", L"dedicated server ", L"OpenH1 ", L"Legacy ", L"co-op ", L"",
+		L"", L"dedicated server ", L"GOAT H1 ", L"Legacy ", L"co-op ", L"",
 	};
 	boolean server_browser = mode == _multiplayer_mode_server_browser;
 
@@ -9120,7 +9120,7 @@ static void browser_empty_text(short mode, short tab, boolean online, boolean pu
 	else if (newer)
 	{
 		/* (an old build sees none of the games: it says why) */
-		usnprintf(text, size - 1, L"%d %s on a newer version.\r\nUpdate OpenH1 to join %s.", newer,
+		usnprintf(text, size - 1, L"%d %s on a newer version.\r\nUpdate GOAT H1 to join %s.", newer,
 			newer == 1 ? L"game is" : L"games are", newer == 1 ? L"it" : L"them");
 	}
 	else
@@ -9517,7 +9517,7 @@ static void browser_panel_show(struct widget_instance *list, struct browser_row 
 	if ((pill = named(panel, "panel_kind", 0)) != NULL)
 	{
 		pill->animation.current_frame_index = row->openh1 ? 0 : 1;
-		text_set(pill, row->openh1 ? L"OPENH1" : L"LEGACY");
+		text_set(pill, row->openh1 ? L"GOAT H1" : L"LEGACY");
 	}
 	if ((pill = named(panel, "panel_tick", 0)) != NULL)
 	{
@@ -10777,7 +10777,7 @@ static void lobby_browser_model(struct menu_table_view *view)
 		else
 		{
 			usnprintf(text, NUMBEROF(text) - 1, browser_doubles_playlist != NONE ?
-				L"Choose a game to join it, or host one." : L"Every public game on the Internet, OpenH1 and Legacy.");
+				L"Choose a game to join it, or host one." : L"Every public game on the Internet, GOAT H1 and Legacy.");
 		}
 		text[NUMBEROF(text) - 1] = 0;
 		browser_display.row_shown = chosen < rows;
@@ -12108,7 +12108,7 @@ int pc_menu_browser_value(char const *name, char *value, unsigned long size)
 	else if (!strcmp(name, "browser.panel.where") && row)
 		browser_where_text(row, text, NUMBEROF(text));
 	else if (!strcmp(name, "browser.panel.kind") && row && !row->offline)
-		settings_wide_copy(text, row->openh1 ? L"OPENH1" : L"LEGACY", NUMBEROF(text));
+		settings_wide_copy(text, row->openh1 ? L"GOAT H1" : L"LEGACY", NUMBEROF(text));
 	else if (!strcmp(name, "browser.panel.kind.tone") && row)
 		settings_wide_copy(text, row->openh1 ? L"0" : L"1", NUMBEROF(text));
 	else if (!strcmp(name, "browser.panel.tick") && row && !row->offline)
@@ -14061,7 +14061,7 @@ boolean pc_menu_event_function_invoke(
 				/* (said on the screen too: not a silent dead end) */
 				display_error_text_deferred(player_ui_get_active_player_profile_index(0) == NONE ?
 					L"Choose a player profile\r\nfirst (Profiles, on the\r\nmain menu)." :
-					L"Couldn't start the game.\r\nClose any other copy of\r\nOpenH1 or Halo, then try\r\nagain.",
+					L"Couldn't start the game.\r\nClose any other copy of\r\nGOAT H1 or Halo, then try\r\nagain.",
 					NONE);
 				return campaign_fail();
 			}

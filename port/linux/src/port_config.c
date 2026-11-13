@@ -1034,7 +1034,7 @@ static const struct config_setting config_settings[] =
 		"behind), no further than a player leaning out and an arm, and in front\n"
 		"of the eye. false: from the camera and vehicles' guns only." },
 	{ "network.predict_hits", _config_boolean, "true", "HALO_NET_PREDICT_HITS", _environment_value, _platform_all,
-		"Client of an OpenH1 game: show your hits on other players at once\n"
+		"Client of a GOAT H1 game: show your hits on other players at once\n"
 		"(the shield's flare and break, the flinch, the death), before the\n"
 		"host's word on them comes a round trip later. The host still decides:\n"
 		"the kill is announced when its word comes, and a hit it refuses is\n"
@@ -1250,7 +1250,7 @@ static const struct config_setting config_settings[] =
 		"and in the air (so shots after a turn in a jump go to the crosshair);\n"
 		"false: the original animations, which freeze the legs and stand a\n"
 		"rider up, and the body, so the campaign's AI plays as on the Xbox. A\n"
-		"rule of the game, read as its map begins: in an OpenH1 network game the\n"
+		"rule of the game, read as its map begins: in a GOAT H1 network game the\n"
 		"host's, on every machine (a Legacy game's players turn)." GRAPHICS_CHOOSES },
 	{ "game.campaign_difficulty", _config_integer, "1", "HALO_CAMPAIGN_DIFFICULTY", _environment_value, _platform_all,
 		"The difficulty Choose Difficulty opens on: the one chosen last (0 Easy,\n"
@@ -1261,7 +1261,7 @@ static const struct config_setting config_settings[] =
 		"made), 60 or 120, in steps inside the game's 30 ticks a second, which\n"
 		"everything else keeps. For games of this computer alone: the campaign,\n"
 		"split screen and games with bots. Network games play at the rate they\n"
-		"agreed on (a Legacy game's 30, an OpenH1 game's network.sim_rate), and\n"
+		"agreed on (a Legacy game's 30, a GOAT H1 game's network.sim_rate), and\n"
 		"saved films at 30, whatever this is." },
 	{ "game.priority", _config_string, "\"normal\"", "HALO_PRIORITY", _environment_value, _platform_guest,
 		"Linux: \"normal\" runs the game at the normal priority whatever its\n"
@@ -1516,7 +1516,7 @@ static const struct config_setting config_settings[] =
 		"server's, one still being timed) is listed." },
 	{ "network.browser_tick", _config_string, "\"any\"", "HALO_NET_BROWSER_TICK", _environment_value, _platform_all,
 		"The server browsers list only games of this tick rate (their Filters\n"
-		"page): \"any\", \"30\", \"60\" or \"120\" (OpenH1 games at that rate),\n"
+		"page): \"any\", \"30\", \"60\" or \"120\" (GOAT H1 games at that rate),\n"
 		"or \"legacy\" (OpenCE's netcode)." },
 	{ "network.browser_game_type", _config_string, "\"any\"", "HALO_NET_BROWSER_GAME_TYPE", _environment_value,
 		_platform_all,
@@ -1546,25 +1546,25 @@ static const struct config_setting config_settings[] =
 		"PRIVATE (only players with its invite link can join). Server Setup's\n"
 		"LISTING changes it for each game." },
 	{ "network.game_mode", _config_string, "\"openh1\"", "HALO_NET_GAME_MODE", _environment_value, _platform_all,
-		"Hosting: \"openh1\", an OpenH1 game at the rate network.sim_rate picks,\n"
+		"Hosting: \"openh1\", a GOAT H1 game at the rate network.sim_rate picks,\n"
 		"which OpenCE players may join too at 30 (network.allow_opence), or\n"
 		"\"legacy\", OpenCE's netcode at 30 ticks a second for everyone. Read as\n"
 		"the game is hosted (\"standard\" is \"openh1\" too)." },
 	{ "network.sim_rate", _config_integer, "120", "HALO_NET_SIM_RATE", _environment_value, _platform_all,
-		"Hosting an OpenH1 game: its tick rate, 30, 60 or 120 (game.sim_rate's\n"
+		"Hosting a GOAT H1 game: its tick rate, 30, 60 or 120 (game.sim_rate's\n"
 		"steps), which every machine of it takes as the game starts. A Legacy game\n"
 		"plays at 30." },
 	{ "network.allow_opence", _config_boolean, "false", "HALO_NET_ALLOW_OPENCE", _environment_value, _platform_all,
-		"Hosting an OpenH1 game: true lets OpenCE players join it too. They play\n"
-		"at 30 ticks a second, as on their own machine, and OpenH1 players at\n"
-		"network.sim_rate. False: OpenH1 players only (a Legacy game,\n"
+		"Hosting a GOAT H1 game: true lets OpenCE players join it too. They play\n"
+		"at 30 ticks a second, as on their own machine, and GOAT H1 players at\n"
+		"network.sim_rate. False: GOAT H1 players only (a Legacy game,\n"
 		"network.game_mode, is the one to play with OpenCE players). Read with\n"
 		"network.game_mode." },
 	{ "network.opence_welcome", _config_boolean, "true", "HALO_NET_OPENCE_WELCOME", _environment_value,
 		_platform_all,
 		"Hosting: tell each OpenCE player, a few seconds after they load into a\n"
-		"game, that this server runs OpenH1 and where to get it (two lines of\n"
-		"the text chat, once a player). OpenH1 players do not see them." },
+		"game, that this server runs GOAT H1 and where to get it (two lines of\n"
+		"the text chat, once a player). GOAT H1 players do not see them." },
 	{ "network.voice_lobby", _config_boolean, "true", "HALO_NET_VOICE_LOBBY", _environment_value, _platform_all,
 		"Hosting: voice chat in the lobby, before and after a game, where every\n"
 		"player hears every other." },
@@ -1596,7 +1596,7 @@ static const struct config_setting config_settings[] =
 	{ "network.pings", _config_boolean, "true", "HALO_NET_PINGS", _environment_value, _platform_all,
 		"Hosting: let the players ping (controls.ping, a controller's D-pad\n"
 		"Right): what they aim at marked for their allies with a nav point and\n"
-		"its distance, in co-op and in games with teams (OpenH1 games only)." },
+		"its distance, in co-op and in games with teams (GOAT H1 games only)." },
 	{ "network.host_playlist", _config_string, "\"\"", "HALO_NET_HOST_PLAYLIST", _environment_value, _platform_all,
 		"Hosting: the games played one after another when you host, each after\n"
 		"the last one's scores (Host Controls' PLAYLIST): map[:gametype\n"
@@ -1767,7 +1767,7 @@ static const struct config_setting config_settings[] =
 		_environment_value, _platform_desktop,
 		"The Discord application your status, invites and asks to join go\n"
 		"through while the Discord desktop client runs (its name is what Discord\n"
-		"shows you playing): OpenH1's; empty for none." },
+		"shows you playing): GOAT H1's; empty for none." },
 	{ "discord.rich_presence", _config_boolean, "true", "HALO_DISCORD_RICH_PRESENCE", _environment_value,
 		_platform_desktop,
 		"Show what you are doing in Discord: in the menus, in a party, the game\n"
@@ -1788,7 +1788,7 @@ static const struct config_setting config_settings[] =
 		"Run as a dedicated server (as halo --server does): host games with no\n"
 		"window, sound or player of its own, one after another from\n"
 		"server.rotation (docs/dedicated_server.md)." },
-	{ "server.name", _config_string, "\"OpenH1 Server\"", "HALO_SERVER_NAME", _environment_value, _platform_server,
+	{ "server.name", _config_string, "\"GOAT H1 Server\"", "HALO_SERVER_NAME", _environment_value, _platform_server,
 		"The game's name in the lobby and the server browser: 15 characters of\n"
 		"printable ASCII." },
 	{ "server.max_players", _config_integer, "16", "HALO_SERVER_MAX_PLAYERS", _environment_value, _platform_server,
@@ -1838,15 +1838,15 @@ static const struct config_setting config_settings[] =
 		"sv_admin lists the players' key ids. Empty for none." },
 	{ "server.game_mode", _config_string, "\"openh1_120\"", "HALO_SERVER_GAME_MODE", _environment_value,
 		_platform_server,
-		"The games hosted: \"openh1_120\" or \"openh1_60\" (or \"openh1_30\"), an\n"
-		"OpenH1 game at that tick rate, which OpenCE players join too at 30 when\n"
+		"The games hosted: \"openh1_120\" or \"openh1_60\" (or \"openh1_30\"), a\n"
+		"GOAT H1 game at that tick rate, which OpenCE players join too at 30 when\n"
 		"network.allow_opence is true; or \"legacy\", OpenCE's netcode at 30 ticks\n"
 		"a second for everyone. A change waits for the server to be empty in its\n"
 		"lobby (players in it keep the kind they joined)." },
 	{ "server.frame_rate", _config_integer, "60", "HALO_SERVER_FRAME_RATE", _environment_value, _platform_server,
 		"Frames a second (30 to 120): how often the server reads what its\n"
 		"clients send, sends its own and runs what is due of the game's ticks\n"
-		"(and an OpenH1 game's sub-steps). An OpenH1 game's frames are at least\n"
+		"(and a GOAT H1 game's sub-steps). An GOAT H1 game's frames are at least\n"
 		"its tick rate. A server with no other machine runs 10." },
 	{ "server.console", _config_boolean, "true", "HALO_SERVER_CONSOLE", _environment_value, _platform_server,
 		"Take commands from the standard input." },
@@ -2083,7 +2083,7 @@ static const struct config_setting config_settings[] =
 		"never does, \"ask\" asks at the next crash and writes the answer here." },
 
 	{ "debug.join_legacy", _config_boolean, "false", "HALO_DEBUG_JOIN_LEGACY", _environment_value, _platform_all,
-		"Join every game as an OpenCE build joins it: an OpenH1 game that OpenCE\n"
+		"Join every game as an OpenCE build joins it: a GOAT H1 game that OpenCE\n"
 		"players join too (network.allow_opence) at 30 ticks a second, with the\n"
 		"Legacy game's join token. The tests' stand-in for an OpenCE machine." },
 	{ "debug.training", _config_string, "\"\"", "HALO_TRAINING", _environment_value, _platform_all,
@@ -2357,8 +2357,8 @@ static const struct config_setting config_settings[] =
 		"build has no build number; empty asks GitHub." },
 	{ "debug.update_key", _config_string, "\"\"", "HALO_UPDATE_KEY", _environment_value, _platform_server,
 		"A test's release key (its public key, 64 hex digits), trusted beside\n"
-		"OpenH1's to sign the releases of debug.update_url's server, and only\n"
-		"while debug.update_url is set; empty trusts OpenH1's alone." },
+		"GOAT H1's to sign the releases of debug.update_url's server, and only\n"
+		"while debug.update_url is set; empty trusts GOAT H1's alone." },
 	{ "debug.update_time_scale", _config_real, "1.0", "HALO_UPDATE_TIME_SCALE", _environment_value, _platform_server,
 		"How much faster than real time a dedicated server's server.auto_update\n"
 		"counts its minutes (between checks, empty, of a game), for tests." },

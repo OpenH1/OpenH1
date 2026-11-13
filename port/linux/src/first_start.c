@@ -522,7 +522,7 @@ static void draw_list(float left, float width)
 			first->kind == _game_data_image ? "Your Halo disc image was found" :
 			"Your Halo maps folder was found", colour_text);
 		snprintf(explanation, sizeof(explanation),
-			"%sOpenH1 plays the maps of your own Halo: Combat Evolved for the Xbox. Choosing %s copies "
+			"%sGOAT H1 plays the maps of your own Halo: Combat Evolved for the Xbox. Choosing %s copies "
 			"the maps (about 2 GB) to %s.%s", missing, one ? "it" : "one", destination,
 			installer_count() ? " Custom Edition's installer adds its multiplayer maps too (optional)." : "");
 	}
@@ -531,13 +531,13 @@ static void draw_list(float left, float width)
 		y = draw_heading(left, width, "Halo's Xbox maps were not found", colour_text);
 		snprintf(explanation, sizeof(explanation),
 #ifdef HALO_MACOS
-			"%sOpenH1 plays the maps of your own Halo: Combat Evolved for the Xbox. Choose Browse to pick its "
+			"%sGOAT H1 plays the maps of your own Halo: Combat Evolved for the Xbox. Choose Browse to pick its "
 			"disc image (.iso or .xiso) or its maps folder, or put either in Downloads and choose Look again. "
 			"The maps (about 2 GB) are copied to %s.\n\n"
 			"%sLooked in %s.",
 			missing, destination,
 #else
-			"%sOpenH1 plays the maps of your own Halo: Combat Evolved for the Xbox. Put your disc image (.iso) "
+			"%sGOAT H1 plays the maps of your own Halo: Combat Evolved for the Xbox. Put your disc image (.iso) "
 			"in Downloads or on your SD card, then press A to look again.\n\n"
 			"%sLooked in %s.",
 			missing,
@@ -838,7 +838,7 @@ static void browse(void)
 		chooser.browse = FALSE;
 		snprintf(message, sizeof(message),
 			"This system has no file picker (it needs the desktop portal or zenity). That is fine: put your "
-			"disc image (.iso) in Downloads or on your SD card and choose Look again, and OpenH1 finds it.");
+			"disc image (.iso) in Downloads or on your SD card and choose Look again, and GOAT H1 finds it.");
 		show_error("No file picker here", message);
 		return;
 	}
@@ -1149,7 +1149,7 @@ BOOL platform_offer_game_data(const char *destination, const char *missing)
 				/* (the Xbox maps are still needed: back to the list) */
 				game_data_short_path(&chooser.places, chooser.copy.folder, folder, (int)sizeof(folder));
 				snprintf(message, sizeof(message), "%s %s. They show in the map lists' CUSTOM MULTIPLAYER.\n\n"
-					"OpenH1 still needs the maps of your Xbox disc to start: choose Continue, then its disc image.",
+					"GOAT H1 still needs the maps of your Xbox disc to start: choose Continue, then its disc image.",
 					written ? "Custom Edition's maps are in" : "Custom Edition's maps were already in", folder);
 				platform_log("first start: added Custom Edition's maps");
 				show_notice(written ? "Custom Edition's maps were added" : "Nothing to add", message);

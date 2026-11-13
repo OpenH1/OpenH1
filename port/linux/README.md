@@ -1530,7 +1530,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.relays_file` | `"relays.txt"` | `HALO_NET_RELAYS_FILE` | The relays this machine offers when a direct connection fails, next to `config.toml` unless a full path, else next to the game: on each line `host[:port]` (2302 if none), 8 at most. The release's names the project's relay, `net.goath1.com:2302`, which the game also uses when it finds no file (an empty file names none). Refer to "Relays". |
 | `network.masters_file` | `"masters.txt"` | `HALO_NET_MASTERS_FILE` | The file of the master servers the server browser asks for dedicated servers, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`), 4 at most. The release's names the project's master (`https://master.goath1.com`) and OpenCE's (`https://master.opencommunityedition.com`); a file that names none (missing, or comments alone) leaves the same two, built in. A file that names any is asked instead of them. Refer to "Dedicated server". |
 | `server.enabled` | `false` | `HALO_SERVER` | `true`: run as a dedicated server, as `halo --server` does. Refer to "Dedicated server". The `server.*` settings are written to `config.toml` only by a dedicated server. |
-| `server.name` | `"OpenH1 Server"` | `HALO_SERVER_NAME` | The game's name in the lobby and the server browser: 15 characters of printable ASCII. |
+| `server.name` | `"GOAT H1 Server"` | `HALO_SERVER_NAME` | The game's name in the lobby and the server browser: 15 characters of printable ASCII. |
 | `server.max_players` | `16` | `HALO_SERVER_MAX_PLAYERS` | The most players (2 to 127). |
 | `server.min_players` | `1` | `HALO_SERVER_MIN_PLAYERS` | The players in the lobby before it counts down to a game (1 to 16). |
 | `server.password` | `""` | `HALO_SERVER_PASSWORD` | The password the server browser asks for (an invite link joins without it). Empty: none. It is never logged. `HALO_SERVER_PASSWORD_FILE` names a file whose first line is it instead (a container's secret; pinned, as the variable would be). |
@@ -3900,8 +3900,8 @@ not `openh1://`. COPY INVITE (on the Party screen, and in the lobby's footer)
 copies a short message for any chat (`p2p_invite_message`):
 
 ```
-Join my OpenH1 party: https://openh1.com/join/#party=<32 hexadecimal digits>
-Or paste this into OpenH1's Join by Link: openh1://party/<32 hexadecimal digits>
+Join my GOAT H1 party: https://openh1.com/join/#party=<32 hexadecimal digits>
+Or paste this into GOAT H1's Join by Link: openh1://party/<32 hexadecimal digits>
 ```
 
 In a party it is the party's invite: a friend joins the party, then follows
