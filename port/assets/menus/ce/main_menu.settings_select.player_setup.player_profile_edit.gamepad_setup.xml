@@ -16,19 +16,22 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_look_sensitivity" x="28" y="100"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_invert_look" x="28" y="121"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_invert_look_horizontal" x="28" y="142"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_gyro_flick_stick" x="28" y="163"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_flight_inversion" x="28" y="184"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_autocenter" x="28" y="205"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_7" x="28" y="232"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_button_preset" x="28" y="252"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_joystick_preset" x="28" y="273"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_button_remapping" x="28" y="294"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_stick_dead_zones" x="28" y="315"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_12" x="28" y="342"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_vibration" x="28" y="362"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_ingame_help" x="28" y="383"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_15" x="28" y="410"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_create_profile" x="28" y="430"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_aim_style" x="28" y="163"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_modern_aim_acceleration_angle" x="28" y="184"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_modern_aim_acceleration_threshold" x="28" y="205"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_gyro_flick_stick" x="28" y="226"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_flight_inversion" x="28" y="247"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_autocenter" x="28" y="268"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_10" x="28" y="295"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_button_preset" x="28" y="315"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_joystick_preset" x="28" y="336"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_button_remapping" x="28" y="357"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_stick_dead_zones" x="28" y="378"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_15" x="28" y="405"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_vibration" x="28" y="425"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_ingame_help" x="28" y="446"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_18" x="28" y="473"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_create_profile" x="28" y="493"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_bar" y="414"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items" source="tools/port_settings.py settings_files/_settings_page">
@@ -97,13 +100,47 @@
 		<on event="created" run="port setting load"/>
 		<on event="a" run="port setting segment"/>
 	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_aim_style" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/aim_style_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/aim_style_spinner" x="188"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/aim_style_seg0" x="188" y="1"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/aim_style_seg1" x="267" y="1"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/aim_style_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="4" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/aim_style_seg0" type="text" controller="1" width="75" height="18" flags="keep_ends" bitmap="main_menu/settings/segment" text="CLASSIC" color="#FF2896FF" align="center" text_y="0" text_flags="no_focus_test" wide="20 0" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/aim_style_seg1" type="text" controller="1" width="75" height="18" flags="keep_ends" bitmap="main_menu/settings/segment" text="MODERN" color="#FF2896FF" align="center" text_y="0" text_flags="no_focus_test" wide="20 0" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/aim_style_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="CLASSIC|MODERN" setting="input.aim_style" values="classic|modern" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="20 120" source="tools/port_settings.py settings_files/_settings_page">
+		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_modern_aim_acceleration_angle" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/modern_aim_acceleration_angle_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/modern_aim_acceleration_angle_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/modern_aim_acceleration_angle_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="5" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/modern_aim_acceleration_angle_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="0|5|10|15|20|25|30|35|40|45" setting="input.modern_aim_acceleration_angle" values="0|5|10|15|20|25|30|35|40|45" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="20 120" source="tools/port_settings.py settings_files/_settings_page">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_modern_aim_acceleration_threshold" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/modern_aim_acceleration_threshold_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/modern_aim_acceleration_threshold_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/modern_aim_acceleration_threshold_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="6" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/modern_aim_acceleration_threshold_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="DEFAULT|50%|55%|60%|65%|70%|75%|80%|85%|90%|95%|100%" setting="input.modern_aim_acceleration_threshold" values="-1|50|55|60|65|70|75|80|85|90|95|100" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="20 120" source="tools/port_settings.py settings_files/_settings_page">
+		<on event="created" run="port setting load"/>
+	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_gyro_flick_stick" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
 		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_screen"/>
 		<on event="start" open="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro_flick_stick_label"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro_flick_stick_label" type="text" controller="1" width="332" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="4" color="#FF2896FF" text_x="10" text_y="1" wide="0 244" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro_flick_stick_label" type="text" controller="1" width="332" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="7" color="#FF2896FF" text_x="10" text_y="1" wide="0 244" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_flight_inversion" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/flight_inversion_label"/>
@@ -111,7 +148,7 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/flight_inversion_seg0" x="188" y="1"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/flight_inversion_seg1" x="240" y="1"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/flight_inversion_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="5" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/flight_inversion_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="8" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/flight_inversion_seg0" type="text" controller="1" width="48" height="18" flags="keep_ends" bitmap="main_menu/settings/segment" text="YES" color="#FF2896FF" align="center" text_y="0" text_flags="no_focus_test" wide="20 0" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
@@ -127,7 +164,7 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/autocenter_seg0" x="188" y="1"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/autocenter_seg1" x="240" y="1"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/autocenter_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="6" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/autocenter_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="9" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/autocenter_seg0" type="text" controller="1" width="48" height="18" flags="keep_ends" bitmap="main_menu/settings/segment" text="YES" color="#FF2896FF" align="center" text_y="0" text_flags="no_focus_test" wide="20 0" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
@@ -137,16 +174,16 @@
 		<on event="created" run="port setting load"/>
 		<on event="a" run="port setting segment"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_7" width="344" height="18" bitmap="main_menu/settings/section" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_7_title"/>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_10" width="344" height="18" bitmap="main_menu/settings/section" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_10_title"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_7_title" type="text" controller="1" width="344" height="18" wide="0 244" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="7" color="#FF6F9CD0" text_x="2" text_y="1" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_10_title" type="text" controller="1" width="344" height="18" wide="0 244" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="10" color="#FF6F9CD0" text_x="2" text_y="1" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_button_preset" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_preset_label"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_preset_spinner" x="188"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_preset_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="8" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_preset_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="11" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_preset_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="DEFAULT|SWAP TRIGGERS|SWAP A, L TRIGGER|SWAP B, L TRIGGER|SWAP B, R STICK|BUMPER JUMPER|FISHSTICKS|RECON" setting="profile.button_preset" values="0|1|2|3|4|5|6|7" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="20 120" source="tools/port_settings.py settings_files/_settings_page">
 		<on event="created" run="port setting load"/>
@@ -155,7 +192,7 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/joystick_preset_label"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/joystick_preset_spinner" x="188"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/joystick_preset_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="9" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/joystick_preset_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="12" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/joystick_preset_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="DEFAULT|SOUTHPAW|LEGACY|LEGACY SOUTHPAW" setting="profile.joystick_preset" values="0|1|2|3" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="20 120" source="tools/port_settings.py settings_files/_settings_page">
 		<on event="created" run="port setting load"/>
@@ -166,7 +203,7 @@
 		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_remapping_label"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_remapping_label" type="text" controller="1" width="332" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="10" color="#FF2896FF" text_x="10" text_y="1" wide="0 244" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_remapping_label" type="text" controller="1" width="332" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="13" color="#FF2896FF" text_x="10" text_y="1" wide="0 244" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_stick_dead_zones" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
 		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/dead_zones/dead_zones_screen"/>
@@ -174,12 +211,12 @@
 		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/stick_dead_zones_label"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/stick_dead_zones_label" type="text" controller="1" width="332" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="11" color="#FF2896FF" text_x="10" text_y="1" wide="0 244" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/stick_dead_zones_label" type="text" controller="1" width="332" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="14" color="#FF2896FF" text_x="10" text_y="1" wide="0 244" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_12" width="344" height="18" bitmap="main_menu/settings/section" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_12_title"/>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_15" width="344" height="18" bitmap="main_menu/settings/section" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_15_title"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_12_title" type="text" controller="1" width="344" height="18" wide="0 244" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="12" color="#FF6F9CD0" text_x="2" text_y="1" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_15_title" type="text" controller="1" width="344" height="18" wide="0 244" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="15" color="#FF6F9CD0" text_x="2" text_y="1" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_vibration" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/vibration_label"/>
@@ -187,7 +224,7 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/vibration_seg0" x="188" y="1"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/vibration_seg1" x="240" y="1"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/vibration_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="13" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/vibration_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="16" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/vibration_seg0" type="text" controller="1" width="48" height="18" flags="keep_ends" bitmap="main_menu/settings/segment" text="ON" color="#FF2896FF" align="center" text_y="0" text_flags="no_focus_test" wide="20 0" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
@@ -203,7 +240,7 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/ingame_help_seg0" x="188" y="1"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/ingame_help_seg1" x="240" y="1"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/ingame_help_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="14" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/ingame_help_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="17" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/ingame_help_seg0" type="text" controller="1" width="48" height="18" flags="keep_ends" bitmap="main_menu/settings/segment" text="ON" color="#FF2896FF" align="center" text_y="0" text_flags="no_focus_test" wide="20 0" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
@@ -213,10 +250,10 @@
 		<on event="created" run="port setting load"/>
 		<on event="a" run="port setting segment"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_15" width="344" height="18" bitmap="main_menu/settings/section" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_15_title"/>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_18" width="344" height="18" bitmap="main_menu/settings/section" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_18_title"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_15_title" type="text" controller="1" width="344" height="18" wide="0 244" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="15" color="#FF6F9CD0" text_x="2" text_y="1" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/section_18_title" type="text" controller="1" width="344" height="18" wide="0 244" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="18" color="#FF6F9CD0" text_x="2" text_y="1" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/op_create_profile" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
 		<on event="a" run="port settings new profile" branch="true"/>
@@ -225,13 +262,16 @@
 		<conditional widget="main_menu/settings/settings_creating_profile" if_failed="true"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/create_profile_label"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/create_profile_label" type="text" controller="1" width="332" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="16" color="#FF2896FF" text_x="10" text_y="1" wide="0 244" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/create_profile_label" type="text" controller="1" width="332" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels" string_index="19" color="#FF2896FF" text_x="10" text_y="1" wide="0 244" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/labels">
 		<string text="LOOK"/>
 		<string text="LOOK SENSITIVITY"/>
 		<string text="INVERT LOOK"/>
 		<string text="INVERT TURNING"/>
+		<string text="AIM STYLE"/>
+		<string text="ACCELERATION ANGLE"/>
+		<string text="ACCELERATION START"/>
 		<string text="GYRO &amp; FLICK STICK ›"/>
 		<string text="INVERT FLIGHT"/>
 		<string text="AUTO-CENTER LOOK"/>
@@ -252,6 +292,9 @@
 		<string text="How fast the right stick turns the view."/>
 		<string text="Pushing the right stick up looks down."/>
 		<string text="Pushing the right stick right turns the view left. For every controller on this device."/>
+		<string text="Classic aims as the original: a diagonal turns faster, and can speed up the turn as a full push does. Modern aims as MCC's: the same speed whichever way you push, and only a push straight to the side speeds up the turn.|The mouse and touch controls are not changed."/>
+		<string text="Modern aim: how far from straight to the side, in degrees, a full push still speeds up the turn. Lower keeps more diagonals from speeding it up."/>
+		<string text="Modern aim: how far you push the stick before the turn speeds up. Default is the game's own, as Classic's."/>
 		<string text="Aim by turning a controller that has a gyroscope, and the right stick as a flick stick."/>
 		<string text="Flying vehicles pitch as aircraft do: pushing up flies down."/>
 		<string text="Levels the view while you walk."/>

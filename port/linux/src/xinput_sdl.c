@@ -233,6 +233,50 @@ int halo_look_horizontal_inverted(void)
 	return inverted;
 }
 
+/* Modern aim's acceleration angle, in degrees, at its widest */
+#define AIM_ACCELERATION_ANGLE_MAXIMUM 45
+
+/* whether a controller aims as Modern does (input.aim_style "modern":
+player_control.c's player_control_stick_aim), and Modern's tunables: the
+tangent of the widest angle from side to side at which the stick accelerates
+(input.modern_aim_acceleration_angle, degrees) and the push at which it does,
+of the stick's travel, or -1 for the game's own look_pegging_threshold
+(input.modern_aim_acceleration_threshold, percent). Kept per controller
+(gamepad_index, the local player's): today each reads config.toml's, and a
+per-player setting is a read of the player's own value here instead. */
+int halo_aim_modern(short gamepad_index, float *acceleration_tangent, float *acceleration_threshold)
+{
+	static struct
+	{
+		int modern;
+		float tangent;
+		float threshold;
+	} aims[PORT_COUNT];
+	static unsigned long read_at = (unsigned long)-1;
+
+	if (read_at != config_changes())
+	{
+		int port;
+
+		read_at = config_changes();
+		for (port = 0; port < PORT_COUNT; port++)
+		{
+			long angle = config_integer("input.modern_aim_acceleration_angle");
+			long threshold = config_integer("input.modern_aim_acceleration_threshold");
+
+			aims[port].modern = !strcmp(config_string("input.aim_style"), "modern");
+			angle = angle < 0 ? 0 : angle > AIM_ACCELERATION_ANGLE_MAXIMUM ? AIM_ACCELERATION_ANGLE_MAXIMUM : angle;
+			aims[port].tangent = (float)tan((double)angle * M_PI / 180.0);
+			aims[port].threshold = threshold < 0 || threshold > 100 ? -1.f : (float)threshold / 100.f;
+		}
+	}
+	if (gamepad_index < 0 || gamepad_index >= PORT_COUNT || !aims[gamepad_index].modern)
+		return 0;
+	*acceleration_tangent = aims[gamepad_index].tangent;
+	*acceleration_threshold = aims[gamepad_index].threshold;
+	return 1;
+}
+
 /* radians of yaw and pitch for the mouse motion since the last call: each
 count turns the view 0.022 degrees times the sensitivity, as CS2's does
 (mouse_sensitivity.h); the game adds these to the facing change of the

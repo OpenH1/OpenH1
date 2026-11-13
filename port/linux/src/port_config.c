@@ -1078,6 +1078,21 @@ static const struct config_setting config_settings[] =
 		"A controller's look turns the other way: pushing the stick that looks to\n"
 		"the right turns the view left. The profile's INVERT LOOK is the up and\n"
 		"down; this is the side to side, for every controller." },
+	{ "input.aim_style", _config_string, "\"classic\"", "HALO_AIM_STYLE", _environment_value, _platform_all,
+		"How a controller's look stick aims: \"classic\", the original's (each\n"
+		"direction curved on its own, so a diagonal turns faster, and pushed far\n"
+		"enough it accelerates the turn); \"modern\", as MCC's Modern aiming:\n"
+		"the push curved as one, the same speed whichever way it points, and the\n"
+		"turn accelerated only near side to side. The mouse and the touch\n"
+		"controls are not changed." },
+	{ "input.modern_aim_acceleration_angle", _config_integer, "20", "HALO_MODERN_AIM_ACCELERATION_ANGLE",
+		_environment_value, _platform_all,
+		"Modern aim: how far from side to side, in degrees (0 to 45), the look\n"
+		"stick can point and still accelerate the turn when pushed fully." },
+	{ "input.modern_aim_acceleration_threshold", _config_integer, "-1", "HALO_MODERN_AIM_ACCELERATION_THRESHOLD",
+		_environment_value, _platform_all,
+		"Modern aim: how far the look stick is pushed, in percent of its travel\n"
+		"(0 to 100), before the turn accelerates; -1 for the game's own." },
 	{ "input.gyro_aim", _config_string, "\"off\"", "HALO_GYRO_AIM", _environment_value, _platform_all,
 		"Aiming by turning a controller that has a gyroscope (a DualSense, a\n"
 		"DualShock 4, a Switch Pro Controller or Joy-Cons, a Steam Deck with\n"

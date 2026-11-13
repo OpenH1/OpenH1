@@ -1256,15 +1256,15 @@ static void player_control_look_rates(
 }
 
 /* port: the look stick's yaw and pitch, a diagonal's scaled out to the
-square and each clamped to 1 (get_local_player_input_blob's, and a
-sub-step's) */
+square and each clamped to 1 (Classic aim's: player_control_stick_aim) */
 static void player_control_clamp_look(
-	struct game_input_state const *input_state,
+	real yaw,
+	real pitch,
 	real *clamped_yaw,
 	real *clamped_pitch)
 {
-	real absolute_pitch = fabs(input_state->pitch);
-	real absolute_yaw = fabs(input_state->yaw);
+	real absolute_pitch = fabs(pitch);
+	real absolute_yaw = fabs(yaw);
 	real look_scale = 1.f;
 
 	if (absolute_pitch > 0.1f && absolute_yaw > 0.1f)
@@ -1283,27 +1283,130 @@ static void player_control_clamp_look(
 			absolute_pitch * absolute_pitch +
 			absolute_yaw * absolute_yaw);
 	}
-	*clamped_yaw = PIN(input_state->yaw * look_scale, -1.f, 1.f);
-	*clamped_pitch = PIN(input_state->pitch * look_scale, -1.f, 1.f);
+	*clamped_yaw = PIN(yaw * look_scale, -1.f, 1.f);
+	*clamped_pitch = PIN(pitch * look_scale, -1.f, 1.f);
 
 	return;
 }
 
-/* port: the look stick's turn a tick, before the zoom, the stun, the
-acceleration and the magnetism act on it (get_local_player_input_blob's,
-and a sub-step's) */
-static void player_control_stick_look(
+/* port: a controller's aim (input.aim_style: port/linux/src/xinput_sdl.c's
+halo_aim_modern), Classic's or Modern's and Modern's tunables */
+struct player_control_aim
+{
+	boolean modern;
+	/* Modern: the tangent of the widest angle from side to side at which the
+	stick accelerates the turn */
+	real acceleration_tangent;
+	/* Modern: the push, 0 to 1, at which it does; below 0 the globals' own
+	look_pegging_threshold */
+	real acceleration_threshold;
+};
+
+/* port: the look stick's push (yaw and pitch, as input_abstraction.c gives
+them: the circle the stick moves in stretched out to the square) made its
+turn, through the globals' look curve, before the spin, the rate and the rest
+act on it: curved_yaw and curved_pitch, of the curve's own units; the push
+each way, for what else asks whether the stick is pushed (clamped_yaw and
+clamped_pitch); and whether the turn accelerates, by the globals' ramp
+(get_local_player_input_blob's, and a sub-step's, alike: player_control_stick_look).
+
+Classic, the original's: each direction curved on its own, a diagonal
+stretched to the square's corner (player_control_clamp_look), so a diagonal
+turns up to half again faster than straight across; and it accelerates
+whenever the side to side alone is at the pegging threshold, a full diagonal
+too.
+
+Modern, as MCC's: the push taken as its length and direction. The length is
+the circle's (the square's largest direction undoes input_abstraction.c's
+stretch: a point at r on the circle is at r on the square's larger axis),
+at most 1; the curve is taken of it alone and then split by the direction, so
+the turn's speed is the same whichever way the stick points, and straight
+across is exactly Classic's. It accelerates only with the push at the
+threshold and the stick within the acceleration angle of side to side
+(|pitch| <= |yaw| * its tangent), so a diagonal never does. */
+static boolean player_control_stick_aim(
+	struct player_control_aim const *aim,
+	short look_function_count,
+	real const *look_function,
+	real pegging_threshold,
+	real yaw,
+	real pitch,
+	real *curved_yaw,
+	real *curved_pitch,
+	real *clamped_yaw,
+	real *clamped_pitch)
+{
+	real absolute_yaw;
+	real absolute_pitch;
+	real length;
+	real push;
+	real speed;
+
+	if (!aim->modern)
+	{
+		player_control_clamp_look(yaw, pitch, clamped_yaw, clamped_pitch);
+		*curved_yaw = evaluate_piecewise_linear_function(look_function_count, look_function, *clamped_yaw);
+		*curved_pitch = evaluate_piecewise_linear_function(look_function_count, look_function, *clamped_pitch);
+		return fabs(*clamped_yaw) >= pegging_threshold;
+	}
+	absolute_yaw = fabs(yaw);
+	absolute_pitch = fabs(pitch);
+	length = square_root(yaw * yaw + pitch * pitch);
+	if (!(length > _real_epsilon))
+	{
+		*curved_yaw = 0.f;
+		*curved_pitch = 0.f;
+		*clamped_yaw = 0.f;
+		*clamped_pitch = 0.f;
+		return FALSE;
+	}
+	push = MIN(MAX(absolute_yaw, absolute_pitch), 1.f);
+	speed = evaluate_piecewise_linear_function(look_function_count, look_function, push);
+	*curved_yaw = speed * (yaw / length);
+	*curved_pitch = speed * (pitch / length);
+	*clamped_yaw = push * (yaw / length);
+	*clamped_pitch = push * (pitch / length);
+	if (aim->acceleration_threshold >= 0.f)
+	{
+		pegging_threshold = aim->acceleration_threshold;
+	}
+	return push >= pegging_threshold && absolute_pitch <= absolute_yaw * aim->acceleration_tangent;
+}
+
+/* port: how much the look's acceleration has turned the side to side up,
+by the globals' ramp: its scale reached over its time
+(get_local_player_input_blob's, and a sub-step's) */
+static real player_control_look_acceleration(
 	struct game_globals_player_control const *constants,
+	struct player_control const *control)
+{
+	real acceleration = PIN(control->look_acceleration_time / constants->look_acceleration_time, 0.f, 1.f);
+
+	return (constants->look_acceleration_scale - 1.f) * acceleration + 1.f;
+}
+
+/* port: the look stick's turn a tick, before the zoom, the stun, the
+acceleration and the magnetism act on it, by the controller's aim
+(player_control_stick_aim): its push each way (clamped_yaw and
+clamped_pitch), and whether the turn accelerates (get_local_player_input_blob's,
+and a sub-step's) */
+static boolean player_control_stick_look(
+	struct game_globals_player_control const *constants,
+	short gamepad_index,
 	struct game_input_state const *input_state,
-	real clamped_yaw,
-	real clamped_pitch,
 	real look_yaw_rate,
 	real look_pitch_rate,
-	real_euler_angles2d *look_delta)
+	real_euler_angles2d *look_delta,
+	real *clamped_yaw,
+	real *clamped_pitch)
 {
 	long doubled_spin;
 	real yaw_spin_scale;
 	real pitch_spin_scale;
+	struct player_control_aim aim;
+	real curved_yaw;
+	real curved_pitch;
+	boolean accelerating;
 
 	if (input_state->buttons[_button_scope_zoom] &&
 		controls_enable_doubled_spin)
@@ -1329,16 +1432,21 @@ static void player_control_stick_look(
 		"c:\\halo\\SOURCE\\game\\player_control.c",
 		0x1C8,
 		constants->look_function.count>1);
-	look_delta->yaw = evaluate_piecewise_linear_function(
-		constants->look_function.count,
-		constants->look_function.address,
-		clamped_yaw) * yaw_spin_scale * look_yaw_rate;
-	look_delta->pitch = evaluate_piecewise_linear_function(
-		constants->look_function.count,
-		constants->look_function.address,
-		clamped_pitch) * pitch_spin_scale * look_pitch_rate;
+	{
+		float acceleration_tangent;
+		float acceleration_threshold;
 
-	return;
+		aim.modern = halo_aim_modern(gamepad_index, &acceleration_tangent, &acceleration_threshold) != 0;
+		aim.acceleration_tangent = aim.modern ? acceleration_tangent : 0.f;
+		aim.acceleration_threshold = aim.modern ? acceleration_threshold : -1.f;
+	}
+	accelerating = player_control_stick_aim(&aim, constants->look_function.count,
+		constants->look_function.address, constants->look_pegging_threshold, input_state->yaw,
+		input_state->pitch, &curved_yaw, &curved_pitch, clamped_yaw, clamped_pitch);
+	look_delta->yaw = curved_yaw * yaw_spin_scale * look_yaw_rate;
+	look_delta->pitch = curved_pitch * pitch_spin_scale * look_pitch_rate;
+
+	return accelerating;
 }
 
 /* port: a turn slowed by the zoom and by the unit's stun
@@ -1493,16 +1601,16 @@ static void get_local_player_input_blob(
 				real clamped_yaw;
 				real clamped_pitch;
 
-				player_control_clamp_look(input_state, &clamped_yaw, &clamped_pitch);
-
 				if (player_control_camera_control_is_active())
 				{
 					real_euler_angles2d look_delta;
 					/* port: the touch controls' swipe or gyroscope this frame */
 					boolean touching = FALSE;
+					/* port: the stick's turn accelerating, by the controller's
+					aim (player_control_stick_aim) */
+					boolean accelerating = player_control_stick_look(constants, gamepad_index, input_state,
+						look_yaw_rate, look_pitch_rate, &look_delta, &clamped_yaw, &clamped_pitch);
 
-					player_control_stick_look(constants, input_state, clamped_yaw, clamped_pitch, look_yaw_rate,
-						look_pitch_rate, &look_delta);
 					{
 						/* port: the touch controls' swipe (port/linux/src/xinput_sdl.c),
 						a turn this frame, made a rate as the stick's look is: the
@@ -1537,21 +1645,23 @@ static void get_local_player_input_blob(
 						"c:\\halo\\SOURCE\\game\\player_control.c",
 						0x1E3,
 						constants->look_acceleration_time>0.0f);
-					if (fabs(clamped_yaw) >= constants->look_pegging_threshold)
+					if (accelerating)
 					{
-						real acceleration = PIN(
-							control->look_acceleration_time /
-								constants->look_acceleration_time,
-							0.f,
-							1.f);
-
-						look_delta.yaw *= (constants->look_acceleration_scale - 1.f) *
-							acceleration + 1.f;
+						look_delta.yaw *= player_control_look_acceleration(constants, control);
 						control->look_acceleration_time += time_delta_sec;
 					}
 					else
 					{
 						control->look_acceleration_time = 0.f;
+					}
+					/* port: the input trace (port/linux/src/input_trace.c) */
+					{
+						float acceleration_tangent;
+						float acceleration_threshold;
+
+						input_trace_aim(gamepad_index,
+							halo_aim_modern(gamepad_index, &acceleration_tangent, &acceleration_threshold),
+							accelerating, control->look_acceleration_time);
 					}
 
 					{
@@ -2653,17 +2763,15 @@ static void player_control_substep_read(
 		real look_pitch_rate;
 		real clamped_yaw;
 		real clamped_pitch;
+		boolean accelerating;
 
 		player_control_look_rates(local_player_index, player->unit_index, &look_yaw_rate, &look_pitch_rate);
-		player_control_clamp_look(input_state, &clamped_yaw, &clamped_pitch);
-		player_control_stick_look(constants, input_state, clamped_yaw, clamped_pitch, look_yaw_rate,
-			look_pitch_rate, &reading->look);
+		accelerating = player_control_stick_look(constants, player->local_player_index, input_state,
+			look_yaw_rate, look_pitch_rate, &reading->look, &clamped_yaw, &clamped_pitch);
 		player_control_scale_look(player->unit_index, control->zoom_level, &reading->look);
-		if (fabs(clamped_yaw) >= constants->look_pegging_threshold && constants->look_acceleration_time > 0.f)
+		if (accelerating && constants->look_acceleration_time > 0.f)
 		{
-			real acceleration = PIN(control->look_acceleration_time / constants->look_acceleration_time, 0.f, 1.f);
-
-			reading->look.yaw *= (constants->look_acceleration_scale - 1.f) * acceleration + 1.f;
+			reading->look.yaw *= player_control_look_acceleration(constants, control);
 		}
 		if (player_magnetism_flag && control->magnetism_level > 0.f)
 		{
