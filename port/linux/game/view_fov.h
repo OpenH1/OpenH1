@@ -62,14 +62,15 @@ real viewmodel_near_clip_distance(void);
 /* where the first-person weapon and hands are drawn: moved along the view's
 right, up and forward, in world units (display.viewmodel_offset_x, _y and
 _z), and turned, in radians, muzzle up (display.viewmodel_pitch), right
-(_yaw) and top to the right (_roll); each weapon's own (display.viewmodel_weapon,
-by its tag's path) added. FALSE when it has none */
+(_yaw) and top to the right (_roll), the local player's own (their profile's:
+player_settings.c); each weapon's own (display.viewmodel_weapon, by its tag's
+path) added. FALSE when it has none */
 struct viewmodel_offset
 {
 	real right, up, forward;
 	real pitch, yaw, roll;
 };
-boolean viewmodel_offset(long weapon_index, struct viewmodel_offset *offset);
+boolean viewmodel_offset(short local_player_index, long weapon_index, struct viewmodel_offset *offset);
 /* the local player's weapon's and hands' node matrices, built at the camera,
 turned about their middle and moved by that offset: what is drawn and the
 markers the muzzle's effects, the shells and the lights are placed at,
@@ -84,7 +85,8 @@ WEAPON rows); FALSE with none */
 boolean viewmodel_held_weapon(short local_player_index, char *path, unsigned int size);
 
 /* whether the first-person weapon, hands and attached visuals are drawn
-(display.viewmodel_visible); its firing, sounds and lights go on either way */
+(display.viewmodel_visible) in the view drawn now (render.local_player_index's
+own); its firing, sounds and lights go on either way */
 boolean viewmodel_is_visible(void);
 /* display.viewmodel_shield: the unit's energy shield flare drawn on the
 first-person arms too, as on its body */

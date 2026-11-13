@@ -56,10 +56,11 @@ static struct {
     unsigned long environment_surface_flags[4096];
     long environment_surface_count;
     long frame_index;
+    short local_player_index;
 } render;
 static struct { real far_clip_distance; } rasterizer_globals;
 /* (port/linux/game/far_clip.c: the game's own far clip, display.draw_distance at its default) */
-static real render_far_clip_distance(void) { return rasterizer_globals.far_clip_distance; }
+static real render_far_clip_distance(short local_player_index) { (void)local_player_index; return rasterizer_globals.far_clip_distance; }
 static boolean structures_use_pvs_for_vs;
 #define rendered_cluster_get(index) (&render.rendered_clusters[index])
 static struct structure_bsp fixture_bsp;

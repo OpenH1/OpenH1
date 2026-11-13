@@ -69,6 +69,13 @@ def constant(source, name):
     return constant(source + read("port/linux/include/halo_port_capacity.h"), value)
 
 
+def player_settings_slots():
+    """port/linux/game/player_settings.h's slots of a reader's values kept for each local player
+    (PLAYER_SETTINGS_SLOTS, PLAYER_SETTINGS_SLOT), as the readers of a player's own settings use them"""
+    header = read("port/linux/game/player_settings.h")
+    return "".join(re.findall(r"^#define PLAYER_SETTINGS_SLOTS?\b(?:[^\n]*\\\n)*[^\n]*\n", header, re.M))
+
+
 def mutated(text, before, after):
     """The code with one deliberate fault (a negative control); LookupError once the code no longer has it."""
     if text.count(before) != 1:

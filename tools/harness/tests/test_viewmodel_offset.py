@@ -11,11 +11,11 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from harness import CHECK_FAILED, build, function, inline, mutated, read, run, structure  # noqa: E402
+from harness import CHECK_FAILED, build, function, inline, mutated, player_settings_slots, read, run, structure  # noqa: E402
 
 CASES = ["stock", "right", "up_and_forward", "forward_recorded", "turned_view", "on_the_screen", "weapon_fov_across", "weapon_fov_depth",
          "weapon_fov_unusable", "held_at_the_range", "changed", "turn_pitch", "turn_yaw", "turn_roll", "turn_and_move",
-         "weapon_own", "weapon_own_changed", "slider_steps"]
+         "weapon_own", "weapon_own_changed", "slider_steps", "players"]
 CONTROLS = [
     # the move toward the eye not recorded for the weapon's near plane, or kept once gone
     ("\t\tapplied_forwards[local_player_index] = offset.forward;", "", "forward_recorded"),
@@ -39,8 +39,12 @@ CONTROLS = [
     # not held at the range
     ("\tif (value > maximum)\n", "\tif (FALSE)\n", "held_at_the_range"),
     # read once, not on a change
-    ("if (!initialized || read_at != changes)\n\t{\n\t\tglobal.right",
-     "if (!initialized || !read_at)\n\t{\n\t\tglobal.right", "changed"),
+    ("if (!players[slot].initialized || players[slot].read_at != changes)\n\t{\n\t\tplayers[slot].global.right",
+     "if (!players[slot].initialized || !players[slot].read_at)\n\t{\n\t\tplayers[slot].global.right", "changed"),
+    # one offset kept for every player
+    ("short slot = PLAYER_SETTINGS_SLOT(local_player_index);", "short slot = 0;", "players"),
+    # config.toml's for every player
+    ("\tviewmodel_offset_global(local_player_index, offset);", "\tviewmodel_offset_global(NONE, offset);", "players"),
     # the weapon field of view's scale left out: the move set, as far in the world, shorter on the screen
     ("\t\toffset.right *= scale;\n\t\toffset.up *= scale;\n", "", "weapon_fov_across"),
     # the scale the other way about (the stock angle's over the drawn one's)
@@ -61,8 +65,9 @@ CONTROLS = [
     ("\tif (!(drawn > 0.0f && drawn < _pi && stock > 0.0f && stock < _pi))\n\t\treturn 1.0f;\n", "",
      "weapon_fov_unusable"),
     # the turns held at the moves' 20, not 15 degrees
-    ("viewmodel_offset_held(config_real(name), VIEWMODEL_ROTATION_MAXIMUM_DEGREES)",
-     "viewmodel_offset_held(config_real(name), VIEWMODEL_OFFSET_MAXIMUM_CENTIMETERS)", "held_at_the_range"),
+    ("viewmodel_offset_held(config_player_real(local_player_index, name),\n\t\tVIEWMODEL_ROTATION_MAXIMUM_DEGREES)",
+     "viewmodel_offset_held(config_player_real(local_player_index, name),\n\t\tVIEWMODEL_OFFSET_MAXIMUM_CENTIMETERS)",
+     "held_at_the_range"),
     # turned about the eye, not the weapon's middle: it swings across the view
     ("\t\tpivot.x /= node_count;\n\t\tpivot.y /= node_count;\n\t\tpivot.z /= node_count;\n",
      "\t\tpivot = camera->position;\n", "turn_pitch"),
@@ -106,7 +111,7 @@ def generated(fault=None, slider_fault=None):
     pi = re.search(r"#define _pi .*", math).group(0)
     types = pi + "\n" + structure(math, "real_matrix4x3") + "\n" + inline(math, "cross_product3d") + "\n" + \
         inline(math, "dot_product3d") + "\n" + structure(read("port/linux/game/view_fov.h"), "viewmodel_offset") + "\n"
-    return (("types.inc", types), ("under_test.inc", section + "\n" + slider + "\n"))
+    return (("types.inc", types), ("under_test.inc", player_settings_slots() + section + "\n" + slider + "\n"))
 
 
 @pytest.mark.parametrize("case", CASES)
@@ -167,7 +172,7 @@ def test_the_weapon_angles():
     # the weapon back at that angle's size)
     code = read("port/linux/game/view_fov.c")
     angles = function(code, "viewmodel_angles")
-    assert "*drawn = viewmodel_vertical();" in angles
+    assert "*drawn = viewmodel_vertical(local_player_index);" in angles
     assert "if (!*drawn || !viewmodel_projection_view(local_player_index))" in angles
     assert "unit.camera_field_of_view" in angles
     assert "*stock = 2.0f * atanf(0.75f * render_camera_get_adjusted_field_of_view_tangent(unzoomed));" in angles
@@ -176,7 +181,7 @@ def test_the_weapon_angles():
     assert "2.0f * arctangent(\n\t\t\t\t0.75f * render_camera_get_adjusted_field_of_view_tangent(\n" \
         "\t\t\t\t\tobserver->field_of_view)" in main
     begin = function(code, "viewmodel_projection_begin")
-    assert "angle = viewmodel_vertical();" in begin
+    assert "angle = viewmodel_vertical(render.local_player_index);" in begin
     assert "!viewmodel_projection_view(render.local_player_index)" in begin
     # the local player whose weapon is posed
     weapons = read("source/interface/first_person_weapons.c")

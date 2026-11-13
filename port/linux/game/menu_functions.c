@@ -161,6 +161,12 @@ char const *config_graphics_setting(int entry);
 #define CONFIG_WEAPON_VALUES 6
 int config_viewmodel_weapon(char const *path, double values[CONFIG_WEAPON_VALUES]);
 int config_viewmodel_weapon_write(char const *path, double const values[CONFIG_WEAPON_VALUES]);
+/* a player profile's own values of the settings that are each player's
+(port_config.h; player_settings.c names its folder) */
+int config_per_player(char const *name);
+int config_profile_text(char const *folder, char const *name, char *text, unsigned int size);
+int config_profile_write(char const *folder, char const *name, char const *value);
+int player_settings_profile_folder(long profile_index, char *folder, unsigned long size);
 long pc_menu_widget_string_list(long definition_index);
 boolean ui_widget_port_switch(struct widget_instance *widget, char const *name, boolean *widget_deleted);
 char const *config_string(char const *name);
@@ -533,12 +539,33 @@ static boolean settings_weapon_write(short value, char const *text)
 	return config_viewmodel_weapon_write(settings_weapon, values) != 0;
 }
 
+/* ---------- the settings that are each player's (port_config.c's table
+marks them _scope_player: the field of view, First Person's): Settings
+shows and sets the values of the profile it edits, the player's who opened
+it (pc_menu_profile_edit_begin), their profile's own, kept in its folder;
+config.toml's where it has none of its own, or no profile is edited, and
+there they are set (every player without a value of their own has it) */
+
+/* the folder of the profile being edited, FALSE with none */
+static boolean settings_profile_folder(char *folder, unsigned long size)
+{
+	return player_ui_get_edit_player_profile() &&
+		player_settings_profile_folder(player_ui_get_edit_profile_index(), folder, size);
+}
+
 /* a setting's value as text, or (default_value) its default: config.toml's,
-or the profile's */
+or the profile's: its controller's, or its own of a setting that is each
+player's */
 static boolean setting_text(char const *name, char *text, unsigned int size, boolean default_value)
 {
+	char folder[1024];
 	short index;
 
+	if (!default_value && config_per_player(name) && settings_profile_folder(folder, sizeof(folder)) &&
+		config_profile_text(folder, name, text, size))
+	{
+		return TRUE;
+	}
 	if (settings_weapon_value(name) != NONE)
 		return settings_weapon_text(settings_weapon_value(name), text, size, default_value);
 	if (!strcmp(name, RENDER_RESOLUTION_SETTING))
@@ -597,8 +624,11 @@ static boolean setting_text(char const *name, char *text, unsigned int size, boo
 
 static boolean setting_write(char const *name, char const *value)
 {
+	char folder[1024];
 	short index;
 
+	if (config_per_player(name) && settings_profile_folder(folder, sizeof(folder)))
+		return config_profile_write(folder, name, value);
 	if (settings_weapon_value(name) != NONE)
 		return settings_weapon_write(settings_weapon_value(name), value);
 	if (!strcmp(name, RENDER_RESOLUTION_SETTING))
@@ -825,12 +855,43 @@ static void server_browser_initialize(struct widget_instance *screen)
 	}
 }
 
-/* begins editing player 1's profile (as the campaign has it); FALSE if
-there is none */
+/* the local player whose profile Settings edits: in a game, the one whose
+controller opened it (split screen's players each their own); else player
+1 */
+static short settings_local_player;
+
+static void settings_local_player_set(short controller)
+{
+	short local_player_index = NONE;
+
+	if (!main_menu_is_active() && controller >= 0 && controller < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS)
+	{
+		local_player_index = player_ui_get_single_player_local_player_from_controller(controller);
+		/* (a split screen game's players: by their controllers) */
+		if (local_player_index == NONE && player_ui_get_active_player_profile_index(controller) != NONE)
+			local_player_index = controller;
+	}
+	settings_local_player = local_player_index == NONE ? 0 : local_player_index;
+}
+
+/* begins editing the profile of the player Settings is for
+(settings_local_player): player 1's as the campaign has it, another's
+their own; FALSE if there is none */
 boolean pc_menu_profile_edit_begin(void)
 {
 	struct player_profile profile;
+	long profile_index;
 
+	if (main_menu_is_active())
+		settings_local_player = 0;
+	if (settings_local_player > 0)
+	{
+		profile_index = player_ui_get_active_player_profile_index(settings_local_player);
+		if (profile_index == NONE || !player_profile_get(profile_index, &profile))
+			return FALSE;
+		player_ui_begin_editing_profile(profile_index);
+		return TRUE;
+	}
 	if (!campaign_profile(0, &profile))
 		return FALSE;
 	player_ui_begin_editing_profile(player_ui_get_active_player_profile_index(0));
@@ -863,6 +924,7 @@ and only fails. */
 static boolean profile_edit_begin(struct widget_instance *widget, struct event_record *event,
 	boolean *widget_deleted)
 {
+	settings_local_player_set(event_controller(widget, event));
 	if (pc_menu_profile_edit_begin())
 		return TRUE;
 	/* (a press: the profile is made on its controller) */
@@ -2464,6 +2526,10 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 	if (!strcmp(name, "begin"))
 	{
 		settings_pending_clear();
+		/* (the screen's player, where it has one; else the one whose press
+		opened it: profile_edit_begin) */
+		if (screen_of(widget)->local_player_index >= 0 && screen_of(widget)->local_player_index < 4)
+			settings_local_player_set(screen_of(widget)->local_player_index);
 		pc_menu_profile_edit_begin();
 	}
 	else if (!strcmp(name, "tab"))
@@ -3721,7 +3787,7 @@ static void settings_words_add(wchar_t *words, wchar_t const *more)
 }
 
 /* the panel's facts of a row: their names and values */
-#define SETTINGS_FACTS_MOST 2
+#define SETTINGS_FACTS_MOST 3
 /* (the room kept between a fact's name and its value on one line) */
 #define SETTINGS_FACTS_GAP 8
 struct settings_facts
@@ -3740,19 +3806,50 @@ static void settings_fact_add(struct settings_facts *facts, wchar_t const *name,
 	facts->count++;
 }
 
+/* a setting's fact of whose value it is, if it is each player's: the
+profile's edited (first), or every player's, config.toml's (last) */
+static void settings_profile_fact(char const *name, struct settings_facts *facts, boolean first)
+{
+	struct player_profile *profile = player_ui_get_edit_player_profile();
+	char folder[1024];
+	wchar_t whose[ROW_TEXT_LENGTH] = { 0 };
+	boolean own;
+
+	if (!name || !config_per_player(name))
+		return;
+	own = profile && settings_profile_folder(folder, sizeof(folder));
+	if (own != first)
+		return;
+	if (own)
+	{
+		ustrncpy(whose, profile->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
+		whose[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
+	}
+	else
+	{
+		settings_wide_copy(whose, L"ALL PLAYERS", ROW_TEXT_LENGTH);
+	}
+	settings_fact_add(facts, L"PROFILE", whose);
+}
+
 /* the facts of a row of a setting for the panel: the value its default
-shows, and the host's choice online where its help says so (taken out of
-its words) */
+shows, the host's choice online where its help says so (taken out of its
+words), and whose value it is of a setting that is each player's: the
+profile's edited (settings_profile_folder), or every player's (config.toml's) */
 static void settings_facts_of(struct widget_instance *row, struct widget_instance *spinner, wchar_t *words,
 	struct settings_facts *facts)
 {
 	struct settings_slider const *slider = settings_slider_of(row);
 	struct pc_menu_setting *setting = spinner ? settings_setting_of(spinner) : NULL;
+	char const *name = setting && setting->setting ? setting->setting : slider ? settings_slider_setting(slider) : NULL;
 	char text[300];
 	wchar_t shown[ROW_TEXT_LENGTH] = { 0 };
 	double number;
 
 	facts->count = 0;
+	/* (a profile's own first: whose value it is, where the panel has room
+	for one fact) */
+	settings_profile_fact(name, facts, TRUE);
 	if (setting && setting->setting && setting_text(setting->setting, text, sizeof(text), TRUE))
 		settings_wide_copy(shown, settings_widget_text(spinner, setting_value_index(setting, text)), ROW_TEXT_LENGTH);
 	else if (slider && setting_text(settings_slider_setting(slider), text, sizeof(text), TRUE) &&
@@ -3769,6 +3866,7 @@ static void settings_facts_of(struct widget_instance *row, struct widget_instanc
 		settings_fact_add(facts, L"DEFAULT", shown);
 	if (settings_host_choice_cut(words))
 		settings_fact_add(facts, L"ONLINE", L"HOST'S CHOICE");
+	settings_profile_fact(name, facts, FALSE);
 }
 
 /* the width of words in a font, as drawn */
@@ -4031,6 +4129,14 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		short top = stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : picture ? SETTINGS_PANEL_TEXT_UNDER_PICTURE :
 			SETTINGS_PANEL_TEXT_TOP;
 
+		/* (the last facts left out first: the first is kept where it fits) */
+		while (facts && facts_values && row_facts.count > 1 &&
+			settings_panel_height(lines, note_lines, line) + line / 2 + fact_lines * line > room - top)
+		{
+			row_facts.count--;
+			fact_lines = settings_facts_lines(&row_facts, ui_widget_port_text_box_font(facts, &facts_width),
+				facts_width, fact_names, fact_values);
+		}
 		if (!facts || !facts_values ||
 			settings_panel_height(lines, note_lines, line) + line / 2 + fact_lines * line > room - top)
 		{
