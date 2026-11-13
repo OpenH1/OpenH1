@@ -51,6 +51,8 @@ static short browser_offline_count;
 static boolean browser_grouped;
 static boolean browser_listed_favorite[BROWSER_LISTED_MAXIMUM];
 static short browser_sort_column, browser_tab;
+/* (a visit's tab: pc_menu_browser_visit's, none in these tests) */
+static short browser_tab_visit = NONE;
 static boolean browser_sort_descending;
 static struct browser_filters browser_filters = { TRUE, TRUE, TRUE, 0, _browser_tick_any, _browser_type_any };
 static boolean browser_filtering;
