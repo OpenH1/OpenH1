@@ -350,6 +350,23 @@ void menu_spartan_place(
 	spartan->color_index = color_index;
 }
 
+void menu_spartan_place_in_menus(
+	short index,
+	short color_index,
+	real x,
+	real bottom,
+	real height)
+{
+	struct render_camera const *camera = &render.camera;
+	real width = (real)(camera->viewport_bounds.x1 - camera->viewport_bounds.x0);
+	real view_height = (real)(camera->viewport_bounds.y1 - camera->viewport_bounds.y0);
+	real aspect = view_height > 0.0f ? width / view_height : 16.0f / 9.0f;
+
+	/* (the menus' 480 the view's height, their 640 centred in its width) */
+	menu_spartan_place(index, color_index, (x - 320.0f) / (240.0f * aspect), (240.0f - bottom) / 240.0f,
+		height / 240.0f);
+}
+
 void menu_spartan_frame(
 	void)
 {

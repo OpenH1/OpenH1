@@ -31,6 +31,8 @@ NEGATIVE_CONTROLS = {
                     "\t\tmemset(&screens.screens[0], 0, sizeof(screens.screens[0]));\n", "kept"),
     # a list's focus not checked: one naming no item read
     "no-focus-check": ("focus_found = !list->focus;", "focus_found = 1;", "items"),
+    # a <spartan>'s players not checked: five read
+    "players-unchecked": ("spartan->players < 1 || spartan->players > 4", "spartan->players < 1", "spartan"),
     # a table's row source not checked: one the game has not got read
     "no-source-check": ("\t\t\telse\n\t\t\t\tsource_check(reader, table->source);\n", "\n", "table"),
     # a tab with no id read
@@ -121,8 +123,8 @@ def built(fault=None):
     return executable
 
 
-CASES = ["main", "hints", "good", "syntax", "elements", "items", "actions", "bindings", "when", "kept", "browser",
-         "tabs", "table", "panel", "buttons"]
+CASES = ["main", "hints", "good", "syntax", "elements", "spartan", "items", "actions", "bindings", "when",
+         "kept", "browser", "tabs", "table", "panel", "buttons"]
 
 
 @pytest.mark.parametrize("case", CASES)
