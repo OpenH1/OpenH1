@@ -989,6 +989,7 @@ static boolean screen_color_choose(struct widget_instance *widget, char const *w
 		return FALSE;
 	}
 	profile->primary_color_index = (short)color;
+	platform_log("menus: the profile's color %ld chosen", color);
 	event_manager_post_button(0, SCREEN_BUTTON_B);
 	return TRUE;
 }

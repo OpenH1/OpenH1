@@ -65,6 +65,8 @@ centred, and the bar's wide layout reaches the screen's edges up to 16:9.
 | `<space/>` | | Takes the height left over (several spaces share it) |
 | `<buttons>` | | The button bar: each button a prompt, as Choose Mission's footer has them (its key's picture and word, lit while it has the focus; A, a click or a tap presses its key, accept running the chosen item's action), BACK at the left and the rest from the right, past 16:9 at the screen's edges, and on a touchscreen raised above a phone's safe area with the tall layout's footer (`foot`) |
 | `<button>` | `key` (`accept`, `back`, `x`, `y`), `label` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word |
+| `<colors>` | `id` | The player profile's colors, one item each, under one another in its name and its color (white while focused). It is the screen's list (a screen has one `<list>`, `<cards>` or `<colors>`). The profile's own color is focused first. A chooses the color for the profile being edited, as the PC version's color picker did, and goes back |
+| `<spartan>` | `x`, `y`, `width`, `height`, `color` (`focus`, `profile`), `players` (1 to 4) | The Spartan, which the game draws in the menus' scene (port/linux/game/menu_spartan.c) standing in this box of the 640 by 480 canvas, its feet at the box's foot, as tall as the box. It is placed before the menus' camera each frame, so it stands beside the menu at every aspect ratio. It takes no room in the layout. `color="focus"` follows the focused `<colors>` item; `profile` (the default) is the color of the profile being edited, else the player's own, live as it changes. `players` puts that many side by side, each its local player's profile's color. Where there is no Spartan (no multiplayer map exported one, a refused file, `display.menu_pictures` off, a random color, no profile), the box shows the original picture of the color (ui.map's `player_color_marine_large`, frame 18 for random). It is gone as soon as its screen closes |
 
 The reader checks each file whole. A file is refused if it has any of these
 problems: bad XML; an element where it may not be; an attribute an element
@@ -182,6 +184,15 @@ studio's reload (`debug.menu_studio`, F7) reads them again.
 5. If it replaces a screen that `tools/menu_parity.py` compares, add the
    screen to `HAND_WRITTEN` there. The classic engine still draws the old
    screen; the new engine's side must have drawn the hand-written blocks.
+
+## The profile color screen
+
+`screens/profile_color.xml` takes the place of Settings' COLOR screen
+(`color_edit/color_select_screen`): PROFILE COLOR in the band at the top,
+the 18 colors at the left (`<colors>`), and the Spartan beside them in the
+focused color (`<spartan color="focus">`), with its rifle and its idle. A
+chooses the color and goes back; B goes back without one. The classic engine
+keeps its own screen and the original pictures.
 
 ## The main menu: four doors
 
