@@ -174,7 +174,9 @@ int main(int argc, char **argv) {
     assert(tile);
     assert(tile_top == LOADING_ART_CAPTION_TOP * 2160 / 480);
     assert(tile_width <= 3840 && tile_left == (3840 - tile_width) / 2);
-    assert(tile_width >= (unsigned int)width * 2160 / 3840 && tile_width <= (unsigned int)width * 2160 / 3840 + 1);
+    /* (the line with LOADING_ART_CAPTION_MARGIN's lines at each side) */
+    assert(tile_width >= (unsigned int)(width + 4 * LOADING_PRESENTATION_CAPTION_SCALE) * 2160 / 3840 &&
+        tile_width <= (unsigned int)(width + 4 * LOADING_PRESENTATION_CAPTION_SCALE) * 2160 / 3840 + 1);
     for (i = 0; i < tile_width * tile_height; i++) {
         const uint8_t *p = tile + i * 4;
         unsigned int row = i / tile_width;
@@ -193,6 +195,17 @@ int main(int argc, char **argv) {
     /* (lit by the sweep as the words are: bright as its band crosses them,
     dim once it has passed) */
     blue_lit = letters_blue(&art, tile, tile_width, tile_height, &lit);
+    /* (and apart from the light behind them: the frame about the letters,
+    in their shadow, well darker than they are) */
+    {
+        double about = 0.0; unsigned int count = 0;
+        const uint8_t *shadow = art.caption_coverage + (size_t)tile_width * art.caption_shown_height;
+        for (i = 0; i < tile_width * tile_height; i++)
+            if (!art.caption_coverage[i] && shadow[i] > 200) { about += tile[i * 4 + 2]; count++; }
+        assert(count > 1000);
+        fprintf(stderr, "blue about the letters: %.1f\n", about / count);
+        assert(blue_lit > about / count + 40.0);
+    }
     /* (as bright as the words where the band is: the brightest of each,
     the words' in the frame, the caption's at the screen's pixels) */
     for (i = 0; i < tile_width * tile_height; i++)

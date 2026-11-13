@@ -275,16 +275,18 @@ int main(void) {
         pixels[i*4+1] == LOADING_ART_CAPTION_GREEN && pixels[i*4+2] == LOADING_ART_CAPTION_BLUE;
     assert(!lit);
     /* (64 by 16 at eight times, shown at the 480 rows: 8 by 2 of them,
-    under the words, in the middle, lit as the frame has them there) */
+    with LOADING_ART_CAPTION_MARGIN's 2 at each side, under the words, in
+    the middle; its letters lit as the frame has them there) */
     tile = loading_art_caption_shown(art, pixels, 640, 480, &left, &top, &width, &height);
-    assert(tile && width == 8 && height == 2 && left == 316 && top == LOADING_ART_CAPTION_TOP);
-    for (i = 0; i < 16; i++)
-        under += tile[i * 4 + 2] == pixels[((top + i / 8) * 640 + left + i % 8) * 4 + 2] &&
-            tile[i * 4] != LOADING_ART_CAPTION_RED;
+    assert(tile && width == 12 && height == 2 && left == 314 && top == LOADING_ART_CAPTION_TOP);
+    for (i = 0; i < 24; i++)
+        if (i % 12 >= 2 && i % 12 < 10)
+            under += tile[i * 4 + 2] == pixels[((top + i / 12) * 640 + left + i % 12) * 4 + 2] &&
+                tile[i * 4] != LOADING_ART_CAPTION_RED;
     assert(under == 16);
     /* (and twice as large on a screen of twice the rows) */
     tile = loading_art_caption_shown(art, pixels, 1280, 960, &left, &top, &width, &height);
-    assert(tile && width == 16 && height == 4 && top == LOADING_ART_CAPTION_TOP * 2);
+    assert(tile && width == 24 && height == 4 && top == LOADING_ART_CAPTION_TOP * 2);
     loading_art_caption(art, NULL, 0, 0);
     pixels = loading_art_render(art, &frame);
     assert(!loading_art_caption_shown(art, pixels, 640, 480, &left, &top, &width, &height));
