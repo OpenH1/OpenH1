@@ -358,7 +358,7 @@ static void case_friends_panel(void)
 	CHECK(panel.row_count == 2 && panel.rows[0].kind == _friends_panel_offline &&
 		panel.rows[1].kind == _friends_panel_add, "none online: %d rows", panel.row_count);
 	panel_of(away, 0, 6, TRUE, TRUE, &panel);
-	CHECK(!strcmp(panel.message, "Add friends to see them here") && panel.row_count == 1 &&
+	CHECK(!strcmp(panel.message, "No friends yet") && panel.row_count == 1 &&
 		panel.rows[0].kind == _friends_panel_add, "no friends: %s", panel.message);
 	panel_of(away, 0, 6, FALSE, TRUE, &panel);
 	CHECK(!strcmp(panel.message, "No player profile yet") && !panel.row_count, "no profile");

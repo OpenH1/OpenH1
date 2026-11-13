@@ -193,8 +193,8 @@ level with its top: a header, FRIENDS and the count online ("2 ONLINE", or
 are doing in green ("Co-op", "In a game", "In menu", "In a party",
 "Hosting", "Invites you"). The friends offline are folded into one dim row
 ("3 OFFLINE"), and friends online past its six rows into "+N MORE". With no
-friend online it says why ("No friends online", "Add friends to see them
-here", "Internet play is off", "No player profile yet") and offers ADD A
+friend online it says why ("No friends online", "No friends yet",
+"Internet play is off", "No player profile yet") and offers ADD A
 FRIEND.
 
 - The header, the folded rows and ADD A FRIEND open the Friends screen

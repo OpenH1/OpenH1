@@ -1197,7 +1197,7 @@ static void friends_panel_fill(struct p2p_friend const *entries, short count, st
 	if (!online_count)
 	{
 		snprintf(panel->message, sizeof(panel->message), "%s", !state->identity ? "No player profile yet" :
-			!online ? "Internet play is off" : !state->friends ? "Add friends to see them here" :
+			!online ? "Internet play is off" : !state->friends ? "No friends yet" :
 			"No friends online");
 	}
 	/* (the friends online, less a row for what follows them where they do

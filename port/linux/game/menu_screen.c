@@ -523,7 +523,8 @@ static void screen_friends_build(struct screen_open *open)
 	if (!friends->list)
 		return;
 	friends->header = ui_widget_port_add_child(friends->list, friends_tags.header, NULL);
-	friends->message = ui_widget_port_add_child(friends->list, friends_tags.message, NULL);
+	/* (the line a child of the screen's, not the list's: words, not a row) */
+	friends->message = screen_widget_add(open->widget, friends_tags.message, 0, 0);
 	for (index = 0; index < FRIENDS_PANEL_ROWS; index++)
 		friends->rows[index] = ui_widget_port_add_child(friends->list, friends_tags.row, NULL);
 	if (friends->header)
@@ -730,37 +731,44 @@ static boolean screen_friends_move(struct screen_open *open, struct event_record
 	return TRUE;
 }
 
-/* a block's text colour in the panel: a row's by what it is (a friend's
-name light, the folded rows dim), white while focused; FALSE for one not
-the panel's */
+/* a block's text colour in the panel, always its own (the game would draw
+the words of its list's focused child lit while the list has not the
+screen's focus): the header's and a row's white while focused, else the
+header blue, a friend's name light, the folded rows dim; the count and the
+notes green. FALSE for a widget not the panel's */
+static void screen_friends_rgb(real_argb_color *color, unsigned long rgb)
+{
+	color->red = (real)((rgb >> 16) & 0xFF) / 255.0f;
+	color->green = (real)((rgb >> 8) & 0xFF) / 255.0f;
+	color->blue = (real)(rgb & 0xFF) / 255.0f;
+}
+
 static boolean screen_friends_text_color(struct widget_instance const *widget, real_argb_color *color)
 {
 	struct screen_friends const *friends = screen_friends.list ? &screen_friends : NULL;
+	long tag = widget->definition_tag_index;
 	long row;
-	boolean focused;
 
-	if (!friends || (widget->definition_tag_index != friends_tags.row &&
-		widget->definition_tag_index != friends_tags.header))
+	if (!friends || (tag != friends_tags.row && tag != friends_tags.header && tag != friends_tags.count &&
+		tag != friends_tags.note))
 	{
 		return FALSE;
 	}
-	focused = widget->parent == friends->list && friends->list->focused_child == widget && friends->list->parent &&
-		friends->list->parent->focused_child == friends->list;
-	if (focused)
+	if (tag == friends_tags.count || tag == friends_tags.note)
 	{
-		color->red = color->green = color->blue = 1.0f;
+		screen_friends_rgb(color, 0x5ED38C);
+		return TRUE;
+	}
+	if (widget->parent == friends->list && friends->list->focused_child == widget && friends->list->parent &&
+		friends->list->parent->focused_child == friends->list)
+	{
+		screen_friends_rgb(color, 0xFFFFFF);
 		return TRUE;
 	}
 	row = screen_friends_row(friends, widget);
-	if (row == NONE || friends->shown.rows[row].kind == _friends_panel_friend ||
-		friends->shown.rows[row].kind == _friends_panel_add)
-	{
-		return FALSE;
-	}
-	/* (the folded rows: the hints' blue) */
-	color->red = 0x6F / 255.0f;
-	color->green = 0x9C / 255.0f;
-	color->blue = 0xD0 / 255.0f;
+	screen_friends_rgb(color, tag == friends_tags.header ? 0x8DB6E6 : row == NONE ||
+		friends->shown.rows[row].kind == _friends_panel_friend ? 0xE0ECFA :
+		friends->shown.rows[row].kind == _friends_panel_add ? 0x8DB6E6 : 0x6F9CD0);
 	return TRUE;
 }
 

@@ -67,8 +67,8 @@ screen file's, set on each widget as the screen is made. -->
 	</widget>
 	<widget name="screens/friends_count" type="text" width="156" height="24" font="ui\small_ui" color="#FF5ED38C" align="right" text_y="4" text_flags="no_focus_test"/>
 	<widget name="screens/friends_line" top="6" width="164" height="20" bitmap="main_menu/parts/section_164"/>
-	<!-- the line under it when no friend is online ("No friends online") -->
-	<widget name="screens/friends_message" type="text" width="164" height="18" font="ui\small_ui" color="#FF6F9CD0" text_x="8" text_flags="no_focus_test"/>
+	<!-- the line under it when no friend is online ("No friends online"): the screen's, moved as the list is -->
+	<widget name="screens/friends_message" type="text" width="164" wide="106 0" height="18" font="ui\small_ui" color="#FF6F9CD0" text_x="8" text_flags="no_focus_test"/>
 	<!-- a row: a friend's name and, at its right, what they are doing (green,
 	as the Friends screen's friends online); or a folded row (2 OFFLINE, +3
 	MORE, ADD A FRIEND). Its frame lit while focused; A, a click or a tap
