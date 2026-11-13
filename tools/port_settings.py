@@ -8684,12 +8684,23 @@ def model_files() -> dict:
     return {MODEL_FILE: lines + ["</model>", ""]}
 
 
+def _solo_new_profile() -> list:
+    """the new engine's SOLO with no profile (port/linux/game/menu_screen.c's "open solo"): the profile's name
+    asked, as the main menu's CAMPAIGN asks it ("new game if no plyr profiles"), then the profile made ("new campaign
+    decision") and Choose Mission opened at once, where SOLO goes with a profile. The classic engine's CAMPAIGN goes on
+    to the first mission's difficulties instead (main_menu/new_campaign_creating_profile)"""
+    return _widget(f"{CAMPAIGN}/solo_creating_profile",
+                   [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child no_history"),
+                    ("auto_close", 1)],
+                   [f'<on event="deleted" run="new campaign decision" open="{CAMPAIGN}/mission_screen"/>'])
+
+
 def campaign_files() -> dict:
     head = ['<?xml version="1.0" encoding="UTF-8"?>',
             "<!-- The campaign's screens: the Campaign menu, Choose Mission and Choose Difficulty "
             "(tools/port_settings.py) -->", "<menus>"]
     return {CAMPAIGN.replace("/", ".") + ".xml": head + _campaign_menu() + _missions() + _difficulties() +
-            ["</menus>", ""]}
+            _solo_new_profile() + ["</menus>", ""]}
 
 
 def multiplayer_files() -> dict:

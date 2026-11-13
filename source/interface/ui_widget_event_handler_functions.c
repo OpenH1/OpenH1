@@ -6321,7 +6321,11 @@ boolean ui_widget_port_game_variant_set(
 }
 
 /* the gametype editor's OK (as playlist_profile_save_changes, which fails
-when nothing changed, after closing the screen: the menus show a failure) */
+when nothing changed, after closing the screen: the menus show a failure).
+A save closes the screen too: the Xbox's saving screen followed it, and the
+screen came back after it only to close itself, no longer editing ("close
+if not editing profile"); the save takes a few hundredths of a second here
+(port/linux/game/saving_screens.c) */
 boolean ui_widget_port_gametype_save(
 	struct widget_instance *widget,
 	boolean *widget_deleted)
@@ -6340,6 +6344,10 @@ boolean ui_widget_port_gametype_save(
 		player_ui_prompt_user_to_rename_edit_profile();
 		return FALSE;
 	}
-	return player_ui_save_profile();
+	if (!player_ui_save_profile())
+		return FALSE;
+	ui_widget_delete(widget_instance_get_topmost_parent(widget));
+	*widget_deleted = TRUE;
+	return TRUE;
 }
 
