@@ -199,6 +199,10 @@ shape (the menus' pictures', 140 by 114: menu_pictures.h) */
 #define PANEL_PICTURE_WIDTH 140
 #define PANEL_PICTURE_HEIGHT 114
 #define PANEL_PICTURE_GAP 6
+/* a tall screen's own <spartan>, a lineup over its table's lanes: its most
+height, and the gap under it */
+#define TALL_LINEUP_MOST 160
+#define TALL_LINEUP_GAP 4
 /* (a <spartan>'s line: the gap before and after it) */
 #define PANEL_SPARTAN_GAP 6
 #define PANEL_SPARTAN_FEET 25
@@ -422,6 +426,11 @@ struct screen_tall
 	short panel_shown;
 	struct widget_instance *panel_widget;
 	struct widget_instance *panel_focus_before;
+	/* its own <spartan>, a lineup over the table's lanes: the widget its
+	Spartans are drawn at, its height, its screen's <spartan> (NONE: none) */
+	struct widget_instance *lineup;
+	short lineup_height;
+	long lineup_spartan;
 	/* the bar's prompts */
 	struct widget_instance *bar;
 	struct screen_prompt prompts[TALL_MAXIMUM_PROMPTS];
@@ -889,7 +898,8 @@ static short tall_rows_bottom(struct screen_tall const *tall)
 	return (short)(tall->chat ? bottom - tall->chat_height - TALL_CHAT_GAP : bottom);
 }
 
-/* a table's lanes: their top, each one's width */
+/* a table's lanes: their top (under the lineup, if the screen has one),
+each one's width */
 static short tall_lanes_base(struct screen_tall const *tall)
 {
 	(void)tall;
@@ -898,7 +908,7 @@ static short tall_lanes_base(struct screen_tall const *tall)
 
 static short tall_lanes_top(struct screen_tall const *tall)
 {
-	return tall_lanes_base(tall);
+	return (short)(tall_lanes_base(tall) + (tall->lineup_height ? tall->lineup_height + TALL_LINEUP_GAP : 0));
 }
 
 static short tall_lane_width(short table_width, short lanes)
@@ -1785,6 +1795,7 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 	open->header = NULL;
 	open->spartan_count = 0;
 	tall->panel_shown = NONE;
+	tall->lineup_spartan = NONE;
 	/* (the tall layout's background, its band's and footer's lines, where
 	the screen it takes the place of has none of its own: Select Profile's,
 	whose generated screen's was its inner screen's) */
@@ -1813,6 +1824,20 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 		tall->chat_height = (short)(2 * TALL_CHAT_INSET + MIN(block->lines, TALL_MAXIMUM_CHAT_LINES) *
 			(ui_widget_port_touch_menus() ? TOUCH_CHAT_LINE : TALL_CHAT_LINE) +
 			(ui_widget_port_touch_menus() ? TOUCH_CHAT_INPUT : TALL_CHAT_INPUT) + 2);
+	}
+	/* (its own <spartan> first found, over a table of lanes: the lanes begin
+	under it) */
+	for (index = 0; index < screen->block_count; index++)
+	{
+		struct menu_screen_block const *block = &screen->blocks[index];
+
+		if (block->kind == MENU_SCREEN_SPARTAN && block->parent < 0 && menu_screen_when(block->when))
+		{
+			tall->lineup_height = (short)MIN(ui_widget_port_touch_menus() ? block->touch_box_height : block->box_height,
+				TALL_LINEUP_MOST);
+		}
+		if (block->kind == MENU_SCREEN_TABLE && block->lanes < 2)
+			tall->lineup_height = 0;
 	}
 	for (index = 0; index < screen->block_count; index++)
 	{
@@ -1847,6 +1872,22 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 		case MENU_SCREEN_PANEL:
 			tall_build_panel(tall, open, screen, index);
 			break;
+		case MENU_SCREEN_SPARTAN:
+		{
+			/* (the lineup: as wide as the table, its Spartans drawn where its
+			widget is, under the body) */
+			boolean touch = ui_widget_port_touch_menus() != 0;
+			short table_width = touch ? TOUCH_TABLE_WIDTH : TALL_TABLE_WIDTH;
+
+			if (!tall->lineup_height || !menu_screen_when(block->when))
+				break;
+			tall->lineup = tall_add(tall, tall->owner, screens.spartan_tag, TALL_TABLE_X, tall_lanes_base(tall), -106,
+				TALL_TABLE_GROW, table_width, tall->lineup_height);
+			visible_set_safe(tall->lineup, FALSE);
+			if (tall->lineup && screen_spartan_add(open, block, tall->lineup))
+				tall->lineup_spartan = open->spartan_count - 1;
+			break;
+		}
 		}
 	}
 	/* (the chat's line typed after the panel's, the table's button, the bar
@@ -2612,7 +2653,10 @@ static void tall_panel_frame(struct screen_tall *tall, struct screen_open *open)
 		room = (short)(buttons_top - PANEL_BUTTON_GAP - (panel->lines_bottom - gone));
 	}
 	for (index = 0; index < open->spartan_count; index++)
-		open->spartans[index].shown = FALSE;
+	{
+		if (index != tall->lineup_spartan)
+			open->spartans[index].shown = FALSE;
+	}
 	for (index = 0; index < tall->line_count; index++)
 	{
 		struct screen_line *line = &tall->lines[index];
@@ -2903,6 +2947,19 @@ static void tall_frame(struct screen_open *open)
 				block->box_height = picture->height;
 			}
 		}
+	}
+	/* (the lineup: across the table as wide as it is now, its feet at its
+	foot) */
+	if (tall->lineup_spartan != NONE && tall->lineup)
+	{
+		struct screen_box *lineup = tall_box_of(tall, tall->lineup);
+		struct menu_screen_block *block = &open->spartans[tall->lineup_spartan].block;
+
+		block->box_x = lineup->at_x;
+		block->box_y = lineup->at_y;
+		block->box_width = tall_width(tall, tall->lineup);
+		block->box_height = tall->lineup_height;
+		open->spartans[tall->lineup_spartan].shown = TRUE;
 	}
 	if (open->spartan_count)
 		screen_spartan_frame(open, NONE);

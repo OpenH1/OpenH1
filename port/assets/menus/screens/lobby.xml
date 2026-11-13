@@ -3,7 +3,10 @@
 machine alone's, in place of the generated lobby (main_menu/
 multiplayer_type_select/lobby/lobby_screen) in the new engine. The tall
 layout: LOBBY in the band, the game's name, where it is and its players at
-its right; the players in a lane for each team (RED and BLUE, each its count; in a game without teams
+its right; a lineup of the players' Spartans over them (four of each team,
+or the first eight; each in the color the game gives them; on the computer:
+a phone's lanes keep their rows); the players in
+a lane for each team (RED and BLUE, each its count; in a game without teams
 one list, PLAYERS, down both), each a row of its dot, name and tag (HOST,
 BOT and the bots' skill, PARTY, GOAT H1, OPENCE), this machine's own
 framed. Beside them a panel, one of three: the next game (its map's
@@ -27,6 +30,7 @@ its line on a controller (the on-screen keyboard), a tap on it on a
 touchscreen; the host's LOBBY TEXT CHAT has it on or off for everyone. -->
 <screen name="lobby" start="lobby start">
 	<header title="{lobby.title}" detail="{lobby.subtitle}"/>
+	<spartan height="80" color="lobby.lineup" when="pointer"/>
 	<table source="lobby.players" lanes="2" do="lobby card" left="lobby team red" right="lobby team blue">
 		<lane label="{lobby.red}" detail="{lobby.red.count}" tone="lobby.red.tone"/>
 		<lane label="{lobby.blue}" detail="{lobby.blue.count}" tone="lobby.blue.tone"/>

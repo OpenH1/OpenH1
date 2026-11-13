@@ -1343,6 +1343,28 @@ int menu_screen_read(char const *file, unsigned char const *data, unsigned long 
 		reader_problem(&reader, "the file has no <screen>", NULL);
 	if (!reader.failed && !screen->block_count)
 		reader_problem(&reader, "the <screen> has nothing in it", NULL);
+	/* (a tall screen's <spartan> of its own: a lineup over its table's
+	lanes) */
+	if (!reader.failed && kind_count(screen, MENU_SCREEN_TABLE))
+	{
+		int index, lanes = 1;
+
+		for (index = 0; index < screen->block_count; index++)
+		{
+			if (screen->blocks[index].kind == MENU_SCREEN_TABLE)
+				lanes = screen->blocks[index].lanes;
+		}
+		for (index = 0; index < screen->block_count && !reader.failed; index++)
+		{
+			if (screen->blocks[index].kind == MENU_SCREEN_SPARTAN && screen->blocks[index].parent < 0 && lanes < 2)
+			{
+				char where[32];
+
+				snprintf(where, sizeof(where), "%ld", screen->blocks[index].line);
+				reader_problem(&reader, "a tall screen's own <spartan> (line %s) stands over a table of lanes", where);
+			}
+		}
+	}
 	XML_ParserFree(reader.parser);
 	if (reader.failed)
 	{

@@ -86,6 +86,9 @@ NEGATIVE_CONTROLS = {
     # a fifth <panel> taken
     "panels-uncounted": ("kind_count(screen, MENU_SCREEN_PANEL) >= MENU_SCREEN_MAXIMUM_PANELS",
                          "kind_count(screen, MENU_SCREEN_PANEL) > 99", "panels"),
+    # a lineup taken over a table without lanes
+    "lineup-unlaned": ("screen->blocks[index].parent < 0 && lanes < 2)", "screen->blocks[index].parent < 0 && lanes < 0)",
+                       "panels"),
     # a box's align not checked: "bottom" taken
     "box-align-unchecked": ("values[3] && strcmp(values[3], \"top\") && strcmp(values[3], \"middle\")", "0", "box"),
 }

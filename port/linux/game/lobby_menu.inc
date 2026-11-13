@@ -1110,6 +1110,9 @@ enum
 
 /* how long a card's or the invite's words of what was done are shown */
 #define LOBBY_SAID_TIME 5000
+/* a lineup's places: a team's, a game without teams' */
+#define LOBBY_LINEUP_TEAM 4
+#define LOBBY_LINEUP_ALL 8
 /* ui.map's mp_map_grafix's picture of a map it has none of (custom_edition_maps.c's UNKNOWN_LEVEL_FRAME) */
 #define LOBBY_UNKNOWN_MAP_FRAME 13
 
@@ -1213,6 +1216,42 @@ static void lobby_color_word(struct lobby_board_model const *model, struct netwo
 		snprintf(word, size, "%d", (int)player->primary_color_index);
 	else
 		snprintf(word, size, "random");
+}
+
+/* the lineup over the players (lobby.lineup): a team game's four of each
+team, red's places then blue's (an empty place "-"), else the first eight;
+each the host first, then as they joined (the game's record's order) */
+static void lobby_lineup(struct lobby_board_model const *model, char *value, unsigned long size)
+{
+	short team, teams = model->teams ? 2 : 1;
+	unsigned long used = 0;
+
+	value[0] = 0;
+	for (team = 0; team < teams; team++)
+	{
+		short places = model->teams ? LOBBY_LINEUP_TEAM : LOBBY_LINEUP_ALL, taken = 0, pass, index;
+
+		/* (the host's first, then the rest) */
+		for (pass = 0; pass < 2; pass++)
+		{
+			for (index = 0; index < model->count && taken < places; index++)
+			{
+				struct lobby_board_entry const *entry = &model->entries[index];
+				char word[16];
+
+				if ((pass == 0) != (entry->host != FALSE) || (model->teams && (entry->team == 1 ? 1 : 0) != team))
+					continue;
+				lobby_color_word(model, model->players[index], word, sizeof(word));
+				used += (unsigned long)snprintf(value + used, used < size ? size - used : 0, "%s%s", used ? " " : "",
+					word);
+				taken++;
+			}
+		}
+		for (; model->teams && taken < places; taken++)
+			used += (unsigned long)snprintf(value + used, used < size ? size - used : 0, "%s-", used ? " " : "");
+	}
+	if (used >= size && size)
+		value[size - 1] = 0;
 }
 
 /* a map's frame of ui.map's mp_map_grafix: an Xbox map's, else its display
@@ -1802,7 +1841,7 @@ int pc_menu_lobby_value(char const *name, char *value, unsigned long size)
 		return lobby_screen_words(text, value, size);
 	}
 	/* (the next game's map's picture, its gametype's words, its map and
-	limits on a line) */
+	limits on a line; the lineup over the players) */
 	else if (!strcmp(name, "lobby.map.picture"))
 		usnprintf(text, NUMBEROF(text) - 1, L"%d", (int)lobby_map_frame(model->game->map.name));
 	else if (!strcmp(name, "lobby.description"))
@@ -1814,7 +1853,11 @@ int pc_menu_lobby_value(char const *name, char *value, unsigned long size)
 		else
 			ustrncpy(text, model->map, NUMBEROF(text) - 1);
 	}
-
+	else if (!strcmp(name, "lobby.lineup"))
+	{
+		lobby_lineup(model, value, size);
+		return value[0] != 0;
+	}
 	else if (!strcmp(name, "lobby.gametype"))
 		return lobby_screen_words(model->gametype, value, size);
 	else if (!strcmp(name, "lobby.map"))

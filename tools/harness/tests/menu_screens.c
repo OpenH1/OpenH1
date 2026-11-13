@@ -604,7 +604,8 @@ int main(int argc, char **argv)
 	}
 	else if (!strcmp(name, "panels"))
 	{
-		/* (a screen's panels, up to four, each its if) */
+		/* (a screen's panels, up to four, each its if; a lineup, its own
+		<spartan>, over a table of lanes alone) */
 		CHECK(read_text("<screen name=\"t\"><panel if=\"test.flag\"><heading text=\"A\"/></panel>"
 			"<panel if=\"test.value\"><heading text=\"B\"/></panel><panel><heading text=\"C\"/></panel>"
 			"<panel><heading text=\"D\"/></panel></screen>", &screen, problem), "four panels refused: %s", problem);
@@ -616,6 +617,12 @@ int main(int argc, char **argv)
 			"</panel></screen>", "at most 4 <panel>s");
 		refused("<screen name=\"t\"><panel if=\"nothing.here\"><heading text=\"A\"/></panel></screen>",
 			"no binding {nothing.here}");
+		CHECK(read_text("<screen name=\"t\"><spartan height=\"88\" color=\"test.value\"/><table source=\"test.rows\" "
+			"lanes=\"2\"><lane label=\"A\"/><lane label=\"B\"/>" COLUMN "</table></screen>", &screen, problem),
+			"a lineup over lanes refused: %s", problem);
+		menu_screen_free(&screen);
+		refused("<screen name=\"t\"><spartan height=\"88\" color=\"test.value\"/>" "<table source=\"test.rows\">"
+			COLUMN "</table></screen>", "stands over a table of lanes");
 	}
 	else if (!strcmp(name, "lanes"))
 	{
@@ -742,12 +749,13 @@ int main(int argc, char **argv)
 		CHECK(kind_first(&screen, MENU_SCREEN_CHAT) >= 0 &&
 			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_CHAT)].source, "lobby.chat"), "the lobby's chat");
 		/* (its panels: the next game's (its map's picture), a player's card
-		(their Spartan) and the friends' invite, each its if) */
+		(their Spartan) and the friends' invite, each its if; the lineup, its
+		own Spartan) */
 		CHECK(kind_total(&screen, MENU_SCREEN_PANEL, -2) == 3 && kind_total(&screen, MENU_SCREEN_PICTURE, -2) == 1,
 			"the panels and the picture");
-		CHECK(kind_total(&screen, MENU_SCREEN_SPARTAN, -2) == 1 &&
-			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_SPARTAN)].value, "lobby.card.color"),
-			"the card's Spartan");
+		CHECK(kind_total(&screen, MENU_SCREEN_SPARTAN, -1) == 1 && kind_total(&screen, MENU_SCREEN_SPARTAN, -2) == 2 &&
+			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_SPARTAN)].value, "lobby.lineup"),
+			"the lineup and the card's Spartan");
 		menu_screen_free(&screen);
 	}
 	else if (!strcmp(name, "buttons"))

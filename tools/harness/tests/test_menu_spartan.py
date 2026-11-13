@@ -13,7 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, function, mutated, read, run  # noqa: E402
 
-CASES = ["random", "cycle", "offset", "fixed", "fallbacks"]
+CASES = ["random", "cycle", "offset", "fixed", "fallbacks", "lineup"]
 
 SCREEN = "port/linux/game/menu_screen.c"
 SPARTAN = "port/linux/game/menu_spartan.c"
@@ -21,6 +21,9 @@ HEADER = "port/linux/game/menu_spartan.h"
 
 # a fault in the code, the file it is in, and the case that must catch it
 NEGATIVE_CONTROLS = {
+    # a lineup's places all at the box's middle
+    "places-stacked": (SCREEN, "(real)block->box_width * ((real)place + 0.5f) / (real)places",
+                       "(real)block->box_width * 0.5f", "lineup"),
     # random given the original picture, as before
     "random-pictured": (SCREEN, "(color != MENU_SPARTAN_RANDOM && !team && (color < 0 || color >= SCREEN_COLOR_COUNT))",
                         "(color < 0 || color >= SCREEN_COLOR_COUNT)", "random"),
@@ -42,7 +45,7 @@ def generated(screen, spartan):
     enum = header[header.index("enum\n{"):header.index("};", header.index("enum\n{")) + 2]
     return (("menu_spartan_types.inc", enum + "\n" +
              defines(screen, "SCREEN_COLOR_COUNT", "SCREEN_SPARTAN_RANDOM_FRAME", "SCREEN_SPARTAN_NONE",
-                     "SCREEN_SPARTAN_NO_PROFILE") +
+                     "SCREEN_SPARTAN_NO_PROFILE", "SCREEN_SPARTAN_EMPTY") +
              defines(spartan, "SPARTAN_RANDOM_HOLD", "SPARTAN_RANDOM_BLEND")),
             ("under_test.inc", function(screen, "screen_spartan_frame") + "\n\n" +
              function(spartan, "menu_spartan_color") + "\n"))

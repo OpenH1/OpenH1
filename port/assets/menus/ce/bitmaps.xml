@@ -871,6 +871,20 @@
 	<bitmap name="main_menu/parts/panel_364x192">
 		<frame png="ce/port/main_menu/parts/panel_364x192__0.png" width="364" height="192"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/team_panel_196x278">
+		<frame png="ce/port/main_menu/parts/team_panel_196x278__0.png" width="196" height="278"/>
+		<frame png="ce/port/main_menu/parts/team_panel_196x278__1.png" width="196" height="278"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/panel_404x278">
+		<frame png="ce/port/main_menu/parts/panel_404x278__0.png" width="404" height="278"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/team_panel_196x161">
+		<frame png="ce/port/main_menu/parts/team_panel_196x161__0.png" width="196" height="161"/>
+		<frame png="ce/port/main_menu/parts/team_panel_196x161__1.png" width="196" height="161"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/panel_404x161">
+		<frame png="ce/port/main_menu/parts/panel_404x161__0.png" width="404" height="161"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/item_148x22">
 		<frame png="ce/port/main_menu/parts/item_148x22__0.png" width="148" height="22"/>
 		<frame png="ce/port/main_menu/parts/item_148x22__1.png" width="148" height="22"/>
