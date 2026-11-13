@@ -1122,7 +1122,7 @@ static void spartan_link_draw_row(
 		PIN(width / (spartan_link_widths[SPARTAN_LINK_FEEDS - 1] * scale), 0.75f, 1.0f);
 	real shield = 0.0f, health = 0.0f;
 	real bar_height = MAX(2.0f * scale, pixel);
-	real health_height = MAX(1.25f * scale, pixel);
+	real health_height = MAX(1.5f * scale, pixel);
 	real name_width, distance_width, bar_x0, bar_x1, bar_y, health_y;
 	wchar_t name[16];
 	wchar_t distance[16];
@@ -1181,7 +1181,7 @@ static void spartan_link_draw_row(
 	bar_x0 = bounds->x0 + margin * 2.0f + name_width;
 	bar_x1 = bounds->x1 - margin * 2.0f - distance_width;
 	bar_y = top + SPARTAN_LINK_ROW * scale * 0.30f;
-	health_y = bar_y + bar_height + MAX(0.75f * scale, pixel);
+	health_y = bar_y + bar_height + MAX(1.25f * scale, 2.0f * pixel);
 	if (bar_x1 - bar_x0 >= 6.0f * scale)
 	{
 		pixel32 health_color = object_try_and_get_and_verify_type(feed->unit_index, _object_mask_unit) ?
@@ -1193,7 +1193,7 @@ static void spartan_link_draw_row(
 		spartan_link_rectangle(white, bar_x0, bar_y, bar_x0 + (bar_x1 - bar_x0) * shield, bar_y + bar_height,
 			spartan_link_color(0.95f, 1.0f));
 		spartan_link_rectangle(white, bar_x0, health_y, bar_x1, health_y + health_height,
-			(health_color & 0x00FFFFFFUL) | 0x50000000UL);
+			(health_color & 0x00FFFFFFUL) | 0x40000000UL);
 		spartan_link_rectangle(white, bar_x0, health_y, bar_x0 + (bar_x1 - bar_x0) * health, health_y + health_height,
 			health_color);
 	}
