@@ -31,6 +31,7 @@ kept on the item of the same id.
 #include "halo_menus.h"
 #include "menu_engine.h"
 #include "menu_screens.h"
+#include "menu_table.h"
 #include "menu_widget.h"
 
 #include <stdio.h>
@@ -53,6 +54,14 @@ long ui_widget_port_text_box_font(struct widget_instance *widget, short *width);
 short ui_widget_port_past_move(void);
 boolean ui_widget_port_pointer_focused(void);
 void event_manager_post_button(short controller_index, short button_index);
+short ui_widget_port_wide_scale(short value, short extra);
+short ui_widget_port_past_scale(short value, short past);
+short ui_widget_port_wide_extra(void);
+short ui_widget_port_past_extra(void);
+short ui_widget_port_foot_lift(void);
+int ui_widget_port_touch_menus(void);
+boolean ui_widget_port_hover_focused(void);
+boolean ui_widget_port_take_click(short *x, short *y);
 
 /* ---------- constants */
 
@@ -148,7 +157,17 @@ struct screen_action
 	char const *then;
 	char const *open;
 	char const *otherwise;
+	/* (C's own, run in place of the rest: an action of a hand-written
+	screen's blocks, its name given, and the row of a table it is for,
+	screen_action_row) */
+	boolean (*call)(struct widget_instance *widget, struct event_record *event, char const *name, boolean *deleted);
 };
+
+static boolean screen_call_search(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted);
+/* the row of the table an action is run for (0 up, on the table), NONE for
+none (a key's, a button's) */
+static short screen_action_row = NONE;
 
 static struct screen_action const screen_actions[] =
 {
@@ -178,12 +197,16 @@ static struct screen_action const screen_actions[] =
 	{ "open training", NULL, NULL, NULL, NULL, "main_menu/training/training_screen", NULL },
 	/* (the quit question, as QUIT and B on the main menu open it) */
 	{ "quit", NULL, NULL, NULL, NULL, "main_menu/quit_select/quit_screen", NULL },
+	/* (a screen's searches, <search>: the next one typed into, and every
+	one's words cleared) */
+	{ "search next", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_search },
+	{ "search clear", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_search },
 };
 
 static char const *const screen_action_names[] =
 {
 	"open campaign", "open solo", "open multiplayer", "open coop", "open host", "open host coop", "open settings",
-	"open training", "quit",
+	"open training", "quit", "search next", "search clear",
 };
 
 /* a binding's value: the saved game's mission and difficulty (player 1's
@@ -201,11 +224,23 @@ static char const *const screen_binding_names[] =
 	"campaign.level", "campaign.difficulty",
 };
 
+/* the row sources a table may name (menu_table.h), and their names */
+static struct menu_table_source const *const screen_sources[] =
+{
+	NULL,
+};
+
+/* (none yet: a table names one of these) */
+static char const *const screen_source_names[] =
+{
+	"",
+};
+
 static int screen_value(void *context, char const *name, char *value, unsigned long size)
 {
 	struct screen_values *values = context;
 
-	if (!values->read)
+	if (!values->read && !strncmp(name, "campaign.", 9))
 	{
 		values->read = TRUE;
 		values->saved = pc_menu_campaign_saved(values->level, values->difficulty, (long)sizeof(values->level));
@@ -219,10 +254,19 @@ static int screen_value(void *context, char const *name, char *value, unsigned l
 	return value[0] != 0;
 }
 
+/* a binding's value set (a search's words typed: <search value=>) */
+static void screen_value_set(char const *name, char const *text)
+{
+	/* (none yet: each settable binding's setter here) */
+	(void)name;
+	(void)text;
+}
+
 static struct menu_screen_names const screen_names =
 {
 	screen_action_names, NUMBEROF(screen_action_names),
 	screen_binding_names, NUMBEROF(screen_binding_names),
+	screen_source_names, 0,
 };
 
 /* the menus' screens a hand-written one takes the place of, by its name, and
@@ -233,12 +277,14 @@ struct screen_place
 	char const *screen;
 	char const *widget;
 	void (*shown)(struct widget_instance *screen);
+	/* (whether it takes the screen's place this time: NULL, always) */
+	int (*takes)(void);
 };
 
 static struct screen_place const screen_places[] =
 {
-	{ "main", "main_menu\\main_menu", pc_menu_main_menu_shown },
-	{ "campaign", "screens\\campaign", NULL },
+	{ "main", "main_menu\\main_menu", pc_menu_main_menu_shown, NULL },
+	{ "campaign", "screens\\campaign", NULL, NULL },
 };
 
 /* the server browser, whose screen gets a button of the hand-written
@@ -247,7 +293,7 @@ browser was opened on co-op; its key the controller's Back (F1) */
 #define SCREEN_BROWSER "main_menu\\multiplayer_type_select\\join_game\\join_game_screen"
 #define SCREEN_BROWSER_BUTTON_X 276
 #define SCREEN_BROWSER_BUTTON_Y 8
-static struct screen_place const screen_browser_place = { "browser", SCREEN_BROWSER, NULL };
+static struct screen_place const screen_browser_place = { "browser", SCREEN_BROWSER, NULL, NULL };
 
 /* ---------- the screens open */
 
@@ -329,8 +375,11 @@ static struct screen_place const *screen_place_of(long tag_index)
 		return NULL;
 	for (index = 0; index < NUMBEROF(screen_places); index++)
 	{
-		if (!strcmp(name + 3, screen_places[index].widget))
+		if (!strcmp(name + 3, screen_places[index].widget) &&
+			(!screen_places[index].takes || screen_places[index].takes()))
+		{
 			return &screen_places[index];
+		}
 	}
 	return NULL;
 }
@@ -434,6 +483,8 @@ static boolean screen_button_right(struct menu_screen_block const *button)
 	return button->side ? !strcmp(button->side, "right") : strcmp(button->key, "back") != 0;
 }
 
+static boolean tall_build(struct screen_open *open, struct menu_screen const *screen);
+
 /* the screen's widgets made from the hand-written screen, in place of
 whatever it had: FALSE (nothing changed) if they cannot be */
 static boolean screen_build(struct screen_open *open, struct menu_screen const *screen)
@@ -452,6 +503,12 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 
 	if (!screen_blocks_found())
 		return FALSE;
+	/* (a screen with a table: the tall layout's, menu_screen_tall.inc) */
+	for (index = 0; index < screen->block_count; index++)
+	{
+		if (screen->blocks[index].kind == MENU_SCREEN_TABLE)
+			return tall_build(open, screen);
+	}
 	memset(&values, 0, sizeof(values));
 	/* (each block's room, from the top down: a space shares what is left) */
 	for (index = 0; index < screen->block_count; index++)
@@ -737,6 +794,11 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 	return TRUE;
 }
 
+static boolean screen_action_run(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted);
+
+#include "menu_screen_tall.inc"
+
 /* ---------- the engine's calls */
 
 /* the server browser's HOST button made over it (TRUE), where it is the
@@ -813,8 +875,19 @@ void menu_screen_closed(struct widget_instance *widget)
 {
 	struct screen_open *open = screen_open_of(widget);
 
-	if (open)
-		memset(open, 0, sizeof(*open));
+	if (!open)
+		return;
+	if (tall_of(open))
+	{
+		struct screen_tall *tall = tall_of(open);
+
+		if (tall_search_editing(tall))
+			pc_menu_text_field_end(FALSE);
+		if (tall_search_screen == tall)
+			tall_search_screen = NULL;
+		tall_screens[open - screens.open] = NULL;
+	}
+	memset(open, 0, sizeof(*open));
 }
 
 /* the item focused now (its index, NONE for none) */
@@ -856,10 +929,20 @@ void menu_screen_frame(struct widget_instance *widget)
 		focused = screen_focused(open);
 		if (focused != NONE)
 			snprintf(screens.focused[open->place - screen_places], SCREEN_ID_LENGTH, "%s", open->ids[focused]);
+		if (tall_of(open))
+			tall_screens[open - screens.open] = NULL;
 		if (screen && screen_build(open, screen))
 			platform_log("menus: screen %s made again", screen->name);
 		else
 			open->generation = menu_screens_generation(open->place->screen);
+	}
+	/* (the tall layout's: its blocks each frame) */
+	if (tall_of(open))
+	{
+		tall_frame(open);
+		if (open->place->shown)
+			open->place->shown(widget);
+		return;
 	}
 	/* (past 16:9, the band's title and the bar's prompts to the screen's
 	edges, as the tall layout's titles and footer's prompts) */
@@ -904,6 +987,8 @@ static boolean screen_action_run(struct widget_instance *widget, struct event_re
 		platform_log("menus: there is no action \"%s\"", name);
 		return FALSE;
 	}
+	if (action->call)
+		return action->call(widget, event, name, deleted);
 	if (action->browser_tab || action->before)
 		pc_menu_browser_visit(action->browser_tab);
 	if (action->before)
@@ -945,6 +1030,8 @@ boolean menu_screen_do(struct widget_instance *item, struct event_record *event,
 	long index;
 
 	*deleted = FALSE;
+	if (open && tall_of(open))
+		return tall_do(open, item, event, deleted);
 	for (index = 0; open && index < open->item_count; index++)
 	{
 		if (open->items[index] == item)
@@ -963,6 +1050,8 @@ boolean menu_screen_key(struct widget_instance *prompt, struct event_record *eve
 	long index;
 
 	*deleted = FALSE;
+	if (open && tall_of(open))
+		return tall_prompt(open, prompt, event, deleted, controller);
 	for (index = 0; open && index < open->prompt_count; index++)
 	{
 		char const *key = open->prompt_keys[index];
@@ -985,6 +1074,9 @@ boolean menu_screen_back(struct widget_instance *widget, struct event_record *ev
 	struct screen_open *open = screen_open_of(widget);
 
 	*deleted = FALSE;
+	/* (a tall screen's keys: its buttons' and its tabs') */
+	if (open && tall_of(open) && tall_key(open, widget, event, deleted))
+		return TRUE;
 	if (open && open->extra)
 	{
 		if (event->type != SCREEN_EVENT_BUTTON || event->data.button.value != 1 ||
@@ -1000,6 +1092,9 @@ boolean menu_screen_back(struct widget_instance *widget, struct event_record *ev
 	{
 		return FALSE;
 	}
+	/* (a tall screen whose band has a button of Back's: that, not back) */
+	if (tall_of(open) && event->data.button.index == _gamepad_binary_button_back && tall_of(open)->header_button.widget)
+		return FALSE;
 	if (!screen_action_run(widget, event, open->back, deleted))
 		return FALSE;
 	return TRUE;
@@ -1039,6 +1134,8 @@ boolean menu_screen_text_scale(long definition_index, short wide_extra, real *sc
 item's label white, as the main menu's lit pictures were */
 boolean menu_screen_text_color(struct widget_instance const *widget, real_argb_color *color)
 {
+	if (screens.blocks_found && tall_color_of(widget, color))
+		return TRUE;
 	if (!screens.blocks_found || widget->definition_tag_index != screens.item_tag || !widget->parent ||
 		widget->parent->focused_child != widget)
 	{
@@ -1052,6 +1149,9 @@ boolean menu_screen_item_picture(struct widget_instance const *widget, long *bit
 {
 	long open_index, index;
 
+	/* (a tall screen's blocks: their places' widths and pictures) */
+	if (screens.blocks_found && tall_picture_of(widget, bitmap_tag, bounds))
+		return TRUE;
 	/* (a header: the picture its file names) */
 	if (screens.blocks_found && widget->definition_tag_index == screens.header_tag)
 	{

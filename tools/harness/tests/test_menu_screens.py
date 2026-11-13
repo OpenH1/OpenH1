@@ -31,6 +31,16 @@ NEGATIVE_CONTROLS = {
                     "\t\tmemset(&screens.screens[0], 0, sizeof(screens.screens[0]));\n", "kept"),
     # a list's focus not checked: one naming no item read
     "no-focus-check": ("focus_found = !list->focus;", "focus_found = 1;", "items"),
+    # a table's row source not checked: one the game has not got read
+    "no-source-check": ("\t\t\telse\n\t\t\t\tsource_check(reader, table->source);\n", "\n", "table"),
+    # a tab with no id read
+    "tab-no-id": ("\t\t\tif (!tab->id || !tab->id[0])\n\t\t\t\treader_problem(reader, \"<tab> has no id\", NULL);\n"
+                  "\t\t\telse if", "\t\t\tif", "tabs"),
+    # a binding named alone (an if, a tabs' current) not checked
+    "binding-unchecked": ("\telse if (screen_names && !name_known(screen_names->bindings, screen_names->binding_count, "
+                          "name, strlen(name)))", "\telse if (0)", "tabs"),
+    # a column's touch place's numbers not counted: "1 2" taken
+    "touch-short": ("if (count != 5 || *at", "if (*at", "table"),
 }
 
 
@@ -54,9 +64,12 @@ def game_names():
     """the game's actions and bindings (menu_screen.c's screen_action_names and screen_binding_names), as C"""
     source = read("port/linux/game/menu_screen.c")
     lines = []
-    for table, name in (("screen_action_names", "game_actions"), ("screen_binding_names", "game_bindings")):
+    for table, name in (("screen_action_names", "game_actions"), ("screen_binding_names", "game_bindings"),
+                        ("screen_source_names", "game_sources")):
         body = re.search(r"static char const \*const " + table + r"\[\] =\n\{\n(.*?)\n\};", source, re.S).group(1)
-        lines.append(f"static char const *const {name}[] =\n{{\n{body}\n}};")
+        # (and the test's own: a binding of a value and a row source, for the blocks' cases)
+        extra = {"game_bindings": '"test.value", "test.flag",', "game_sources": '"test.rows",'}.get(name, "")
+        lines.append(f"static char const *const {name}[] =\n{{\n{extra}\n{body}\n}};")
     return "\n".join(lines) + "\n"
 
 
@@ -106,7 +119,8 @@ def built(fault=None):
     return executable
 
 
-CASES = ["main", "hints", "good", "syntax", "elements", "items", "actions", "bindings", "when", "kept"]
+CASES = ["main", "hints", "good", "syntax", "elements", "items", "actions", "bindings", "when", "kept", "tabs",
+         "table", "panel", "buttons"]
 
 
 @pytest.mark.parametrize("case", CASES)
@@ -129,11 +143,15 @@ def test_actions_registered():
     table = re.search(r"static struct screen_action const screen_actions\[\] =\n\{\n(.*?)\n\};", source, re.S).group(1)
     runs = set(re.findall(r'^\t\{ "([^"]+)"', table, re.M))
     assert names == runs, (names, runs)
-    # (and the bindings it fills, each named by screen_value)
+    # (and the bindings it fills, each named by screen_value; and every row source a file may name, one it has)
     value = re.search(r"static int screen_value\(.*?\n\}\n", source, re.S).group(0)
     bindings = set(re.findall(r'"([^"]+)"', re.search(r"screen_binding_names\[\] =\n\{\n(.*?)\n\};", source,
                                                         re.S).group(1)))
     assert all(f'"{binding}"' in value for binding in bindings), bindings
+    sources = [name for name in re.findall(r'"([^"]*)"', re.search(r"screen_source_names\[\] =\n\{\n(.*?)\n\};",
+                                                                   source, re.S).group(1)) if name]
+    table = re.search(r"screen_sources\[\] =\n\{\n(.*?)\n\};", source, re.S).group(1)
+    assert len(sources) == len(re.findall(r"&\w+", table)), (sources, table)
 
 
 def test_main_menu_files_listed():

@@ -120,6 +120,7 @@ their handlers open opens.
 #include "text/draw_string.h"
 #include "halo_keyboard.h"
 #include "menu_search.h"
+#include "menu_table.h"
 /* (internet play's server browser: the platform layer's) */
 #include "../src/p2p.h"
 #include "../src/browser_favorites.h"
@@ -7662,11 +7663,23 @@ static short menu_text_box_fit(struct widget_instance *box, wchar_t const *text,
 
 /* a text box's text wrapped to its width, `lines` lines at most: the last
 of them, if there is more, the rest of the text fitted to it with "..." */
+static void menu_text_box_wrap_width(struct widget_instance *box, wchar_t const *text, short lines, short width);
+
 static void menu_text_box_wrap(struct widget_instance *box, wchar_t const *text, short lines)
 {
+	short width;
+
+	ui_widget_port_text_box_font(box, &width);
+	menu_text_box_wrap_width(box, text, lines, width);
+}
+
+/* ... to a width of its own (a hand-written screen's box, wider than its
+definition on a wide screen) */
+static void menu_text_box_wrap_width(struct widget_instance *box, wchar_t const *text, short lines, short width)
+{
 	wchar_t wrapped[SETTINGS_PANEL_TEXT_LENGTH], last[SETTINGS_PANEL_TEXT_LENGTH];
-	short width, line = 1, index, start = 0;
-	long font = ui_widget_port_text_box_font(box, &width);
+	short line = 1, index, start = 0, box_width;
+	long font = ui_widget_port_text_box_font(box, &box_width);
 
 	if (!box)
 		return;
@@ -11731,6 +11744,62 @@ static boolean browser_select(struct widget_instance *widget, struct event_recor
 		return browser_join(widget, controller, widget_deleted);
 	}
 	return TRUE;
+}
+
+/* ---- the hand-written screens' (menu_screen.c and menu_table.h): the text
+fields and text of the menus', for their searches and their tables */
+
+void pc_menu_text_field_begin(struct widget_instance *field, char const *text, short maximum,
+	void (*done)(char const *text))
+{
+	text_field_begin(field, text, maximum, done);
+	text_field.enter_ends = TRUE;
+}
+
+int pc_menu_text_field_editing(struct widget_instance *field)
+{
+	return text_field_editing(field);
+}
+
+void pc_menu_text_field_end(int keep)
+{
+	text_field_end(keep != 0);
+}
+
+void pc_menu_text_field_show(struct widget_instance *field, char const *text, int editing)
+{
+	text_field_show(field, text, editing != 0);
+}
+
+char const *pc_menu_text_field_words(void)
+{
+	return text_field.text;
+}
+
+short pc_menu_text_fit(struct widget_instance *box, unsigned short const *text, short width)
+{
+	wchar_t fitted[ROW_TEXT_LENGTH];
+	short box_width;
+	long font = ui_widget_port_text_box_font(box, &box_width);
+
+	if (!box)
+		return 0;
+	menu_text_fit(font, (wchar_t const *)text, fitted, NUMBEROF(fitted), width > 0 ? width : box_width);
+	text_set(box, fitted);
+	return font != NONE ? settings_text_width(font, fitted) : 0;
+}
+
+void pc_menu_text_wrap(struct widget_instance *box, unsigned short const *text, short width, short lines)
+{
+	menu_text_box_wrap_width(box, (wchar_t const *)text, lines, width);
+}
+
+short pc_menu_text_width(struct widget_instance *box, unsigned short const *text)
+{
+	short width;
+	long font = ui_widget_port_text_box_font(box, &width);
+
+	return font != NONE && text ? settings_text_width(font, (wchar_t const *)text) : 0;
 }
 
 /* "player profile save changes" (Settings' OK, the profile being edited):
