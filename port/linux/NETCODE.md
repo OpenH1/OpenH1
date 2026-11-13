@@ -588,6 +588,26 @@ names of the network game's players, which the lobby has too), nor takes
 their pings ("Pings"). A machine's own scoreboard mute stays its own: it
 plays none of that machine's voice and shows none of its players' lines or
 pings, and tells no one.
+The lobby has a text chat of its own (the hand-written lobby's chat area,
+`docs/menu_screens.md`), on the same three messages: a line with
+`_chat_line_lobby_bit` set is the lobby's, its sender the slot of a player in
+the network game's record (the lobby has no game's players), its name and
+team the record's. It has one channel (everyone, as the lobby's voice), and
+the host takes it as a game's line (the sender's own machine's player and
+stream, the rate, the text cut, the settings' links, the word filter, the
+host's mutes by name) and sends it on to every OpenH1 machine
+(`network_standard_machine_is_openh1`); OpenCE's machines are sent none,
+nor the lobby's settings (OpenCE's lobby has no chat: their players see no
+lines and send none). The host's settings go to the OpenH1 machines in the
+lobby too, with `_chat_config_lobby_bit` (`network.lobby_text_chat`, Host
+Controls' LOBBY TEXT CHAT); a client that has none (an OpenCE host's, an
+older OpenH1's) has no lobby chat. The lobby's lines and settings are handled
+before a game's checks (`network_chat_handles_lobby_message`, in the lobby
+too), and kept apart: a game's HUD never shows a lobby's line, nor the lobby
+a game's. The messages' layout is as before (a flag bit of each, which an
+older OpenH1 build ignores: it drops a lobby's line outside a game), so the
+protocol version is not raised.
+
 The host's chat settings (`network.text_chat`: on, links allowed, or off,
 listed in the server browser or not) go to every client in
 `_distributed_message_chat_config` (one byte of flags), reliably, as they

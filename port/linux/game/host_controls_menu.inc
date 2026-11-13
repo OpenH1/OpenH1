@@ -24,7 +24,9 @@ network_host_game.c's, by the host's own ways: this file only shows it.
   game's), Password (typed: a public internet game's, at once), Lock teams,
   Allow votekick, Listing (an internet game's), Max players (left and
   right: never fewer than are in it), Allow OpenCE players (an OpenH1
-  game's).
+  game's), Lobby text chat and Lobby voice chat (network.lobby_text_chat,
+  network.voice_lobby: on or off for everyone, the host's settings reaching
+  every machine as the chat's and the voice's do).
 - MAPS: the gametype (left and right: first CURRENT, the game's own with
   its score, time and rules, then the gametypes), then the multiplayer maps, the
   Xbox's and Custom Edition's; for the map chosen the panel's PLAY NOW
