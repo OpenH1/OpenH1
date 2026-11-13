@@ -159,6 +159,11 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | --- | --- |
 | `{campaign.level}` | The saved game's mission (player 1's profile), for example `The Silent Cartographer`; none without a saved game, or in co-op |
 | `{campaign.difficulty}` | The saved game's difficulty, for example `Legendary` |
+| `{browser.title}`, `{browser.counts}`, `{browser.empty}`, `{browser.host}` | The server browser's title (SERVER BROWSER, LOCAL NETWORK, JOIN BY LINK), its counts (`20 GAMES    24 PLAYERS`, `2 OF 18 GAMES ...` while some are hidden), its words while it lists none, its HOST button's (HOST & MORE, HOST CO-OP) |
+| `{browser.tab}`, `{browser.sort}`, `{browser.sort.title}` | The tab shown (`all`, `coop`...), the sort (`players down`), its column's title (PLAYERS) |
+| `{browser.search.server}`, `{browser.search.map}`, `{browser.search.any}` | The searches' words (set as they are typed) |
+| `{browser.panel.title}` ... `{browser.panel.status}` | The chosen game's name (or the list's title), where (map and mode), kind (OPENH1, LEGACY) and its `tone`, tick rate, OPENCE CAN JOIN, players, ping, and its status line |
+| `{browser.searched}`, `{browser.joinable}`, `{browser.server}`, `{browser.link}`, `{browser.filtered}` | (for `if`s) the searches hide every game; a game to join is chosen; the server browser's list; Join by Link's; a list filtered and searched (not Join by Link's) |
 
 ## Actions
 
@@ -173,16 +178,47 @@ sounds and the fades are the game's.
 | Action | Does |
 | --- | --- |
 | `open campaign` | The Campaign screen, as the PC version's CAMPAIGN opens it (a profile made first if there is none) |
-| `open versus` | The server browser (the full-height one), as Multiplayer's SERVER BROWSER opens it |
+| `open multiplayer`, `open coop` | The server browser, as Multiplayer's SERVER BROWSER opens it (`open coop`: on its CO-OP tab, this visit) |
+| `open host`, `open host coop` | Multiplayer's hub (the server browser's HOST & MORE), its co-op page (HOST CO-OP) |
 | `open settings` | Settings, as the main menu's SETTINGS opens it |
 | `open training` | The VR tutorial (Basic Training's chapters) |
 | `quit` | The quit question, as the main menu's QUIT and B open it |
 | `search next` | The next of the screen's searches typed into (the first, if none is) |
 | `search clear` | Every search's words cleared, as a table's CLEAR SEARCH |
+| `browser back` | The browser's back (its own: `gamespy back handler`) |
+| `browser host` | HOST & MORE, or HOST CO-OP on the co-op visit |
+| `browser tab <tab>` | The tab shown (`all`, `dedicated`, `openh1`, `legacy`, `coop`, `favorites`) |
+| `browser sort <column>`, `browser sort next` | Sorted by the column (`players`, `ping`, `server`, `map`, `mode`; again the other way), or the next (X) |
+| `browser favorite` | The row's game (or the chosen one) made a favorite, or no longer one |
+| `browser join` | The row's game chosen, or joined if it is chosen (a password asked for first, the connecting box opened); JOIN GAME's |
+| `browser refresh` | The public games asked for again; Join by Link's PASTE LINK |
+| `browser filters` | The Filters page |
 
 A file is checked against `screen_action_names` as it is read, and
 `tools/harness/tests/test_menu_screens.py` checks that every name there has an
 entry in `screen_actions`.
+
+## The server browser
+
+`screens/browser.xml` is the server browser of the new engine: it takes the
+place of Join Game's screen (`main_menu/multiplayer_type_select/join_game/
+join_game_screen`) while it is the server browser's (`screen_places`'
+`takes`: menu_functions.c's `pc_menu_browser_visit_kind`). The classic engine,
+PRO 2V2's browser and a refused or missing file keep the generated screen
+(and its HOST button, `screen_browser_opened`).
+
+What it lists and does is menu_functions.c's, as for the generated screen: the
+games found, their order, the groups and their headings, the filters, the
+searches, the favorites, the tab and the sort kept in `config.toml`, joining
+(the password screen, the connecting box, the A press posted once the host is
+reached) and the panel's words. Its model (`lobby_browser_model`,
+`local_browser_model`) works out each frame what is listed, which row is
+first and which chosen, and the panel's and the counts' words
+(`browser_display`), for its two views: the generated screen's list
+(`lobby_browser_update`, `browser_update`) and the hand-written screen's table
+(`pc_menu_browser_source`, the `browser.*` bindings and actions). The screen's
+stand-in (Join Game's own widget) still opens and closes the browser
+(`gamespy screen init`, `gamespy screen dispose`).
 
 ## How a screen is made
 

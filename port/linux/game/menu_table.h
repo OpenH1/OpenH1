@@ -6,7 +6,8 @@ come from a row source of C's, named in the screen's file (source=), which
 the screens' registry (port/linux/game/menu_screen.c) gives the table. The
 table is the view: its row widgets, the focus among them, their cells drawn;
 the source is what is listed: how many rows, which is first on the table
-(the rows scroll), which is chosen, and each row's cells.
+(the rows scroll), which is chosen, and each row's cells. The server
+browser's is menu_functions.c's (pc_menu_browser_source).
 */
 
 #ifndef MENU_TABLE_H
@@ -64,6 +65,14 @@ struct menu_table_source
 	focus) */
 	void (*cell)(short index, char const *column, int focused, struct menu_table_cell *cell);
 };
+
+/* ---------- the server browser's (menu_functions.c) */
+
+extern struct menu_table_source const pc_menu_browser_source;
+/* a binding's value, UTF-8 ("browser.<name>": nonzero if it has one) */
+int pc_menu_browser_value(char const *name, char *value, unsigned long size);
+/* a search's words set ("browser.search.<column>") */
+void pc_menu_browser_search_set(char const *name, char const *text);
 
 /* ---------- the menus' text fields and text (menu_functions.c), for the
 hand-written screens' searches */

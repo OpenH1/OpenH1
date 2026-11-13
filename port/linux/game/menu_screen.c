@@ -62,6 +62,13 @@ short ui_widget_port_foot_lift(void);
 int ui_widget_port_touch_menus(void);
 boolean ui_widget_port_hover_focused(void);
 boolean ui_widget_port_take_click(short *x, short *y);
+/* (menu_functions.c: the server browser's actions, for the hand-written
+browser's) */
+boolean pc_menu_browser_tab(char const *word);
+boolean pc_menu_browser_sort(char const *word);
+boolean pc_menu_browser_favorite(short row);
+boolean pc_menu_browser_select(struct widget_instance *widget, struct event_record *event, short row,
+	boolean *deleted);
 
 /* ---------- constants */
 
@@ -163,6 +170,8 @@ struct screen_action
 	boolean (*call)(struct widget_instance *widget, struct event_record *event, char const *name, boolean *deleted);
 };
 
+static boolean screen_call_browser(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted);
 static boolean screen_call_search(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted);
 /* the row of the table an action is run for (0 up, on the table), NONE for
@@ -201,12 +210,40 @@ static struct screen_action const screen_actions[] =
 	one's words cleared) */
 	{ "search next", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_search },
 	{ "search clear", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_search },
+	/* (the server browser's, screens/browser.xml: its back (a search typed
+	into cleared, else the browser's own back), its HOST button (the hub,
+	or co-op's page), its tabs, its sort (a column's, X the next), a game
+	made a favorite, joined (a row, or JOIN GAME), the list asked for again
+	(Join by Link's: the link copied joined), its Filters page) */
+	{ "browser back", NULL, NULL, "gamespy back handler", NULL, NULL, NULL },
+	{ "browser host", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser tab all", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser tab dedicated", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser tab openh1", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser tab legacy", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser tab coop", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser tab favorites", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser sort players", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser sort ping", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser sort server", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser sort map", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser sort mode", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser sort next", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser favorite", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser join", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_browser },
+	{ "browser refresh", NULL, NULL, "port browser refresh", NULL, NULL, NULL },
+	{ "browser filters", NULL, NULL, "port browser filters", NULL,
+		"main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_filters_screen",
+		NULL },
 };
 
 static char const *const screen_action_names[] =
 {
 	"open campaign", "open solo", "open multiplayer", "open coop", "open host", "open host coop", "open settings",
-	"open training", "quit", "search next", "search clear",
+	"open training", "quit", "search next", "search clear", "browser back", "browser host", "browser tab all",
+	"browser tab dedicated", "browser tab openh1", "browser tab legacy", "browser tab coop", "browser tab favorites",
+	"browser sort players", "browser sort ping", "browser sort server", "browser sort map", "browser sort mode",
+	"browser sort next", "browser favorite", "browser join", "browser refresh", "browser filters",
 };
 
 /* a binding's value: the saved game's mission and difficulty (player 1's
@@ -221,19 +258,23 @@ struct screen_values
 
 static char const *const screen_binding_names[] =
 {
-	"campaign.level", "campaign.difficulty",
+	"campaign.level", "campaign.difficulty", "browser.title", "browser.counts", "browser.empty", "browser.searched",
+	"browser.host", "browser.tab", "browser.sort", "browser.sort.title", "browser.search.server", "browser.search.map",
+	"browser.search.any", "browser.panel.title", "browser.panel.where", "browser.panel.kind",
+	"browser.panel.kind.tone", "browser.panel.tick", "browser.panel.opence", "browser.panel.players",
+	"browser.panel.ping", "browser.panel.status", "browser.joinable", "browser.server", "browser.link",
+	"browser.filtered",
 };
 
 /* the row sources a table may name (menu_table.h), and their names */
 static struct menu_table_source const *const screen_sources[] =
 {
-	NULL,
+	&pc_menu_browser_source,
 };
 
-/* (none yet: a table names one of these) */
 static char const *const screen_source_names[] =
 {
-	"",
+	"browser.games",
 };
 
 static int screen_value(void *context, char const *name, char *value, unsigned long size)
@@ -245,6 +286,9 @@ static int screen_value(void *context, char const *name, char *value, unsigned l
 		values->read = TRUE;
 		values->saved = pc_menu_campaign_saved(values->level, values->difficulty, (long)sizeof(values->level));
 	}
+	/* (the server browser's: menu_functions.c's) */
+	if (!strncmp(name, "browser.", 8))
+		return pc_menu_browser_value(name, value, size);
 	if (!strcmp(name, "campaign.level") && values->saved)
 		snprintf(value, size, "%s", values->level);
 	else if (!strcmp(name, "campaign.difficulty") && values->saved)
@@ -257,16 +301,16 @@ static int screen_value(void *context, char const *name, char *value, unsigned l
 /* a binding's value set (a search's words typed: <search value=>) */
 static void screen_value_set(char const *name, char const *text)
 {
-	/* (none yet: each settable binding's setter here) */
-	(void)name;
-	(void)text;
+	/* (the server browser's searches: menu_functions.c's) */
+	if (name && !strncmp(name, "browser.search.", 15))
+		pc_menu_browser_search_set(name, text);
 }
 
 static struct menu_screen_names const screen_names =
 {
 	screen_action_names, NUMBEROF(screen_action_names),
 	screen_binding_names, NUMBEROF(screen_binding_names),
-	screen_source_names, 0,
+	screen_source_names, NUMBEROF(screen_source_names),
 };
 
 /* the menus' screens a hand-written one takes the place of, by its name, and
@@ -281,10 +325,19 @@ struct screen_place
 	int (*takes)(void);
 };
 
+/* (the server browser's screen is Join Game's, which the local network's
+list and Join by Link have too: the hand-written browser takes the server
+browser's place alone, menu_functions.c's pc_menu_browser_visit_kind) */
+static int screen_browser_takes(void)
+{
+	return pc_menu_browser_visit_kind() != 0;
+}
+
 static struct screen_place const screen_places[] =
 {
 	{ "main", "main_menu\\main_menu", pc_menu_main_menu_shown, NULL },
 	{ "campaign", "screens\\campaign", NULL, NULL },
+	{ "browser", "main_menu\\multiplayer_type_select\\join_game\\join_game_screen", NULL, screen_browser_takes },
 };
 
 /* the server browser, whose screen gets a button of the hand-written
@@ -293,7 +346,7 @@ browser was opened on co-op; its key the controller's Back (F1) */
 #define SCREEN_BROWSER "main_menu\\multiplayer_type_select\\join_game\\join_game_screen"
 #define SCREEN_BROWSER_BUTTON_X 276
 #define SCREEN_BROWSER_BUTTON_Y 8
-static struct screen_place const screen_browser_place = { "browser", SCREEN_BROWSER, NULL, NULL };
+static struct screen_place const screen_browser_place = { "browser host", SCREEN_BROWSER, NULL, NULL };
 
 /* ---------- the screens open */
 
@@ -1022,6 +1075,29 @@ static boolean screen_action_run(struct widget_instance *widget, struct event_re
 	if (open && !menu_tags_open(widget, event, open, deleted))
 		platform_log("menus: action \"%s\": there is no screen %s", name, open);
 	return TRUE;
+}
+
+/* the server browser's actions (menu_functions.c's), for screens/browser.xml */
+static boolean screen_call_browser(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted)
+{
+	*deleted = FALSE;
+	if (!strcmp(name, "browser host"))
+	{
+		return screen_action_run(widget, event, pc_menu_browser_visit_kind() == 2 ? "open host coop" : "open host",
+			deleted);
+	}
+	if (!strncmp(name, "browser tab ", 12))
+		return pc_menu_browser_tab(name + 12);
+	if (!strcmp(name, "browser sort next"))
+		return pc_menu_browser_sort(NULL);
+	if (!strncmp(name, "browser sort ", 13))
+		return pc_menu_browser_sort(name + 13);
+	if (!strcmp(name, "browser favorite"))
+		return pc_menu_browser_favorite(screen_action_row);
+	if (!strcmp(name, "browser join"))
+		return pc_menu_browser_select(widget, event, screen_action_row, deleted);
+	return FALSE;
 }
 
 boolean menu_screen_do(struct widget_instance *item, struct event_record *event, boolean *deleted)

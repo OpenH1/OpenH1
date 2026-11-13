@@ -357,6 +357,48 @@ int main(int argc, char **argv)
 		CHECK(menu_screens_generation("main") > generation, "the generation did not change");
 		CHECK(!menu_screens_find("versus"), "a screen no file has is found");
 	}
+	else if (!strcmp(name, "browser"))
+	{
+		struct menu_screen_block const *table, *server, *ping;
+		int table_index, index, searches = 0, touch_searches = 0;
+
+		/* (the real server browser's file: its tabs, its table's columns and
+		their searches, its panel and its bar) */
+		CHECK(read_text(browser_xml, &screen, problem), "the browser's file is refused: %s", problem);
+		CHECK(!strcmp(screen.name, "browser") && screen.back && !strcmp(screen.back, "browser back"),
+			"its name or back is not the browser's");
+		CHECK(kind_total(&screen, MENU_SCREEN_TAB, -2) == 6, "%d tabs", kind_total(&screen, MENU_SCREEN_TAB, -2));
+		table_index = kind_first(&screen, MENU_SCREEN_TABLE);
+		CHECK(table_index >= 0, "no table");
+		table = &screen.blocks[table_index];
+		CHECK(!strcmp(table->source, "browser.games") && !strcmp(table->value, "browser.sort") &&
+			!strcmp(table->action, "browser join") && table->empty, "the table's source, sort, do or empty");
+		CHECK(kind_total(&screen, MENU_SCREEN_COLUMN, table_index) == 6, "%d columns",
+			kind_total(&screen, MENU_SCREEN_COLUMN, table_index));
+		server = block_of(&screen, "server");
+		ping = block_of(&screen, "ping");
+		CHECK(server && server->cell == MENU_SCREEN_CELL_STRONG && server->width == 110 && server->grow == 64 &&
+			server->touch_width == 220 && server->title_width == 76, "the server's column");
+		CHECK(ping && ping->cell == MENU_SCREEN_CELL_PING && ping->right, "the ping's column");
+		CHECK(block_of(&screen, "players")->gap == 2 && block_of(&screen, "map")->gap == 4, "the columns' gaps");
+		CHECK(block_of(&screen, "favorite")->cell == MENU_SCREEN_CELL_STAR &&
+			!strcmp(block_of(&screen, "favorite")->action, "browser favorite"), "the star's column");
+		for (index = 0; index < screen.block_count; index++)
+		{
+			if (screen.blocks[index].kind != MENU_SCREEN_SEARCH)
+				continue;
+			if (screen.blocks[index].parent < 0)
+				touch_searches++;
+			else
+				searches++;
+		}
+		CHECK(searches == 2 && touch_searches == 1, "%d columns' searches and %d of the screen's", searches,
+			touch_searches);
+		CHECK(kind_total(&screen, MENU_SCREEN_PANEL, -2) == 1 && kind_total(&screen, MENU_SCREEN_PILL, -2) == 3 &&
+			kind_total(&screen, MENU_SCREEN_PAIR, -2) == 2, "the panel");
+		CHECK(kind_total(&screen, MENU_SCREEN_BUTTON, kind_first(&screen, MENU_SCREEN_BUTTONS)) == 8, "the bar's buttons");
+		menu_screen_free(&screen);
+	}
 	else if (!strcmp(name, "tabs"))
 	{
 		CHECK(read_text("<screen name=\"t\"><tabs current=\"test.value\"><tab id=\"a\" label=\"A\" do=\"quit\"/>"
