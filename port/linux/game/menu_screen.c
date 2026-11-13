@@ -50,6 +50,7 @@ boolean menu_tags_open(struct widget_instance *widget, struct event_record *even
 	boolean *deleted);
 void menu_tags_back(struct widget_instance *widget, struct event_record *event, boolean *deleted);
 long menu_tags_background(long tag_index);
+void menu_tags_background_set(long tag_index, long background_tag_index);
 long menu_tags_flags(long tag_index);
 short menu_tags_legend_growth(long legends_tag);
 unsigned long menu_tags_pause_rows(void);

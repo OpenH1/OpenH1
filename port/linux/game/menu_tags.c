@@ -2910,6 +2910,23 @@ long menu_tags_background(
 	return definition ? definition->background_bitmap.index : NONE;
 }
 
+/* a widget's background made another's (a hand-written tall screen's of
+background="tall": the tall layout's in place of the PC version's
+gradient, whose band's line is lower, so that one band's line is drawn, as
+the server browser's generated screen has it) */
+void menu_tags_background_set(
+	long tag_index,
+	long background_tag_index)
+{
+	struct ui_widget_definition *definition = tag_index != NONE ?
+		tag_get(UI_WIDGET_DEFINITION_TAG, tag_index) : NULL;
+	struct ui_widget_definition const *background = background_tag_index != NONE ?
+		tag_get(UI_WIDGET_DEFINITION_TAG, background_tag_index) : NULL;
+
+	if (definition && background)
+		definition->background_bitmap = background->background_bitmap;
+}
+
 /* the screen before the widget's gone back to, as a handler's back goes (its
 history, its sound): the hand-written screens' actions (menu_screen.c) */
 void menu_tags_back(

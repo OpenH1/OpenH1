@@ -60,7 +60,7 @@ centred, and the bar's wide layout reaches the screen's edges up to 16:9.
 
 | Element | Attributes | Meaning |
 | --- | --- | --- |
-| `<screen>` | `name` (required), `back`, `start`, `background` | The screen. `back` is the action for B and Back; without it, B goes back to the screen before. `start` is the action for Start anywhere on the screen (the lobby's start, as the generated lobby's every control's Start); where it does nothing (a player's), Start is the screen's widgets' and its own handlers'. `background` (a tall screen's): `own` (the default), the generated screen's own background, the tall layout's where it has none; `tall`, the tall layout's over the generated screen's own (Profile Color's, whose generated screen's is the PC version's gradient over the menus' scene) |
+| `<screen>` | `name` (required), `back`, `start`, `background` | The screen. `back` is the action for B and Back; without it, B goes back to the screen before. `start` is the action for Start anywhere on the screen (the lobby's start, as the generated lobby's every control's Start); where it does nothing (a player's), Start is the screen's widgets' and its own handlers'. `background` (a tall screen's): `own` (the default), the generated screen's own background, the tall layout's where it has none; `tall`, the tall layout's in place of the generated screen's own (Profile Color's, whose generated screen's is the PC version's gradient, its band's line lower) |
 | `<title-art/>` | | Halo's title art, where the main menu has it. If the screen's blocks need more height than the canvas has, this block gives up some of its room |
 | `<list>` | `id`, `focus` | A list of items. The d-pad, the stick and the mouse wheel move through it, wrapping from the last item to the first, as the classic lists do. `focus` is the id of the item focused when the screen first opens. After that the screen remembers the last focused item |
 | `<item>` | `label` (required), `do` (required), `id`, `hint`, `when`, `if` | One item. A, Start, a click or a tap runs `do`. `hint` is the line shown under the item while it is focused. Write `<hint>` children instead to give alternatives: the first whose bindings all have values is shown. `when` lists platforms (`desktop android vr hdr touch pointer computer`, as for `platform=` in the menu files) and the item is made only on one of them; `if` names a binding that must have a value for it to be made |
@@ -481,7 +481,8 @@ after them), and in the panel the focused color's name, `Current color`
 while it is the profile's own, its Spartan in that color (`<spartan
 color="color.spartan">`, live as the focus moves; Random's cycling through
 the colors), and a line of what it does. The profile's own color is focused
-as it opens. BACK is at the bar's left, SELECT at its right. A (SELECT, a
+as it opens, the list from its top where that row is on it, else scrolled to
+put it in the middle. BACK is at the bar's left, SELECT at its right. A (SELECT, a
 click or a tap on a row) chooses the color for the profile being edited and
 goes back; B goes back without one. Random is the profile's color none (a
 new profile's), for which each game gives the player a color no one else

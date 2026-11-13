@@ -12427,14 +12427,17 @@ static void color_source_update(struct menu_table_view *view)
 	short shown = view->shown, focused = view->focused;
 	short rows = COLOR_SOURCE_ROWS;
 
-	/* (as it opens: the profile's color chosen, in the table's middle) */
+	/* (as it opens: the profile's color chosen, the table from its top
+where the focus is on it (off its last row, which would scroll), else the
+chosen row in its middle) */
 	if (color_source.opened && shown)
 	{
 		short saved = color_source_saved();
 
 		color_source.opened = FALSE;
 		color_source.chosen = saved != NONE ? saved : 0;
-		color_source.first = (short)PIN(color_source.chosen - shown / 2, 0, MAX(0, rows - shown));
+		color_source.first = color_source.chosen < shown - 1 ? 0 :
+			(short)PIN(color_source.chosen - shown / 2, 0, MAX(0, rows - shown));
 		focused = (short)(color_source.chosen - color_source.first);
 		view->focus = focused;
 	}
