@@ -104,9 +104,10 @@ as the originals' pictures were taken (player_color_marine_large), not
 from its middle */
 #define SPARTAN_PITCH_DEGREES 8.0f
 /* how its idle aims (degrees from ahead, through the aiming screen, as a
-unit aims) */
-#define SPARTAN_AIM_YAW_DEGREES 0.0f
-#define SPARTAN_AIM_PITCH_DEGREES 0.0f
+unit aims): to its right and down a little, the rifle held across its
+chest toward the camera, as in the originals' pictures */
+#define SPARTAN_AIM_YAW_DEGREES (-12.0f)
+#define SPARTAN_AIM_PITCH_DEGREES (-16.0f)
 /* the view's rectangle about a Spartan's box, in its heights: the rifle
 and the arms reach out of the box at the sides, the helmet a little above */
 #define SPARTAN_VIEW_SIDE 0.45f
