@@ -2071,6 +2071,12 @@ second (tools/scorecard). An event is "<start>[-<end>] <action>":
     key=<action>         a keyboard action held (its config.toml name,
                          controls.<action>: move_forward, walk), start
                          to end, as its key would be (halo_keyboard_actions)
+    up, down, left, right
+                         the D-pad held, start to end (a menu's moves)
+
+An action after "p<n> " is played on controller n (2 to 4: a split screen
+player's, connected for the script while it has any) rather than the
+first: its buttons, D-pad and sticks ("4 p2 start; 5 p2 down; 6 p2 jump").
 
 A time on the 30 Hz grid (a multiple of 1/30) falls on a step at every
 rate. */
@@ -2095,9 +2101,13 @@ static struct test_script_event
 	float z;
 	/* (key=: the keyboard action held, plus one) */
 	int key;
+	/* (p<n>: the controller's port, 0 for the first) */
+	int port;
 } test_script[TEST_SCRIPT_EVENTS];
 static int test_script_count;
 static int test_script_on;
+/* the ports past the first that the script plays (p<n>), a bit each */
+static unsigned int test_script_ports;
 /* the script plays a controller's gyroscope (gyro_test_feed) */
 static int test_script_gyro;
 
@@ -2120,6 +2130,10 @@ static void test_script_parse(const char *script)
 		{ "flashlight", XINPUT_GAMEPAD_WHITE, 0 },
 		{ "back", -1, XINPUT_GAMEPAD_BACK },
 		{ "start", -1, XINPUT_GAMEPAD_START },
+		{ "up", -1, XINPUT_GAMEPAD_DPAD_UP },
+		{ "down", -1, XINPUT_GAMEPAD_DPAD_DOWN },
+		{ "left", -1, XINPUT_GAMEPAD_DPAD_LEFT },
+		{ "right", -1, XINPUT_GAMEPAD_DPAD_RIGHT },
 	};
 
 	test_script_on = 1;
@@ -2144,6 +2158,14 @@ static void test_script_parse(const char *script)
 		end += strspn(end, " ");
 		snprintf(action, sizeof(action), "%.*s", (int)(script + length - end), end);
 		script += length;
+		/* (another controller's: p<n>) */
+		if (action[0] == 'p' && action[1] >= '1' && action[1] <= '0' + PORT_COUNT && action[2] == ' ')
+		{
+			event->port = action[1] - '1';
+			memmove(action, action + 3, strlen(action + 3) + 1);
+			if (event->port)
+				test_script_ports |= 1U << event->port;
+		}
 		for (index = 0; index < sizeof(buttons) / sizeof(buttons[0]); index++)
 		{
 			if (!strcmp(action, buttons[index].name))
@@ -2205,7 +2227,7 @@ static SHORT test_script_axis(float value)
 	return (SHORT)(value < -1.0f ? -32767 : value > 1.0f ? 32767 : value * 32767.0f);
 }
 
-static void test_script_gamepad(XINPUT_GAMEPAD *pad)
+static void test_script_port_gamepad(int port, XINPUT_GAMEPAD *pad)
 {
 	/* (a hair before a step's time is that step's: 1/30 in a double is not
 	exact) */
@@ -2218,6 +2240,8 @@ static void test_script_gamepad(XINPUT_GAMEPAD *pad)
 	{
 		struct test_script_event *event = &test_script[index];
 
+		if (event->port != port || (port && (event->aim || event->hunt || event->key)))
+			continue;
 		if (event->aim)
 		{
 			if (!event->aimed && t >= event->start)
@@ -2270,7 +2294,8 @@ static unsigned long test_script_keys(void)
 		return 0;
 	for (index = 0; index < test_script_count; index++)
 	{
-		if (test_script[index].key && t >= test_script[index].start && t < test_script[index].end)
+		if (test_script[index].key && !test_script[index].port && t >= test_script[index].start &&
+			t < test_script[index].end)
 			held |= 1UL << (test_script[index].key - 1);
 	}
 	return held;
@@ -2517,7 +2542,7 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 	}
 	if (test_script_on)
 	{
-		test_script_gamepad(pad);
+		test_script_port_gamepad(0, pad);
 		return;
 	}
 	if (test_input_menu[0])
@@ -3477,7 +3502,8 @@ static DWORD connected_gamepads(void)
 		controller_device_update((short)port, port_gamepad(gamepads, count, port));
 	for (port = 1; port < PORT_COUNT; port++)
 	{
-		if (port_gamepad(gamepads, count, port))
+		/* (and the controllers the test script plays: p<n>) */
+		if (port_gamepad(gamepads, count, port) || (test_script_ports & (1U << port)))
 			mask |= 1UL << port;
 	}
 	return mask;
@@ -3760,6 +3786,9 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		ping_pad_read(port, &state->Gamepad, reserved);
 		spartan_link_pad_read(port, &state->Gamepad, reserved);
 	}
+	/* (a controller the test script plays: p<n>) */
+	else if (test_script_ports & (1U << port))
+		test_script_port_gamepad(port, &state->Gamepad);
 	if (captured) memset(&state->Gamepad, 0, sizeof(state->Gamepad));
 	/* (the port's gyroscope, and its right stick as the flick stick) */
 	{

@@ -1300,6 +1300,11 @@ boolean menu_engine_screen_draw(struct widget_instance *screen, rectangle2d *cli
 	return TRUE;
 }
 
+boolean menu_engine_screen_owned(struct widget_instance const *screen)
+{
+	return screen && engine_screen_of(screen) != NULL;
+}
+
 boolean menu_engine_screen_event(struct widget_instance *screen, struct event_record *event, boolean *deleted)
 {
 	struct engine_screen *owned = engine_screen_of(screen);

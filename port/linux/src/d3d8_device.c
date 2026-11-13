@@ -967,6 +967,32 @@ void halo_screen_ui_offset(unsigned char centered)
 {
 	ui_offset = centered ? (halo_screen_width() - 640) / 2 : 0;
 }
+
+/* the menus' centring offset while a split screen's view draws a screen in
+it (port/linux/game/menu_view.c: its canvas's left, at its scale) */
+void halo_screen_ui_offset_to(long offset)
+{
+	ui_offset = offset;
+}
+
+/* where the first player's menus were drawn last, for the pointer
+(ui_point_from_window_on): in a split screen's view (set), the view's
+origin, the scale the menus were drawn at and the canvas's left of the
+menus' 0 (port/linux/game/menu_view.c); else centred on the whole screen */
+static struct
+{
+	int set;
+	float x0, y0, scale, left;
+} ui_pointer_view;
+
+void halo_screen_ui_pointer_view(int set, float x0, float y0, float scale, float left)
+{
+	ui_pointer_view.set = set && scale > 0.0f;
+	ui_pointer_view.x0 = x0;
+	ui_pointer_view.y0 = y0;
+	ui_pointer_view.scale = scale;
+	ui_pointer_view.left = left;
+}
 /* ---------- state the XDK header's inline functions read and write */
 
 DWORD D3D__RenderState[D3DRS_MAX];
@@ -2344,6 +2370,14 @@ static void ui_point_from_window_on(float window_x, float window_y, int centered
 	top = top < 0 ? (pixel_height - height) / 2 : top < pixel_height - height ? top : pixel_height - height;
 	screen_x = (window_x * pixel_width / window_width - left) * (float)back_buffer->target.width / (float)width;
 	screen_y = (window_y * pixel_height / window_height - top) * (float)back_buffer->target.height / (float)height;
+	if (centered && ui_pointer_view.set)
+	{
+		/* (the first player's view in split screen, its menus scaled into
+		it: port/linux/game/menu_view.c) */
+		*x = (short)floorf((screen_x - ui_pointer_view.x0) / ui_pointer_view.scale - ui_pointer_view.left);
+		*y = (short)floorf((screen_y - ui_pointer_view.y0) / ui_pointer_view.scale);
+		return;
+	}
 	*x = (short)floorf(screen_x - (centered ? (float)(halo_screen_width() - 640) / 2.0f : 0.0f));
 	*y = (short)floorf(screen_y);
 }

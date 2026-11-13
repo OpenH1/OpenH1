@@ -25,6 +25,22 @@ screen's (the main menu first), with its actions and bindings resolved in C.
 The generated screens are moved to them a few at a time, and then the engine
 no longer needs the generators.
 
+## Split screen
+
+In split screen each player's screen (the pause menu, and what it opens) is
+drawn in that player's view, a half or a quarter of the screen
+(`port/linux/game/menu_view.c`). It is laid out for the room it was made for
+(its widget's bounds: the menus' 640 by 480, the engine's screens always; the
+Xbox's own split screen pause menus 640 by 240 and 320 by 240), scaled to fit
+the view's height and width (never larger than it was made) and centred in
+it, so nothing of it is cut off. The view's room either side is its canvas:
+the wide layout reaches across it, and a dim that covers the screen's design
+(a pause menu's) covers the whole view. The game draws its menus in the units
+of the viewport it is told it has, so the scale is the viewport it is told
+of while the screen is drawn (the view's size divided by the scale), the
+GPU's staying the view. The first player's view is where the pointer is read
+back through. At full screen nothing changes.
+
 ## The model
 
 `tools/ce_menus.py` writes, beside each `ce/<file>.xml`, the screens of that

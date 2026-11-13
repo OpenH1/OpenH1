@@ -55,6 +55,7 @@ looks", below).
 #include "basic_training.h"
 #include "halo_keyboard.h"
 #include "menu_models.h"
+#include "menu_view.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -412,7 +413,8 @@ short ui_widget_port_anchor_extra(void)
 {
 	if (!ui_widget_port_touch_menus())
 		return 0;
-	return (short)MAX((halo_screen_width() - 640) / 2, 0);
+	/* (the canvas the menus are drawn in: menu_view.c's) */
+	return (short)MAX(menu_view_side(), 0);
 }
 
 /* anchor_left: the widget (and what is in it) moved to the screen's left
