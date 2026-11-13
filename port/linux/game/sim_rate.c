@@ -321,9 +321,9 @@ void sim_rate_frame_begin(
 void sim_rate_tick_drop(
 	void)
 {
+	sim_rate_globals.macro_step = FALSE;
 	sim_rate_globals.substep_index = NONE;
 	sim_rate_globals.substep_next = 0;
-	sim_rate_globals.macro_step = FALSE;
 }
 
 void sim_rate_tick_begin(
@@ -351,9 +351,9 @@ void sim_substep_run(
 	short count = sim_rate_globals.substep_count;
 	short slot;
 
+	sim_rate_globals.macro_step = FALSE;
 	sim_rate_globals.first_of_frame = sim_rate_globals.frame_fresh;
 	sim_rate_globals.frame_fresh = FALSE;
-	sim_rate_globals.macro_step = FALSE;
 	sim_rate_globals.substep_index = substep_index;
 	for (slot = 0; slot < NUMBER_OF_SIM_SUBSTEP_SLOTS; slot++)
 	{
