@@ -795,6 +795,10 @@ void network_voice_handle_message(
 			return;
 		csmemcpy(&config, entries, sizeof(config));
 		voice_key = config.key;
+		/* (debug.txt says when the host turns the lobby's voice on or off) */
+		if (!voice_settings_heard || voice_settings.lobby != TEST_FLAG(config.flags, _voice_config_lobby_bit))
+			error(_error_log, "voice: the host has the lobby's voice %s",
+				TEST_FLAG(config.flags, _voice_config_lobby_bit) ? "on" : "off");
 		voice_settings.lobby = TEST_FLAG(config.flags, _voice_config_lobby_bit);
 		voice_settings.mode = config.mode < NUMBER_OF_VOICE_MODES ? config.mode : _voice_mode_off;
 		voice_settings.kbps = (short)PIN(config.kbps, VOICE_MINIMUM_KBPS, VOICE_MAXIMUM_KBPS);
