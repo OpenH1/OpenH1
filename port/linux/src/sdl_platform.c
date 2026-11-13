@@ -158,11 +158,21 @@ void halo_loading_screen_progress(float progress, char const *caption)
 	if (strncmp(caption, loading_screen_caption, sizeof(loading_screen_caption) - 1))
 	{
 		int width = 0, height = 0;
-		/* (in the menus' font, Cyborg Interface Gothic, its capitals ten of
-		the 480 lines tall, set at LOADING_PRESENTATION_CAPTION_SCALE times
-		their size: the presenter draws it at the screen's pixels) */
-		unsigned char *coverage = caption[0] ? text_hires_line("ui\\large_ui", caption,
-			10.0f * LOADING_PRESENTATION_CAPTION_SCALE, &width, &height) : NULL;
+		char capitals[sizeof(loading_screen_caption)];
+		unsigned char *coverage;
+		size_t index;
+
+		/* (lettered as the words over it are, "LOADING...": in capitals, in
+		the menus' titles' face, OpenCE, the words' own (the menus' heading
+		font, pc\heading), its capitals 15 of the 480 lines tall, theirs 22,
+		set at LOADING_PRESENTATION_CAPTION_SCALE times their size: the
+		presenter draws it at the screen's pixels, lit as the words are) */
+		snprintf(capitals, sizeof(capitals), "%s", caption);
+		for (index = 0; capitals[index]; index++)
+			if (capitals[index] >= 'a' && capitals[index] <= 'z')
+				capitals[index] = (char)(capitals[index] - 'a' + 'A');
+		coverage = capitals[0] ? text_hires_line("pc\\heading", capitals,
+			15.0f * LOADING_PRESENTATION_CAPTION_SCALE, &width, &height) : NULL;
 
 		snprintf(loading_screen_caption, sizeof(loading_screen_caption), "%s", caption);
 		xgpu_backend_loading_caption(coverage, (unsigned long)width, (unsigned long)height);

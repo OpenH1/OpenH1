@@ -264,19 +264,23 @@ int main(void) {
     assert(art->smoothed > 0.4f && art->smoothed < 0.6f);
     memset(caption, 255, sizeof(caption));
     loading_art_caption(art, caption, 64, 16);
-    frame.elapsed_ns += 16666667u;
-    pixels = loading_art_render(art, &frame);
-    /* (not in the frame: the presenter draws it over the frame, at the
-    screen's pixels) */
+    for (step = 0; step < 30; step++) {
+        frame.elapsed_ns += 16666667u;
+        pixels = loading_art_render(art, &frame);
+    }
+    /* (not pasted flat, in the frame or over it: the sweep lights it as it
+    lights the words, here white, as its trail of this bright grey picture
+    is; test_loading_caption.py has the supplied picture's) */
     for (i = 0; i < LOADING_ART_FRAME_PIXELS; i++) lit += pixels[i*4] == LOADING_ART_CAPTION_RED &&
         pixels[i*4+1] == LOADING_ART_CAPTION_GREEN && pixels[i*4+2] == LOADING_ART_CAPTION_BLUE;
     assert(!lit);
     /* (64 by 16 at eight times, shown at the 480 rows: 8 by 2 of them,
-    under the words, in the middle) */
+    under the words, in the middle, lit as the frame has them there) */
     tile = loading_art_caption_shown(art, pixels, 640, 480, &left, &top, &width, &height);
     assert(tile && width == 8 && height == 2 && left == 316 && top == LOADING_ART_CAPTION_TOP);
     for (i = 0; i < 16; i++)
-        under += tile[i * 4] == LOADING_ART_CAPTION_RED && tile[i * 4 + 2] == LOADING_ART_CAPTION_BLUE;
+        under += tile[i * 4 + 2] == pixels[((top + i / 8) * 640 + left + i % 8) * 4 + 2] &&
+            tile[i * 4] != LOADING_ART_CAPTION_RED;
     assert(under == 16);
     /* (and twice as large on a screen of twice the rows) */
     tile = loading_art_caption_shown(art, pixels, 1280, 960, &left, &top, &width, &height);
