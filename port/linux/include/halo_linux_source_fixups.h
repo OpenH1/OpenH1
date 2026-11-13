@@ -106,6 +106,9 @@ in the tick), and how far the frame is past that, in ticks: -1 for a view
 drawn between the ticks (render_interpolation.c) */
 void render_interpolation_first_person_updated(void);
 float render_interpolation_first_person_phase(short local_player_index);
+/* ... and how far the step running now ends past it, the same way (0 to 1),
+for a state changed in it (first_person_weapon_start_interpolation) */
+float render_interpolation_first_person_step_phase(void);
 void render_interpolation_first_person(short local_player_index, struct real_matrix4x3 *node_matrices,
 	short node_count, struct render_camera const *camera);
 float render_interpolation_game_time_sec(long ticks);
