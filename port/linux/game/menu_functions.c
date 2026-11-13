@@ -3801,6 +3801,32 @@ static void settings_fact_add(struct settings_facts *facts, wchar_t const *name,
 	facts->count++;
 }
 
+/* a setting's fact of whose value it is, if it is each player's: the
+profile's edited (first), or every player's, config.toml's (last) */
+static void settings_profile_fact(char const *name, struct settings_facts *facts, boolean first)
+{
+	struct player_profile *profile = player_ui_get_edit_player_profile();
+	char folder[1024];
+	wchar_t whose[ROW_TEXT_LENGTH] = { 0 };
+	boolean own;
+
+	if (!name || !config_per_player(name))
+		return;
+	own = profile && settings_profile_folder(folder, sizeof(folder));
+	if (own != first)
+		return;
+	if (own)
+	{
+		ustrncpy(whose, profile->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
+		whose[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
+	}
+	else
+	{
+		settings_wide_copy(whose, L"ALL PLAYERS", ROW_TEXT_LENGTH);
+	}
+	settings_fact_add(facts, L"PROFILE", whose);
+}
+
 /* the facts of a row of a setting for the panel: the value its default
 shows, the host's choice online where its help says so (taken out of its
 words), and whose value it is of a setting that is each player's: the
@@ -3816,6 +3842,9 @@ static void settings_facts_of(struct widget_instance *row, struct widget_instanc
 	double number;
 
 	facts->count = 0;
+	/* (a profile's own first: whose value it is, where the panel has room
+	for one fact) */
+	settings_profile_fact(name, facts, TRUE);
 	if (setting && setting->setting && setting_text(setting->setting, text, sizeof(text), TRUE))
 		settings_wide_copy(shown, settings_widget_text(spinner, setting_value_index(setting, text)), ROW_TEXT_LENGTH);
 	else if (slider && setting_text(settings_slider_setting(slider), text, sizeof(text), TRUE) &&
@@ -3832,23 +3861,7 @@ static void settings_facts_of(struct widget_instance *row, struct widget_instanc
 		settings_fact_add(facts, L"DEFAULT", shown);
 	if (settings_host_choice_cut(words))
 		settings_fact_add(facts, L"ONLINE", L"HOST'S CHOICE");
-	if (name && config_per_player(name))
-	{
-		struct player_profile *profile = player_ui_get_edit_player_profile();
-		char folder[1024];
-		wchar_t whose[ROW_TEXT_LENGTH] = { 0 };
-
-		if (profile && settings_profile_folder(folder, sizeof(folder)))
-		{
-			ustrncpy(whose, profile->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
-			whose[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
-		}
-		else
-		{
-			settings_wide_copy(whose, L"ALL PLAYERS", ROW_TEXT_LENGTH);
-		}
-		settings_fact_add(facts, L"PROFILE", whose);
-	}
+	settings_profile_fact(name, facts, FALSE);
 }
 
 /* the width of words in a font, as drawn */
@@ -4111,6 +4124,14 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		short top = stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : picture ? SETTINGS_PANEL_TEXT_UNDER_PICTURE :
 			SETTINGS_PANEL_TEXT_TOP;
 
+		/* (the last facts left out first: the first is kept where it fits) */
+		while (facts && facts_values && row_facts.count > 1 &&
+			settings_panel_height(lines, note_lines, line) + line / 2 + fact_lines * line > room - top)
+		{
+			row_facts.count--;
+			fact_lines = settings_facts_lines(&row_facts, ui_widget_port_text_box_font(facts, &facts_width),
+				facts_width, fact_names, fact_values);
+		}
 		if (!facts || !facts_values ||
 			settings_panel_height(lines, note_lines, line) + line / 2 + fact_lines * line > room - top)
 		{
