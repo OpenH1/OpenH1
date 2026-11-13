@@ -72,9 +72,11 @@ enum
 	MENUS_HEIGHT = 480,
 };
 
-/* how tall the cyborg stands, in world units, from its origin at its feet
-to the top of its helmet (its idle's) */
+/* how tall the cyborg stands, in world units, from its origin to the top of
+its helmet (its idle's), and how far its boots' soles are under its origin
+(stood that much higher, its soles are on its box's foot) */
 #define SPARTAN_HEIGHT 0.70f
+#define SPARTAN_SOLES 0.026f
 /* how far it is turned from facing the camera, to its right (the
 originals' pictures': their camera's yaw 172 to its facing) */
 #define SPARTAN_TURN_DEGREES 8.0f
@@ -309,7 +311,7 @@ static void spartan_stand(
 	real above = ((view[1] + view[3]) * 0.5f - spartan->bottom) / MAX(half_height, 1.0f);
 	real tall = MAX(spartan->height, 1.0f) / MAX(half_height, 1.0f);
 	real distance = SPARTAN_HEIGHT / (tall * tangent);
-	real side = across * distance * tangent, lift = above * distance * tangent;
+	real side = across * distance * tangent, lift = above * distance * tangent + SPARTAN_SOLES;
 
 	position->x = menu_spartan.stage.x + spartan_forward.i * distance + spartan_right.i * side + spartan_up.i * lift;
 	position->y = menu_spartan.stage.y + spartan_forward.j * distance + spartan_right.j * side + spartan_up.j * lift;
