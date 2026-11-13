@@ -648,6 +648,7 @@ symbols in this file:
 #include "units.h"
 
 #include "bipeds.h"
+#include "units/biped_limp_noodle.h" /* port: biped_limp_noodle_drape_dying */
 #include "biped_definitions.h"
 #include "dialogue_definitions.h"
 #include "unit_definitions.h"
@@ -11998,6 +11999,11 @@ void unit_postprocess_node_matrices(
 			}
 		}
 	}
+
+	/* port: a dead biped's body raised onto the ground that rises under it
+	(biped_limp_noodle.c) */
+	if (unit->object.type==_object_type_biped)
+		biped_limp_noodle_drape_dying(unit_index, node_matrices);
 
 	return;
 }
