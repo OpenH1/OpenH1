@@ -3106,8 +3106,9 @@ static boolean players_coop_teleport_stacked(
 /* Co-op host, each tick: a player stranded for COOP_STRANDED_TICKS is moved
 beside a grounded teammate inside the BSP, else any teammate inside it, else
 to the last checkpoint. Skipped while scripts hold the controls, since
-cutscenes place the players themselves. A BSP switch already moves everyone
-(players_reconnect_to_structure_bsp); this catches anyone it missed. */
+cutscenes place the players themselves. A BSP switch already moves anyone
+outside the new BSP (players_reconnect_to_structure_bsp); this catches
+anyone who leaves it later, or whom it missed. */
 static void players_coop_rescue_stranded(
 	void)
 {
@@ -3562,7 +3563,7 @@ static boolean players_coop_host_alive(
 }
 
 /* port: whether the unit's crossing switches the BSP in network co-op. Only
-the host's does, and brings the whole team to the host
+the host's does, and brings to the host whoever must move
 (players_reconnect_to_structure_bsp), so no one running ahead or doubling
 back drags the others through the level. With none of the host's players
 alive anyone's does, so the team never waits on the host's respawn. Never
@@ -3631,15 +3632,19 @@ static void player_teleport_on_bsp_switch(
 		position);
 	if (biped)
 	{
-		/* port: in network co-op a loading zone brings the whole team to
-		whoever crossed it, the host (players_coop_bsp_switch_allowed).
-		Only one BSP is ever loaded, so anyone left elsewhere would stand
-		outside it, or on a trigger that switches it straight back
-		(players_update_after_game waits for players_coop_bsp_switch_ready
-		before another switch). */
+		/* port: in network co-op a loading zone brings to whoever crossed
+		it (the host: players_coop_bsp_switch_allowed) only the players who
+		must move: those outside the new BSP (the leaf test below), where
+		they would fall, and those on one of its loading zones, which would
+		switch it straight back or on (players_update_after_game waits for
+		players_coop_bsp_switch_ready before another switch). A player
+		still inside the new BSP's space, as at the seam between two areas,
+		stays where it is; the host decides, and clients take where it
+		puts them (network_distributed.c). Any player it leaves who later
+		falls outside is rescued (players_coop_rescue_stranded). */
 		if (network_coop_active())
 		{
-			outside_switch_trigger = TRUE;
+			outside_switch_trigger = players_coop_bsp_switch_trigger(unit_index) != NONE;
 		}
 		else if (players_globals->pending_teleport_starting_location_index != NONE &&
 			!scenario_trigger_volume_test_object(
@@ -3721,10 +3726,10 @@ void players_reconnect_to_structure_bsp(
 	/* port: each player's last cluster is the old BSP's: forgotten before the
 	teleports below, as it is after them. A teleport's coop respawn effect
 	works out the players' combined pvs (player_teleport_on_bsp_switch), and
-	a player not moved yet, or not moved at all (one network co-op leaves
-	where it was), is outside the new BSP, where its unit has no cluster: the
-	pvs took the old BSP's cluster index for it, one of another cluster or
-	past the new BSP's clusters (structure_bsp_get_cluster_pvs's assertion) */
+	a player not moved yet (or one not moved at all, inside the new BSP: its
+	cluster is worked out again from where it stands) would otherwise lend
+	the pvs the old BSP's cluster index, one of another cluster or past the
+	new BSP's clusters (structure_bsp_get_cluster_pvs's assertion) */
 	data_iterator_new(&iterator, player_data);
 	while ((player = data_iterator_next(&iterator)) != NULL)
 		player->cluster_index = NONE;
