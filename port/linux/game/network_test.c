@@ -2168,6 +2168,22 @@ void network_test_update(
 	if (network_test.mode == _network_test_off)
 		return;
 
+	/* (and in the lobby, a client's player whose lobby's on-screen keyboard
+	is open, as A on its chat's line opens it: "gg ez" typed on it and sent,
+	network_chat.c's lobby chat) */
+	if (network_test.chat_time > 0.0f && network_test.mode != _network_test_host)
+	{
+		static long lobby_frames;
+		boolean keyboard = FALSE;
+
+		if (network_chat_lobby_typed(&keyboard) && keyboard)
+			network_test_keyboard_line(++lobby_frames);
+		else if (lobby_frames)
+		{
+			lobby_frames = 0;
+			network_test_keyboard_line(0);
+		}
+	}
 	/* debug.network_test_chat: each client's player types "gg ez" on the
 	text chat's on-screen keyboard 32 seconds on, as a controller does, and
 	sends it to the team (each frame, not each second, as the rest) */

@@ -2050,8 +2050,6 @@ static boolean chat_lobby_host_takes(
 	if (!network_player_is_valid(player) || player->machine_index != machine_index ||
 		!chat_rate_take(&chat_rates[machine_index], now) || !chat_text_clean(text, sent, CHAT_TEXT_SIZE))
 	{
-		error(_error_log, "chat (lobby): machine %ld's line of slot %d not taken (its machine %ld)", machine_index,
-			(int)slot, network_player_is_valid(player) ? (long)player->machine_index : -1L);
 		return FALSE;
 	}
 	for (index = 0; index < CHAT_NAME_SIZE - 1 && index < (short)NUMBEROF(player->name) && player->name[index]; index++)
@@ -2100,7 +2098,6 @@ static void chat_lobby_send(
 	char name[CHAT_TEXT_SIZE];
 	short minutes;
 
-	error(_error_log, "chat (lobby): a line of slot %d typed, %d letters", (int)slot, (int)csstrlen(typed));
 	if (slot == NONE || !chat_text_clean(text, typed, CHAT_TEXT_SIZE))
 		return;
 	/* (the game's commands and votes are a game's: the lobby's mutes are its
@@ -2152,7 +2149,8 @@ static void chat_lobby_input_begin(
 	chat_input.controller = (short)(controller >= 0 ? controller : 0);
 	chat_input.channel = _chat_channel_everyone;
 	chat_input.player = NONE;
-	chat_input.physical = keyboard && controller >= 0;
+	/* (a controller that is there: one gone ends the line, as a game's) */
+	chat_input.physical = keyboard && controller >= 0 && controller_remap_connected(controller);
 	while (input_get_key(&key))
 		;
 	if (keyboard)

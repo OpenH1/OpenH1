@@ -592,9 +592,9 @@ static char const *tall_key_picture(char const *key)
 	};
 	long index;
 
-	/* (the D-pad: the keyboard has no key of its own for it, its arrows
-	the menus' left and right) */
-	if (!strcmp(key, "dpad") && halo_keyboard_prompts())
+	/* (the D-pad: no picture of its own (the keyboard's arrows are the
+	menus' left and right), its words alone) */
+	if (!strcmp(key, "dpad"))
 		return "";
 	for (index = 0; index < NUMBEROF(pictures); index++)
 	{
@@ -662,7 +662,7 @@ static short tall_prompt_end(char const *key, char const *label, boolean control
 	snprintf(spaced, sizeof(spaced), " %s", label);
 	if (controller)
 	{
-		advance = !strcmp(key, "rt") ? 69 : !strcmp(key, "lt") ? 62 : !strcmp(key, "r3") ? 65 : !strcmp(key, "dpad") ? 40 :
+		advance = !strcmp(key, "rt") ? 69 : !strcmp(key, "lt") ? 62 : !strcmp(key, "r3") ? 65 : !strcmp(key, "dpad") ? 0 :
 			9;
 	}
 	else if (!strcmp(key, "dpad"))
@@ -2673,8 +2673,13 @@ static void tall_chat_keyboard_draw(struct screen_tall *tall, point2d offset)
 		y1 = (short)(TALL_PANEL_Y + TALL_PANEL_HEIGHT - 4);
 	}
 	y0 = (short)(y1 - 5 * TALL_CHAT_KEYBOARD_ROW);
-	tall->chat_source->keyboard((short)(offset.x + x0), (short)(offset.y + y0), (short)(offset.x + x1),
-		(short)(offset.y + y1), screen_width, (short)SCREEN_HEIGHT);
+	{
+		short font_width;
+		long font = tall->chat_input ? ui_widget_port_text_box_font(tall->chat_input, &font_width) : NONE;
+
+		tall->chat_source->keyboard(font, (short)(offset.x + x0), (short)(offset.y + y0), (short)(offset.x + x1),
+			(short)(offset.y + y1), screen_width, (short)SCREEN_HEIGHT);
+	}
 	(void)ui_offset;
 }
 

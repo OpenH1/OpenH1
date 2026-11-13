@@ -1461,10 +1461,9 @@ static char const *lobby_chat_typed(int *keyboard)
 	return typed;
 }
 
-static void lobby_chat_keyboard(short x0, short y0, short x1, short y1, short screen_width, short screen_height)
+static void lobby_chat_keyboard(long font, short x0, short y0, short x1, short y1, short screen_width,
+	short screen_height)
 {
-	long font = tag_loaded('font', "ui\\large_ui");
-
 	if (font != NONE)
 		network_chat_lobby_draw_keyboard(font, x0, y0, x1, y1, screen_width, screen_height);
 }

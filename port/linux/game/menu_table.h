@@ -114,8 +114,8 @@ struct menu_chat_source
 	is up */
 	char const *(*typed)(int *keyboard);
 	/* the on-screen keyboard drawn in its place (the menus' screen's units,
-	width by height) */
-	void (*keyboard)(short x0, short y0, short x1, short y1, short screen_width, short screen_height);
+	width by height), in a font of the menus' (the line typed's) */
+	void (*keyboard)(long font, short x0, short y0, short x1, short y1, short screen_width, short screen_height);
 	/* the words the line typed's place shows while none is (empty: none) */
 	char const *(*prompt)(void);
 };
