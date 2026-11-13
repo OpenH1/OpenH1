@@ -156,6 +156,20 @@ static short mission_cards_first(short chosen, short count)
 	return (short)PIN(chosen - MISSION_SLOTS / 2, 0, count - MISSION_SLOTS);
 }
 
+/* the tall layout's first of the cards shown: the row kept where it is while
+the chosen card is one of those shown, moved by as little as brings it in
+(the pointer choosing the card it passes over never moves the row under it) */
+static short mission_cards_window(short first, short chosen, short count)
+{
+	if (count <= MISSION_SLOTS)
+		return 0;
+	if (chosen < first)
+		first = chosen;
+	else if (chosen > first + MISSION_SLOTS - 1)
+		first = (short)(chosen - (MISSION_SLOTS - 1));
+	return (short)PIN(first, 0, count - MISSION_SLOTS);
+}
+
 /* each slot's left in the menus' 640 for shown cards (a wide screen's
 extra width, extra, spreading them): the chosen slot's card the larger, the
 row in the middle */
@@ -904,13 +918,22 @@ static void campaign_missions_update(struct widget_instance *list)
 	short shown, slot, index;
 	wchar_t text[MISSION_TEXT_LENGTH];
 
-	if (mission_card_focus_chooses(focused_slot, hovered) && list->focused_child->visible &&
-		campaign_cards.first + focused_slot < count)
+	/* (the tall layout's: the card the pointer passes over is chosen and has
+	the focus, lit as the keys light it, the row kept where it is under the
+	pointer: mission_cards_window; one look for a card that has the focus) */
+	if (tall && focused_slot != NONE)
+	{
+		hovered = FALSE;
+		focus_on_card = TRUE;
+	}
+	if ((tall ? focused_slot != NONE : mission_card_focus_chooses(focused_slot, hovered)) &&
+		list->focused_child->visible && campaign_cards.first + focused_slot < count)
 	{
 		campaign_cards.chosen = (short)(campaign_cards.first + focused_slot);
 	}
 	campaign_cards.chosen = (short)PIN(campaign_cards.chosen, 0, MAX(count - 1, 0));
-	campaign_cards.first = mission_cards_first(campaign_cards.chosen, count);
+	campaign_cards.first = tall ? mission_cards_window(campaign_cards.first, campaign_cards.chosen, count) :
+		mission_cards_first(campaign_cards.chosen, count);
 	shown = (short)MIN(count, MISSION_SLOTS);
 	mission_cards_place(shown, (short)(campaign_cards.chosen - campaign_cards.first), ui_widget_port_wide_extra(),
 		slot_x);
@@ -966,14 +989,35 @@ static void campaign_missions_update(struct widget_instance *list)
 		mission_card_show(chosen ? big : small, mission, chosen);
 		/* (fainter beside the chosen one, but the one the pointer lights) */
 		if (small)
-			small->alpha_modifier = hovered && list->focused_child == small ? 1.0f : MISSION_CARD_FAINT;
+			small->alpha_modifier = tall || (hovered && list->focused_child == small) ? 1.0f : MISSION_CARD_FAINT;
 		/* (the focus on the chosen card, which is the larger one) */
 		if (chosen && focus_on_card && big)
 			list->focused_child = big;
 	}
-	/* (the tall layout's arrows on the middle of its cards, wherever they are) */
+	/* (the tall layout's arrows on the middle of its cards, wherever they
+	are; each lit while it has the focus, the chosen card then resting: one
+	thing lit) */
 	if (tall)
 	{
+		struct widget_instance *arrows[2];
+		short arrow;
+
+		arrows[0] = named(list, "arrow_previous", 0);
+		arrows[1] = named(list, "arrow_next", 0);
+		for (arrow = 0; arrow < 2; arrow++)
+		{
+			if (!arrows[arrow])
+				continue;
+			arrows[arrow]->animation.current_frame_index = list->focused_child == arrows[arrow] ? 1 : 0;
+			if (list->focused_child == arrows[arrow])
+			{
+				for (slot = 0; slot < MISSION_SLOTS; slot++)
+				{
+					if (mission_card(list, slot, TRUE))
+						mission_card(list, slot, TRUE)->animation.current_frame_index = MISSION_CARD_RESTING;
+				}
+			}
+		}
 		if (named(list, "arrow_previous", 0))
 			named(list, "arrow_previous", 0)->vertical_offset =
 				(short)(cards_top + (MISSION_TALL_HEIGHT - MISSION_ARROW_HEIGHT) / 2);
@@ -1088,7 +1132,8 @@ static boolean campaign_missions_step(struct widget_instance *widget, short step
 	if (chosen == campaign_cards.chosen)
 		return TRUE;
 	campaign_cards.chosen = chosen;
-	campaign_cards.first = mission_cards_first(chosen, count);
+	campaign_cards.first = menu_engine_looks() ? mission_cards_window(campaign_cards.first, chosen, count) :
+		mission_cards_first(chosen, count);
 	/* (a card focused moves to the chosen one: the update) */
 	if (list && mission_card_slot(list->focused_child) != NONE)
 		list->focused_child = NULL;
@@ -1136,7 +1181,7 @@ static boolean campaign_missions_choose(struct widget_instance *widget, short co
 
 	/* (a card beside the chosen one: chosen, slid to the middle, not
 	opened; failing, so that its screen does not open) */
-	if (mission_card_click_chooses(campaign_cards.first, slot, campaign_cards.chosen, count))
+	if (!menu_engine_looks() && mission_card_click_chooses(campaign_cards.first, slot, campaign_cards.chosen, count))
 	{
 		struct widget_instance *list = widget->parent;
 
@@ -1281,6 +1326,9 @@ static void campaign_difficulty_update(struct widget_instance *list)
 			break;
 		if (child == list->focused_child)
 			campaign_cards.difficulty = index;
+		/* (lit while it has the focus, set each frame: the pointer's focus too,
+		which no event follows) */
+		child->animation.current_frame_index = child == list->focused_child ? 1 : 0;
 		if ((widget = named(child, "difficulty_badge", 0)) != NULL)
 		{
 			widget->animation.current_frame_index = index;
