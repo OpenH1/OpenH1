@@ -609,6 +609,9 @@ int menu_models_export(
 	char const *why = NULL;
 	long index;
 
+	/* (the folder first: the note is written before anything else) */
+	snprintf(folder, sizeof(folder), "%s/%s", platform_data_root(), MENU_MODELS_FOLDER);
+	mkdir(folder, 0755);
 	export_note_begin(checksum);
 	if (!export)
 	{
@@ -682,8 +685,6 @@ int menu_models_export(
 	}
 	if (!why)
 	{
-		snprintf(folder, sizeof(folder), "%s/%s", platform_data_root(), MENU_MODELS_FOLDER);
-		mkdir(folder, 0755);
 		models_path(path, sizeof(path), "bin");
 		if (!models_write_file(path, file, size))
 			why = "it cannot be written";
