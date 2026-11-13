@@ -1007,7 +1007,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	else if (parent_element == _element_screen && !strcmp(name, "header"))
 	{
-		static char const *const names[] = { "title", "picture", "detail", NULL };
+		static char const *const names[] = { "title", "picture", "detail", "fallback", NULL };
 
 		element = _element_header;
 		attributes_read(reader, name, attributes, names, values);
@@ -1017,12 +1017,16 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			reader_problem(reader, "<header> has no title", NULL);
 		text_attribute_check(reader, values[0]);
 		text_attribute_check(reader, values[2]);
+		text_attribute_check(reader, values[3]);
+		if (!reader->failed && values[3] && !values[2])
+			reader_problem(reader, "<header> has a fallback and no detail", NULL);
 		block = block_add(reader, MENU_SCREEN_HEADER, -1);
 		if (block >= 0)
 		{
 			screen->blocks[block].label = values[0];
 			screen->blocks[block].picture = values[1];
 			screen->blocks[block].empty = values[2];
+			screen->blocks[block].source = values[3];
 		}
 	}
 	else if (parent_element == _element_screen && !strcmp(name, "cards"))

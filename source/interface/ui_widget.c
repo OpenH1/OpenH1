@@ -4524,9 +4524,10 @@ browser as Tab (its sort: halo_keyboard_browser_keys_active), Y as F (their
 favorite), LB and RB (the white and black buttons, Settings' and the
 browsers' tabs) as Q and E, the right trigger (Multiplayer's and the
 browsers' refresh) as R, the left trigger (the browsers' Filters) as L, back
-as F1, in a server browser R3 (its SEARCH) as /; NULL for the others (the
-D-pad, which the arrow keys press, Start and the sticks), drawn as the
-controller's */
+as F1, in a server browser R3 (its SEARCH) as /, the D-pad's left and right
+as the arrow keys that press them, < and > (the lobby's CHANGE TEAM: the
+menus' fonts have no arrows); NULL for the others (the D-pad's up and down,
+Start and the sticks), drawn as the controller's */
 static char const *ui_widget_port_menu_key(
 	short icon_type)
 {
@@ -4552,6 +4553,10 @@ static char const *ui_widget_port_menu_key(
 		return "F1";
 	case _icon_right_thumb:
 		return halo_keyboard_browser_keys_active() ? "/" : NULL;
+	case _icon_dpad_left:
+		return "<";
+	case _icon_dpad_right:
+		return ">";
 	default:
 		return NULL;
 	}

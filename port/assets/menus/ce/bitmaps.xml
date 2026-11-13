@@ -817,15 +817,15 @@
 		<frame png="ce/port/main_menu/parts/button_164x26__0.png" width="164" height="26"/>
 		<frame png="ce/port/main_menu/parts/button_164x26__1.png" width="164" height="26"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/panel_404x109">
-		<frame png="ce/port/main_menu/parts/panel_404x109__0.png" width="404" height="109"/>
+	<bitmap name="main_menu/parts/panel_404x79">
+		<frame png="ce/port/main_menu/parts/panel_404x79__0.png" width="404" height="79"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/item_392x20">
 		<frame png="ce/port/main_menu/parts/item_392x20__0.png" width="392" height="20"/>
 		<frame png="ce/port/main_menu/parts/item_392x20__1.png" width="392" height="20"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/panel_364x134">
-		<frame png="ce/port/main_menu/parts/panel_364x134__0.png" width="364" height="134"/>
+	<bitmap name="main_menu/parts/panel_364x102">
+		<frame png="ce/port/main_menu/parts/panel_364x102__0.png" width="364" height="102"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/item_352x40">
 		<frame png="ce/port/main_menu/parts/item_352x40__0.png" width="352" height="40"/>
@@ -844,12 +844,12 @@
 		<frame png="ce/port/main_menu/parts/lane_row_180x18__2.png" width="180" height="18"/>
 		<frame png="ce/port/main_menu/parts/lane_row_180x18__3.png" width="180" height="18"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/team_panel_196x245">
-		<frame png="ce/port/main_menu/parts/team_panel_196x245__0.png" width="196" height="245"/>
-		<frame png="ce/port/main_menu/parts/team_panel_196x245__1.png" width="196" height="245"/>
+	<bitmap name="main_menu/parts/team_panel_196x275">
+		<frame png="ce/port/main_menu/parts/team_panel_196x275__0.png" width="196" height="275"/>
+		<frame png="ce/port/main_menu/parts/team_panel_196x275__1.png" width="196" height="275"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/panel_404x245">
-		<frame png="ce/port/main_menu/parts/panel_404x245__0.png" width="404" height="245"/>
+	<bitmap name="main_menu/parts/panel_404x275">
+		<frame png="ce/port/main_menu/parts/panel_404x275__0.png" width="404" height="275"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/team_panel_176x334">
 		<frame png="ce/port/main_menu/parts/team_panel_176x334__0.png" width="176" height="334"/>
@@ -864,12 +864,12 @@
 		<frame png="ce/port/main_menu/parts/lane_row_160x18__2.png" width="160" height="18"/>
 		<frame png="ce/port/main_menu/parts/lane_row_160x18__3.png" width="160" height="18"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/team_panel_176x192">
-		<frame png="ce/port/main_menu/parts/team_panel_176x192__0.png" width="176" height="192"/>
-		<frame png="ce/port/main_menu/parts/team_panel_176x192__1.png" width="176" height="192"/>
+	<bitmap name="main_menu/parts/team_panel_176x224">
+		<frame png="ce/port/main_menu/parts/team_panel_176x224__0.png" width="176" height="224"/>
+		<frame png="ce/port/main_menu/parts/team_panel_176x224__1.png" width="176" height="224"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/panel_364x192">
-		<frame png="ce/port/main_menu/parts/panel_364x192__0.png" width="364" height="192"/>
+	<bitmap name="main_menu/parts/panel_364x224">
+		<frame png="ce/port/main_menu/parts/panel_364x224__0.png" width="364" height="224"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/team_panel_196x278">
 		<frame png="ce/port/main_menu/parts/team_panel_196x278__0.png" width="196" height="278"/>
@@ -878,12 +878,12 @@
 	<bitmap name="main_menu/parts/panel_404x278">
 		<frame png="ce/port/main_menu/parts/panel_404x278__0.png" width="404" height="278"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/team_panel_196x161">
-		<frame png="ce/port/main_menu/parts/team_panel_196x161__0.png" width="196" height="161"/>
-		<frame png="ce/port/main_menu/parts/team_panel_196x161__1.png" width="196" height="161"/>
+	<bitmap name="main_menu/parts/team_panel_196x191">
+		<frame png="ce/port/main_menu/parts/team_panel_196x191__0.png" width="196" height="191"/>
+		<frame png="ce/port/main_menu/parts/team_panel_196x191__1.png" width="196" height="191"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/panel_404x161">
-		<frame png="ce/port/main_menu/parts/panel_404x161__0.png" width="404" height="161"/>
+	<bitmap name="main_menu/parts/panel_404x191">
+		<frame png="ce/port/main_menu/parts/panel_404x191__0.png" width="404" height="191"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/item_148x22">
 		<frame png="ce/port/main_menu/parts/item_148x22__0.png" width="148" height="22"/>

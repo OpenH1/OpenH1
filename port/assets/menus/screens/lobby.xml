@@ -29,7 +29,7 @@ each name in its team's colour): T or Y on the keyboard, LB (CHAT) or A on
 its line on a controller (the on-screen keyboard), a tap on it on a
 touchscreen; the host's LOBBY TEXT CHAT has it on or off for everyone. -->
 <screen name="lobby" start="lobby start">
-	<header title="{lobby.title}" detail="{lobby.subtitle}"/>
+	<header title="{lobby.title}" detail="{lobby.subtitle}" fallback="{lobby.subtitle.short}"/>
 	<spartan height="80" color="lobby.lineup" when="pointer"/>
 	<table source="lobby.players" lanes="2" do="lobby card" left="lobby team red" right="lobby team blue">
 		<lane label="{lobby.red}" detail="{lobby.red.count}" tone="lobby.red.tone"/>
@@ -58,7 +58,7 @@ touchscreen; the host's LOBBY TEXT CHAT has it on or off for everyone. -->
 		<button key="accept" label="GAME SETTINGS" if="lobby.settings" do="lobby settings"/>
 		<button key="accept" label="{lobby.start}" if="lobby.host" do="lobby start"/>
 	</panel>
-	<chat source="lobby.chat" lines="5" do="lobby chat"/>
+	<chat source="lobby.chat" lines="3" do="lobby chat"/>
 	<panel if="lobby.card">
 		<spartan height="116" touch-height="72" color="lobby.card.color"/>
 		<heading text="{lobby.card.name}"/>
