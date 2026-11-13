@@ -56,6 +56,15 @@ static int halo_keyboard_settings_keys_active(void)
 	return settings_shown;
 }
 
+/* whether the high-res text draws the menus' text (text_hires.c's: the
+D-pad's arrows are its fallback font's) */
+static int hires_text = 1;
+
+static int text_hires_enabled(void)
+{
+	return hires_text;
+}
+
 /* (keys_held_over_switch's other contexts: none open) */
 static unsigned char console_is_active(void)
 {
@@ -85,6 +94,8 @@ static int scancode(char const *name)
 		{ "R", SDL_SCANCODE_R },
 		{ "L", SDL_SCANCODE_L },
 		{ "/", SDL_SCANCODE_SLASH },
+		{ "\xE2\x86\x90", SDL_SCANCODE_LEFT },
+		{ "\xE2\x86\x92", SDL_SCANCODE_RIGHT },
 	};
 	size_t index;
 
@@ -112,6 +123,8 @@ static boolean pressed(XINPUT_GAMEPAD const *pad, short icon)
 	case _icon_back_button: return (pad->wButtons & XINPUT_GAMEPAD_BACK) != 0;
 	case _icon_start_button: return (pad->wButtons & XINPUT_GAMEPAD_START) != 0;
 	case _icon_right_thumb: return (pad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0;
+	case _icon_dpad_left: return (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0;
+	case _icon_dpad_right: return (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0;
 	default: return FALSE;
 	}
 }
@@ -354,6 +367,14 @@ int main(int argc, char **argv)
 		CHECK(!ui_widget_port_menu_key(_icon_dpad_up) && !ui_widget_port_menu_key(_icon_start_button) &&
 			!ui_widget_port_menu_key(_icon_left_thumb),
 			"a button the keyboard has no menu key for named one");
+		/* (the D-pad's left and right are the arrow keys, drawn by the
+		high-res text's fallback font: without it, the controller's) */
+		CHECK(ui_widget_port_menu_key(_icon_dpad_left) && ui_widget_port_menu_key(_icon_dpad_right),
+			"the D-pad's left and right not drawn as the arrow keys");
+		hires_text = 0;
+		CHECK(!ui_widget_port_menu_key(_icon_dpad_left) && !ui_widget_port_menu_key(_icon_dpad_right),
+			"the D-pad's arrows named without the font that draws them");
+		hires_text = 1;
 		return 0;
 	}
 	CHECK(FALSE, "no such case: %s", case_name);

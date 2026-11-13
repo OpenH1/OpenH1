@@ -396,7 +396,7 @@ static char const *const screen_binding_names[] =
 	"browser.panel.kind.tone", "browser.panel.tick", "browser.panel.opence", "browser.panel.players",
 	"browser.panel.ping", "browser.panel.status", "browser.joinable", "browser.server", "browser.link",
 	"browser.filtered", "profile.title", "profile.name", "profile.level", "profile.difficulty", "profile.controls",
-	"profile.color", "profile.chosen", "profile.current", "lobby.title", "lobby.subtitle", "lobby.red",
+	"profile.color", "profile.chosen", "profile.current", "lobby.title", "lobby.subtitle", "lobby.subtitle.short", "lobby.red",
 	"lobby.red.count", "lobby.red.tone", "lobby.blue", "lobby.blue.count", "lobby.blue.tone", "lobby.gametype",
 	"lobby.map", "lobby.limits", "lobby.kind", "lobby.kind.tone", "lobby.tick", "lobby.opence", "lobby.after",
 	"lobby.bots", "lobby.bots.shown", "lobby.bots.some", "lobby.bots.locked", "lobby.bots.count.locked", "lobby.skill", "lobby.teams",

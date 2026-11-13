@@ -174,6 +174,9 @@ char const *pc_menu_text_field_words(void);
 wide they are drawn; wrapped to width in lines at most */
 short pc_menu_text_fit(struct widget_instance *box, unsigned short const *text, short width);
 void pc_menu_text_wrap(struct widget_instance *box, unsigned short const *text, short width, short lines);
+/* how many lines text wraps to across width in a text box's font, lines at
+most */
+short pc_menu_text_lines(struct widget_instance *box, unsigned short const *text, short width, short lines);
 /* text's width in a text box's font (0: not known) */
 short pc_menu_text_width(struct widget_instance *box, unsigned short const *text);
 

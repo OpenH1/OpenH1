@@ -12418,6 +12418,18 @@ void pc_menu_text_wrap(struct widget_instance *box, unsigned short const *text, 
 	menu_text_box_wrap_width(box, (wchar_t const *)text, lines, width);
 }
 
+short pc_menu_text_lines(struct widget_instance *box, unsigned short const *text, short width, short lines)
+{
+	wchar_t wrapped[SETTINGS_PANEL_TEXT_LENGTH];
+	short box_width;
+	long font = ui_widget_port_text_box_font(box, &box_width);
+
+	if (!box || !text || !text[0])
+		return 0;
+	return (short)MIN(settings_text_wrap((wchar_t const *)text, wrapped, NUMBEROF(wrapped), font,
+		width > 0 ? width : box_width), lines);
+}
+
 short pc_menu_text_width(struct widget_instance *box, unsigned short const *text)
 {
 	short width;
