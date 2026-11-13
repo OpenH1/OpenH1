@@ -428,6 +428,26 @@ def test_config_player_settings_profile(config_check, tmp_path):
     assert config_check("player", "0", str(one), "display.vsync") == vsync
 
 
+def test_config_player_settings_weapon(config_check, tmp_path):
+    """a weapon's own offsets in a profile's settings.toml are its player's alone, its 0s too (in place of
+    config.toml's); a profile without the weapon's table, or no profile, has config.toml's"""
+    one, two = tmp_path / "one", tmp_path / "two"
+    one.mkdir()
+    two.mkdir()
+    pistol = "weapons\\pistol\\pistol"
+    config_check.config.write_text('[display.viewmodel_weapon."weapons\\\\pistol\\\\pistol"]\nx = 2.0\nyaw = 4.0\n')
+    assert config_check("player-weapon", "0", "", pistol) == "2 0 0 0 4 0"
+    assert config_check("player-weapon", "0", str(one), pistol) == "2 0 0 0 4 0"
+    config_check("profile-weapon-write", str(two), "weapons/pistol/pistol", "0", "0", "0", "0", "0", "0")
+    assert config_check("player-weapon", "1", str(two), pistol) == "0 0 0 0 0 0"
+    config_check("profile-weapon-write", str(two), pistol, "-3", "0", "1.5", "0", "0", "0")
+    assert config_check("player-weapon", "1", str(two), pistol) == "-3 0 1.5 0 0 0"
+    assert config_check("player-weapon", "0", str(one), pistol) == "2 0 0 0 4 0"
+    text = (two / "settings.toml").read_text()
+    assert text.count("[display.viewmodel_weapon.") == 1 and "x = -3.0" in text
+    assert "x = 2.0" in config_check.config.read_text()
+
+
 def test_config_player_settings_environment(config_check, tmp_path, monkeypatch):
     """a setting's environment variable wins over a profile's own value, as over config.toml's"""
     profile = tmp_path / "profile"

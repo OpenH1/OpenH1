@@ -131,8 +131,7 @@ boolean vr_render_body_seat(long object_index, struct vr_body_seat *seat);
 #endif
 
 /* port/linux/src/port_config.c */
-int config_boolean(const char *name);
-unsigned long config_changes(void);
+#include "player_settings.h"
 /* port/linux/game/render_interpolation.c */
 boolean render_interpolation_view_body(long unit_index, real_matrix4x3 *move, real_vector3d *heading);
 real render_interpolation_game_time_sec(long ticks);
@@ -248,18 +247,42 @@ static struct
 #endif
 
 static real_matrix4x3 first_person_legs_matrices[FIRST_PERSON_LEGS_MAXIMUM_NODES];
-static boolean first_person_legs_enabled(
-	void)
+/* the local player whose unit it is (NONE: no local player's) */
+static short first_person_legs_local_player(
+	long object_index)
 {
-	static unsigned long changes = (unsigned long)-1;
-	static boolean enabled = FALSE;
+	short local_player_index;
 
-	if (changes != config_changes())
+	for (local_player_index = 0; local_player_index < MAXIMUM_LOCAL_PLAYERS; local_player_index++)
 	{
-		changes = config_changes();
-		enabled = config_boolean("display.first_person_legs") != 0;
+		long player_index = local_player_get_player_index(local_player_index);
+
+		if (player_index != NONE && player_get(player_index)->unit_index == object_index)
+			return local_player_index;
 	}
-	return enabled;
+	return NONE;
+}
+
+/* display.first_person_legs, the unit's local player's own (their
+profile's: player_settings.c) */
+static boolean first_person_legs_enabled(
+	long object_index)
+{
+	static struct
+	{
+		unsigned long changes;
+		boolean read, enabled;
+	} players[PLAYER_SETTINGS_SLOTS];
+	short local_player_index = first_person_legs_local_player(object_index);
+	short slot = PLAYER_SETTINGS_SLOT(local_player_index);
+
+	if (!players[slot].read || players[slot].changes != config_changes())
+	{
+		players[slot].read = TRUE;
+		players[slot].changes = config_changes();
+		players[slot].enabled = config_player_boolean(local_player_index, "display.first_person_legs") != 0;
+	}
+	return players[slot].enabled;
 }
 
 /* the player's own unit, seen from inside it: its legs drawn (on foot,
@@ -270,7 +293,7 @@ boolean first_person_legs_wanted(
 {
 	struct object_datum *object = object_try_and_get(object_index);
 
-	if (!first_person_legs_enabled() || !object || object->object.type != _object_type_biped ||
+	if (!first_person_legs_enabled(object_index) || !object || object->object.type != _object_type_biped ||
 		TEST_FLAG(object->object.damage_flags, _object_dead_bit) ||
 		TEST_FLAG(object->object.flags, _object_invisible_bit))
 	{

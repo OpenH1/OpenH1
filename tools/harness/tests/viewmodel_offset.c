@@ -80,10 +80,16 @@ static char const *viewmodel_weapon_path(long definition_index)
 		definition_index == (long)0xE2000006 ? "mod\\weapons\\rifle\\rifle" : NULL;
 }
 
-static int config_viewmodel_weapon(const char *path, double values[CONFIG_WEAPON_VALUES])
+/* (player 2's profile's pistol: fake_player2_pistol, while set) */
+static double fake_player2_pistol[CONFIG_WEAPON_VALUES];
+static int fake_player2_pistol_set;
+
+static int config_player_viewmodel_weapon(int local_player, const char *path, double values[CONFIG_WEAPON_VALUES])
 {
 	fake_lookups++;
-	if (path && !strcmp(path, "weapons\\pistol\\pistol"))
+	if (local_player == 1 && fake_player2_pistol_set && path && !strcmp(path, "weapons\\pistol\\pistol"))
+		memcpy(values, fake_player2_pistol, sizeof(fake_player2_pistol));
+	else if (path && !strcmp(path, "weapons\\pistol\\pistol"))
 		memcpy(values, fake_pistol, sizeof(fake_pistol));
 	else if (path && !strcmp(path, "mod\\weapons\\rifle\\rifle"))
 		memcpy(values, fake_rifle, sizeof(fake_rifle));
@@ -592,6 +598,22 @@ int main(int argc, char **argv)
 		CHECK(NEAR(offset.right, UNITS(4.0)), "the change unseen: %f", offset.right);
 		viewmodel_offset(0, 6, &offset);
 		CHECK(NEAR(offset.right, 0.f), "the pistol's on the rifle: %f", offset.right);
+	}
+	CASE("weapon_players")
+	{
+		/* each player's own weapon offsets: player 2's profile's pistol,
+		player 1's config.toml's, each looked up apart */
+		fake_pistol[0] = 3.0;
+		fake_player2_pistol[0] = -6.0;
+		fake_player2_pistol_set = 1;
+		fake_changes++;
+		viewmodel_offset(0, 5, &offset);
+		CHECK(NEAR(offset.right, UNITS(3.0)), "player 1's pistol %f", offset.right);
+		viewmodel_offset(1, 5, &offset);
+		CHECK(NEAR(offset.right, UNITS(-6.0)), "player 2's pistol %f", offset.right);
+		viewmodel_offset(0, 5, &offset);
+		CHECK(NEAR(offset.right, UNITS(3.0)), "player 1's pistol after player 2's %f", offset.right);
+		fake_player2_pistol_set = 0;
 	}
 	CASE("slider_steps")
 	{

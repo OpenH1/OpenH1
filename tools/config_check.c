@@ -130,6 +130,29 @@ the setting's type) */
 			printf("%s\n", config_player_string(atoi(argv[3]), argv[5]));
 		return 0;
 	}
+	/* (a weapon's own offsets: a local player's, their profile's folder
+given; and set in a profile) */
+	if (!strcmp(argv[2], "player-weapon") && argc == 6)
+	{
+		double values[CONFIG_WEAPON_VALUES];
+		int index;
+
+		config_player_profile(atoi(argv[3]), argv[4]);
+		config_player_viewmodel_weapon(atoi(argv[3]), argv[5], values);
+		for (index = 0; index < CONFIG_WEAPON_VALUES; index++)
+			printf("%s%g", index ? " " : "", values[index]);
+		printf("\n");
+		return 0;
+	}
+	if (!strcmp(argv[2], "profile-weapon-write") && argc == 5 + CONFIG_WEAPON_VALUES)
+	{
+		double values[CONFIG_WEAPON_VALUES];
+		int index;
+
+		for (index = 0; index < CONFIG_WEAPON_VALUES; index++)
+			values[index] = atof(argv[5 + index]);
+		return config_profile_viewmodel_weapon_write(argv[3], argv[4], values) ? 0 : 1;
+	}
 	if (!strcmp(argv[2], "profile-write") && argc == 6)
 		return config_profile_write(argv[3], argv[4], argv[5]) ? 0 : 1;
 	if (!strcmp(argv[2], "profile-get") && argc == 5)

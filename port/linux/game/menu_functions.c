@@ -161,6 +161,9 @@ char const *config_graphics_setting(int entry);
 #define CONFIG_WEAPON_VALUES 6
 int config_viewmodel_weapon(char const *path, double values[CONFIG_WEAPON_VALUES]);
 int config_viewmodel_weapon_write(char const *path, double const values[CONFIG_WEAPON_VALUES]);
+int config_profile_viewmodel_weapon(char const *folder, char const *path, double values[CONFIG_WEAPON_VALUES]);
+int config_profile_viewmodel_weapon_write(char const *folder, char const *path,
+	double const values[CONFIG_WEAPON_VALUES]);
 /* a player profile's own values of the settings that are each player's
 (port_config.h; player_settings.c names its folder) */
 int config_per_player(char const *name);
@@ -514,6 +517,21 @@ static short settings_weapon_value(char const *name)
 	return NONE;
 }
 
+static boolean settings_profile_folder(char *folder, unsigned long size);
+
+/* the weapon's offsets: the profile's edited, its own (each a player's, as
+the settings below are), else config.toml's */
+static void settings_weapon_values(double values[CONFIG_WEAPON_VALUES])
+{
+	char folder[1024];
+
+	if (!settings_profile_folder(folder, sizeof(folder)) ||
+		!config_profile_viewmodel_weapon(folder, settings_weapon, values))
+	{
+		config_viewmodel_weapon(settings_weapon, values);
+	}
+}
+
 static boolean settings_weapon_text(short value, char *text, unsigned int size, boolean default_value)
 {
 	double values[CONFIG_WEAPON_VALUES];
@@ -523,7 +541,7 @@ static boolean settings_weapon_text(short value, char *text, unsigned int size, 
 	if (default_value)
 		values[value] = 0.0;
 	else
-		config_viewmodel_weapon(settings_weapon, values);
+		settings_weapon_values(values);
 	snprintf(text, size, "%g", values[value]);
 	return TRUE;
 }
@@ -531,11 +549,14 @@ static boolean settings_weapon_text(short value, char *text, unsigned int size, 
 static boolean settings_weapon_write(short value, char const *text)
 {
 	double values[CONFIG_WEAPON_VALUES];
+	char folder[1024];
 
 	if (!settings_weapon[0])
 		return FALSE;
-	config_viewmodel_weapon(settings_weapon, values);
+	settings_weapon_values(values);
 	values[value] = atof(text);
+	if (settings_profile_folder(folder, sizeof(folder)))
+		return config_profile_viewmodel_weapon_write(folder, settings_weapon, values) != 0;
 	return config_viewmodel_weapon_write(settings_weapon, values) != 0;
 }
 
@@ -2157,9 +2178,8 @@ static void viewmodel_weapon_rows_show(struct widget_instance *list)
 
 	if (!reset)
 		return;
-	local_player_index = player_ui_get_single_player_local_player_from_controller(controller_of(screen_of(list)));
-	if (local_player_index == NONE)
-		local_player_index = 0;
+	/* (the weapon of the player whose profile Settings edits) */
+	local_player_index = settings_local_player;
 	held = !main_menu_is_active() && viewmodel_held_weapon(local_player_index, path, sizeof(path));
 	snprintf(settings_weapon, sizeof(settings_weapon), "%s", held ? path : "");
 	if (held)
@@ -2702,11 +2722,8 @@ static boolean settings_condition_term(struct widget_instance *list, char const 
 	if (!strcmp(name, "weapon_held"))
 	{
 		char path[sizeof(settings_weapon)];
-		short local_player_index =
-			player_ui_get_single_player_local_player_from_controller(controller_of(screen_of(list)));
 
-		return !main_menu_is_active() &&
-			viewmodel_held_weapon(local_player_index == NONE ? 0 : local_player_index, path, sizeof(path));
+		return !main_menu_is_active() && viewmodel_held_weapon(settings_local_player, path, sizeof(path));
 	}
 	if (!strcmp(name, "discord_linked"))
 		return discord_linked();
@@ -3815,7 +3832,8 @@ static void settings_profile_fact(char const *name, struct settings_facts *facts
 	wchar_t whose[ROW_TEXT_LENGTH] = { 0 };
 	boolean own;
 
-	if (!name || !config_per_player(name))
+	/* (a weapon's own offsets are each player's too) */
+	if (!name || (!config_per_player(name) && settings_weapon_value(name) == NONE))
 		return;
 	own = profile && settings_profile_folder(folder, sizeof(folder));
 	if (own != first)
