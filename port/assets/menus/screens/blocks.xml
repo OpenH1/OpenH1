@@ -239,7 +239,7 @@ picture, the line, the words for no rows) -->
 	<!-- a chat (<chat>, the lobby's) under a table: its panel, each line's name (in its colour) and words, and the
 	line typed's place (lit while it has the focus, or a line is typed: A, a click or a tap its do; on a
 	touchscreen a finger's height) -->
-	<widget name="screens/chat" width="404" height="96" flags="keep_ends" bitmap="main_menu/parts/panel_404x96"/>
+	<widget name="screens/chat" width="404" height="109" flags="keep_ends" bitmap="main_menu/parts/panel_404x109"/>
 	<widget name="screens/chat_name" type="text" width="120" height="15" font="ui\small_ui" color="#FF5AA9FF" text_y="-2" text_flags="no_focus_test"/>
 	<widget name="screens/chat_text" type="text" width="380" height="15" font="ui\small_ui" color="#FFDCE8F8" text_y="-2" text_flags="no_focus_test"/>
 	<widget name="screens/chat_input" type="text" width="392" height="20" flags="keep_ends" bitmap="main_menu/parts/item_392x20" font="ui\small_ui" color="#FF6F9CD0" text_x="8" text_y="1">
