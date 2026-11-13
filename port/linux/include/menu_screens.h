@@ -113,7 +113,10 @@ enum menu_screen_cell_kind
 	MENU_SCREEN_CELL_PING,
 	MENU_SCREEN_CELL_STAR,
 	/* (a dot of a colour, by its frame: a team's) */
-	MENU_SCREEN_CELL_DOT
+	MENU_SCREEN_CELL_DOT,
+	/* (a swatch of a profile color, by its frame: the colors', then
+	random's) */
+	MENU_SCREEN_CELL_SWATCH
 };
 
 /* a building block: its kind, the block it is in (-1: the screen), and what

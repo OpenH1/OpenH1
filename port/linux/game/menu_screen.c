@@ -235,6 +235,8 @@ static boolean screen_call_search(struct widget_instance *widget, struct event_r
 	boolean *deleted);
 static boolean screen_call_profile(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted);
+static boolean screen_call_color(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted);
 static boolean screen_call_lobby(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted);
 static boolean screen_call_close(struct widget_instance *widget, struct event_record *event, char const *name,
@@ -310,6 +312,9 @@ static struct screen_action const screen_actions[] =
 		NULL },
 	{ "profile delete", NULL, NULL, "request del player profile", NULL,
 		"error/confirm_delete_profile_modal_fullscreen", NULL },
+	/* (Profile Color's, screens/profile_color.xml: the row's color made
+	the edited profile's, and back to the screen before) */
+	{ "color choose", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_color },
 	/* (the lobby's, screens/lobby.xml, as the generated lobby's
 	(menu_functions.c's lobby_menu.inc): a row chosen (a click its lane's
 	team, else the host's start), the start, a team (left and right on the
@@ -369,7 +374,7 @@ static char const *const screen_action_names[] =
 	"browser tab dedicated", "browser tab openh1", "browser tab legacy", "browser tab coop", "browser tab favorites",
 	"browser sort players", "browser sort ping", "browser sort server", "browser sort map", "browser sort mode",
 	"browser sort next", "browser favorite", "browser join", "browser refresh", "browser filters", "profile select",
-	"profile new", "profile delete", "lobby row", "lobby start", "lobby team red", "lobby team blue",
+	"profile new", "profile delete", "color choose", "lobby row", "lobby start", "lobby team red", "lobby team blue",
 	"lobby team toggle", "lobby invite", "lobby settings", "lobby host", "lobby add player", "lobby bots left",
 	"lobby bots right", "lobby skill left", "lobby skill right", "lobby teams left", "lobby teams right",
 	"lobby chat", "lobby card", "lobby card friend", "lobby card mute", "lobby card kick", "lobby friends",
@@ -396,7 +401,8 @@ static char const *const screen_binding_names[] =
 	"browser.panel.kind.tone", "browser.panel.tick", "browser.panel.opence", "browser.panel.players",
 	"browser.panel.ping", "browser.panel.status", "browser.joinable", "browser.server", "browser.link",
 	"browser.filtered", "profile.title", "profile.name", "profile.level", "profile.difficulty", "profile.controls",
-	"profile.color", "profile.chosen", "profile.current", "lobby.title", "lobby.subtitle", "lobby.subtitle.short", "lobby.red",
+	"profile.color", "profile.chosen", "profile.current", "color.profile", "color.title", "color.spartan",
+	"color.current", "color.about", "lobby.title", "lobby.subtitle", "lobby.subtitle.short", "lobby.red",
 	"lobby.red.count", "lobby.red.tone", "lobby.blue", "lobby.blue.count", "lobby.blue.tone", "lobby.gametype",
 	"lobby.map", "lobby.limits", "lobby.kind", "lobby.kind.tone", "lobby.tick", "lobby.opence", "lobby.after",
 	"lobby.bots", "lobby.bots.shown", "lobby.bots.some", "lobby.bots.locked", "lobby.bots.count.locked", "lobby.skill", "lobby.teams",
@@ -416,6 +422,7 @@ static struct menu_table_source const *const screen_sources[] =
 	&pc_menu_browser_source,
 	&pc_menu_profile_source,
 	&pc_menu_lobby_source,
+	&pc_menu_color_source,
 };
 
 static char const *const screen_source_names[] =
@@ -423,6 +430,7 @@ static char const *const screen_source_names[] =
 	"browser.games",
 	"profiles",
 	"lobby.players",
+	"profile.colors",
 };
 
 /* the chats a <chat> may name (menu_table.h), and their names */
@@ -451,6 +459,9 @@ static int screen_value(void *context, char const *name, char *value, unsigned l
 	/* (Select Profile's: menu_functions.c's) */
 	if (!strncmp(name, "profile.", 8))
 		return pc_menu_profile_value(name, value, size);
+	/* (Profile Color's: menu_functions.c's) */
+	if (!strncmp(name, "color.", 6))
+		return pc_menu_color_value(name, value, size);
 	/* (the lobby's: menu_functions.c's lobby_menu.inc) */
 	if (!strncmp(name, "lobby.", 6))
 		return pc_menu_lobby_value(name, value, size);
@@ -1934,6 +1945,25 @@ static boolean screen_call_profile(struct widget_instance *widget, struct event_
 	}
 	if (!menu_tags_open(widget, event, SCREEN_PROFILE_EMPTY, deleted))
 		platform_log("menus: action \"%s\": there is no screen %s", name, SCREEN_PROFILE_EMPTY);
+	return TRUE;
+}
+
+/* Profile Color's "color choose" (menu_functions.c's model): the row's
+color (the chosen one's, for SELECT) made the edited profile's and back to
+the screen before, as the PC version's picker's A */
+static boolean screen_call_color(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted)
+{
+	*deleted = FALSE;
+	if (strcmp(name, "color choose"))
+		return FALSE;
+	if (!pc_menu_color_choose(screen_action_row))
+	{
+		platform_log("menus: a color is chosen with no profile being edited");
+		return FALSE;
+	}
+	platform_log("menus: the profile's color chosen");
+	menu_tags_back(widget, event, deleted);
 	return TRUE;
 }
 

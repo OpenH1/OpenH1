@@ -12370,6 +12370,196 @@ int pc_menu_profile_choose(struct widget_instance *widget, struct event_record *
 	return profile_choose(event_controller(widget, event));
 }
 
+/* ---- the hand-written Profile Color's (screens/profile_color.xml:
+menu_screen.c and menu_table.h): the profile's colors as a table's row
+source, the PC version's picker's 18 (colors_list's names, in their colors)
+and after them Random (the profile's color NONE: a new profile's, the host
+giving the player a color no one else has, network_server_manager.c's
+get_unique_random_color); the focused row's color as the color.* bindings,
+and the row an action is for chosen for the profile being edited. The chosen
+row is the focused one, as Select Profile's */
+
+#define COLOR_RANDOM_ROW COLOR_COUNT
+#define COLOR_SOURCE_ROWS (COLOR_COUNT + 1)
+
+static struct
+{
+	/* (the screen opened: its first frame puts the focus on the profile's
+	color) */
+	boolean opened;
+	short first;
+	short chosen;
+} color_source;
+
+/* a profile color's row: its own, Random's for NONE (or one past the
+colors) */
+static short color_source_row(short color)
+{
+	return color >= 0 && color < COLOR_COUNT ? color : COLOR_RANDOM_ROW;
+}
+
+/* the row of the edited profile's color: NONE without a profile */
+static short color_source_saved(void)
+{
+	struct player_profile const *profile = player_ui_get_edit_player_profile();
+
+	return profile ? color_source_row(profile->primary_color_index) : NONE;
+}
+
+static void color_source_name(short row, wchar_t *text)
+{
+	if (row == COLOR_RANDOM_ROW)
+		settings_wide_copy(text, L"Random", ROW_TEXT_LENGTH);
+	else
+	{
+		string_get("pc\\main_menu\\settings_select\\player_setup\\player_profile_edit\\color_edit\\colors_list",
+			row, text);
+	}
+}
+
+static void color_source_opened(void)
+{
+	color_source.opened = TRUE;
+}
+
+static void color_source_update(struct menu_table_view *view)
+{
+	short shown = view->shown, focused = view->focused;
+	short rows = COLOR_SOURCE_ROWS;
+
+	/* (as it opens: the profile's color chosen, in the table's middle) */
+	if (color_source.opened && shown)
+	{
+		short saved = color_source_saved();
+
+		color_source.opened = FALSE;
+		color_source.chosen = saved != NONE ? saved : 0;
+		color_source.first = (short)PIN(color_source.chosen - shown / 2, 0, MAX(0, rows - shown));
+		focused = (short)(color_source.chosen - color_source.first);
+		view->focus = focused;
+	}
+	/* (the focus kept off the table's ends while there is more past them,
+	the rows moving instead: list_scroll's) */
+	if (focused == shown - 1 && color_source.first + shown < rows && list_scrolls_at_end())
+	{
+		color_source.first++;
+		view->focus = --focused;
+	}
+	else if (focused == 0 && color_source.first > 0 && list_scrolls_at_end())
+	{
+		color_source.first--;
+		view->focus = ++focused;
+	}
+	color_source.first = (short)PIN(color_source.first, 0, MAX(0, rows - shown));
+	if (focused != NONE && focused >= 0 && focused < shown)
+		color_source.chosen = (short)(color_source.first + focused);
+	color_source.chosen = (short)PIN(color_source.chosen, 0, rows - 1);
+	view->count = rows;
+	view->first = color_source.first;
+	view->chosen = color_source.chosen;
+}
+
+static int color_source_heading(short index, unsigned short *words, short size)
+{
+	(void)index;
+	(void)words;
+	(void)size;
+	return FALSE;
+}
+
+/* a row's swatch (its frame: the color's, Random's after them) and its
+name in its color (black's lifted to a grey, to be read, as the <colors>
+items'; Random's the table's own) */
+static void color_source_cell(short index, char const *column, int focused, struct menu_table_cell *cell)
+{
+	wchar_t text[ROW_TEXT_LENGTH];
+
+	(void)focused;
+	cell->frame = NONE;
+	if (index < 0 || index >= COLOR_SOURCE_ROWS)
+		return;
+	if (!strcmp(column, "swatch"))
+		cell->frame = index;
+	else if (!strcmp(column, "name"))
+	{
+		color_source_name(index, text);
+		settings_wide_copy((wchar_t *)cell->text, text, MENU_TABLE_TEXT_LENGTH);
+		if (index != COLOR_RANDOM_ROW)
+		{
+			real_rgb_color rgb = player_profile_get_rgb_color(index);
+
+			cell->color = ((unsigned long)(MAX(rgb.red, 0.3f) * 255.0f + 0.5f) << 24) |
+				((unsigned long)(MAX(rgb.green, 0.3f) * 255.0f + 0.5f) << 16) |
+				((unsigned long)(MAX(rgb.blue, 0.3f) * 255.0f + 0.5f) << 8) | 0xFFUL;
+		}
+	}
+}
+
+struct menu_table_source const pc_menu_color_source =
+{
+	color_source_update, color_source_heading, color_source_cell, color_source_opened,
+};
+
+/* a color.* binding's value (UTF-8; nonzero if it has one): the edited
+profile's name, the chosen row's color's name, its word for a <spartan>
+(its number, or random), Current color while it is the profile's own, and a line
+of what it does */
+int pc_menu_color_value(char const *name, char *value, unsigned long size)
+{
+	wchar_t text[ROW_TEXT_LENGTH];
+	struct player_profile const *profile = player_ui_get_edit_player_profile();
+	short chosen = (short)PIN(color_source.chosen, 0, COLOR_SOURCE_ROWS - 1);
+
+	text[0] = 0;
+	value[0] = 0;
+	if (!strcmp(name, "color.profile"))
+	{
+		if (profile)
+			settings_wide_copy(text, profile->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1);
+	}
+	else if (!strcmp(name, "color.title"))
+		color_source_name(chosen, text);
+	else if (!strcmp(name, "color.spartan"))
+	{
+		if (chosen == COLOR_RANDOM_ROW)
+			snprintf(value, size, "random");
+		else
+			snprintf(value, size, "%d", chosen);
+	}
+	else if (!strcmp(name, "color.current"))
+	{
+		if (chosen == color_source_saved())
+			snprintf(value, size, "Current color");
+	}
+	else if (!strcmp(name, "color.about"))
+	{
+		snprintf(value, size, "%s", chosen == COLOR_RANDOM_ROW ?
+			"Each game gives you a color no one else in it has." : "Your Spartan's armor in multiplayer games.");
+	}
+	else
+		return FALSE;
+	text[NUMBEROF(text) - 1] = 0;
+	if (text[0])
+		text_utf8(text, value, (long)size);
+	return value[0] != 0;
+}
+
+/* "color choose" (A, a click or a tap on a row, or SELECT): the row's
+color (the chosen one's, for NONE) made the edited profile's, as the PC
+version's picker's player_profile_color_picker_select_color (Random: NONE,
+a new profile's); FALSE with no profile being edited */
+int pc_menu_color_choose(short row)
+{
+	struct player_profile *profile = player_ui_get_edit_player_profile();
+
+	if (row != NONE)
+		color_source.chosen = (short)PIN(color_source.first + row, 0, COLOR_SOURCE_ROWS - 1);
+	if (!profile)
+		return FALSE;
+	profile->primary_color_index = color_source.chosen == COLOR_RANDOM_ROW ? (short)NONE : color_source.chosen;
+	return TRUE;
+}
+
 /* ---- the hand-written screens' (menu_screen.c and menu_table.h): the text
 fields and text of the menus', for their searches and their tables */
 

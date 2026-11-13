@@ -198,6 +198,9 @@ picture, the line, the words for no rows) -->
 	<widget name="screens/cell_star" width="16" height="18" bitmap="main_menu/multiplayer_type_select/join_game/favorite_star"/>
 	<!-- a dot of a colour, by its frame: red's, blue's, and a game without teams' (the lobby's players) -->
 	<widget name="screens/cell_dot" width="8" height="8" bitmap="main_menu/parts/dot_8"/>
+	<!-- a swatch of a profile color, by its frame: the 18 colors' in their list's order, then random's (Profile
+	Color's rows) -->
+	<widget name="screens/cell_swatch" width="16" height="16" bitmap="main_menu/parts/swatch_16"/>
 	<!-- a table's lanes (lanes="2": the lobby's teams' columns): each lane's panel (a team's edge by its frame, or
 	the panel across them all), its title (in its tone's colour) and its detail; a lane's row, framed when it is
 	marked as its own and the brighter with the focus (its picture's four frames), left and right its table's -->

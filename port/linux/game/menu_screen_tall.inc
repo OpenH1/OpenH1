@@ -1185,6 +1185,10 @@ static void tall_build_table(struct screen_tall *tall, struct menu_screen const 
 				row->picture[column_index] = tall_add(tall, row->row, tall_tag("cell_dot"), cx, (short)(cy + icon_y),
 					cmove, 0, 0, 0);
 				break;
+			case MENU_SCREEN_CELL_SWATCH:
+				row->picture[column_index] = tall_add(tall, row->row, tall_tag("cell_swatch"), cx,
+					(short)(cy + icon_y), cmove, 0, 0, 0);
+				break;
 			case MENU_SCREEN_CELL_PING:
 				row->picture[column_index] = tall_add(tall, row->row, tall_tag("cell_bars"), cx,
 					(short)(cy + icon_y - (touch && !laned ? 1 : 0)), cmove, 0, 0, 0);
