@@ -568,8 +568,11 @@ static boolean settings_setting_folder(char const *name, char *folder, unsigned 
 		profile_index = player_ui_get_active_player_profile_index(0);
 		if (!player_settings_profile_folder(profile_index, folder, size))
 			return FALSE;
-		if (whose && player_profile_get(profile_index, &profile))
+		/* (the profile player 1 holds, not read again from its file: each frame
+		the panel shows it) */
+		if (whose)
 		{
+			player_ui_get_active_player_profile(0, &profile);
 			ustrncpy(whose, profile.player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
 			whose[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
 		}
