@@ -55,7 +55,9 @@ enum reader_element
 	_element_button,
 	_element_cards,
 	_element_card,
-	_element_header
+	_element_header,
+	_element_colors,
+	_element_spartan
 };
 
 struct reader
@@ -285,8 +287,8 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 
 		element = _element_list;
 		attributes_read(reader, name, attributes, names, values);
-		if (kind_count(screen, MENU_SCREEN_LIST) || kind_count(screen, MENU_SCREEN_CARDS))
-			reader_problem(reader, "a screen has one <list> or <cards>", NULL);
+		if (kind_count(screen, MENU_SCREEN_LIST) || kind_count(screen, MENU_SCREEN_CARDS) || kind_count(screen, MENU_SCREEN_COLORS))
+			reader_problem(reader, "a screen has one <list>, <cards> or <colors>", NULL);
 		block = block_add(reader, MENU_SCREEN_LIST, -1);
 		if (block >= 0)
 		{
@@ -359,8 +361,8 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 
 		element = _element_cards;
 		attributes_read(reader, name, attributes, names, values);
-		if (kind_count(screen, MENU_SCREEN_CARDS) || kind_count(screen, MENU_SCREEN_LIST))
-			reader_problem(reader, "a screen has one <list> or <cards>", NULL);
+		if (kind_count(screen, MENU_SCREEN_CARDS) || kind_count(screen, MENU_SCREEN_LIST) || kind_count(screen, MENU_SCREEN_COLORS))
+			reader_problem(reader, "a screen has one <list>, <cards> or <colors>", NULL);
 		block = block_add(reader, MENU_SCREEN_CARDS, -1);
 		if (block >= 0)
 		{
@@ -405,6 +407,74 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 				action_check(reader, card->action);
 			if (!reader->failed && card->when)
 				when_check(reader, card->when);
+		}
+	}
+	else if (parent_element == _element_screen && !strcmp(name, "colors"))
+	{
+		static char const *const names[] = { "id", NULL };
+
+		element = _element_colors;
+		attributes_read(reader, name, attributes, names, values);
+		if (kind_count(screen, MENU_SCREEN_COLORS) || kind_count(screen, MENU_SCREEN_LIST) ||
+			kind_count(screen, MENU_SCREEN_CARDS))
+		{
+			reader_problem(reader, "a screen has one <list>, <cards> or <colors>", NULL);
+		}
+		block = block_add(reader, MENU_SCREEN_COLORS, -1);
+		if (block >= 0)
+			screen->blocks[block].id = values[0];
+	}
+	else if (parent_element == _element_screen && !strcmp(name, "spartan"))
+	{
+		static char const *const names[] = { "x", "y", "width", "height", "color", "players", NULL };
+		static long const defaults[] = { 440, 80, 160, 320 };
+
+		element = _element_spartan;
+		attributes_read(reader, name, attributes, names, values);
+		if (!reader->failed && kind_count(screen, MENU_SCREEN_SPARTAN))
+			reader_problem(reader, "a screen has one <spartan>", NULL);
+		block = block_add(reader, MENU_SCREEN_SPARTAN, -1);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *spartan = &screen->blocks[block];
+			long *box[4];
+			int index;
+
+			box[0] = &spartan->x;
+			box[1] = &spartan->y;
+			box[2] = &spartan->width;
+			box[3] = &spartan->height;
+			for (index = 0; index < 4 && !reader->failed; index++)
+			{
+				char *end = NULL;
+
+				*box[index] = defaults[index];
+				if (!values[index])
+					continue;
+				*box[index] = strtol(values[index], &end, 10);
+				if (!end || *end || *box[index] < (index < 2 ? -480 : 1) || *box[index] > 1280)
+					reader_problem(reader, "a <spartan>'s x, y, width and height are numbers of the menus' 640 by 480: "
+						"\"%s\"", values[index]);
+			}
+			spartan->color = MENU_SCREEN_SPARTAN_PROFILE;
+			if (!reader->failed && values[4])
+			{
+				if (!strcmp(values[4], "focus"))
+					spartan->color = MENU_SCREEN_SPARTAN_FOCUS;
+				else if (strcmp(values[4], "profile"))
+					reader_problem(reader, "a <spartan>'s color is focus or profile: \"%s\"", values[4]);
+			}
+			spartan->players = 1;
+			if (!reader->failed && values[5])
+			{
+				char *end = NULL;
+
+				spartan->players = (int)strtol(values[5], &end, 10);
+				if (!end || *end || spartan->players < 1 || spartan->players > 4)
+					reader_problem(reader, "a <spartan>'s players are 1 to 4: \"%s\"", values[5]);
+			}
+			if (!reader->failed && spartan->color == MENU_SCREEN_SPARTAN_FOCUS && spartan->players != 1)
+				reader_problem(reader, "a <spartan> of the focused color is one player's", NULL);
 		}
 	}
 	else if (parent_element == _element_screen && !strcmp(name, "buttons"))

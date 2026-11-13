@@ -21,6 +21,10 @@ boolean menu_spartan_available(void);
 it draws): its feet at x, y in the view (-1 to 1 across and up), as tall as
 height of the view's height (0 to 2), in the profile color color_index */
 void menu_spartan_place(short index, short color_index, real x, real y, real height);
+/* ... placed in the menus' 640 by 480 (centred on the screen at every
+aspect ratio, as the menus' widgets are): its feet's middle at x, bottom,
+as tall as height */
+void menu_spartan_place_in_menus(short index, short color_index, real x, real bottom, real height);
 /* at the start of each frame the menus draw: the Spartans asked for made
 and placed before the camera, the others deleted */
 void menu_spartan_frame(void);

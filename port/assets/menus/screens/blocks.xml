@@ -32,6 +32,16 @@ screen file's, set on each widget as the screen is made. -->
 		<on event="start" run="port screen do"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
+	<!-- a color of the profile's (<colors>): its name in its color, white while focused (menu_screen.c); A, Start
+	and a click choose it -->
+	<widget name="screens/color" type="text" width="200" height="19" font="ui\large_ui" color="#FF4584C8">
+		<on event="a" run="port screen do"/>
+		<on event="start" run="port screen do"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<!-- where a <spartan> is drawn without one (no Spartan from the player's maps, random, no profile): the original
+	picture of the color, a frame a color and the last random (menu_screen.c sets its frame) -->
+	<widget name="screens/spartan" width="143" height="294" bitmap="ui\shell\main_menu\settings_select\player_setup\player_profile_edit\color_edit\player_color_marine_large"/>
 	<!-- cards side by side: the d-pad, the stick and the wheel step them -->
 	<widget name="screens/cards" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
 	<!-- a card, as the campaign's mission cards: its frame lit while focused;

@@ -38,7 +38,19 @@ enum menu_screen_block_kind
 	MENU_SCREEN_CARDS,
 	MENU_SCREEN_CARD,
 	/* (an inner screen's header: its lettered picture, its title the words) */
-	MENU_SCREEN_HEADER
+	MENU_SCREEN_HEADER,
+	/* (the player profile's colors, one item each, and random: the screen's
+	list) */
+	MENU_SCREEN_COLORS,
+	/* (the Spartan, drawn in the menus' scene where it is: menu_spartan.h) */
+	MENU_SCREEN_SPARTAN
+};
+
+/* a <spartan>'s color: the focused <colors> item's, or the profile's */
+enum menu_screen_spartan_color
+{
+	MENU_SCREEN_SPARTAN_FOCUS,
+	MENU_SCREEN_SPARTAN_PROFILE
 };
 
 /* a building block: its kind, the block it is in (-1: the screen), and what
@@ -65,6 +77,11 @@ struct menu_screen_block
 	char const *focus;
 	char const *hints[MENU_SCREEN_MAXIMUM_HINTS];
 	int hint_count;
+	/* (a <spartan>'s box in the menus' 640 by 480, its color's source and
+	how many side by side) */
+	long x, y, width, height;
+	int color;
+	int players;
 	long line;
 };
 

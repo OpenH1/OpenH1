@@ -244,6 +244,33 @@ int main(int argc, char **argv)
 		refused("<screen name=\"main\"><list/></screen>", "has no <item>");
 		refused("<screen name=\"main\"><title-art/><title-art/></screen>", "one <title-art>");
 	}
+	else if (!strcmp(name, "spartan"))
+	{
+		/* (the profile color's screen: its colors, and its Spartan in the
+		focused one, beside them) */
+		CHECK(read_text("<screen name=\"main\"><colors id=\"c\"/><spartan x=\"380\" y=\"64\" width=\"200\" "
+			"height=\"350\" color=\"focus\"/></screen>", &screen, problem), "refused: %s", problem);
+		CHECK(screen.block_count == 2 && screen.blocks[0].kind == MENU_SCREEN_COLORS &&
+			screen.blocks[1].kind == MENU_SCREEN_SPARTAN, "the blocks read");
+		CHECK(screen.blocks[1].x == 380 && screen.blocks[1].y == 64 && screen.blocks[1].width == 200 &&
+			screen.blocks[1].height == 350 && screen.blocks[1].color == MENU_SCREEN_SPARTAN_FOCUS &&
+			screen.blocks[1].players == 1, "its box and color");
+		menu_screen_free(&screen);
+		/* (four side by side, of the players' profiles; its box by default) */
+		CHECK(read_text("<screen name=\"main\"><spartan players=\"4\"/></screen>", &screen, problem), "refused: %s",
+			problem);
+		CHECK(screen.blocks[0].players == 4 && screen.blocks[0].color == MENU_SCREEN_SPARTAN_PROFILE &&
+			screen.blocks[0].width > 0 && screen.blocks[0].height > 0, "four, of the profiles");
+		menu_screen_free(&screen);
+		refused("<screen name=\"main\"><spartan players=\"5\"/></screen>", "players are 1 to 4");
+		refused("<screen name=\"main\"><spartan color=\"red\"/></screen>", "color is focus or profile");
+		refused("<screen name=\"main\"><spartan width=\"wide\"/></screen>", "are numbers");
+		refused("<screen name=\"main\"><spartan color=\"focus\" players=\"2\"/></screen>", "one player's");
+		refused("<screen name=\"main\"><spartan/><spartan/></screen>", "one <spartan>");
+		refused("<screen name=\"main\"><colors/><list><item label=\"A\" do=\"quit\"/></list></screen>",
+			"one <list>, <cards> or <colors>");
+		refused("<screen name=\"main\"><colors/><colors/></screen>", "one <list>, <cards> or <colors>");
+	}
 	else if (!strcmp(name, "items"))
 	{
 		refused("<screen name=\"main\"><list><item do=\"quit\"/></list></screen>", "has no label");

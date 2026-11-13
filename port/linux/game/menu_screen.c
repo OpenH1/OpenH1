@@ -27,13 +27,18 @@ kept on the item of the same id.
 #include "math/integer_math.h"
 #include "text/draw_string.h"
 #include "tag_files/tag_groups.h"
+#include "text/text_group.h"
+#include "interface/player_ui.h"
+#include "saved games/player_profile.h"
 
 #include "halo_menus.h"
 #include "menu_engine.h"
 #include "menu_screens.h"
 #include "menu_widget.h"
+#include "menu_spartan.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 void platform_log(char const *format, ...);
@@ -61,7 +66,7 @@ void event_manager_post_button(short controller_index, short button_index);
 /* the screens open at once (as the engine's: ENGINE_MAXIMUM_SCREENS), and
 the most items a screen's list makes */
 #define SCREEN_MAXIMUM_OPEN 8
-#define SCREEN_MAXIMUM_ITEMS 16
+#define SCREEN_MAXIMUM_ITEMS 24
 #define SCREEN_ID_LENGTH 32
 #define SCREEN_ACTION_LENGTH 48
 #define SCREEN_MAXIMUM_BUTTONS 4
@@ -122,6 +127,19 @@ at 16:9 and wider */
 #define ITEM_SCALE_MOST 1.6f
 /* (menu_tags.c's WIDE_LAYOUT_EXTRA: 16:9's width past 640) */
 #define WIDE_LAYOUT_EXTRA 212
+/* the profile's colors (<colors>): the PC version's picker's, as many as
+the game has, each an item of blocks.xml's screens/color, one under another
+at the screen's left; their names the picker's list's */
+#define SCREEN_COLOR_COUNT 18
+#define SCREEN_COLOR_STEP 19
+#define SCREEN_COLOR_X 96
+#define SCREEN_COLORS_NAMES "pc\\main_menu\\settings_select\\player_setup\\player_profile_edit\\color_edit\\colors_list"
+/* the original picture of a color (blocks.xml's screens/spartan: ui.map's
+player_color_marine_large, 143 by 294, a frame a color and the last
+random), drawn where no Spartan can be */
+#define SCREEN_SPARTAN_PICTURE_WIDTH 143
+#define SCREEN_SPARTAN_PICTURE_HEIGHT 294
+#define SCREEN_SPARTAN_RANDOM_FRAME 18
 /* (menu_functions.c's BUTTON_B, BUTTON_X, BUTTON_Y: the buttons a prompt presses) */
 #define SCREEN_BUTTON_B 1
 #define SCREEN_BUTTON_X 2
@@ -239,6 +257,9 @@ static struct screen_place const screen_places[] =
 {
 	{ "main", "main_menu\\main_menu", pc_menu_main_menu_shown },
 	{ "campaign", "screens\\campaign", NULL },
+	/* (Settings' COLOR: the profile's color, its Spartan beside it) */
+	{ "profile_color", "main_menu\\settings_select\\player_setup\\player_profile_edit\\color_edit\\color_select_screen",
+		NULL },
 };
 
 /* the server browser, whose screen gets a button of the hand-written
@@ -275,6 +296,12 @@ struct screen_open
 	block's own) */
 	struct widget_instance *header;
 	long header_picture;
+	/* (its <colors>: its items the colors, in order; its <spartan>, and the
+	original picture drawn where no Spartan is) */
+	boolean colors;
+	boolean has_spartan;
+	struct menu_screen_block spartan;
+	struct widget_instance *spartan_picture;
 	/* (its cards' scale, to fill their room: 0 for their own size) */
 	real card_scale;
 	/* (its button bar's prompts, each its key, and its place in the 640
@@ -296,6 +323,7 @@ static struct
 	char focused[NUMBEROF(screen_places)][SCREEN_ID_LENGTH];
 	/* the blocks' tags, as the menus' tags were last built */
 	long prompts_tag;
+	long color_tag, spartan_tag;
 	long title_art_tag, list_tag, item_tag, hint_tag, prompt_left_tag, button_tag, cards_tag, card_tag, card_title_tag, card_art_tag, card_subtitle_tag, header_tag, prompt_tag, header_text_tag;
 } screens = { FALSE };
 
@@ -343,6 +371,8 @@ static long screen_block_tag(char const *name)
 /* the blocks' tags found (FALSE, logged, if one is not there) */
 static boolean screen_blocks_found(void)
 {
+	screens.color_tag = screen_block_tag("pc\\screens\\color");
+	screens.spartan_tag = screen_block_tag("pc\\screens\\spartan");
 	screens.title_art_tag = screen_block_tag("pc\\screens\\title_art");
 	screens.list_tag = screen_block_tag("pc\\screens\\list");
 	screens.item_tag = screen_block_tag("pc\\screens\\item");
@@ -363,7 +393,7 @@ static boolean screen_blocks_found(void)
 		screens.cards_tag == NONE || screens.card_tag == NONE || screens.card_title_tag == NONE ||
 		screens.card_art_tag == NONE || screens.header_tag == NONE ||
 		screens.card_subtitle_tag == NONE || screens.prompt_tag == NONE || screens.prompts_tag == NONE ||
-		screens.header_text_tag == NONE)
+		screens.header_text_tag == NONE || screens.color_tag == NONE || screens.spartan_tag == NONE)
 	{
 		platform_log("menus: the screens' blocks (screens/blocks.xml) are not all there");
 		screens.blocks_found = FALSE;
@@ -384,6 +414,23 @@ static void screen_text_set(struct widget_instance *widget, char const *utf8)
 	if (!buffer)
 		return;
 	csmemcpy(buffer, text, length * (long)sizeof(wchar_t));
+	widget->parameters.text_box.text = buffer;
+}
+
+/* a text box's words, from the game's own (a string list's) */
+static void screen_text_set_wide(struct widget_instance *widget, wchar_t const *words)
+{
+	long length = 0;
+	wchar_t *buffer;
+
+	while (words[length] && length < MENU_SCREEN_MAXIMUM_TEXT - 1)
+		length++;
+	buffer = ui_widget_realloc(widget->parameters.text_box.text, (word)((length + 1) * (long)sizeof(wchar_t)),
+		__FILE__, __LINE__);
+	if (!buffer)
+		return;
+	csmemcpy(buffer, words, length * (long)sizeof(wchar_t));
+	buffer[length] = 0;
 	widget->parameters.text_box.text = buffer;
 }
 
@@ -486,6 +533,9 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		case MENU_SCREEN_BUTTONS:
 			heights[index] = BUTTONS_ROOM;
 			break;
+		case MENU_SCREEN_COLORS:
+			heights[index] = SCREEN_COLOR_COUNT * SCREEN_COLOR_STEP;
+			break;
 		}
 	}
 	for (index = 0; index < screen->block_count; index++)
@@ -506,6 +556,9 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		ui_widget_delete(widget->child);
 	open->list = NULL;
 	open->item_count = 0;
+	open->colors = FALSE;
+	open->has_spartan = FALSE;
+	open->spartan_picture = NULL;
 	focus_id = screens.focused[place_index][0] ? screens.focused[place_index] : NULL;
 	top = 0;
 	spaces_left = spaces;
@@ -678,6 +731,50 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 			}
 			break;
 		}
+		case MENU_SCREEN_COLORS:
+		{
+			struct player_profile *profile = player_ui_get_edit_player_profile();
+			long names = tag_loaded('ustr', SCREEN_COLORS_NAMES);
+			long color;
+
+			open->list = screen_widget_add(widget, screens.list_tag, 0, 0);
+			if (!open->list)
+				break;
+			open->colors = TRUE;
+			for (color = 0; color < SCREEN_COLOR_COUNT && open->item_count < SCREEN_MAXIMUM_ITEMS; color++)
+			{
+				struct widget_instance *made = screen_widget_add(open->list, screens.color_tag, SCREEN_COLOR_X,
+					(short)(top + color * SCREEN_COLOR_STEP));
+				wchar_t const *name = names != NONE ? unicode_string_list_get_string(names, (short)color) : NULL;
+
+				if (!made)
+					break;
+				if (name)
+					screen_text_set_wide(made, name);
+				open->items[open->item_count] = made;
+				open->hints[open->item_count] = NULL;
+				open->pictures[open->item_count] = NONE;
+				snprintf(open->ids[open->item_count], SCREEN_ID_LENGTH, "color%ld", color);
+				snprintf(open->actions[open->item_count], SCREEN_ACTION_LENGTH, "color %ld", color);
+				/* (first, the profile's own color) */
+				if (!focus || (profile && profile->primary_color_index == color))
+				{
+					focus = made;
+					focus_index = open->item_count;
+				}
+				open->item_count++;
+			}
+			break;
+		}
+		case MENU_SCREEN_SPARTAN:
+			/* (over the screen's other blocks, where its box is: the original
+			picture made at the box's foot, shown where no Spartan is) */
+			open->has_spartan = TRUE;
+			open->spartan = *block;
+			open->spartan_picture = screen_widget_add(widget, screens.spartan_tag,
+				(short)(block->x + (block->width - SCREEN_SPARTAN_PICTURE_WIDTH) / 2),
+				(short)(block->y + block->height - SCREEN_SPARTAN_PICTURE_HEIGHT));
+			break;
 		case MENU_SCREEN_BUTTONS:
 		{
 			long button;
@@ -830,6 +927,72 @@ static long screen_focused(struct screen_open const *open)
 	return NONE;
 }
 
+/* the color a <spartan>'s player shows: the focused color's, or the
+profile's (the one being edited, else the player's own); NONE for random,
+or no profile */
+static short screen_spartan_color(struct screen_open const *open, long focused, short player)
+{
+	if (open->spartan.color == MENU_SCREEN_SPARTAN_FOCUS && open->colors && focused != NONE)
+		return (short)focused;
+	if (player == 0 && player_ui_get_edit_player_profile())
+		return player_ui_get_edit_player_profile()->primary_color_index;
+	if (player_ui_get_active_player_profile_index(player) != NONE)
+	{
+		struct player_profile profile;
+
+		player_ui_get_active_player_profile(player, &profile);
+		return profile.primary_color_index;
+	}
+	return NONE;
+}
+
+/* a <spartan>'s Spartans asked for this frame, each player's side by side in
+its box, and the original picture shown where there is none (no Spartan's
+tags: menu_spartan_available; random; or no profile) */
+static void screen_spartan_frame(struct screen_open *open, long focused)
+{
+	struct menu_screen_block const *block = &open->spartan;
+	boolean drawn = FALSE;
+	short player, first = screen_spartan_color(open, focused, 0);
+
+	for (player = 0; player < block->players; player++)
+	{
+		short color = player ? screen_spartan_color(open, focused, player) : first;
+
+		if (color < 0 || color >= SCREEN_COLOR_COUNT || !menu_spartan_available())
+			continue;
+		menu_spartan_place_in_menus(player, color,
+			(real)block->x + (real)block->width * ((real)player + 0.5f) / (real)block->players,
+			(real)(block->y + block->height), (real)block->height / (real)(block->players > 2 ? 2 : 1));
+		drawn |= player == 0;
+	}
+	if (open->spartan_picture)
+	{
+		open->spartan_picture->visible = !drawn;
+		open->spartan_picture->animation.current_frame_index =
+			(short)(first >= 0 && first < SCREEN_COLOR_COUNT ? first : SCREEN_SPARTAN_RANDOM_FRAME);
+	}
+}
+
+/* a color item's color chosen: the profile's (as the PC version's picker
+chose it: player_profile_color_picker_select_color), and back to the
+screen before */
+static boolean screen_color_choose(struct widget_instance *widget, char const *which)
+{
+	struct player_profile *profile = player_ui_get_edit_player_profile();
+	long color = strtol(which, NULL, 10);
+
+	(void)widget;
+	if (!profile || color < 0 || color >= SCREEN_COLOR_COUNT)
+	{
+		platform_log("menus: a color is chosen with no profile being edited");
+		return FALSE;
+	}
+	profile->primary_color_index = (short)color;
+	event_manager_post_button(0, SCREEN_BUTTON_B);
+	return TRUE;
+}
+
 void menu_screen_frame(struct widget_instance *widget)
 {
 	struct screen_open *open = screen_open_of(widget);
@@ -880,6 +1043,8 @@ void menu_screen_frame(struct widget_instance *widget)
 	}
 	if (focused != NONE)
 		snprintf(screens.focused[open->place - screen_places], SCREEN_ID_LENGTH, "%s", open->ids[focused]);
+	if (open->has_spartan)
+		screen_spartan_frame(open, focused);
 	if (open->place->shown)
 		open->place->shown(widget);
 }
@@ -894,6 +1059,9 @@ static boolean screen_action_run(struct widget_instance *widget, struct event_re
 	long index;
 
 	*deleted = FALSE;
+	/* (a <colors> item's: its color chosen) */
+	if (!strncmp(name, "color ", 6))
+		return screen_color_choose(widget, name + 6);
 	for (index = 0; index < NUMBEROF(screen_actions); index++)
 	{
 		if (!strcmp(screen_actions[index].name, name))
@@ -1039,6 +1207,36 @@ boolean menu_screen_text_scale(long definition_index, short wide_extra, real *sc
 item's label white, as the main menu's lit pictures were */
 boolean menu_screen_text_color(struct widget_instance const *widget, real_argb_color *color)
 {
+	/* (a color's name in its color, white while focused; black's grey, to be
+	read) */
+	if (screens.blocks_found && widget->definition_tag_index == screens.color_tag && widget->parent)
+	{
+		long open_index, index;
+
+		if (widget->parent->focused_child == widget)
+		{
+			color->red = color->green = color->blue = 1.0f;
+			return TRUE;
+		}
+		for (open_index = 0; open_index < SCREEN_MAXIMUM_OPEN; open_index++)
+		{
+			struct screen_open const *open = &screens.open[open_index];
+
+			for (index = 0; open->widget && open->colors && index < open->item_count; index++)
+			{
+				if (open->items[index] == widget)
+				{
+					real_rgb_color rgb = player_profile_get_rgb_color(index);
+
+					color->red = MAX(rgb.red, 0.3f);
+					color->green = MAX(rgb.green, 0.3f);
+					color->blue = MAX(rgb.blue, 0.3f);
+					return TRUE;
+				}
+			}
+		}
+		return FALSE;
+	}
 	if (!screens.blocks_found || widget->definition_tag_index != screens.item_tag || !widget->parent ||
 		widget->parent->focused_child != widget)
 	{
