@@ -21,7 +21,8 @@ BLOCK_MAGIC = 0x4B4C4244
 CONNECTIONS = {0: "local", 1: "network client", 2: "network server", 3: "film playback"}
 SNAPSHOT_FLAGS = {0: "start", 1: "loaded", 2: "reset", 3: "seek"}
 # the game's rules the header holds (demo.h's _demo_rule_*), from format 3
-RULES = {0: "enhanced animations", 1: "turns with the aim", 2: "walks over a second weapon"}
+RULES = {0: "enhanced animations", 1: "turns with the aim", 2: "walks over a second weapon",
+         3: "simulation fixes"}
 # the records the tick's code takes as it runs, which only a tick holds,
 # between its sub-steps' U and its Z
 TICK_CODE_RECORDS = set("DFIL")
