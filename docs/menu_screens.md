@@ -66,7 +66,7 @@ centred, and the bar's wide layout reaches the screen's edges up to 16:9.
 | `<item>` | `label` (required), `do` (required), `id`, `hint`, `when` | One item. A, Start, a click or a tap runs `do`. `hint` is the line shown under the item while it is focused. Write `<hint>` children instead to give alternatives: the first whose bindings all have values is shown. `when` lists platforms (`desktop android vr hdr touch pointer computer`, as for `platform=` in the menu files) and the item is made only on one of them |
 | `<space/>` | | Takes the height left over (several spaces share it) |
 | `<buttons>` | | The button bar: each button a prompt, as Choose Mission's footer has them (its key's picture and word, lit while it has the focus; A, a click or a tap presses its key, accept running the chosen item's action), BACK at the left and the rest from the right, past 16:9 at the screen's edges, and on a touchscreen raised above a phone's safe area with the tall layout's footer (`foot`) |
-| `<button>` | `key` (`accept`, `back`, `x`, `y`, `lb`, `rb`, `lt`, `rt`, `r3`, `view`), `label`, `side`, `do`, `width`, `if`, `when` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word. `do` is the action the key (anywhere on the screen) and a click run; without it, the key is pressed. In a tall screen's bar (below), `width` is its least width, `if` a binding that must have a value for it to be shown, and two buttons of one key share one place, shown as their `if`s say |
+| `<button>` | `key` (`accept`, `back`, `x`, `y`, `lb`, `rb`, `lt`, `rt`, `r3`, `view`), `label`, `side`, `do`, `width`, `if`, `when` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word. `do` is the action the key (anywhere on the screen) and a click run; without it, the key is pressed. In a tall screen's bar (below), `width` is its least width, `if` a binding that must have a value for it to be shown, two buttons of one key share one place, shown as their `if`s say, and the buttons run from the left one after another, but those of `side="right"` (written after the rest) end at the right margin, as Select Profile's BACK at the left and OK, CREATE NEW and DELETE at the right (on a touchscreen, `side` changes nothing) |
 | `<colors>` | `id` | The player profile's colors, one item each, under one another in its name and its color (white while focused). It is the screen's list (a screen has one `<list>`, `<cards>` or `<colors>`). The profile's own color is focused first. A chooses the color for the profile being edited, as the PC version's color picker did, and goes back |
 | `<spartan>` | `x`, `y`, `width`, `height`, `color` (`focus`, `profile`, or a binding), `players` (1 to 4) | The Spartan, which the game draws (port/linux/game/menu_spartan.c) standing in this box of the 640 by 480 canvas, its feet at the box's foot, as tall as the box. It is drawn in a view of its own where the block is in the screen's order: over the screen's background and the blocks before it, under those after, with its own fixed camera, depth and light, so nothing of the menus' scene (the ring, the sky) cuts it and the scene's camera never moves or tilts it. It takes no room in the layout. `color="focus"` follows the focused `<colors>` item; `profile` (the default) is the color of the profile being edited, else the player's own, live as it changes; any other word is a binding whose value is the color's number (`random` for random), read each frame, and while it has no value there is neither Spartan nor picture. `players` puts that many side by side, each its local player's profile's color. Where there is no Spartan (no multiplayer map exported one, a refused file, `display.menu_pictures` off, a random color, no profile), the box shows the original picture of the color (ui.map's `player_color_marine_large`, frame 18 for random). It is gone as soon as its screen closes |
 
@@ -84,6 +84,10 @@ they reach the screen's edges; the tabs and the bar keep 16:9's places. On a
 touchscreen (`debug.touch_menus`, the phones' builds) the tabs are chips, a
 row is two lines of its cells (each column's `touch` place), the columns have
 no titles, and the bar's buttons are a touchscreen's, BACK at the right.
+The background is the tall layout's (`main_menu/parts/background_tall`: the
+blue, the band's line and the footer's), the generated screen's own where it
+has one (the browser's), else made for it (`screens/background`: Select
+Profile's, whose generated screen's was its inner screen's).
 
 | Element | Attributes | Meaning |
 | --- | --- | --- |
@@ -95,15 +99,16 @@ no titles, and the bar's buttons are a touchscreen's, BACK at the right.
 | `<search>` | `value` (required), `label`, `if`, `when` | A search: in a `<column>`, its magnifying glass after the column's title, the field typed into in the title's place and its X; at the screen's level, a field of its own at the top's right (a touchscreen's). A, a click or a tap types into it; each letter typed sets the binding `value` (the list filtered at once); Enter, A again or the focus taken off it keeps the words; B and Esc clear them; the X clears them |
 | `<button>` | (in a `<table>`) | A button under the table's words for none (CLEAR SEARCH), shown as its `if` says, the focus on it as it comes |
 | `<panel>` | `if` | The details beside the table: its lines one after another from its top, and a `<button>` at its foot |
-| `<heading>` | `text` (required), `lines`, `touch-lines`, `when` | The panel's heading, large and white, wrapped to its lines |
-| `<text>` | `text` (required), `lines`, `touch-lines`, `when` | A line of the panel's, wrapped to its lines (`touch-lines` on a touchscreen) |
+| `<heading>` | `text` (required), `lines`, `touch-lines`, `when`, `if` | The panel's heading, large and white, wrapped to its lines |
+| `<text>` | `text` (required), `lines`, `touch-lines`, `when`, `if` | A line of the panel's, wrapped to its lines (`touch-lines` on a touchscreen). While its `if` has no value it is gone, and the panel's lines after it move up into its room |
 | `<pills>`, `<pill>` | `text` (required), `width` (required), `tone` | A row of pills (as many to a line as fit): each its words, its frame `tone` (a number, or a binding giving one) |
 | `<pair>` | `label` (required), `value` (required), `when` | A label at the left and its value, large, at the right |
-| `<spartan>` | (in a `<panel>`) `height`, `color` | A line of the panel as tall as `height` (200 by default, at most 360), the Spartan standing in it in the middle of the panel (moved and grown with it on a wide screen), its feet at the line's foot; its color as a screen's `<spartan>`'s. A screen has one `<spartan>`, in its panel or of its own |
+| `<spartan>` | (in a `<panel>`) `height`, `color` | A line of the panel as tall as `height` (200 by default, at most 360), the Spartan standing in it in the middle of the panel (moved and grown with it on a wide screen), its feet at the line's foot (the line after it a 25th of its height lower, for the feet drawn under it); its color as a screen's `<spartan>`'s, and where there is no Spartan the original picture is shrunk to the line, whole. A screen has one `<spartan>`, in its panel or of its own |
 | `<button>` | (in a `<panel>`) | The panel's button at its foot (JOIN GAME), shown as its `if` says |
 
 A panel's line whose text has a binding of no value (or none at all) is not
-shown, and its place stays. Columns' titles that sort nothing and hold no
+shown, and its place stays (one whose `if` has none is gone, its place
+taken). Columns' titles that sort nothing and hold no
 search are words alone: the focus passes over them. Each text of a tall screen (the header's detail,
 the panel's lines, the buttons' labels, the words for none) is filled again
 every frame, and the `if`s read, so a binding's value can change while the
@@ -333,10 +338,12 @@ the profiles and the row that makes one in the table (`profiles`), and in
 the panel the chosen row's name, its Spartan in its color (`<spartan
 color="profile.color">` in the panel, live as the focus moves; on the row
 that makes one, none, as the generated screen showed no picture there), its
-controls, best difficulty and current level. A (OK) chooses the row's profile
-and goes back (on the row that makes one, it asks first), Y (CREATE NEW)
-makes one, X (DELETE, not on the row that makes one) deletes the chosen one,
-B goes back. The list's model is the generated screen's (menu_functions.c's
+controls, best difficulty (its line gone until the profile has finished a
+level, as the generated screen hid it) and current level. BACK is at the
+bar's left, OK, CREATE NEW and DELETE at its right, as Campaign's. A (OK)
+chooses the row's profile and goes back (on the row that makes one, it asks
+first), Y (CREATE NEW) makes one, X (DELETE, not on the row that makes one)
+deletes the chosen one, B goes back. The list's model is the generated screen's (menu_functions.c's
 `profile_list`: the profiles read, the row chosen, its scroll), and the
 actions run the generated screen's functions and open its screens. The
 classic engine keeps its own screen and the original pictures.

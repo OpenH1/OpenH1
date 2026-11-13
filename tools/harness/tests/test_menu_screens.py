@@ -43,6 +43,9 @@ NEGATIVE_CONTROLS = {
                           "name, strlen(name)))", "\telse if (0)", "tabs"),
     # a <spartan>'s color binding not checked: one the game has not got read
     "spartan-color-unchecked": ("\t\t\t\tbinding_check(reader, values[4]);\n", "\n", "spartan"),
+    # a panel's text's if not checked: a binding the game has not got taken
+    "panel-if-unchecked": ("shown_check(reader, text->condition, text->when);", "shown_check(reader, NULL, text->when);",
+                           "panel"),
     # a column's touch place's numbers not counted: "1 2" taken
     "touch-short": ("if (count != 5 || *at", "if (*at", "table"),
 }

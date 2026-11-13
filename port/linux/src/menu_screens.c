@@ -648,7 +648,7 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 	}
 	else if (parent_element == _element_panel && (!strcmp(name, "heading") || !strcmp(name, "text")))
 	{
-		static char const *const names[] = { "text", "lines", "touch-lines", "when", NULL };
+		static char const *const names[] = { "text", "lines", "touch-lines", "when", "if", NULL };
 		int heading = !strcmp(name, "heading");
 
 		*element = heading ? _element_panel_heading : _element_panel_text;
@@ -660,6 +660,7 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 
 			text->label = values[0];
 			text->when = values[3];
+			text->condition = values[4];
 			text->lines = 1;
 			if (!text->label)
 				reader_problem(reader, "<%s> has no text", name);
@@ -669,7 +670,7 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 			text->touch_lines = text->lines;
 			if (!reader->failed && values[2])
 				text->touch_lines = number_read(reader, values[2], "a text's touch-lines", 1, 8);
-			shown_check(reader, NULL, text->when);
+			shown_check(reader, text->condition, text->when);
 		}
 	}
 	else if (parent_element == _element_panel && !strcmp(name, "pills"))

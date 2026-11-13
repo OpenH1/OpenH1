@@ -149,6 +149,7 @@ pills) and a text after a pair, a pill row's step, a pair's step */
 #define PANEL_PAIR_LABEL_WIDTH 70
 /* (a <spartan>'s line: the gap before and after it) */
 #define PANEL_SPARTAN_GAP 6
+#define PANEL_SPARTAN_FEET 25
 
 /* (the menus' sounds: menu_functions.c's) */
 #define TALL_SOUND_FORWARD 2
@@ -266,6 +267,9 @@ struct screen_line
 	struct menu_screen_block const *block;
 	struct widget_instance *widget, *label;
 	short width, grow;
+	/* (a panel's line: its top as made, and its room, which the lines
+	after it take while its if has no value) */
+	short y, room;
 };
 
 struct screen_prompt
@@ -1086,7 +1090,9 @@ static void tall_build_panel(struct screen_tall *tall, struct menu_screen const 
 			tall->spartan_picture = tall_add(tall, tall->owner, screens.spartan_tag,
 				(short)(left + (width - tall->spartan_width) / 2), y, TALL_PANEL_MOVE, 0, tall->spartan_width,
 				spartan_height);
-			y = (short)(y + spartan_height + PANEL_SPARTAN_GAP);
+			/* (its feet drawn about a 25th of its height under its line's
+			foot: the line after it that much lower) */
+			y = (short)(y + spartan_height + spartan_height / PANEL_SPARTAN_FEET + PANEL_SPARTAN_GAP);
 			previous = MENU_SCREEN_SPARTAN;
 			continue;
 		}
@@ -1119,6 +1125,7 @@ static void tall_build_panel(struct screen_tall *tall, struct menu_screen const 
 				line = &tall->lines[tall->line_count++];
 				memset(line, 0, sizeof(*line));
 				line->block = pill;
+				line->y = y;
 				line->widget = tall_add(tall, tall->owner, tall_tag("pill"), (short)(inner_x + x), y, TALL_PANEL_MOVE, 0,
 					pill->width, 0);
 				tall_box_picture(tall, line->widget, "main_menu/parts/pill_%d", pill->width, 0);
@@ -1135,6 +1142,7 @@ static void tall_build_panel(struct screen_tall *tall, struct menu_screen const 
 		line->block = block;
 		line->width = inner_width;
 		line->grow = TALL_PANEL_GROW;
+		line->y = y;
 		if (block->kind == MENU_SCREEN_PAIR)
 		{
 			line->widget = tall_add(tall, tall->owner, tall_tag("pair_value"), inner_x, y, TALL_PANEL_MOVE,
@@ -1160,15 +1168,33 @@ static void tall_build_panel(struct screen_tall *tall, struct menu_screen const 
 
 			line->widget = tall_add(tall, tall->owner, tall_tag(heading ? "panel_heading" : "panel_text"), inner_x, y,
 				TALL_PANEL_MOVE, TALL_PANEL_GROW, inner_width, (short)(lines * line_height));
+			line->room = (short)(lines * line_height);
 			y = (short)(y + lines * line_height);
 		}
 		previous = (short)block->kind;
 	}
 }
 
+/* a computer's prompt's width: as wide as its words, or its width */
+static short tall_prompt_width(struct screen_tall *tall, struct menu_screen_block const *button)
+{
+	char label[MENU_SCREEN_MAXIMUM_TEXT];
+
+	tall_text(tall, button->label, label, sizeof(label));
+	return (short)MAX(button->width,
+		TALL_PROMPT_TEXT_X + tall_prompt_end(button->key, label, FALSE) + TALL_PROMPT_RIGHT_ROOM);
+}
+
+/* whether a computer's prompt is at the bar's right end (side="right") */
+static boolean tall_prompt_right(struct menu_screen_block const *button)
+{
+	return button->side && !strcmp(button->side, "right") && !ui_widget_port_touch_menus();
+}
+
 /* the bar: its buttons as prompts (the computer's, each as wide as its
 words or its width, one after another from the screen's margin, those of
-one key in one place; a touchscreen's, its buttons, BACK at the right) */
+side="right" (after the rest) ending at its right margin, those of one key
+in one place; a touchscreen's, its buttons, BACK at the right) */
 static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *file, long bar_index)
 {
 	boolean touch = ui_widget_port_touch_menus() != 0;
@@ -1176,18 +1202,31 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 	short y = touch ? TOUCH_BAR_Y : TALL_BAR_Y;
 	short slot_x[TALL_MAXIMUM_PROMPTS], slot_width[TALL_MAXIMUM_PROMPTS], widths[TALL_MAXIMUM_PROMPTS];
 	short grown[TALL_MAXIMUM_PROMPTS];
+	short right_width = 0;
 	char const *previous_key = NULL;
 	long index, count = 0;
-	boolean any_grown = FALSE;
+	boolean any_grown = FALSE, right_begun = FALSE;
 
 	tall->bar = tall_add(tall, tall->body, tall_tag(touch ? "bar" : "prompts"), 0, y, 0, 0, 0, touch ? TOUCH_TAP : 0);
 	if (!tall->bar)
 		return;
+	/* (the right end's room: its prompts', and the gaps between them) */
+	for (index = 0; index < file->block_count; index++)
+	{
+		struct menu_screen_block const *button = &file->blocks[index];
+
+		if (button->kind != MENU_SCREEN_BUTTON || button->parent != bar_index || !menu_screen_when(button->when))
+			continue;
+		if (tall_prompt_right(button) && !(previous_key && !strcmp(previous_key, button->key)))
+			right_width = (short)(right_width + (right_width ? TALL_PROMPT_GAP : 0) + tall_prompt_width(tall, button));
+		previous_key = button->key;
+	}
+	previous_key = NULL;
 	for (index = 0; index < file->block_count && count < TALL_MAXIMUM_PROMPTS; index++)
 	{
 		struct menu_screen_block const *button = &file->blocks[index];
 		char label[MENU_SCREEN_MAXIMUM_TEXT];
-		short width, needed;
+		short width;
 		boolean shared;
 
 		if (button->kind != MENU_SCREEN_BUTTON || button->parent != bar_index || !menu_screen_when(button->when))
@@ -1197,14 +1236,15 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 		time, by their ifs) */
 		shared = previous_key && !strcmp(previous_key, button->key);
 		if (touch)
-		{
 			width = !strcmp(button->key, "back") ? TOUCH_BACK_WIDTH : TOUCH_PROMPT_WIDTH;
-			needed = width;
-		}
 		else
+			width = tall_prompt_width(tall, button);
+		/* (the right end's first: from where they end at the right margin) */
+		if (tall_prompt_right(button) && !right_begun)
 		{
-			needed = (short)(TALL_PROMPT_TEXT_X + tall_prompt_end(button->key, label, FALSE) + TALL_PROMPT_RIGHT_ROOM);
-			width = (short)MAX(button->width, needed);
+			right_begun = TRUE;
+			x = (short)MAX(x, 640 - TALL_PROMPT_MARGIN - right_width);
+			shared = FALSE;
 		}
 		place = shared && count ? slot_x[count - 1] : x;
 		if (touch && !strcmp(button->key, "back"))
@@ -1244,9 +1284,10 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 		count++;
 	}
 	tall->prompt_count = count;
-	/* (the bar's focus on its first, as a list's: A on the bar presses it) */
+	/* (the bar's focus on its first, as a list's: A on the bar presses it;
+	on the right end's last, the action, where BACK is at the left) */
 	if (count)
-		tall->bar->focused_child = tall->prompts[0].widget;
+		tall->bar->focused_child = tall->prompts[right_begun ? count - 1 : 0].widget;
 	/* (on a wide screen: each at the edge it is nearest; or laid out again
 	from the edges, each as wide as the controller's pictures need) */
 	for (index = 0; index < count; index++)
@@ -1364,6 +1405,11 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 	open->header = NULL;
 	open->has_spartan = FALSE;
 	open->spartan_picture = NULL;
+	/* (the tall layout's background, its band's and footer's lines, where
+	the screen it takes the place of has none of its own: Select Profile's,
+	whose generated screen's was its inner screen's) */
+	if (menu_tags_background(widget->definition_tag_index) == NONE)
+		tall_add(tall, widget, tall_tag("background"), 0, 0, 0, 0, 0, 0);
 	/* (the parts that take no focus are the screen's, the rest the body's,
 	in the order the focus steps through them) */
 	tall->owner = tall_add(tall, widget, tall_tag("layer"), 0, 0, 0, 0, 0, 0);
@@ -1872,6 +1918,7 @@ wrapped to their lines), shown while they have some */
 static void tall_panel_frame(struct screen_tall *tall)
 {
 	boolean touch = ui_widget_port_touch_menus() != 0;
+	short lift = 0;
 	long index;
 
 	for (index = 0; index < tall->line_count; index++)
@@ -1884,6 +1931,23 @@ static void tall_panel_frame(struct screen_tall *tall)
 
 		if (!line->widget)
 			continue;
+		/* (a line whose if has no value is gone, the lines after it moved
+		up into its room; one whose text has none keeps its room) */
+		if (block->condition && !tall_shown(tall, block))
+		{
+			line->widget->visible = FALSE;
+			lift = (short)(lift + line->room);
+			continue;
+		}
+		{
+			struct screen_box *box = tall_box_of(tall, line->widget);
+			struct screen_box *label = line->label ? tall_box_of(tall, line->label) : NULL;
+
+			if (box)
+				box->y = (short)(line->y - lift);
+			if (label)
+				label->y = (short)(line->y + PANEL_PAIR_LABEL_Y - lift);
+		}
 		shown = tall_text(tall, block->kind == MENU_SCREEN_PAIR ? block->hints[0] : block->label, text, sizeof(text)) &&
 			text[0];
 		line->widget->visible = shown;

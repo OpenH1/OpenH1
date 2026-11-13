@@ -417,6 +417,25 @@ int main(int argc, char **argv)
 			"the panel's Spartan, in the profile's color");
 		CHECK(kind_total(&screen, MENU_SCREEN_BUTTON, -2) == 4, "%d buttons",
 			kind_total(&screen, MENU_SCREEN_BUTTON, -2));
+		/* (BACK at the bar's left, the rest at its right; the difficulty's
+		line gone while the profile has none) */
+		{
+			int index, backs = 0, rights = 0, difficulty = 0;
+
+			for (index = 0; index < screen.block_count; index++)
+			{
+				struct menu_screen_block const *block = &screen.blocks[index];
+
+				if (block->kind == MENU_SCREEN_BUTTON && !strcmp(block->key, "back"))
+					backs += !block->side;
+				else if (block->kind == MENU_SCREEN_BUTTON)
+					rights += block->side && !strcmp(block->side, "right");
+				else if (block->kind == MENU_SCREEN_PANEL_TEXT && block->condition)
+					difficulty += !strcmp(block->condition, "profile.difficulty");
+			}
+			CHECK(backs == 1 && rights == 3, "BACK at the left (%d), the rest at the right (%d)", backs, rights);
+			CHECK(difficulty == 1, "the difficulty's line has no if");
+		}
 		menu_screen_free(&screen);
 	}
 	else if (!strcmp(name, "browser"))
@@ -515,14 +534,18 @@ int main(int argc, char **argv)
 	else if (!strcmp(name, "panel"))
 	{
 		CHECK(read_text("<screen name=\"t\"><panel><heading text=\"{test.value}\" lines=\"2\"/>"
-			"<text text=\"A\" lines=\"3\" touch-lines=\"4\"/><pills><pill text=\"B\" tone=\"test.value\" "
+			"<text text=\"A\" lines=\"3\" touch-lines=\"4\" if=\"test.flag\"/><pills><pill text=\"B\" tone=\"test.value\" "
 			"width=\"64\"/><pill text=\"C\" tone=\"2\" width=\"64\"/></pills><pair label=\"P\" value=\"1\"/>"
 			"<button key=\"accept\" label=\"JOIN\" do=\"quit\"/></panel></screen>", &screen, problem),
 			"a good panel refused: %s", problem);
 		CHECK(screen.blocks[kind_first(&screen, MENU_SCREEN_PANEL_TEXT)].lines == 3 &&
 			screen.blocks[kind_first(&screen, MENU_SCREEN_PANEL_TEXT)].touch_lines == 4, "a text's lines");
+		CHECK(screen.blocks[kind_first(&screen, MENU_SCREEN_PANEL_TEXT)].condition &&
+			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_PANEL_TEXT)].condition, "test.flag"), "a text's if");
 		menu_screen_free(&screen);
 		refused("<screen name=\"t\"><panel/></screen>", "has nothing in it");
+		refused("<screen name=\"t\"><panel><text text=\"A\" if=\"nothing.here\"/></panel></screen>",
+			"no binding {nothing.here}");
 		refused("<screen name=\"t\"><panel><text/></panel></screen>", "<text> has no text");
 		refused("<screen name=\"t\"><panel><text text=\"A\" lines=\"9\"/></panel></screen>", "lines is a number");
 		refused("<screen name=\"t\"><panel><pills/></panel></screen>", "has no <pill>");

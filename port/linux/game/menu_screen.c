@@ -48,6 +48,7 @@ long pc_menu_event_function_index(char const *name);
 boolean menu_tags_open(struct widget_instance *widget, struct event_record *event, char const *screen,
 	boolean *deleted);
 void menu_tags_back(struct widget_instance *widget, struct event_record *event, boolean *deleted);
+long menu_tags_background(long tag_index);
 struct widget_instance *ui_widget_port_add_child(struct widget_instance *parent, long tag_index,
 	struct widget_instance *before);
 /* (menu_functions.c) */
@@ -1501,6 +1502,21 @@ boolean menu_screen_text_color(struct widget_instance const *widget, real_argb_c
 	}
 	color->red = color->green = color->blue = 1.0f;
 	return TRUE;
+}
+
+boolean menu_screen_picture_stretched(struct widget_instance const *widget)
+{
+	long open_index;
+
+	for (open_index = 0; widget && screens.blocks_found && open_index < SCREEN_MAXIMUM_OPEN; open_index++)
+	{
+		if (screens.open[open_index].widget && tall_screens[open_index] &&
+			tall_screens[open_index]->spartan_picture == widget)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
 }
 
 boolean menu_screen_item_picture(struct widget_instance const *widget, long *bitmap_tag, rectangle2d *bounds)
