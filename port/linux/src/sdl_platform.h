@@ -212,7 +212,8 @@ void platform_ui_pointer_set_active(BOOL active);
 nonzero while a menu is up (platform_ui_pointer_set_active) */
 BOOL platform_ui_pointer_read(struct platform_ui_pointer *pointer);
 /* a scripted run's click on the menus, 0 to 1 of the window (debug.test_input
-"menu:... click:<x>:<y> ...", xinput_sdl.c) */
+"menu:... click:<x>:<y> ...", xinput_sdl.c): 1, or 2 for a move without a
+click ("point:<x>:<y>") */
 int platform_test_menu_click(float *x, float *y);
 /* its typing and Enter ("type:<letters and digits>", "enter", xinput_sdl.c) */
 int platform_test_menu_keys(char *typed, int size, int *enter);

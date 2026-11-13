@@ -28,7 +28,8 @@ widget's look taken out must log it.
 
 The runs reuse one map cache (a clone of --saves's, by default ~/.cache/openh1-bench/saves/z: APFS clones on a
 Mac, so nothing is unpacked again), each with its own data and save folders, deleted afterwards. A difference
-not listed in DELIBERATE fails it (exit status 1).
+not listed in DELIBERATE fails it (exit status 1). A screen a hand-written one replaces on the new engine
+(HAND_WRITTEN: docs/menu_screens.md) is not compared, but each side must have drawn its own.
 """
 
 import argparse
@@ -66,13 +67,33 @@ PLACE_KEYS = {"box", "clip", "extent", "whole", "wide", "scale"}
 
 DELIBERATE = [("profile_settings", _shows_menu_engine)]
 
+# the screens a hand-written screen takes the place of on the new engine (docs/menu_screens.md: port/assets/menus/
+# screens, port/linux/game/menu_screen.c's screen_places): not compared with the classic engine's, which keeps the
+# PC version's. Each side must have drawn its own: the classic engine the screen's widgets, the new engine the
+# hand-written screen's blocks (pc\screens\...), not the classic's. They are checked by screenshots and scripted
+# runs instead
+HAND_WRITTEN = re.compile(r"^main_menu/main_menu$")
+
+
+def is_hand_written(screen: str, classic: dict, new: dict) -> bool:
+    """whether two layouts are a hand-written screen's (HAND_WRITTEN) on the new engine and the screen's own widgets
+    on the classic: their difference deliberate"""
+    if not HAND_WRITTEN.search(screen) or classic is None or new is None:
+        return False
+
+    def blocks(layout):
+        return any(item.get("kind") == "widget" and str(item.get("name", "")).startswith("pc\\screens\\")
+                   for item in layout.get("items", []))
+    return blocks(new) and not blocks(classic)
+
 # the screens the new engine lays out tall (docs/menu_engine.md, "Deliberate differences": the server browser's and
 # PRO 2V2's browser's, tools/port_settings.py's BROWSER_TALL; Settings' tabs and pages, SETTINGS_TALL), whose items
 # may differ in their places, their titles words in place of pictures
 def _tall_screens() -> list:
     """the screens the new engine lays out tall, by the names the layouts give them"""
     import port_settings
-    return ["multiplayer_type_select/join_game/join_game_screen", "doubles/browser/doubles_browser_screen"] + \
+    return ["multiplayer_type_select/join_game/join_game_screen", "doubles/browser/doubles_browser_screen",
+            "campaign/mission_screen"] + \
         [f"{port_settings.PE}/{folder}/{page['screen']}" for folder, page in port_settings.PAGES.items()]
 
 
@@ -180,7 +201,7 @@ def is_deliberate_frame(screen: str, classic: dict, new: dict, box=None, size=No
     pixels' bounds that differ, in a frame of size)"""
     if classic is None or new is None:
         return False
-    if is_tall_layout(classic, new):
+    if is_tall_layout(classic, new) or is_hand_written(screen, classic, new):
         return True
     a, b = layout_items(classic), layout_items(new)
     if _settings_tab(screen) and a != b and search_tabs_left_out(screen, a) == search_tabs_left_out(screen, b):
@@ -265,9 +286,9 @@ def compare_layouts(screen: str, classic: dict, new: dict, opened: bool = False)
                 lines.append(f"NOT COMPARED: {engine} drew {drawn or 'no screen'}, not {screen}")
         if lines:
             return lines
-    # (a screen in the tall layout: deliberate, is_tall_layout; otherwise its items without their places
-    # compared, to say how else they differ)
-    if is_tall_layout(classic, new):
+    # (a screen in the tall layout: deliberate, is_tall_layout; a hand-written one, is_hand_written; otherwise its
+    # items without their places compared, to say how else they differ)
+    if is_tall_layout(classic, new) or is_hand_written(screen, classic, new):
         return []
     for key in ("screen_name", "screen", "prompts", "touch_menus"):
         if classic.get(key) != new.get(key):
@@ -681,6 +702,10 @@ def behaviour(arguments, template: Path) -> dict:
                          "\n".join(a["focus"])[-1500:])
         # (Settings' search's tabs, the new engine's, in the place of the tabs: SEARCH_TABS)
         b = dict(b, focus=[line.replace("/tabs_search/search_tab_", "/tabs/tab_") for line in b["focus"]])
+        # (a hand-written screen's sweep: its focus its own blocks', not compared, the rest as any screen's)
+        if script[0].startswith("sweep:") and HAND_WRITTEN.search(script[0][len("sweep:"):]) and \
+                is_hand_written(script[0][len("sweep:"):], a["layout"], b["layout"]):
+            b = dict(b, focus=a["focus"])
         for key in ("focus", "config", "profile", "writes"):
             if a[key] != b[key]:
                 lines.append(f"{key}: {json.dumps(a[key])[:1500]}\n      | {json.dumps(b[key])[:1500]}")

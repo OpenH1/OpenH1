@@ -103,8 +103,8 @@ NEGATIVE_CONTROLS = {
                       '\tbrowser_tab = 0 * browser_word_index(config_string("network.browser_tab")'), "view"),
     "way-not-read": (('\tbrowser_sort_descending = config_boolean("network.browser_sort_descending") != 0;',
                       "\tbrowser_sort_descending = TRUE;"), "view"),
-    "written-unchanged": (('\tif (strcmp(config_string("network.browser_tab"), browser_tab_words[browser_tab]))',
-                           "\tif (TRUE)"), "view"),
+    "written-unchanged": (('\tif (browser_tab_visit == NONE && strcmp(config_string("network.browser_tab"), '
+                           'browser_tab_words[browser_tab]))', "\tif (browser_tab_visit == NONE)"), "view"),
     # (the column searches: browser_search_shows)
     "search-case-kept": (("*text >= 'a' && *text <= 'z' ? (wchar_t)(*text - 32) : *text;", "*text;"), "search"),
     "search-spaces-kept": (("if ((character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9') "

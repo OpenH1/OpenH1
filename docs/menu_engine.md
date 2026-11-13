@@ -18,6 +18,13 @@ Halo's own primitives so that the look is the same. `display.menu_engine`
 chooses it (`"classic"`, the default, or `"new"`). The map-tag menus (the
 in-game pause menu, `display.menus = "xbox"`) stay on Halo's engine.
 
+The engine also draws the hand-written screens
+([menu_screens.md](menu_screens.md)): a screen of our own, one file in
+`port/assets/menus/screens`, made into widgets in place of a generated
+screen's (the main menu first), with its actions and bindings resolved in C.
+The generated screens are moved to them a few at a time, and then the engine
+no longer needs the generators.
+
 ## The model
 
 `tools/ce_menus.py` writes, beside each `ce/<file>.xml`, the screens of that
@@ -284,6 +291,13 @@ matcher for it (`DELIBERATE`, `is_tall_layout`); every other screen stays
 the same in layout, pixels and behaviour.
 
 - **Profiles' MENU ENGINE row** shows the engine that draws it.
+- **The hand-written screens** ([menu_screens.md](menu_screens.md)): the
+  main menu (`main_menu/main_menu`) is `screens/main.xml`'s on the new engine
+  and the PC version's on the classic. `tools/menu_parity.py` does not compare
+  them (`HAND_WRITTEN`, `is_hand_written`). It does check that the classic
+  engine drew the screen's own widgets and the new engine the hand-written
+  blocks. Screenshots and scripted runs check the hand-written screens
+  instead.
 - **The browsers' tall layout.** The server browser (and the local
   network's list and Join by Link, its screen) and PRO 2V2's browser are
   laid out for the screen's whole height by the new engine alone

@@ -481,6 +481,8 @@ The decompilation's upstream, punpckhdq/halo, is AGPL 3.0 from 17 October
 | [port/ios/README.md](port/ios/README.md) | The iOS and iPadOS build, its signing and provisioning, the guest's code in the signed executable, the app, the Simulator |
 | [port/include/xdk/README.md](port/include/xdk/README.md) | How the SDK declarations were written and are checked |
 | [docs/custom_edition_caches.md](docs/custom_edition_caches.md) | Loading and converting Custom Edition maps, and the evidence for each layout |
+| [docs/menu_engine.md](docs/menu_engine.md) | The menu engine (`display.menu_engine`): the generators' model drawn with Halo's primitives, the parity checks |
+| [docs/menu_screens.md](docs/menu_screens.md) | The hand-written menu screens: the format, the building blocks, actions, bindings, hot reload, adding a screen |
 | [docs/hdr.md](docs/hdr.md) | HDR (`display.hdr`): the shared contract the renderers implement, which draws go past paper white, the tone map and the encodings, the tests |
 | [docs/demos.md](docs/demos.md) | Demos: every game recorded tick by tick, what a demo holds and why, its playback, the file, sizes, what is not deterministic yet |
 | [docs/dedicated_server.md](docs/dedicated_server.md) | The dedicated server: its command line, exit codes, commands, HTTP API, RCON, events and files |

@@ -82,7 +82,8 @@ NEGATIVE_CONTROLS = {
     # a key's cap measured without its gap
     "cap-without-gap": ("KEY_CAP_GAP", 0, "prompts"),
     # Choose Mission's arrows at the screen's margin, moved to a wide screen's edges, as before (issue 681)
-    "arrows-at-margin": ("mission_arrow_place", lambda side: (24, -48) if side == "left" else (592, 48), "missions"),
+    "arrows-at-margin": ("mission_arrow_place", lambda side, tall=False: (24, -48) if side == "left" else (592, 48),
+                         "missions"),
     # NOT YET BEATEN in the name's column, as before: too narrow on a card beside the chosen one
     "unbeaten-in-text-column": ("MISSION_UNBEATEN_INSET", 10, "missions"),
     # the objective on one line, as before: Keyes's and The Library's cut short

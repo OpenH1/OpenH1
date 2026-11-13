@@ -135,6 +135,9 @@ struct engine_screen
 	unsigned long scroll_time;
 	boolean scroll_laid;
 	short rows_top, rows_bottom, rows_end;
+	/* its widgets a hand-written screen's (menu_screen.c), in place of its
+	own */
+	boolean hand_written;
 };
 
 /* Settings' search's rows found the most, and the most groups of them (the
@@ -831,7 +834,9 @@ static void engine_behaviour_of(struct widget_instance const *widget, struct eng
 	char name[256];
 
 	memset(behaviour, 0, sizeof(*behaviour));
-	if (model && engine_widget_name(widget->definition_tag_index, name, sizeof(name)))
+	/* (a hand-written screen's building blocks take their events by their
+	own definitions: menu_screen.c) */
+	if (model && engine_widget_name(widget->definition_tag_index, name, sizeof(name)) && strncmp(name, "screens/", 8))
 	{
 		struct halo_menu_model_behaviour const *found = halo_menus_model_behaviour(model, name);
 
@@ -1244,7 +1249,10 @@ void menu_engine_screen_opened(struct widget_instance *screen)
 		{
 			engine.screens[index].widget = screen;
 			engine.screens[index].model = engine_model_screen(screen->definition_tag_index);
+			/* (or a hand-written screen's in its place: menu_screen.c) */
+			engine.screens[index].hand_written = menu_screen_opened(screen);
 			platform_log("menu engine: %s%s", screen->name ? screen->name : "?",
+				engine.screens[index].hand_written ? " (hand-written)" :
 				engine.screens[index].model ? " (its model's)" : "");
 			return;
 		}
@@ -1257,6 +1265,8 @@ void menu_engine_screen_closed(struct widget_instance *screen)
 {
 	struct engine_screen *owned = engine_screen_of(screen);
 
+	if (owned && owned->hand_written)
+		menu_screen_closed(screen);
 	if (owned)
 		memset(owned, 0, sizeof(*owned));
 	/* (the search's rows found go with their screen) */
@@ -1273,6 +1283,10 @@ boolean menu_engine_screen_draw(struct widget_instance *screen, rectangle2d *cli
 	if (!owned || engine.drawing == screen)
 		return FALSE;
 	engine.drawing = screen;
+	/* (a hand-written screen: made again if its file changed, its hints
+	shown for its focus) */
+	if (owned->hand_written)
+		menu_screen_frame(screen);
 	engine_draw(owned, screen, clip, offset, focus, nifty);
 	engine.drawing = previous;
 	return TRUE;
@@ -1287,7 +1301,9 @@ boolean menu_engine_screen_event(struct widget_instance *screen, struct event_re
 		return FALSE;
 	engine.processing = screen;
 	*deleted = FALSE;
-	engine_event(screen, event, deleted);
+	/* (a hand-written screen's back: its own action) */
+	if (!owned->hand_written || !menu_screen_back(screen, event, deleted))
+		engine_event(screen, event, deleted);
 	engine.processing = previous;
 	return TRUE;
 }

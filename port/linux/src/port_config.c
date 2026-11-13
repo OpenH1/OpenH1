@@ -2224,7 +2224,8 @@ static const struct config_setting config_settings[] =
 		"\"menu:<buttons>\" presses menu\n"
 		"buttons one a second (a, b, x, y, up, down, left, right, start, back or\n"
 		"wait, or click:<x>:<y>, a click of the pointer there, 0 to 1 of the\n"
-		"window, type:<letters and digits> typed, or enter, the Return key,\n"
+		"window, point:<x>:<y>, the pointer moved there without a click,\n"
+		"type:<letters and digits> typed, or enter, the Return key,\n"
 		"separated by spaces or commas; \"back+x\" holds Back through its\n"
 		"second and presses X half way, hold:<button> holds it the whole\n"
 		"second), for testing the menus; \"menu:ready ...\" counts its seconds\n"
@@ -2654,6 +2655,13 @@ static const struct config_setting config_settings[] =
 		"A folder of menu files read in place of the menus folder beside\n"
 		"config.toml (a source tree's port/assets/menus, for the menu studio);\n"
 		"empty for that folder." },
+	{ "debug.menu_screens", _config_string, "\"\"", "HALO_MENU_SCREENS", _environment_value, _platform_desktop,
+		"A folder of the menus' hand-written screens (a source tree's\n"
+		"port/assets/menus/screens) watched while the game runs: a screen file\n"
+		"changed there is read again and its screen, if open, made again, a\n"
+		"file with a problem logged and the screen kept as it was\n"
+		"(docs/menu_screens.md). Empty: debug.menu_files' screens folder, if\n"
+		"that is set, else none." },
 	{ "debug.discord_socket", _config_string, "\"\"", "HALO_DISCORD_SOCKET", _environment_value, _platform_desktop,
 		"The Discord client's socket (on Windows its pipe) to connect to, and no\n"
 		"other: a test's stand-in for Discord. Empty: Discord's own." },

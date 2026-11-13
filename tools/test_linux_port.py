@@ -208,8 +208,10 @@ def test_menus_are_well_formed():
     assert sorted(path.relative_to(MENUS).as_posix() for path in files) == \
         sorted(name for name in listed if name.endswith(".xml"))
     widgets, bitmaps, strings, references, roots = {}, {}, {}, [], []
-    # (the menu engine's model, model/, is another format: menu_model.c reads it)
-    for path in (path for path in files if path.relative_to(MENUS).parts[0] != "model"):
+    # (the menu engine's model, model/, is another format: menu_model.c reads it; and the hand-written screens,
+    # screens/, menu_screens.c, but for their blocks' widgets, screens/blocks.xml)
+    for path in (path for path in files if path.relative_to(MENUS).parts[0] != "model" and
+                 (path.relative_to(MENUS).parts[0] != "screens" or path.name == "blocks.xml")):
         tree = ElementTree.parse(path)
         assert tree.getroot().tag == "menus", path
         if tree.getroot().get("root"):

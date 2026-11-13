@@ -8875,10 +8875,26 @@ static void widget_instance_render_recursive(
 	/* port: (custom_edition_maps_picture) */
 	struct bitmap_data *custom_edition_picture;
 	short frame_index;
+	/* port: (a hand-written screen's item's own picture) */
+	struct ui_widget_definition pictured;
+	long picture_index;
 
 	/* port: a screen the port's menu engine draws (port/linux/game/menu_engine.c) */
 	if (!widget->parent && menu_engine_screen_draw(widget, clip_rect, offset, focus, use_nifty_plasma_fx))
 		return;
+	/* port: a hand-written screen's item drawn as its picture, in a box of
+	the picture's height (port/linux/game/menu_screen.c) */
+	pictured.bounds = definition->bounds;
+	if (menu_screen_item_picture(widget, &picture_index, &pictured.bounds))
+	{
+		rectangle2d bounds = pictured.bounds;
+
+		pictured = *definition;
+		pictured.bounds = bounds;
+		if (picture_index != NONE)
+			pictured.background_bitmap.index = picture_index;
+		definition = &pictured;
+	}
 	if (!use_nifty_plasma_fx &&
 		TEST_FLAG(definition->flags, _widget_always_render_with_nifty_fx_bit))
 	{
@@ -9472,6 +9488,18 @@ void ui_widget_port_focus_restore(
 	return;
 }
 
+/* port: the screens closed for one opened alone (debug.menu_open, the menu
+tour's): as if the pointer had moved nothing yet, so that a pointer resting
+over the screen before (the main menu's) does not make the next one's focus
+the pointer's (port/linux/game/menu_tour.c) */
+void ui_widget_port_pointer_forget(
+	void)
+{
+	ui_mouse_focused_last = FALSE;
+	ui_mouse_hovered_last = FALSE;
+	ui_mouse_hover_pending = FALSE;
+}
+
 /* port: the screen of a tag's name opened alone (the others closed, a
 profile being edited, as debug.menu_open opens one); NULL closes them all.
 The menu studio's (port/linux/game/menu_studio.c); FALSE where there is no
@@ -9484,6 +9512,7 @@ boolean ui_widget_port_open_screen(
 	if (virtual_keyboard_active())
 		virtual_keyboard_close();
 	ui_widgets_close_all();
+	ui_widget_port_pointer_forget();
 	if (!tag_name)
 		return TRUE;
 	pc_menu_profile_edit_begin();
@@ -10546,7 +10575,10 @@ void ui_widget_port_give_focus(
 	struct widget_instance *widget,
 	struct widget_instance *focus)
 {
-	widget_instance_give_focus_by_tag(widget, focus->definition_tag_index, widget->local_player_index);
+	/* (that widget, not the first of its tag: a hand-written screen's items
+	share theirs, port/linux/game/menu_screen.c; where a tag is the widget's
+	alone, as widget_instance_give_focus_by_tag gives it) */
+	widget_instance_give_focus_directly(widget_instance_get_topmost_parent(widget), focus);
 }
 
 void ui_widget_port_lists_update(

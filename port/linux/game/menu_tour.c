@@ -48,6 +48,7 @@ int platform_test_menu_step(void);
 int platform_test_menu_done(void);
 char const *ui_widget_port_screen_name(void);
 long pc_menu_event_function_index(char const *name);
+void ui_widget_port_pointer_forget(void);
 void const *ui_widget_port_focused_widget(void);
 
 #define MENU_TOUR_MAXIMUM_SCREENS 512
@@ -170,6 +171,7 @@ static boolean menu_tour_open(
 	this one's picture) */
 	terminal_clear();
 	ui_widgets_close_all();
+	ui_widget_port_pointer_forget();
 	pc_menu_profile_edit_begin();
 	menu_tour_setup(line + length);
 	return ui_widget_load_by_name_or_tag(tag_name, NONE, NULL, NONE, NONE, NONE, NONE) != NULL;

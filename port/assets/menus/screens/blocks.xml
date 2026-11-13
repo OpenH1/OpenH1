@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The hand-written screens' building blocks (docs/menu_screens.md): the
+widgets the menu engine makes a screen of (port/linux/game/menu_screen.c),
+written by hand, in the menus' own format (port/assets/menus/README.md).
+Each is drawn and takes its events as the game's widgets do, from its
+definition here, not the model. A block's words, place and action are the
+screen file's, set on each widget as the screen is made. -->
+<menus>
+	<!-- a hand-written screen of its own (not one that takes a generated
+	screen's place): the screen the game opens, which the engine fills from its
+	file (menu_screen.c's screen_places) -->
+	<widget name="screens/campaign" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/background_tall"/>
+	<!-- a header's title in the tall layout's band, as Settings' and the browsers' titles (port_settings.py's tall_title) -->
+	<widget name="screens/header_text" type="text" left="24" width="592" height="40" font="heading" color="#FF2995FD" text_y="9" wide="-106 0" text_flags="no_focus_test"/>
+	<!-- an inner screen's header: its lettered picture (the file's picture=), where the campaign menu's is -->
+	<widget name="screens/header" left="35" top="11" width="363" height="59" bitmap="main_menu/campaign/header_campaign" wide="-106 0"/>
+	<!-- a button over a generated screen (the server browser's HOST): its words
+	and key, and a click or a tap does its action -->
+	<widget name="screens/button" type="text" width="148" height="24" bitmap="main_menu/parts/button_148x24" font="ui\small_ui" color="#FFFFFFFF" text_x="8" text_y="3">
+		<on event="a" run="port screen do"/>
+		<on event="left_mouse" run="port screen do"/>
+	</widget>
+	<!-- Halo's title art, as the main menu has it -->
+	<widget name="screens/title_art" width="640" height="256" bitmap="ui\shell\main_menu\halo_logo"/>
+	<!-- a list: the d-pad, the stick and the wheel step its items -->
+	<widget name="screens/list" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_items"/>
+	<!-- an item: its label, white while focused (menu_screen.c); A, Start and a click do its action -->
+	<widget name="screens/item" type="text" width="256" height="38" font="ui\large_ui" color="#FF4584C8" align="center">
+		<on event="a" run="port screen do"/>
+		<on event="start" run="port screen do"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<!-- cards side by side: the d-pad, the stick and the wheel step them -->
+	<widget name="screens/cards" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
+	<!-- a card, as the campaign's mission cards: its frame lit while focused;
+	its picture, title and subtitle (in this order: menu_screen.c sets them) -->
+	<widget name="screens/card" width="158" height="240" bitmap="main_menu/campaign/card_158x240">
+		<on event="a" run="port screen do"/>
+		<on event="start" run="port screen do"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="screens/card_art"/>
+		<child widget="screens/card_title"/>
+		<child widget="screens/card_subtitle"/>
+	</widget>
+	<widget name="screens/card_art" left="6" top="6" width="146" height="119" bitmap="main_menu/campaign/art_146x119" radius="5"/>
+	<widget name="screens/card_title" type="text" left="6" top="132" width="146" height="34" font="ui\large_ui" color="#FF8DB6E6" align="center"/>
+	<widget name="screens/card_subtitle" type="text" left="10" top="172" width="138" height="60" font="ui\small_ui" color="#FF6F9CD0" align="center" text_flags="no_focus_test wrap"/>
+	<!-- the focused item's hint, under it -->
+	<widget name="screens/hint" type="text" width="440" height="16" font="ui\small_ui" color="#FF6F9CD0" align="center" text_flags="no_focus_test"/>
+	<!-- the button-hint bar: each button's key and what it does, at the foot of the screen -->
+	<widget name="screens/buttons" type="text" left="24" width="400" height="20" font="ui\small_ui" color="#FFCCCCCC" wide="-106 0" text_flags="no_focus_test"/>
+	<!-- the bar's right side (accept): placed to end at the screen's right margin (menu_screen.c) -->
+	<widget name="screens/buttons_right" type="text" width="400" height="20" font="ui\small_ui" color="#FFCCCCCC" wide="106 0" text_flags="no_focus_test"/>
+</menus>

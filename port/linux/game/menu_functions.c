@@ -5585,6 +5585,13 @@ static void update_question_note(struct widget_instance *widget)
 	party_screen_noted(screen);
 }
 
+/* the main menu drawn: a hand-written one's, as the PC version's QUIT
+item's "port update question" notes it (menu_screen.c) */
+void pc_menu_main_menu_shown(struct widget_instance *screen)
+{
+	update_question_note(screen);
+}
+
 /* between frames (not while the widgets are drawn, which opening a screen
 would free): a question's screen opened over the main menu, B going back to
 it, if the main menu was drawn last; 1 when it was opened, or cannot be */
@@ -7657,6 +7664,9 @@ boolean pc_menu_text_color(struct widget_instance *widget, real_argb_color *colo
 
 	if (host_controls_text_color(widget, color))
 		return TRUE;
+	/* (a hand-written screen's: menu_screen.c) */
+	if (menu_screen_text_color(widget, color))
+		return TRUE;
 	if ((menu_tab_strip(widget->parent) && widget->animation.current_frame_index >= 2) ||
 		browser_sort_header_current(widget))
 	{
@@ -8191,6 +8201,10 @@ struct browser_sort_entry
 static short browser_sort_column = _browser_sort_players;
 static boolean browser_sort_descending = TRUE;
 static short browser_tab = _browser_tab_all;
+/* the tab the server browser shows this visit, not the player's own kept in
+network.browser_tab (a hand-written screen's MULTIPLAYER: all; its CO-OP:
+co-op: menu_screen.c), NONE for theirs; their own choice of a tab ends it */
+static short browser_tab_visit = NONE;
 /* whether the list being ordered is in groups (the server browser's) */
 static boolean browser_grouped;
 /* the 2V2 browser's (doubles_browser.inc): the server browser kept to the
@@ -8657,6 +8671,8 @@ static void browser_view_read(void)
 {
 	browser_tab = browser_word_index(config_string("network.browser_tab"), browser_tab_words,
 		NUMBER_OF_BROWSER_TABS);
+	if (browser_tab_visit != NONE)
+		browser_tab = browser_tab_visit;
 	browser_sort_column = browser_word_index(config_string("network.browser_sort"), browser_sort_words,
 		NUMBER_OF_BROWSER_SORTS);
 	browser_sort_descending = config_boolean("network.browser_sort_descending") != 0;
@@ -8665,12 +8681,36 @@ static void browser_view_read(void)
 /* (only what changed: config_write writes config.toml) */
 static void browser_view_write(void)
 {
-	if (strcmp(config_string("network.browser_tab"), browser_tab_words[browser_tab]))
+	if (browser_tab_visit == NONE && strcmp(config_string("network.browser_tab"), browser_tab_words[browser_tab]))
 		config_write("network.browser_tab", browser_tab_words[browser_tab]);
 	if (strcmp(config_string("network.browser_sort"), browser_sort_words[browser_sort_column]))
 		config_write("network.browser_sort", browser_sort_words[browser_sort_column]);
 	if ((config_boolean("network.browser_sort_descending") != 0) != (browser_sort_descending != FALSE))
 		config_write("network.browser_sort_descending", browser_sort_descending ? "true" : "false");
+}
+
+/* the server browser's tab for the next visit (a hand-written screen's
+action: "all" or "coop"; NULL, the player's own), and what this visit of the
+browser is: 0 not the server browser (the local network's list, Join by
+Link), 1 the server browser, 2 the server browser opened on co-op
+(menu_screen.c's HOST button) */
+void pc_menu_browser_visit(char const *tab)
+{
+	short index;
+
+	browser_tab_visit = NONE;
+	for (index = 0; tab && index < NUMBER_OF_BROWSER_TABS; index++)
+	{
+		if (!strcmp(tab, browser_tab_words[index]))
+			browser_tab_visit = index;
+	}
+}
+
+int pc_menu_browser_visit_kind(void)
+{
+	if (multiplayer.mode != _multiplayer_mode_server_browser)
+		return 0;
+	return browser_tab_visit == _browser_tab_coop ? 2 : 1;
 }
 
 static void browser_filters_refresh(void)
@@ -8853,6 +8893,7 @@ static boolean browser_tab_choose(short tab)
 	if (tab != browser_tab)
 	{
 		browser_tab = tab;
+		browser_tab_visit = NONE;
 		browser_view_write();
 		browser_list_restart();
 		ui_play_audio_feedback_sound(SOUND_CURSOR);
@@ -8894,6 +8935,8 @@ static void browser_empty_text(short mode, short tab, boolean online, boolean pu
 		usnprintf(text, size - 1, L"%d %s hidden by your filters.\r\nChoose FILTERS to change them.", filtered,
 			filtered == 1 ? L"game is" : L"games are");
 	}
+	else if (tab == _browser_tab_coop && server_browser)
+		usnprintf(text, size - 1, L"No co-op games right now \x00B7 Host one");
 	else if (tab == _browser_tab_favorites)
 	{
 		usnprintf(text, size - 1, server_browser ? L"None of your favorites is online.\r\n%s" :
@@ -13225,6 +13268,62 @@ static void gametype_engine_name(struct widget_instance *text_box)
 /* (the campaign's screens: the Campaign menu, Choose Mission, Choose Difficulty) */
 #include "campaign_menu.inc"
 
+/* ---------- the hand-written screens' (menu_screen.c) */
+
+/* text in UTF-8 (the fonts' 16-bit characters) */
+static void text_utf8(wchar_t const *text, char *out, long size)
+{
+	long used = 0;
+
+	for (; text && *text && used < size - 1; text++)
+	{
+		unsigned long code = (unsigned short)*text;
+
+		if (code < 0x80)
+		{
+			out[used++] = (char)code;
+		}
+		else if (code < 0x800)
+		{
+			if (used + 2 >= size)
+				break;
+			out[used++] = (char)(0xC0 | (code >> 6));
+			out[used++] = (char)(0x80 | (code & 0x3F));
+		}
+		else
+		{
+			if (used + 3 >= size)
+				break;
+			out[used++] = (char)(0xE0 | (code >> 12));
+			out[used++] = (char)(0x80 | ((code >> 6) & 0x3F));
+			out[used++] = (char)(0x80 | (code & 0x3F));
+		}
+	}
+	out[used] = 0;
+}
+
+/* the saved game player 1's profile goes on with (the main menu's CAMPAIGN,
+"Continue · Halo · Heroic"): its mission's name and its difficulty's, in
+UTF-8; FALSE if there is none (no profile chosen, none saved, or co-op's
+two players, which go on with none) */
+boolean pc_menu_campaign_saved(char *level, char *difficulty, long size)
+{
+	char const *map_name;
+	short saved_level, saved_difficulty;
+	wchar_t text[ROW_TEXT_LENGTH];
+
+	if (player_spawn_count >= 2 || player_ui_get_active_player_profile_index(0) == NONE ||
+		!ui_widget_port_saved_game(&map_name, &saved_level, &saved_difficulty))
+	{
+		return FALSE;
+	}
+	campaign_level_title(saved_level, TRUE, text, ROW_TEXT_LENGTH);
+	text_utf8(text, level, size);
+	campaign_difficulty_name(saved_difficulty, text, ROW_TEXT_LENGTH);
+	text_utf8(text, difficulty, size);
+	return level[0] != 0;
+}
+
 /* ---------- Host Controls: the pause menu's HOST CONTROLS, the host's */
 
 #include "host_controls_menu.inc"
@@ -13273,6 +13372,11 @@ boolean pc_menu_event_function_invoke(
 		if (!strcmp(name, "main menu quit game"))
 		{
 			platform_request_quit();
+		}
+		/* (a hand-written screen's item: menu_screen.c) */
+		else if (!strcmp(name, "port screen do"))
+		{
+			return menu_screen_do(widget, event, widget_deleted);
 		}
 		else if (!strcmp(name, "profile set edit begin"))
 		{

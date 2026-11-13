@@ -96,6 +96,13 @@ boolean pc_menu_map_frame_at(unsigned long address, long width, long height, lon
 short pc_menu_widget_radius(long definition_index);
 short pc_menu_legend_room(long definition_index);
 void *pc_menu_look_definition(long tag_index);
+/* (port/linux/game/menu_screen.c: a hand-written screen's building block's
+text scale, at the wide layout's extra width) */
+boolean menu_screen_text_scale(long definition_index, short wide_extra, real *scale);
+struct widget_instance;
+struct event_record;
+void ui_widget_port_handler_run(struct widget_instance *widget, struct event_record *event, void *handler,
+	boolean *deleted);
 /* ui_widget.c: how much wider a legends' row is drawn while the keyboard
 plays than the Xbox's pictures and words were */
 short ui_widget_port_key_legend_growth(long definition_index);
@@ -591,12 +598,16 @@ static char const *const port_function_names[] =
 	"port campaign init", "port campaign continue", "port campaign missions", "port campaign missions init",
 	"port campaign previous", "port campaign next", "port campaign tab", "port campaign tab previous",
 	"port campaign tab next", "port campaign choose", "port campaign difficulty init", "port campaign play",
+	"port campaign difficulty previous", "port campaign difficulty next",
+	"port campaign up", "port campaign down",
 	/* (a mission in progress started again: campaign_menu.inc's campaign_restart_*) */
 	"port campaign restart ask", "port campaign missions restart", "port campaign restart",
 	"port campaign restart cancel",
 	/* (the main menu's 2V2 browser: doubles_browser.inc) */
 	"port doubles init", "port doubles dispose", "port doubles host", "port doubles find", "port doubles friend",
 	"port doubles join", "port doubles invite", "port doubles x",
+	/* (a hand-written screen's item: its action, menu_screen.c) */
+	"port screen do",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -779,6 +790,11 @@ and by its part of that on a screen between them, and more on a wider one,
 so that its screen is used edge to edge */
 #define WIDE_LAYOUT_PAST_WIDTH 1138
 #define WIDE_LAYOUT_PAST_EXTRA (WIDE_LAYOUT_PAST_WIDTH - WIDE_LAYOUT_WIDTH)
+/* On a touchscreen a widget moved past 16:9 and not made wider (a title, a
+prompt, a tab) is moved less, to the phone's safe area's side (72, an iPhone's
+59 points: menu_layout.c's MENU_LAYOUT_PHONE_SIDE) from the screen's edge, not
+the layout's margin (24): so much less of the width past 16:9 each side */
+#define WIDE_LAYOUT_TOUCH_INSET (72 - 24)
 
 /* the extra width a view this wide lays the port's screens out in: 0 at the
 menus' 640 or less, WIDE_LAYOUT_EXTRA at 16:9 and wider */
@@ -887,6 +903,14 @@ short ui_widget_port_past_extra(void)
 	return menu_tags.past_extra;
 }
 
+/* the width past 16:9 a widget moved and not made wider is moved by: on a
+touchscreen, short of the safe area's sides (WIDE_LAYOUT_TOUCH_INSET) */
+short ui_widget_port_past_move(void)
+{
+	return ui_widget_port_touch_menus() ?
+		(short)MAX(0, menu_tags.past_extra - 2 * WIDE_LAYOUT_TOUCH_INSET) : menu_tags.past_extra;
+}
+
 /* how far a widget (and what is in it) is moved where it is drawn, in the
 layout now */
 short ui_widget_port_wide_offset(long definition_index)
@@ -894,7 +918,7 @@ short ui_widget_port_wide_offset(long definition_index)
 	struct menu_wide const *wide = wide_of(definition_index);
 
 	return wide ? (short)(ui_widget_port_wide_scale(wide->dx, menu_tags.wide_extra) +
-		ui_widget_port_past_scale(wide->past_dx, menu_tags.past_extra)) : 0;
+		ui_widget_port_past_scale(wide->past_dx, wide->past_dw ? menu_tags.past_extra : ui_widget_port_past_move())) : 0;
 }
 
 /* how much wider than its picture a widget is drawn in the layout now: its
@@ -914,7 +938,11 @@ real pc_menu_text_scale(long definition_index)
 {
 	long index;
 	struct menu_look const *look;
+	real block_scale;
 
+	/* (a hand-written screen's building block's: menu_screen.c) */
+	if (definition_index != NONE && menu_screen_text_scale(definition_index, menu_tags.wide_extra, &block_scale))
+		return block_scale;
 	if (!menu_tags.looks || definition_index == NONE || !menu_engine_looks())
 		return 1.0f;
 	index = DATUM_INDEX_TO_ABSOLUTE_INDEX(definition_index) - menu_tags.original_count;
@@ -2748,6 +2776,39 @@ void const *menu_tags_behaviour_handlers(
 	return menu_tags.behaviour_handlers[index];
 }
 
+/* the screen of the name (the menus' files', "main_menu/campaign/campaign_screen")
+opened from the widget, as a handler's open opens it (its history, its sound):
+the hand-written screens' actions (menu_screen.c); FALSE if there is no such
+screen */
+boolean menu_tags_open(
+	struct widget_instance *widget,
+	struct event_record *event,
+	char const *screen,
+	boolean *deleted)
+{
+	struct ui_widget_event_handler_reference handler;
+	char name[256];
+	long tag_index;
+	size_t index;
+
+	*deleted = FALSE;
+	snprintf(name, sizeof(name), PC_MENU_TAG_PREFIX "%s", screen);
+	for (index = 0; name[index]; index++)
+	{
+		if (name[index] == '/')
+			name[index] = '\\';
+	}
+	tag_index = tag_loaded(UI_WIDGET_DEFINITION_TAG, name);
+	if (tag_index == NONE)
+		return FALSE;
+	memset(&handler, 0, sizeof(handler));
+	reference_clear(&handler.sound_effect, SOUND_TAG);
+	reference_set(&handler.widget_tag, UI_WIDGET_DEFINITION_TAG, tag_index);
+	SET_FLAG(handler.flags, _event_handler_open_widget_bit, TRUE);
+	ui_widget_port_handler_run(widget, event, &handler, deleted);
+	return TRUE;
+}
+
 short menu_tags_handler_event(
 	void const *handlers,
 	long index)
@@ -3757,8 +3818,10 @@ void menu_tags_loaded(
 			if (source_index >= 0 && source_index < menu_tags.source_count)
 				menu_tags.sources[source_index] = widget->source;
 			/* (its look in the model found by its name: the menus' files' are
-			kept until they are read again) */
-			if (source_index >= 0 && source_index < menu_tags.look_count)
+			kept until they are read again; but the hand-written screens'
+			building blocks, screens/..., which are drawn from their own
+			definitions: menu_screen.c) */
+			if (source_index >= 0 && source_index < menu_tags.look_count && strncmp(widget->name, "screens/", 8))
 				menu_tags.looks[source_index].name = widget->name;
 		}
 		if (widget->radius > 0)
