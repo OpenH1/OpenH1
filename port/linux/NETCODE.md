@@ -68,9 +68,13 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   movement and none of its loading zones, and after any switch no loading
   zone switches again until every machine has the new BSP (ten seconds at
   most). Only the host's crossing of a loading zone switches the BSP, and
-  it brings every player to the host, however far behind, so no one
+  it brings to the host every player outside the new BSP, however far
+  behind, and anyone standing on one of its loading zones, so no one
   running ahead or doubling back drags the team through the level (while
-  none of the host's players are alive, anyone's crossing does); a client
+  none of the host's players are alive, anyone's crossing does); a player
+  still inside the new BSP, as at the seam between two areas, stays where
+  they are. The host alone decides who moves: clients take the positions
+  it sends. A client
   standing on a loading zone is told it waits for the host. Where there is
   no room beside the host or a teammate who is in, the player is tried in
   the host, the two passing through each other until they are apart. A
