@@ -790,6 +790,11 @@ and by its part of that on a screen between them, and more on a wider one,
 so that its screen is used edge to edge */
 #define WIDE_LAYOUT_PAST_WIDTH 1138
 #define WIDE_LAYOUT_PAST_EXTRA (WIDE_LAYOUT_PAST_WIDTH - WIDE_LAYOUT_WIDTH)
+/* On a touchscreen a widget moved past 16:9 and not made wider (a title, a
+prompt, a tab) is moved less, to the phone's safe area's side (72, an iPhone's
+59 points: menu_layout.c's MENU_LAYOUT_PHONE_SIDE) from the screen's edge, not
+the layout's margin (24): so much less of the width past 16:9 each side */
+#define WIDE_LAYOUT_TOUCH_INSET (72 - 24)
 
 /* the extra width a view this wide lays the port's screens out in: 0 at the
 menus' 640 or less, WIDE_LAYOUT_EXTRA at 16:9 and wider */
@@ -898,6 +903,14 @@ short ui_widget_port_past_extra(void)
 	return menu_tags.past_extra;
 }
 
+/* the width past 16:9 a widget moved and not made wider is moved by: on a
+touchscreen, short of the safe area's sides (WIDE_LAYOUT_TOUCH_INSET) */
+short ui_widget_port_past_move(void)
+{
+	return ui_widget_port_touch_menus() ?
+		(short)MAX(0, menu_tags.past_extra - 2 * WIDE_LAYOUT_TOUCH_INSET) : menu_tags.past_extra;
+}
+
 /* how far a widget (and what is in it) is moved where it is drawn, in the
 layout now */
 short ui_widget_port_wide_offset(long definition_index)
@@ -905,7 +918,7 @@ short ui_widget_port_wide_offset(long definition_index)
 	struct menu_wide const *wide = wide_of(definition_index);
 
 	return wide ? (short)(ui_widget_port_wide_scale(wide->dx, menu_tags.wide_extra) +
-		ui_widget_port_past_scale(wide->past_dx, menu_tags.past_extra)) : 0;
+		ui_widget_port_past_scale(wide->past_dx, wide->past_dw ? menu_tags.past_extra : ui_widget_port_past_move())) : 0;
 }
 
 /* how much wider than its picture a widget is drawn in the layout now: its

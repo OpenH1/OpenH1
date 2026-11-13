@@ -50,7 +50,7 @@ int pc_menu_browser_visit_kind(void);
 void pc_menu_main_menu_shown(struct widget_instance *screen);
 int halo_keyboard_prompts(void);
 long ui_widget_port_text_box_font(struct widget_instance *widget, short *width);
-short ui_widget_port_past_extra(void);
+short ui_widget_port_past_move(void);
 boolean ui_widget_port_pointer_focused(void);
 
 /* ---------- constants */
@@ -848,7 +848,7 @@ static void screen_buttons_right_place(struct screen_open *open)
 	if (width <= 0 || width > SCREEN_WIDTH)
 		return;
 	bar->horizontal_offset = (short)(open->widget->horizontal_offset + SCREEN_WIDTH - BUTTONS_MARGIN - width +
-		ui_widget_port_past_extra() / 2);
+		ui_widget_port_past_move() / 2);
 }
 
 /* the item focused now (its index, NONE for none) */
@@ -900,9 +900,9 @@ void menu_screen_frame(struct widget_instance *widget)
 	/* (past 16:9, the band's title and the bar's left side to the screen's
 	left edge, as the tall layout's titles: its right side, above) */
 	if (open->header && open->header_picture == NONE)
-		open->header->horizontal_offset = (short)(widget->horizontal_offset - ui_widget_port_past_extra() / 2);
+		open->header->horizontal_offset = (short)(widget->horizontal_offset - ui_widget_port_past_move() / 2);
 	if (open->buttons_left)
-		open->buttons_left->horizontal_offset = (short)(widget->horizontal_offset - ui_widget_port_past_extra() / 2);
+		open->buttons_left->horizontal_offset = (short)(widget->horizontal_offset - ui_widget_port_past_move() / 2);
 	focused = screen_focused(open);
 	for (index = 0; index < open->item_count; index++)
 	{
