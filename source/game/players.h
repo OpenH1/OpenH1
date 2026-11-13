@@ -388,6 +388,19 @@ boolean players_coop_waiting_to_start(
 /* port: the co-op host's bringto command: everyone comes to the host */
 boolean players_coop_bring_to_host(
 	void);
+/* port: Host Controls' BRING TO ME (go_to FALSE: the player comes beside
+the host's player) and GO TO (TRUE: the host's player goes beside them), a
+network co-op host's: whether it may (another machine's living player, not
+away, the host's player in the level, and for GO TO the player in it too),
+and the move, as a BSP switch's (players.c); the moved player (and the
+one they went beside), or NONE */
+boolean players_coop_host_can_teleport(
+	long player_index,
+	boolean go_to);
+long players_coop_host_teleport(
+	long player_index,
+	boolean go_to,
+	long *beside_player_index);
 /* port: TRUE if `position` is inside a switch trigger for the BSP that is
 loaded. A player left there switches the level on the next tick. */
 boolean player_position_switches_bsp(

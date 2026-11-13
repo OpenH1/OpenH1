@@ -20,6 +20,10 @@ enum
 	_host_controls_ban,
 	_host_controls_move_team,
 	_host_controls_mute,
+	/* (network co-op: the player brought beside the host's, the host's
+	player to them: network_host_controls_teleport) */
+	_host_controls_bring,
+	_host_controls_go_to,
 	NUMBER_OF_HOST_CONTROLS_ACTIONS
 };
 
@@ -133,6 +137,11 @@ struct host_controls_player_view
 	(network_host_controls_team_moves_for) */
 	boolean teams;
 	boolean team_moves;
+	/* a network co-op game, and whether the host may bring the player to
+	its own and go to them (players.c's players_coop_host_can_teleport) */
+	boolean coop;
+	boolean bring;
+	boolean go_to;
 };
 
 /* whose pause menu it is, for its rows */
@@ -262,6 +271,12 @@ game's OpenH1 machines alone hear it (network_host_controls_team_moves) */
 boolean network_host_controls_move_team(long player_index);
 /* whether teams may move in this game */
 boolean network_host_controls_team_moves(void);
+/* (the co-op host) the player brought beside the host's player (go_to
+FALSE), or the host's player to them (TRUE), as a BSP switch moves the
+players (players.c's players_coop_host_teleport); the player's machine
+told, an OpenH1 one (_distributed_message_host_teleport): the brought
+player turned the host's way and both told on their screens */
+boolean network_host_controls_teleport(long player_index, boolean go_to);
 
 /* (the host) the players' own team changes in the lobby refused (but the
 host machine's) */

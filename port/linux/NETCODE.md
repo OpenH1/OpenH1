@@ -1564,6 +1564,22 @@ machine:
   no OpenCE machine in it, whose machines all play the host's protocol (their
   join token says so): an OpenCE machine would keep the player on the old
   team. The player respawns on the new team; their score goes with them.
+- BRING TO ME and GO TO <NAME> (network co-op only, under the player's
+  TELEPORT...) move a player as a BSP switch does, in the host's simulation
+  (`players.c`'s `players_coop_host_teleport`): out of any seat, beside the
+  other player (or the vehicle they ride), facing their way, else, with no
+  room, in them (the two passing through each other until apart), never onto
+  a loading zone. Every machine sees the move as the host's word on the
+  player's unit. The player's machine, an OpenH1 one, is told
+  (`_distributed_message_host_teleport`, 143, reliably, OpenH1 protocol
+  version 29: the player, the host's player and the brought player's facing,
+  with a format byte), which a client takes only from the host's stream in
+  an OpenH1 co-op game under way: it turns a brought player's view the
+  host's way (its own input drives its facing, which the host's word does not
+  change) and shows "Brought to <host>" or "<host> joined you" on their
+  screen. Offered for another machine's living player who is not away, with
+  the host's player in the level, and GO TO only to a player who is in it;
+  never in a versus game, nor to a dedicated server's admins.
 - RULES (`network_host_rules.c`) changes the gametype's rules. In the lobby
   it is the lobby's game record, which every machine takes. In a game it
   changes the host's game and record (a player who joins takes the record).
