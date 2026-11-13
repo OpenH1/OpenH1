@@ -12,6 +12,9 @@ enum
 {
 	/* side by side, for the split screen's four players */
 	MAXIMUM_MENU_SPARTANS = 4,
+	/* a Spartan's color for a random profile color: the profile colors in
+	turn, in their list's order, about one a second (menu_spartan_color) */
+	MENU_SPARTAN_RANDOM = -1,
 };
 
 /* whether ui.map has the Spartan's tags (else the screens draw the
@@ -20,8 +23,15 @@ boolean menu_spartan_available(void);
 /* a Spartan asked for this frame (the screen that shows it asks each frame
 it draws): placed in the menus' 640 by 480, in its screen's units (its
 screen's place on the screen is menu_spartan_draw's), its feet's middle at
-x, bottom, as tall as height, in the profile color color_index */
+x, bottom, as tall as height, in the profile color color_index (or
+MENU_SPARTAN_RANDOM) */
 void menu_spartan_place(short index, short color_index, real x, real bottom, real height);
+/* the armor's color of the Spartan index in the profile color color_index
+at the menus' frame time milliseconds: the color's own, or for
+MENU_SPARTAN_RANDOM the colors in turn, each held most of a second then
+blended into the next, each Spartan a part of the round on from the one
+before it */
+real_rgb_color menu_spartan_color(short index, short color_index, unsigned long milliseconds);
 /* at the start of each frame the menus draw: the Spartans asked for made
 and placed on their stage, the others deleted */
 void menu_spartan_frame(void);

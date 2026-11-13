@@ -55,6 +55,7 @@ char *getenv(char const *name);
 long halo_screen_width(void);
 void halo_screen_ui_offset(unsigned char centered);
 void halo_hdr_interface(void);
+unsigned long ui_widget_port_milliseconds(void);
 
 /* ---------- constants */
 
@@ -90,6 +91,11 @@ and the arms reach out of the box at the sides, the helmet a little above */
 #define SPARTAN_VIEW_FOOT 0.04f
 #define SPARTAN_VIEW_NEAR 0.05f
 #define SPARTAN_VIEW_FAR 100.0f
+
+/* a random color's Spartan: each color held, then blended into the next,
+in all a color's step (milliseconds) */
+#define SPARTAN_RANDOM_HOLD 750
+#define SPARTAN_RANDOM_BLEND 250
 
 /* ---------- structures */
 
@@ -211,11 +217,9 @@ static void spartan_delete(
 
 static void spartan_color_set(
 	long object_index,
-	short color_index)
+	real_rgb_color color)
 {
 	struct object_datum *object = object_try_and_get(object_index);
-	real_rgb_color color = player_profile_get_rgb_color(color_index);
-
 	short index;
 
 	if (!object)
@@ -368,12 +372,14 @@ static boolean spartan_make(
 	struct menu_spartan *spartan)
 {
 	struct object_placement_data data;
+	real_rgb_color rgb = menu_spartan_color((short)(spartan - menu_spartan.spartans), spartan->color_index,
+		ui_widget_port_milliseconds());
 	short color;
 
 	object_placement_data_new(&data, menu_spartan.spartan_definition, NONE);
 	spartan_stand(spartan, &data.position, &data.forward, &data.up);
 	for (color = 0; color < NUMBER_OF_OBJECT_CHANGE_COLORS; color++)
-		data.change_colors[color] = player_profile_get_rgb_color(spartan->color_index);
+		data.change_colors[color] = rgb;
 	spartan->object_index = object_new(&data);
 	if (spartan->object_index == NONE)
 		return FALSE;
@@ -427,6 +433,38 @@ void menu_spartan_place(
 	spartan->bottom = bottom;
 	spartan->height = height;
 	spartan->color_index = color_index;
+}
+
+real_rgb_color menu_spartan_color(
+	short index,
+	short color_index,
+	unsigned long milliseconds)
+{
+	long count = (long)player_profile_number_of_available_primary_colors();
+	unsigned long step = SPARTAN_RANDOM_HOLD + SPARTAN_RANDOM_BLEND;
+	unsigned long round, at;
+	long color;
+	real blend;
+	real_rgb_color from, to;
+
+	if (color_index != MENU_SPARTAN_RANDOM || count <= 0)
+		return player_profile_get_rgb_color(color_index);
+	/* (where in the round of the colors it is, each Spartan side by side a
+	quarter of the round on) */
+	round = (unsigned long)count * step;
+	at = (milliseconds % round + round * (unsigned long)(index & (MAXIMUM_MENU_SPARTANS - 1)) /
+		MAXIMUM_MENU_SPARTANS) % round;
+	color = (long)(at / step);
+	from = player_profile_get_rgb_color(color);
+	to = player_profile_get_rgb_color((color + 1) % count);
+	/* (eased in and out over the blend) */
+	blend = at % step < SPARTAN_RANDOM_HOLD ? 0.0f :
+		(real)(at % step - SPARTAN_RANDOM_HOLD) / (real)SPARTAN_RANDOM_BLEND;
+	blend = blend * blend * (3.0f - 2.0f * blend);
+	from.red += (to.red - from.red) * blend;
+	from.green += (to.green - from.green) * blend;
+	from.blue += (to.blue - from.blue) * blend;
+	return from;
 }
 
 short menu_spartan_test_colors(
@@ -533,7 +571,8 @@ void menu_spartan_frame(
 			}
 			spartan_idle_loop(spartan);
 		}
-		spartan_color_set(spartan->object_index, spartan->color_index);
+		spartan_color_set(spartan->object_index,
+			menu_spartan_color(index, spartan->color_index, ui_widget_port_milliseconds()));
 	}
 	menu_spartan.frame++;
 }
@@ -627,9 +666,10 @@ void menu_spartan_draw(
 			feet.x = feet.y = head.x = head.y = 0.0f;
 			render_camera_world_to_screen(&camera, &frustum, &object->object.position, &feet);
 			render_camera_world_to_screen(&camera, &frustum, &top, &head);
-			platform_log("menu spartan: %d: color %d, animation %d frame %d, on the screen feet %.1f %.1f head %.1f %.1f, "
+			platform_log("menu spartan: %d: color %d (armor %.3f %.3f %.3f), animation %d frame %d, on the screen feet %.1f %.1f head %.1f %.1f, "
 				"facing %.3f %.3f %.3f up %.3f %.3f %.3f, rifle %s", index, spartan->color_index,
-				object->object.animation.state.index, object->object.animation.state.frame_index, feet.x, feet.y,
+				object->object.base_change_colors[0].red, object->object.base_change_colors[0].green,
+				object->object.base_change_colors[0].blue, object->object.animation.state.index, object->object.animation.state.frame_index, feet.x, feet.y,
 				head.x, head.y, object->object.forward.i, object->object.forward.j, object->object.forward.k,
 				object->object.up.i, object->object.up.j, object->object.up.k,
 				spartan->rifle_index != NONE ? "held" : "none");
