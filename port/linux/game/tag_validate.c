@@ -1736,6 +1736,35 @@ boolean tag_validate_tags(
 	return validate_tag_table(&validation, header->instances, header->tag_count);
 }
 
+unsigned long tag_validate_apart_size(
+	void)
+{
+	return sizeof(tag_validate_claims) + sizeof(tag_validate_globals);
+}
+
+boolean tag_validate_tags_apart(
+	void *tag_header,
+	long tag_data_size,
+	long file_length,
+	char const *name,
+	void *saved,
+	long *corrections)
+{
+	byte *saved_claims = saved;
+	byte *saved_globals = saved_claims + sizeof(tag_validate_claims);
+	boolean valid;
+
+	/* (the map's, kept in the caller's memory: the validator asks for none) */
+	memcpy(saved_claims, tag_validate_claims, sizeof(tag_validate_claims));
+	memcpy(saved_globals, &tag_validate_globals, sizeof(tag_validate_globals));
+	valid = tag_validate_tags(tag_header, tag_data_size, file_length, name);
+	*corrections = tag_validate_globals.corrections;
+	memcpy(&tag_validate_globals, saved_globals, sizeof(tag_validate_globals));
+	memcpy(tag_validate_claims, saved_claims, sizeof(tag_validate_claims));
+
+	return valid;
+}
+
 boolean tag_validate_custom_edition_tags(
 	void *tag_header,
 	long loaded_size,

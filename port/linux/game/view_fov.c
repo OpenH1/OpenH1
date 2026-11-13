@@ -51,12 +51,11 @@ enum
 	_rasterizer_target_render_primary = 0
 };
 
-int config_boolean(const char *name);
 unsigned long system_milliseconds(void);
 void platform_log(char const *format, ...);
-/* each weapon's own offsets (port/linux/src/port_config.h) */
+/* each weapon's own offsets, as a local player sees them (port/linux/src/port_config.h) */
 #define CONFIG_WEAPON_VALUES 6
-int config_viewmodel_weapon(const char *path, double values[CONFIG_WEAPON_VALUES]);
+int config_player_viewmodel_weapon(int local_player, const char *path, double values[CONFIG_WEAPON_VALUES]);
 
 /* ---------- the world's field of view */
 
@@ -788,11 +787,17 @@ static void viewmodel_offset_global(short local_player_index, struct viewmodel_o
 
 boolean viewmodel_offset(short local_player_index, long weapon_index, struct viewmodel_offset *offset)
 {
-	/* (the last weapon's, until the weapon or a setting changes: a lookup
-	by its tag's path) */
-	static long cached_definition = NONE;
-	static unsigned long cached_at;
-	static double own[CONFIG_WEAPON_VALUES];
+	/* (each local player's last weapon's, until the weapon or a setting
+	changes: a lookup by its tag's path, their profile's) */
+	static struct
+	{
+		boolean valid;
+		long definition;
+		unsigned long at;
+		double own[CONFIG_WEAPON_VALUES];
+	} cached[PLAYER_SETTINGS_SLOTS];
+	short slot = PLAYER_SETTINGS_SLOT(local_player_index);
+	double const *own = cached[slot].own;
 	long definition_index = viewmodel_weapon_definition(weapon_index);
 	unsigned long changes = config_changes();
 	double total[CONFIG_WEAPON_VALUES];
@@ -801,11 +806,12 @@ boolean viewmodel_offset(short local_player_index, long weapon_index, struct vie
 	viewmodel_offset_global(local_player_index, offset);
 	if (definition_index == NONE)
 		return viewmodel_offset_any(offset);
-	if (definition_index != cached_definition || cached_at != changes)
+	if (!cached[slot].valid || definition_index != cached[slot].definition || cached[slot].at != changes)
 	{
-		config_viewmodel_weapon(viewmodel_weapon_path(definition_index), own);
-		cached_definition = definition_index;
-		cached_at = changes;
+		cached[slot].valid = TRUE;
+		config_player_viewmodel_weapon(local_player_index, viewmodel_weapon_path(definition_index), cached[slot].own);
+		cached[slot].definition = definition_index;
+		cached[slot].at = changes;
 	}
 	/* (the weapon's own added to the global, the sum held at the range) */
 	total[0] = offset->right * CENTIMETERS_PER_WORLD_UNIT + own[0];
@@ -985,19 +991,25 @@ boolean viewmodel_is_visible(void)
 
 /* ---------- whether the energy shield's flare is drawn on the arms */
 
+/* (the local player's of the view drawn now: render.local_player_index) */
 boolean viewmodel_shield_is_visible(void)
 {
-	static boolean initialized, visible;
-	static unsigned long read_at;
+	static struct
+	{
+		boolean initialized, visible;
+		unsigned long read_at;
+	} players[PLAYER_SETTINGS_SLOTS];
+	short local_player_index = render.local_player_index;
+	short slot = PLAYER_SETTINGS_SLOT(local_player_index);
 	unsigned long changes = config_changes();
 
-	if (!initialized || read_at != changes)
+	if (!players[slot].initialized || players[slot].read_at != changes)
 	{
-		visible = config_boolean("display.viewmodel_shield") != 0;
-		initialized = TRUE;
-		read_at = changes;
+		players[slot].visible = config_player_boolean(local_player_index, "display.viewmodel_shield") != 0;
+		players[slot].initialized = TRUE;
+		players[slot].read_at = changes;
 	}
-	return visible;
+	return players[slot].visible;
 }
 
 boolean viewmodel_draws_geometry(boolean first_person)

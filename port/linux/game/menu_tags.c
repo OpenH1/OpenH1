@@ -54,6 +54,7 @@ looks", below).
 #include "network_host_controls.h"
 #include "basic_training.h"
 #include "halo_keyboard.h"
+#include "menu_models.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -2774,6 +2775,8 @@ static void menu_tags_release(void)
 			rasterizer_bitmap_delete(menu_tags.bitmaps[index]);
 	}
 	halo_menus_art_forget();
+	/* (the menus' models' tags, with ours: menu_models.c) */
+	menu_models_tags_release();
 	if (menu_tags.original_instances)
 		cache_files_set_tag_instances(menu_tags.original_instances, menu_tags.original_count);
 	/* (the game's free takes no NULL: settings is, with no setting spinners) */
@@ -3755,7 +3758,8 @@ void menu_tags_loaded(
 {
 	struct halo_menus const *menus;
 	struct cache_file_tag_instance *instances;
-	long widget_count, own_lists = 0, total, index, large_font;
+	long widget_count, own_lists = 0, total, index, large_font, model_count = 0;
+	long model_tags[MENU_MODELS_MAXIMUM_TAGS];
 	boolean locale;
 
 	boolean game_map = strcmp(map_name, "ui") != 0;
@@ -3802,8 +3806,11 @@ void menu_tags_loaded(
 	knows by its own name, and draws in OpenCE where it is on; the bitmap
 	font's letters, as large_ui's, where it is off) */
 	large_font = tag_loaded(FONT_TAG, "ui\\large_ui");
+	/* (ui.map's: the menus' models' tags, the Spartan's, read and checked,
+	menu_models.c) */
+	model_count = game_map ? 0 : menu_models_tags_load();
 	total = (large_font != NONE) + widget_count + own_lists + menus->string_list_count + menus->bitmap_count +
-		(game_map ? PAUSE_PATCH_TAGS : 0);
+		model_count + (game_map ? PAUSE_PATCH_TAGS : 0);
 	instances = build.failed ? NULL : instances_grow(total, &build.first_index, &build.first_salt);
 	if (!instances)
 		goto failed;
@@ -3836,6 +3843,13 @@ void menu_tags_loaded(
 			build.heading_tag = next_tag();
 			instance_set(instances, FONT_TAG, build.heading_tag, "heading", "", heading);
 		}
+	}
+	/* (the menus' models', checked: theirs at once) */
+	if (model_count > 0 && model_count <= MENU_MODELS_MAXIMUM_TAGS)
+	{
+		for (index = 0; index < model_count; index++)
+			model_tags[index] = next_tag();
+		menu_models_tags_add(instances, model_tags);
 	}
 	/* the tags: the bitmaps and strings first, which the widgets name; the
 	widgets' names in the table before any is built, which they find there */

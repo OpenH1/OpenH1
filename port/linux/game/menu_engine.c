@@ -41,6 +41,7 @@ the game's), in place of its definition's.
 
 #include "halo_menus.h"
 #include "menu_engine.h"
+#include "menu_spartan.h"
 #include "menu_search.h"
 #include "menu_widget.h"
 
@@ -1281,6 +1282,9 @@ boolean menu_engine_screen_draw(struct widget_instance *screen, rectangle2d *cli
 	struct engine_screen *owned = engine_screen_of(screen);
 	struct widget_instance *previous = engine.drawing;
 
+	/* (the menus' Spartans asked for in the frame before made and placed,
+	those no screen asked for deleted: menu_spartan.c) */
+	menu_spartan_frame();
 	if (!owned || engine.drawing == screen)
 		return FALSE;
 	engine.drawing = screen;

@@ -301,7 +301,8 @@ static int touch_controls_setting(void)
 			setting = _touch_scene_on;
 		else if (value && !strcmp(value, "off"))
 			setting = _touch_scene_off;
-		value = config_string("display.hud_button_style");
+		/* (player 1's: their profile's) */
+		value = config_player_string(0, "display.hud_button_style");
 		if (value && !strcmp(value, "gems"))
 			setting |= 1 << _touch_scene_style_shift;
 		else if (value && !strcmp(value, "menu_gems"))

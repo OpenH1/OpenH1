@@ -3433,6 +3433,18 @@ void platform_pump_events(void)
 #endif
 	static int null_renderer = -1;
 
+	{
+		static BOOL trace_at_exit;
+
+		/* (debug.input_trace: and as the game ends, a game without a window
+		too) */
+		if (!trace_at_exit)
+		{
+			trace_at_exit = TRUE;
+			if (config_boolean("debug.input_trace"))
+				atexit(input_trace_at_exit);
+		}
+	}
 	if (!platform_window)
 	{
 		if (null_renderer < 0)
@@ -3460,17 +3472,6 @@ void platform_pump_events(void)
 #ifndef HALO_ANDROID
 	test_menu_mouse();
 #endif
-	{
-		static BOOL trace_at_exit;
-
-		/* (debug.input_trace: and as the game ends) */
-		if (!trace_at_exit)
-		{
-			trace_at_exit = TRUE;
-			if (config_boolean("debug.input_trace"))
-				atexit(input_trace_at_exit);
-		}
-	}
 	pthread_mutex_lock(&input_lock);
 #ifndef HALO_ANDROID
 	/* (the scoreboard closed, or no longer offering it: the pointer goes) */

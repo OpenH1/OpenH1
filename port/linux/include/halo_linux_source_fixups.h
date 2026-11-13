@@ -426,6 +426,10 @@ short halo_stick_dead_range(short gamepad, short stick);
 /* whether a gamepad's look turns the other way side to side: its player's
 input.invert_look_horizontal (port/linux/src/xinput_sdl.c) */
 int halo_look_horizontal_inverted(short gamepad);
+/* whether a local player's controller aims as Modern does (input.aim_style,
+the player's own), and Modern's acceleration angle, as its tangent, and the
+push that accelerates, or -1 for the game's own (source/game/player_control.c) */
+int player_control_aim_modern(short local_player_index, float *acceleration_tangent, float *acceleration_threshold);
 /* ... and whether a controller's right stick is the flick stick
 (input.flick_stick) */
 int halo_linux_flick_stick(void);
@@ -436,6 +440,8 @@ int platform_movie_skip_pressed(void);
 /* the player's move and look as the game read them, for the input trace
 (port/linux/src/input_trace.c): a frame's, or a sub-step's */
 void input_trace_player(int controller, int substep, float forward, float strafe, float yaw, float pitch);
+/* ... and the look stick's acceleration a tick (source/game/player_control.c) */
+void input_trace_aim(int controller, int modern, int accelerating, float acceleration_seconds);
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
 

@@ -15,7 +15,7 @@ from harness import CHECK_FAILED, build, function, inline, mutated, player_setti
 
 CASES = ["stock", "right", "up_and_forward", "forward_recorded", "turned_view", "on_the_screen", "weapon_fov_across", "weapon_fov_depth",
          "weapon_fov_unusable", "held_at_the_range", "changed", "turn_pitch", "turn_yaw", "turn_roll", "turn_and_move",
-         "weapon_own", "weapon_own_changed", "slider_steps", "players"]
+         "weapon_own", "weapon_own_changed", "slider_steps", "players", "weapon_players"]
 CONTROLS = [
     # the move toward the eye not recorded for the weapon's near plane, or kept once gone
     ("\t\tapplied_forwards[local_player_index] = offset.forward;", "", "forward_recorded"),
@@ -42,7 +42,8 @@ CONTROLS = [
     ("if (!players[slot].initialized || players[slot].read_at != changes)\n\t{\n\t\tplayers[slot].global.right",
      "if (!players[slot].initialized || !players[slot].read_at)\n\t{\n\t\tplayers[slot].global.right", "changed"),
     # one offset kept for every player
-    ("short slot = PLAYER_SETTINGS_SLOT(local_player_index);", "short slot = 0;", "players"),
+    ("short slot = PLAYER_SETTINGS_SLOT(local_player_index);\n\tunsigned long changes = config_changes();\n\n\tif (!players[slot]",
+     "short slot = 0;\n\tunsigned long changes = config_changes();\n\n\tif (!players[slot]", "players"),
     # config.toml's for every player
     ("\tviewmodel_offset_global(local_player_index, offset);", "\tviewmodel_offset_global(NONE, offset);", "players"),
     # the weapon field of view's scale left out: the move set, as far in the world, shorter on the screen
@@ -85,13 +86,17 @@ CONTROLS = [
     # the sum not held at the range
     ("\t\ttotal[value] = viewmodel_offset_held(total[value],", "\t\ttotal[value] = 0 * viewmodel_offset_held(total[value],", "weapon_own"),
     # a change written not seen; another weapon given the last one's
-    ("if (definition_index != cached_definition || cached_at != changes)", "if (definition_index != cached_definition || (cached_at != changes && 0))",
-     "weapon_own_changed"),
-    ("if (definition_index != cached_definition || cached_at != changes)", "if ((definition_index != cached_definition && 0) || cached_at != changes)",
-     "weapon_own_changed"),
+    ("definition_index != cached[slot].definition || cached[slot].at != changes)",
+     "definition_index != cached[slot].definition || (cached[slot].at != changes && 0))", "weapon_own_changed"),
+    ("definition_index != cached[slot].definition || cached[slot].at != changes)",
+     "(definition_index != cached[slot].definition && 0) || cached[slot].at != changes)", "weapon_own_changed"),
     # looked up every frame
-    ("if (definition_index != cached_definition || cached_at != changes)", "if (TRUE || definition_index != cached_definition || cached_at != changes)",
-     "weapon_own_changed"),
+    ("if (!cached[slot].valid || definition_index", "if (TRUE || definition_index", "weapon_own_changed"),
+    # one weapon's offsets kept for every player, or config.toml's for all
+    ("\tshort slot = PLAYER_SETTINGS_SLOT(local_player_index);\n\tdouble const *own",
+     "\tshort slot = 0;\n\tdouble const *own", "weapon_players"),
+    ("config_player_viewmodel_weapon(local_player_index, viewmodel_weapon_path(definition_index)",
+     "config_player_viewmodel_weapon(0, viewmodel_weapon_path(definition_index)", "weapon_players"),
     # a track's step rounded toward 0 below it, as before
     ("steps < 0.0 ? steps - 0.5 : steps + 0.5", "steps + 0.5", "slider_steps"),
 ]

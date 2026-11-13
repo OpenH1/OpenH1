@@ -37,12 +37,14 @@ static real world_gyro_yaw, world_gyro_pitch, world_flick_yaw;
 static boolean world_flick_stick;
 
 static boolean player_control_camera_control_is_active(void) { return TRUE; }
-static void player_control_stick_look(struct game_globals_player_control const *constants,
-	struct game_input_state const *input_state, real clamped_yaw, real clamped_pitch, real yaw_rate, real pitch_rate,
-	real_euler_angles2d *look)
+/* (the stick's push each way as camera_turn was given it, in its clamped_yaw and clamped_pitch) */
+static boolean player_control_stick_look(struct game_globals_player_control const *constants, short gamepad_index,
+	struct game_input_state const *input_state, real yaw_rate, real pitch_rate, real_euler_angles2d *look,
+	real *clamped_yaw, real *clamped_pitch)
 {
-	look->yaw = clamped_yaw * yaw_rate;
-	look->pitch = clamped_pitch * pitch_rate;
+	look->yaw = *clamped_yaw * yaw_rate;
+	look->pitch = *clamped_pitch * pitch_rate;
+	return *clamped_yaw >= constants->look_pegging_threshold;
 }
 static void player_control_scale_look(long unit_index, short zoom_level, real_euler_angles2d *look) {}
 static long local_player_aim_assist(short local_player_index, real *autoaim, real *magnetism,
@@ -68,6 +70,11 @@ static int halo_linux_touch_look(short gamepad_index, real *yaw, real *pitch, re
 	return 0;
 }
 static int halo_linux_mouse_aiming(short gamepad_index) { return 0; }
+static int player_control_aim_modern(short local_player_index, float *acceleration_tangent, float *acceleration_threshold)
+{
+	return 0;
+}
+static void input_trace_aim(int controller, int modern, int accelerating, float acceleration_seconds) {}
 static int halo_linux_touch_aiming(short gamepad_index) { return 0; }
 static int halo_linux_mouse_look(short gamepad_index, real *yaw, real *pitch) { return 0; }
 static int halo_linux_gyro_look(short gamepad_index, real *yaw, real *pitch)
