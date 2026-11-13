@@ -5599,9 +5599,9 @@ SCREEN_LANES_LINEUP = {"computer": (404, 74 + 80 + 4, 436)}
 SCREEN_LANE_GAP, SCREEN_LANE_INSET, SCREEN_LANE_ROW = 12, 8, 18
 SCREEN_CHOICE_HEIGHTS = {"computer": (148, 22), "touch": (188, 32)}
 SCREEN_PANEL_BUTTON = (148, 24)
-# a chat under a table (<chat>: the lobby's, 5 lines), on the computer and on a touchscreen: its line's and its line
+# a chat under a table (<chat>: the lobby's, 3 lines), on the computer and on a touchscreen: its line's and its line
 # typed's heights, its inner margin and the gap over it (the table's foot over it)
-SCREEN_CHAT_LINES = (5,)
+SCREEN_CHAT_LINES = (3,)
 SCREEN_CHAT = {"computer": (15, 20), "touch": (16, 40)}
 SCREEN_CHAT_INSET, SCREEN_CHAT_GAP = 6, 8
 

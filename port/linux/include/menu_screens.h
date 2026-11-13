@@ -155,7 +155,8 @@ struct menu_screen_block
 	shown, checked each frame: its if; NULL, always) */
 	char const *condition;
 	/* (a table's row source, and its words while it has no rows; a
-	header's detail, at the band's right) */
+	header's detail, at the band's right, and its fallback in source: its
+	shorter forms, a line each, shown where the detail does not fit) */
 	char const *source;
 	char const *empty;
 	/* (a column's title's action: sorts by it) */

@@ -573,6 +573,10 @@ struct lobby_board_model
 	one, and HOST CONTROLS, the host's or a dedicated server's admin's) */
 	boolean opence, then, host_controls;
 	wchar_t subtitle[SETTINGS_PANEL_TEXT_LENGTH];
+	/* (the hand-written screen's band: the subtitle's words, shorter, then
+	ever shorter forms, each on a line of its own, the first that fits
+	shown: the bots, where it is, the players' word dropped in turn) */
+	wchar_t band[SETTINGS_PANEL_TEXT_LENGTH];
 	wchar_t gametype[ROW_TEXT_LENGTH];
 	wchar_t map[SETTINGS_PANEL_TEXT_LENGTH];
 	wchar_t limits[SETTINGS_PANEL_TEXT_LENGTH];
@@ -665,28 +669,46 @@ static void lobby_board_model_make(struct lobby_board_model *model, short rows)
 			bots |= model->entries[index].bot;
 		usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, count == 1 ? L"%s \x00B7 1 player" : L"%s \x00B7 %d players",
 			bots ? L"Offline with bots" : L"Offline", count);
+		usnprintf(model->band, SETTINGS_PANEL_TEXT_LENGTH - 1, count == 1 ? L"%s\n1 player" : L"%s\n%d players",
+			text, count);
 	}
 	else if (game)
 	{
 		wchar_t name[ROW_TEXT_LENGTH];
 		short bots = 0;
+		wchar_t const *where = model->dedicated ? L"Dedicated server" : model->controls.invite ? L"Internet" :
+			L"Local network";
+		wchar_t bot_words[16];
 
 		/* (and the host's bots among them, bots.c's) */
 		for (index = 0; index < count; index++)
 			bots += model->entries[index].bot ? 1 : 0;
 		lobby_board_game_name(game, model->entries, model->players, count, name, NUMBEROF(name));
-		usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, L"%s \x00B7 %s \x00B7 %d of %d players", name,
-			model->dedicated ? L"Dedicated server" : model->controls.invite ? L"Internet" : L"Local network", count,
+		usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, L"%s \x00B7 %s \x00B7 %d of %d players", name, where, count,
 			game->maximum_players);
+		bot_words[0] = 0;
+		if (bots)
+			usnprintf(bot_words, NUMBEROF(bot_words) - 1, bots == 1 ? L" \x00B7 1 bot" : L" \x00B7 %d bots", bots);
+		bot_words[NUMBEROF(bot_words) - 1] = 0;
 		if (bots)
 		{
 			size_t length = ustrlen(text);
 
-			usnprintf(text + length, SETTINGS_PANEL_TEXT_LENGTH - 1 - length, bots == 1 ? L" \x00B7 1 bot" :
-				L" \x00B7 %d bots", bots);
+			usnprintf(text + length, SETTINGS_PANEL_TEXT_LENGTH - 1 - length, L"%s", bot_words);
 		}
+		/* (the band's: the least needed dropped first, the bots (the roster
+		shows them), where it is, the players' word, the game's name) */
+		usnprintf(model->band, SETTINGS_PANEL_TEXT_LENGTH - 1,
+			L"%s \x00B7 %s \x00B7 %d/%d players%s\n%s \x00B7 %s \x00B7 %d/%d players\n%s \x00B7 %d/%d players\n"
+			L"%s \x00B7 %d/%d\n%d/%d players\n%d/%d",
+			name, where, count, game->maximum_players, bot_words, name, where, count, game->maximum_players, name,
+			count, game->maximum_players, name, count, game->maximum_players, count, game->maximum_players, count,
+			game->maximum_players);
 	}
 	text[SETTINGS_PANEL_TEXT_LENGTH - 1] = 0;
+	if (!game)
+		model->band[0] = 0;
+	model->band[SETTINGS_PANEL_TEXT_LENGTH - 1] = 0;
 
 	/* (the next game) */
 	model->gametype[0] = model->map[0] = model->limits[0] = model->status[0] = model->start[0] = 0;
@@ -1790,8 +1812,20 @@ int pc_menu_lobby_value(char const *name, char *value, unsigned long size)
 	text[0] = 0;
 	if (!strcmp(name, "lobby.title"))
 		usnprintf(text, NUMBEROF(text) - 1, L"GAME LOBBY");
-	else if (!strcmp(name, "lobby.subtitle"))
-		return lobby_screen_words(model->subtitle, value, size);
+	/* (the band's words, and its shorter forms, a line each) */
+	else if (!strcmp(name, "lobby.subtitle") || !strcmp(name, "lobby.subtitle.short"))
+	{
+		wchar_t band[SETTINGS_PANEL_TEXT_LENGTH];
+		wchar_t *shorter;
+
+		ustrncpy(band, model->band, NUMBEROF(band) - 1);
+		band[NUMBEROF(band) - 1] = 0;
+		for (shorter = band; *shorter && *shorter != '\n'; shorter++)
+			;
+		if (*shorter)
+			*shorter++ = 0;
+		return lobby_screen_words(!strcmp(name, "lobby.subtitle") ? band : shorter, value, size);
+	}
 	/* (the lanes: RED and BLUE in a team game, each its players' count;
 	else PLAYERS across both, how many of the most at its right) */
 	else if (!strcmp(name, "lobby.red"))
