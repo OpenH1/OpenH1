@@ -79,6 +79,9 @@ looking screens (the aim and the head turned, as a unit turns them) */
 #define SPARTAN_SEAT "stand"
 #define SPARTAN_WEAPON_CLASS "rifle"
 #define SPARTAN_HAND_MARKER "right hand"
+/* the most of the rifle class's weapon IK points kept (its hands put on the
+rifle's markers, as a unit's are: units.c's unit_postprocess_node_matrices) */
+#define MAXIMUM_SPARTAN_IK_POINTS 4
 
 enum
 {
@@ -104,10 +107,11 @@ as the originals' pictures were taken (player_color_marine_large), not
 from its middle */
 #define SPARTAN_PITCH_DEGREES 8.0f
 /* how its idle aims (degrees from ahead, through the aiming screen, as a
-unit aims): to its right and down a little, the rifle held across its
-chest toward the camera, as in the originals' pictures */
-#define SPARTAN_AIM_YAW_DEGREES (-12.0f)
-#define SPARTAN_AIM_PITCH_DEGREES (-16.0f)
+unit aims): nearly at the camera, a little to its right and down toward
+it, the rifle at its shoulder and its muzzle at the viewer, as in the
+originals' pictures (both hands on it: spartan_weapon_ik) */
+#define SPARTAN_AIM_YAW_DEGREES (-3.0f)
+#define SPARTAN_AIM_PITCH_DEGREES (-15.0f)
 /* the view's rectangle about a Spartan's box, in its heights: the rifle
 and the arms reach out of the box at the sides, the helmet a little above */
 #define SPARTAN_VIEW_SIDE 0.45f
@@ -267,6 +271,10 @@ static struct
 	struct menu_spartan const *drawing;
 	char hand_marker[TAG_STRING_LENGTH + 1];
 	char grip_marker[TAG_STRING_LENGTH + 1];
+	/* the rifle class's weapon IK points: each a marker of the Spartan's (a
+	hand's) put on one of the rifle's */
+	short ik_point_count;
+	struct animation_graph_ik_point ik_points[MAXIMUM_SPARTAN_IK_POINTS];
 	/* the stage: where the first view's camera stands (set as the first
 	Spartan is made, kept while there is one; each Spartan's a step along it) */
 	boolean staged;
@@ -558,6 +566,7 @@ static void spartan_tags_find(
 	menu_spartan.rifle_definition = menu_models_tag(SCENERY_TAG, MENU_MODELS_RIFLE);
 	strcpy(menu_spartan.hand_marker, SPARTAN_HAND_MARKER);
 	menu_spartan.grip_marker[0] = 0;
+	menu_spartan.ik_point_count = 0;
 	if (menu_spartan.spartan_definition == NONE)
 		return;
 	animation_graph = object_definition_get(menu_spartan.spartan_definition)->object.animation_graph.index;
@@ -565,7 +574,7 @@ static void spartan_tags_find(
 	if (animation_graph != NONE)
 	{
 		struct animation_graph *graph = animation_graph_definition_get(animation_graph);
-		long seat_index, class_index;
+		long seat_index, class_index, ik_index;
 
 		for (seat_index = 0; seat_index < graph->unit_seats.count; seat_index++)
 		{
@@ -590,6 +599,18 @@ static void spartan_tags_find(
 				}
 				strncpy(menu_spartan.grip_marker, weapon_class->grip_marker_name, TAG_STRING_LENGTH);
 				menu_spartan.grip_marker[TAG_STRING_LENGTH] = 0;
+				menu_spartan.ik_point_count = 0;
+				for (ik_index = 0; ik_index < weapon_class->ik_points.count &&
+					menu_spartan.ik_point_count < MAXIMUM_SPARTAN_IK_POINTS; ik_index++)
+				{
+					struct animation_graph_ik_point *ik_point =
+						(struct animation_graph_ik_point *)weapon_class->ik_points.address + ik_index;
+					struct animation_graph_ik_point *kept = &menu_spartan.ik_points[menu_spartan.ik_point_count++];
+
+					memcpy(kept, ik_point, sizeof(*kept));
+					kept->marker_name[TAG_STRING_LENGTH] = 0;
+					kept->attached_to_marker_name[TAG_STRING_LENGTH] = 0;
+				}
 			}
 		}
 		menu_spartan.idle_animation = animation_graph_get_animation_by_name(animation_graph, SPARTAN_IDLE);
@@ -615,6 +636,11 @@ static void spartan_tags_find(
 			indices[3] = menu_spartan.fidget_animations[SPARTAN_FIDGET_CROUCH];
 			indices[4] = menu_spartan.aim_animation;
 			indices[5] = menu_spartan.look_animation;
+			for (each = 0; each < menu_spartan.ik_point_count; each++)
+			{
+				platform_log("menu spartan: weapon IK: the Spartan's \"%s\" on the rifle's \"%s\"",
+					menu_spartan.ik_points[each].marker_name, menu_spartan.ik_points[each].attached_to_marker_name);
+			}
 			platform_log("menu spartan: the graph's %d animations, %d nodes; aim bounds yaw %.3f x %d / %.3f x %d, "
 				"look bounds yaw %.3f x %d / %.3f x %d", graph->animations.count, graph->nodes.count,
 				menu_spartan.aim_bounds.negative_yaw_delta, menu_spartan.aim_bounds.negative_yaw_frame_count,
@@ -1092,6 +1118,117 @@ static void spartan_aim(
 	}
 }
 
+/* a matrix as an orientation (its rotation, position and scale) */
+static void spartan_matrix_orientation(
+	real_matrix4x3 const *matrix,
+	real_orientation *orientation)
+{
+	matrix4x3_rotation_to_quaternion(matrix, &orientation->rotation);
+	orientation->translation = matrix->position;
+	orientation->scale = matrix->scale;
+}
+
+/* the rifle class's weapon IK over a Spartan's posed nodes, as a unit's
+(units.c's unit_postprocess_node_matrices, objects.c's
+object_inverse_kinematics): each IK point's hand (its marker's node, the
+arm its parent and grandparent) put where its marker is on the rifle's
+marker, hold of the way from where the pose has it (0: the pose's, as a
+unit's IK is off while it reloads or readies); the nodes under the arm's
+moved with it */
+static void spartan_weapon_ik(
+	struct menu_spartan *spartan,
+	struct object_datum const *object,
+	struct model const *model,
+	long model_index,
+	short node_count,
+	real hold)
+{
+	struct object_datum *rifle = object_try_and_get(spartan->rifle_index);
+	struct object_definition *rifle_definition;
+	boolean mirrored = TEST_FLAG(object->object.flags, _object_mirrored_bit);
+	short point_index;
+
+	if (!rifle || !spartan->rifle_posed || hold <= 0.0f)
+		return;
+	rifle_definition = object_definition_get(rifle->definition_index);
+	if (rifle_definition->object.model.index == NONE)
+		return;
+	hold = hold > 1.0f ? 1.0f : hold;
+	for (point_index = 0; point_index < menu_spartan.ik_point_count; point_index++)
+	{
+		struct animation_graph_ik_point const *point = &menu_spartan.ik_points[point_index];
+		struct object_marker hand_marker, grip_marker;
+		real_matrix4x3 before[3], inverse, desired, moved[3];
+		short arm[3], node_index, joint;
+
+		if (!model_get_marker_by_name(model_index, point->marker_name, object->object.region_permutations, NULL, 0,
+				spartan->body_nodes, mirrored, &hand_marker, 1) ||
+			!model_get_marker_by_name(rifle_definition->object.model.index, point->attached_to_marker_name,
+				rifle->object.region_permutations, NULL, 0, spartan->rifle_nodes,
+				TEST_FLAG(rifle->object.flags, _object_mirrored_bit), &grip_marker, 1))
+		{
+			continue;
+		}
+		/* (the hand, the forearm, the upper arm) */
+		arm[2] = hand_marker.node_index;
+		if (arm[2] < 0 || arm[2] >= node_count)
+			continue;
+		arm[1] = ((struct model_node const *)model->nodes.address + arm[2])->parent_node_index;
+		if (arm[1] < 0 || arm[1] >= node_count)
+			continue;
+		arm[0] = ((struct model_node const *)model->nodes.address + arm[1])->parent_node_index;
+		if (arm[0] < 0 || arm[0] >= node_count)
+			continue;
+		matrix4x3_inverse(&hand_marker.node_matrix, &inverse);
+		matrix4x3_multiply(&grip_marker.matrix, &inverse, &desired);
+		if (hold < 1.0f)
+		{
+			real_orientation posed, held, blended;
+
+			spartan_matrix_orientation(&spartan->body_nodes[arm[2]], &posed);
+			spartan_matrix_orientation(&desired, &held);
+			orientations_interpolate(&posed, &held, hold, &blended);
+			matrix4x3_from_orientation(&desired, &blended);
+		}
+		for (joint = 0; joint < 3; joint++)
+			before[joint] = spartan->body_nodes[arm[joint]];
+		inverse_kinematics_adjust_matrices(&desired, &spartan->body_nodes[arm[0]], &spartan->body_nodes[arm[1]],
+			&spartan->body_nodes[arm[2]]);
+		/* (each joint's move: after times before's inverse) */
+		for (joint = 0; joint < 3; joint++)
+		{
+			matrix4x3_inverse(&before[joint], &inverse);
+			matrix4x3_multiply(&spartan->body_nodes[arm[joint]], &inverse, &moved[joint]);
+		}
+		/* (a node under the arm, a finger or a twist, moved as its nearest
+		joint of it above it is) */
+		for (node_index = 0; node_index < node_count; node_index++)
+		{
+			short above = ((struct model_node const *)model->nodes.address + node_index)->parent_node_index;
+			short steps = 0;
+
+			if (node_index == arm[0] || node_index == arm[1] || node_index == arm[2])
+				continue;
+			while (above >= 0 && above < node_count && steps++ < MAXIMUM_NODES_PER_MODEL)
+			{
+				for (joint = 2; joint >= 0; joint--)
+				{
+					if (above == arm[joint])
+						break;
+				}
+				if (joint >= 0)
+				{
+					real_matrix4x3 node = spartan->body_nodes[node_index];
+
+					matrix4x3_multiply(&moved[joint], &node, &spartan->body_nodes[node_index]);
+					break;
+				}
+				above = ((struct model_node const *)model->nodes.address + above)->parent_node_index;
+			}
+		}
+	}
+}
+
 /* a Spartan's pose at the menus' clock's milliseconds, its nodes' matrices
 as the game would place them (spartan->body_nodes; FALSE: none, the game's
 own drawn): its idle at its own time, and a fidget blended over it; its
@@ -1219,6 +1356,12 @@ static boolean spartan_pose(
 			spartan->rifle_posed = rifle_node_count > 0;
 		}
 	}
+
+	/* (its hands on the rifle as a unit's are, but while it reloads or
+	readies: its own animation's hands then, blended to and from) */
+	spartan_weapon_ik(spartan, object, model, definition->object.model.index, node_count,
+		fidgeting && (kind == SPARTAN_FIDGET_RELOAD || kind == SPARTAN_FIDGET_WEAPON_CHECK) ?
+		1.0f - fidget_pose.weight : 1.0f);
 
 	/* (debug: as a fidget begins and as it ends) */
 	if (getenv("HALO_MENU_SPARTAN_TRACE"))
