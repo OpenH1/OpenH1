@@ -115,7 +115,7 @@ on-screen keyboard or not: FALSE if it cannot be */
 boolean network_chat_lobby_begin(short controller, boolean keyboard);
 /* the lobby's on-screen keyboard drawn in its area (the menus' screen's
 units, screen_width by screen_height), its keys' place noted for taps */
-void network_chat_lobby_draw_keyboard(long font_index, rectangle2d const *area, short screen_width,
+void network_chat_lobby_draw_keyboard(long font_index, short x0, short y0, short x1, short y1, short screen_width,
 	short screen_height);
 
 /* (the host: network_voice.c) whether a player's name (the network game's,

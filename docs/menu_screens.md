@@ -122,6 +122,7 @@ Profile's, whose generated screen's was its inner screen's).
 | `<pair>` | `label` (required), `value` (required), `when` | A label at the left and its value, large, at the right |
 | `<spartan>` | (in a `<panel>`) `height`, `color` | A line of the panel as tall as `height` (200 by default, at most 360), the Spartan standing in it in the middle of the panel (moved and grown with it on a wide screen), its feet at the line's foot (the line after it a 25th of its height lower, for the feet drawn under it); its color as a screen's `<spartan>`'s, and where there is no Spartan the original picture is shrunk to the line, whole. A screen has one `<spartan>`, in its panel or of its own |
 | `<choice>` | `label` (required), `value` (required), `left` (required), `right` (required), `if`, `dim`, `when` | (in a `<panel>`) A choice of the panel's, a line of it the focus steps to: its label at its left, its value's words between the spinners' arrows. Left runs `left`, right and A `right`, a click or a tap on its left half `left`, on its right half `right` (the source of its value then changes it: the lobby's BOTS, SKILL and TEAMS). While its `if` has no value it is gone, the lines after it moved up into its place; while `dim` has a value it is dimmed and passed over by the focus, and its keys do nothing. 22 tall (32 on a touchscreen) |
+| `<chat>` | `source` (required), `lines`, `do`, `if`, `when` | A chat under the table, across it (the table's rows end over it): its newest `lines` lines (1 to 12, 5 by default; each its sender's name in its colour, then its words), and under them the line being typed (with its caret), or the source's words for none (`Press T to chat`). The focus steps to the line typed's place; A, a click or a tap on it runs `do` (the lobby's begins a line). While its source's on-screen keyboard is up, it is drawn over the screen (over the panel's foot; on a touchscreen across the screen's foot), its taps its keys. `source` names a chat source of C's (below); a screen has one `<chat>` |
 | `<button>` | (in a `<panel>`) | The panel's buttons, one over another up from its foot, the last at the foot (JOIN GAME; the lobby's START GAME): filled, its key's picture before its words; those over it outlined, their words alone in their middle (the lobby's HOST CONTROLS and GAME SETTINGS), each shown as its `if` says, in its place. Up to 4 |
 
 A panel's line whose text has a binding of no value (or none at all) is not
@@ -156,6 +157,16 @@ profile.
 | `browser.games` | The server browser's games (below) |
 | `profiles` | The player profiles, and the row that makes one (Select Profile, below); its one column `name` |
 | `lobby.players` | The lobby's players (below), in a table of two lanes: red's and blue's (a game without teams' one list down both); its columns `dot`, `name` (a player's speaker beside it in voice chat) and `tag` |
+
+A `<chat>`'s lines come from a chat source (`struct menu_chat_source`,
+`menu_table.h`) in `menu_screen.c`'s `screen_chats`, by its name in
+`screen_chat_names`: each frame its lines (the oldest first: each a name, its
+colour and its words), the line being typed and whether its on-screen
+keyboard is up, the keyboard drawn in its place, and the words for none.
+
+| Chat source | Lines |
+| --- | --- |
+| `lobby.chat` | The lobby's text chat (network_chat.c's lobby lines: below, "The lobby") |
 
 A cell may give shorter words (`fallback`), shown in place of its own where
 they would be cut short (a bot's tag: BOT where BOT · NORMAL does not fit),
@@ -220,6 +231,7 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | `{lobby.gametype}`, `{lobby.map}`, `{lobby.limits}`, `{lobby.kind}`, `{lobby.kind.tone}`, `{lobby.tick}`, `{lobby.opence}`, `{lobby.after}` | The next game: its gametype, map (a co-op game's level and difficulty), limits (`50 kills · 10 min`), GOAT H1 or LEGACY and its pill's tone, its tick rate (`120 TICK`), OPENCE CAN JOIN (the host's, while OpenCE's players may join), the game after it (a host's playlist's) |
 | `{lobby.bots}`, `{lobby.skill}`, `{lobby.teams}`, `{lobby.bots.shown}`, `{lobby.bots.locked}`, `{lobby.bots.count.locked}` | The host's bots: BOTS' choice (`ADD 3`), SKILL, TEAMS; (for `if`s and `dim`s) whether the host has them (any game but co-op), whether the gametype is one they do not play, and BOTS' a matchmaking game's too |
 | `{lobby.status}`, `{lobby.start}`, `{lobby.waiting}` | How the game is (the countdown, the invite copied, how another controller joins...); START GAME's words (or `STARTING IN 3`); a player's (`Waiting for the host`) |
+| `{lobby.chat}` | (for `if`s) the lobby has its text chat now: the host's LOBBY TEXT CHAT on, as it told this machine, and `display.text_chat` |
 | `{lobby.host}`, `{lobby.settings}`, `{lobby.controls}`, `{lobby.team.change}`, `{lobby.invite}`, `{lobby.add}` | (for `if`s) START GAME's (the host's), GAME SETTINGS', HOST CONTROLS' (a network game's host's, a dedicated server's admin's), CHANGE TEAM's, COPY INVITE's, ADD PLAYER's |
 
 ## Actions
@@ -263,6 +275,7 @@ sounds and the fades are the game's.
 | `lobby row` | A lobby's row chosen: a click on it puts this player on its lane's team (in a team game), as a click on the generated lobby's column; A (Start) starts the game (the host's) |
 | `lobby start`, `lobby team red`, `lobby team blue`, `lobby team toggle` | The game started (START GAME); this player put on red's or blue's team (left and right on the players), or the other (CHANGE TEAM) |
 | `lobby invite`, `lobby settings`, `lobby host`, `lobby add player` | The invite copied; Server Setup in the lobby's place (GAME SETTINGS); Host Controls (HOST CONTROLS); another player of this machine added (ADD PLAYER) |
+| `lobby chat` | A line of the lobby's chat begun: on the keyboard typed (Enter sends it, Esc lets it go); on a controller and a touchscreen with the on-screen keyboard |
 | `lobby bots left`, `lobby bots right`, `lobby skill left`, `lobby skill right`, `lobby teams left`, `lobby teams right` | The host's bots' choices stepped: BOTS to the choice before or after (at its ends no further), SKILL and TEAMS round, written to `config.toml` as the generated lobby's spinners write them |
 
 A file is checked against `screen_action_names` as it is read, and
@@ -399,6 +412,20 @@ leaves, START joins another controller's player, X adds one, Y the map vote
 or COPY INVITE), and what its list did each frame (the split screen's
 players joining, the map vote's screen) is done each frame it is drawn
 (`pc_menu_lobby_frame`).
+
+Under the players, the lobby's text chat (`<chat source="lobby.chat">`): its
+newest lines, each name in its team's colour (no team's blue, the host's
+notices pale gold), and the line being typed. T (or Y: the lobby has one
+channel, everyone, as its voice has: its teams are not yet the game's, and
+anyone may change theirs) begins a line on the keyboard; on a controller LB
+(CHAT) or A on the chat's line opens the on-screen keyboard (the game's own,
+network_chat.c's: D-pad Up moves the lobby's focus here), and on a touchscreen
+a tap on it. The sending, the host's relay, its rate, its refusals (links),
+its word filter and its mutes are the game's chat's (port/linux/NETCODE.md,
+"Text chat"); the lobby's lines are kept apart from a game's, and neither
+shows the other's. The host's Host Controls has LOBBY TEXT CHAT and LOBBY
+VOICE CHAT (`network.lobby_text_chat`, `network.voice_lobby`), on or off for
+everyone at once.
 
 ## The profile color screen
 

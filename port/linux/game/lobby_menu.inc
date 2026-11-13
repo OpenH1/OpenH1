@@ -1463,15 +1463,10 @@ static char const *lobby_chat_typed(int *keyboard)
 
 static void lobby_chat_keyboard(short x0, short y0, short x1, short y1, short screen_width, short screen_height)
 {
-	rectangle2d area;
 	long font = tag_loaded('font', "ui\\large_ui");
 
-	area.x0 = x0;
-	area.y0 = y0;
-	area.x1 = x1;
-	area.y1 = y1;
 	if (font != NONE)
-		network_chat_lobby_draw_keyboard(font, &area, screen_width, screen_height);
+		network_chat_lobby_draw_keyboard(font, x0, y0, x1, y1, screen_width, screen_height);
 }
 
 /* the line typed's place's words while none is: how to begin one, or that

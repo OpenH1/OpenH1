@@ -2283,13 +2283,22 @@ boolean network_chat_lobby_begin(
 
 void network_chat_lobby_draw_keyboard(
 	long font_index,
-	rectangle2d const *area,
+	short x0,
+	short y0,
+	short x1,
+	short y1,
 	short screen_width,
 	short screen_height)
 {
+	rectangle2d area;
+
 	if (!chat_input.active || !chat_input.lobby || !chat_keyboard.open || screen_width <= 0 || screen_height <= 0)
 		return;
-	chat_keyboard_draw_in(font_index, area, (short)(screen_height / 30));
+	area.x0 = x0;
+	area.y0 = y0;
+	area.x1 = x1;
+	area.y1 = y1;
+	chat_keyboard_draw_in(font_index, &area, (short)(screen_height / 30));
 	/* (a tap's place: the menus' 640 in the middle of the screen's width) */
 	chat_keyboard.drawn = TRUE;
 	chat_keyboard.left = (short)((chat_keyboard_keys.x0 + (screen_width - 640) / 2) * 1000 / screen_width);
