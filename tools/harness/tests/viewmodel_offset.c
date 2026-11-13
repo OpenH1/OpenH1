@@ -52,6 +52,15 @@ static double config_real(const char *name)
 		!strcmp(name, "display.viewmodel_yaw") ? fake_yaw :
 		!strcmp(name, "display.viewmodel_roll") ? fake_roll : -1.0e9;
 }
+/* each local player's own (their profile's): player 2's move right set
+apart (fake_player2_x: none while 0), config.toml's for the rest */
+static double fake_player2_x;
+static double config_player_real(int local_player, const char *name)
+{
+	if (local_player == 1 && fake_player2_x != 0.0 && !strcmp(name, "display.viewmodel_offset_x"))
+		return fake_player2_x;
+	return config_real(name);
+}
 
 /* the weapons: object 5 a pistol, 6 a modded map's rifle, 7 none; their
 own offsets by path (port_config.c's config_viewmodel_weapon), and how many
@@ -275,7 +284,7 @@ int main(int argc, char **argv)
 	{
 		/* 0, 0, 0: the game's pose, untouched */
 		settings(0.0, 0.0, 0.0);
-		CHECK(!viewmodel_offset(5, &offset), "an offset of none");
+		CHECK(!viewmodel_offset(0, 5, &offset), "an offset of none");
 		viewmodel_offset_apply(1, 5, after, NODES, &camera);
 		CHECK(!memcmp(after, before, sizeof(after)), "the pose moved");
 	}
@@ -283,7 +292,7 @@ int main(int argc, char **argv)
 	{
 		/* along x, z up, the view's right is -y */
 		settings(10.0, 0.0, 0.0);
-		CHECK(viewmodel_offset(5, &offset), "no offset");
+		CHECK(viewmodel_offset(0, 5, &offset), "no offset");
 		viewmodel_offset_apply(1, 5, after, NODES, &camera);
 		check_moved(&camera, before, after, UNITS(10.0), 0.f, 0.f);
 		CHECK(NEAR(after[0].position.y - before[0].position.y, -UNITS(10.0)), "moved %f along y",
@@ -448,12 +457,12 @@ int main(int argc, char **argv)
 	CASE("held_at_the_range")
 	{
 		settings(50.0, -80.0, 20.0);
-		viewmodel_offset(5, &offset);
+		viewmodel_offset(0, 5, &offset);
 		CHECK(NEAR(offset.right, UNITS(20.0)) && NEAR(offset.up, -UNITS(20.0)) && NEAR(offset.forward, UNITS(20.0)),
 			"%f %f %f", offset.right, offset.up, offset.forward);
 		/* (and the turns at 15 degrees, for a weapon with none of its own) */
 		turns(40.0, -16.0, 0.0);
-		viewmodel_offset(7, &offset);
+		viewmodel_offset(0, 7, &offset);
 		CHECK(NEAR(offset.pitch, 15.f * PI_ / 180.f) && NEAR(offset.yaw, -15.f * PI_ / 180.f), "%f %f",
 			offset.pitch, offset.yaw);
 	}
@@ -461,9 +470,9 @@ int main(int argc, char **argv)
 	{
 		/* a change of the settings is read at once */
 		settings(2.0, 0.0, 0.0);
-		viewmodel_offset(5, &offset);
+		viewmodel_offset(0, 5, &offset);
 		settings(-7.0, 0.0, 0.0);
-		viewmodel_offset(5, &offset);
+		viewmodel_offset(0, 5, &offset);
 		CHECK(NEAR(offset.right, -UNITS(7.0)), "%f", offset.right);
 	}
 	CASE("turn_pitch")
@@ -473,7 +482,7 @@ int main(int argc, char **argv)
 		short node;
 
 		turns(10.0, 0.0, 0.0);
-		CHECK(viewmodel_offset(5, &offset), "no offset");
+		CHECK(viewmodel_offset(0, 5, &offset), "no offset");
 		viewmodel_offset_apply(1, 5, after, NODES, &camera);
 		check_rigid(&camera, before, after, 0.f, 0.f, 0.f);
 		for (node = 0; node < NODES; node++)
@@ -544,20 +553,20 @@ int main(int argc, char **argv)
 		fake_pistol[0] = 3.0;
 		fake_rifle[4] = 4.0;
 		fake_rifle[2] = -1.5;
-		viewmodel_offset(5, &offset);
+		viewmodel_offset(0, 5, &offset);
 		CHECK(NEAR(offset.right, UNITS(5.0)) && NEAR(offset.yaw, DEGREES(2)), "the pistol's %f %f", offset.right,
 			offset.yaw);
-		viewmodel_offset(6, &offset);
+		viewmodel_offset(0, 6, &offset);
 		CHECK(NEAR(offset.right, UNITS(2.0)) && NEAR(offset.yaw, DEGREES(6)) && NEAR(offset.forward, -UNITS(1.5)),
 			"the rifle's %f %f %f", offset.right, offset.yaw, offset.forward);
-		viewmodel_offset(7, &offset);
+		viewmodel_offset(0, 7, &offset);
 		CHECK(NEAR(offset.right, UNITS(2.0)) && NEAR(offset.yaw, DEGREES(2)), "no weapon's %f %f", offset.right,
 			offset.yaw);
 		/* the sum held at the range */
 		fake_pistol[0] = 19.0;
 		fake_pistol[5] = -14.0;
 		turns(0.0, 0.0, -9.0);
-		viewmodel_offset(5, &offset);
+		viewmodel_offset(0, 5, &offset);
 		CHECK(NEAR(offset.right, UNITS(20.0)) && NEAR(offset.roll, DEGREES(-15)), "held %f %f", offset.right,
 			offset.roll);
 		/* the pistol's own alone, every weapon's at 0: moved */
@@ -565,8 +574,8 @@ int main(int argc, char **argv)
 		turns(0.0, 0.0, 0.0);
 		memset(fake_pistol, 0, sizeof(fake_pistol));
 		fake_pistol[1] = -2.0;
-		CHECK(viewmodel_offset(5, &offset) && NEAR(offset.up, -UNITS(2.0)), "the pistol's own alone %f", offset.up);
-		CHECK(viewmodel_offset(6, &offset) && NEAR(offset.forward, -UNITS(1.5)), "the rifle's %f", offset.forward);
+		CHECK(viewmodel_offset(0, 5, &offset) && NEAR(offset.up, -UNITS(2.0)), "the pistol's own alone %f", offset.up);
+		CHECK(viewmodel_offset(0, 6, &offset) && NEAR(offset.forward, -UNITS(1.5)), "the rifle's %f", offset.forward);
 	}
 	CASE("weapon_own_changed")
 	{
@@ -574,14 +583,14 @@ int main(int argc, char **argv)
 		and the weapon switched to */
 		fake_pistol[0] = 1.0;
 		fake_changes++;
-		viewmodel_offset(5, &offset);
-		viewmodel_offset(5, &offset);
+		viewmodel_offset(0, 5, &offset);
+		viewmodel_offset(0, 5, &offset);
 		CHECK(fake_lookups == 1, "looked up %d times", fake_lookups);
 		fake_pistol[0] = 4.0;
 		fake_changes++;
-		viewmodel_offset(5, &offset);
+		viewmodel_offset(0, 5, &offset);
 		CHECK(NEAR(offset.right, UNITS(4.0)), "the change unseen: %f", offset.right);
-		viewmodel_offset(6, &offset);
+		viewmodel_offset(0, 6, &offset);
 		CHECK(NEAR(offset.right, 0.f), "the pistol's on the rifle: %f", offset.right);
 	}
 	CASE("slider_steps")
@@ -593,6 +602,20 @@ int main(int argc, char **argv)
 		CHECK(settings_slider_round(-1.0, 0.5) - 0.5 == -1.5, "%f", settings_slider_round(-1.0, 0.5) - 0.5);
 		CHECK(settings_slider_round(1.3, 0.5) == 1.5 && settings_slider_round(0.2, 0.5) == 0.0, "the positives");
 		CHECK(settings_slider_round(117.0, 5.0) == 115.0, "%f", settings_slider_round(117.0, 5.0));
+	}
+	CASE("players")
+	{
+		/* split screen's players each their own: player 2's of their
+		profile, player 1's and no player's config.toml's */
+		settings(2.0, 0.0, 0.0);
+		fake_player2_x = 10.0;
+		fake_changes++;
+		CHECK(viewmodel_offset(1, 7, &offset) && NEAR(offset.right, UNITS(10.0)), "player 2's %f", offset.right);
+		CHECK(viewmodel_offset(0, 7, &offset) && NEAR(offset.right, UNITS(2.0)), "player 1's %f", offset.right);
+		CHECK(viewmodel_offset(NONE, 7, &offset) && NEAR(offset.right, UNITS(2.0)), "no player's %f", offset.right);
+		CHECK(viewmodel_offset(1, 7, &offset) && NEAR(offset.right, UNITS(10.0)), "player 2's again %f",
+			offset.right);
+		fake_player2_x = 0.0;
 	}
 	return 0;
 }

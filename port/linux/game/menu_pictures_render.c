@@ -52,7 +52,7 @@ meanwhile.
 While the pictures are rendered the window shows the loading screen, one
 for the whole pass (loading_screen.h: the main menu's ring, the light
 crossing it once as the pictures are made, the monks' chant swelling),
-with the caption "Preparing menu pictures", "4 of 11"; the maps' own
+with the caption "Menu pictures", "4 of 11" (set in capitals); the maps' own
 loading screens are not shown, nor any frame of the game's (the frames
 kept are not presented). It fades out over the main menu loading. It
 counts only the pictures that can be made (menu_pictures_wanted: none
@@ -898,8 +898,8 @@ static void prepare_screen(
 		part = recording_parts[0];
 	else
 		part = parts[prepare.state] + (parts[prepare.state + 1] - parts[prepare.state]) * prepare.recorded;
-	snprintf(caption, sizeof(caption), "%s \xB7 %ld of %ld", prepare.made_pictures ? "Preparing menu pictures" :
-		"Preparing maps", prepare.done, prepare.count);
+	snprintf(caption, sizeof(caption), "%s \xB7 %ld of %ld", prepare.made_pictures ? "Menu pictures" :
+		"Maps", prepare.done, prepare.count);
 	halo_loading_screen_progress((prepare.done + part) / (real)prepare.count, caption);
 }
 

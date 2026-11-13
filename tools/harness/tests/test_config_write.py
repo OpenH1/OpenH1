@@ -13,7 +13,7 @@ from harness import CHECK_FAILED, build, constant, enum_with, function, mutated,
 CASES = ["long-string", "all-escaped", "too-long", "answer-only", "word-or-number"]
 NAMES = ["config_name_hash", "config_setting_walk", "config_index_make", "config_setting_index", "config_text_is_false", "config_string_takes_number", "config_text_is_number",
          "config_set_from_text", "config_append", "config_copy",
-         "config_line_key", "config_line_section", "config_find_line", "config_set_line", "config_write"]
+         "config_line_key", "config_line_section", "config_find_line", "config_set_line", "config_value_line", "config_write"]
 
 # a fault in the code, the function it is in, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -30,7 +30,7 @@ def generated(fault=None, faulty_function=None):
     source = read("port/linux/src/port_config.c")
     types = "\n\n".join([
         enum_with(source, "_config_boolean,"), enum_with(source, "_environment_set_is_true,"),
-        enum_with(source, "_platform_desktop = 1"), structure(source, "config_setting"),
+        enum_with(source, "_platform_desktop = 1"), enum_with(source, "\t_scope_player"), structure(source, "config_setting"),
         structure(source, "config_value"), structure(source, "config_text"),
         f"#define CONFIG_MAXIMUM_WRITTEN_STRING {constant(source, 'CONFIG_MAXIMUM_WRITTEN_STRING')}",
     ]) + "\n"

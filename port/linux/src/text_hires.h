@@ -99,7 +99,11 @@ float halo_screen_pixel_scale(void);
 /* A line of text set in the font that draws `tag_name` (fonts.json), its
 capitals `cap_pixels` tall: its coverage, one byte a pixel, width by height
 (malloc'd; NULL if the font or the memory is not there). Whatever
-display.high_res_text says: for the loading screen's caption. */
+display.high_res_text says: for the loading screen's caption. Its digits
+are set in equal cells, each the widest digit's advance, the digit in the
+middle of its own, and each number as many cells wide as the line's longest
+(its digits at the right of them): a count that changes ("4 of 23", "11 of
+23") changes neither the line's width nor any other letter's place. */
 unsigned char *text_hires_line(char const *tag_name, char const *text, float cap_pixels,
 	int *width, int *height);
 
