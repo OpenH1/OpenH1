@@ -1765,7 +1765,7 @@ static void screen_spartan_frame(struct screen_open *open, long focused)
 			menu_spartan_place((short)(spartan->first + place), color,
 				(real)block->box_x + (real)block->box_width * ((real)place + 0.5f) / (real)places,
 				(real)(block->box_y + block->box_height),
-				(real)block->box_height / (real)(!lineup && places > 2 ? 2 : 1));
+				(real)block->box_height / (real)(!lineup && places > 2 ? 2 : 1), lineup);
 			drawn |= place == 0;
 		}
 		if (spartan->picture && !lineup)
