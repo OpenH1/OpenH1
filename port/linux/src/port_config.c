@@ -2098,7 +2098,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test", _config_string, "\"\"", "HALO_NETWORK_TEST", _environment_value, _platform_all,
 		"Automated system link sessions for testing (port/linux/game/network_test.c):\n"
 		"\"host:<map>\" hosts a game on that map, \"local:<map>\" plays a local (split\n"
-		"screen) game on it, \"join\" joins the first game found,\n"
+		"screen) game on it, \"campaign:<level>\" the campaign's level in local\n"
+		"split screen co-op (SPLIT-SCREEN CO-OP's), \"join\" joins the first game found,\n"
 		"\"browse\" the one with the most players the server browser lists (not\n"
 		"co-op, if it can), \"follow\" its party leader's (debug.party), \"log\"\n"
 		"logs the game that runs (and runs its cues);\n"
