@@ -68,6 +68,7 @@
 		<on event="black" run="port campaign tab next"/>
 		<on event="y" run="port campaign missions restart" open="main_menu/campaign/restart_screen"/>
 	</behaviour>
+	<behaviour name="main_menu/campaign/mission_resume_row" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/campaign/mission_resume">
 		<on event="a" run="port campaign continue"/>
 		<on event="start" run="port campaign continue"/>

@@ -111,8 +111,11 @@
 		<at widget="main_menu/campaign/mission_dot_14" x="0" y="0"/>
 		<at widget="main_menu/campaign/mission_dot_15" x="0" y="0"/>
 		<at widget="main_menu/campaign/mission_empty" x="0" y="0"/>
-		<at widget="main_menu/campaign/mission_resume" x="73" y="48"/>
+		<at widget="main_menu/campaign/mission_resume_row" x="73" y="48"/>
 		<at widget="main_menu/campaign/mission_prompts" x="0" y="448"/>
+	</look>
+	<look name="main_menu/campaign/mission_resume_row" type="column_list" box="0 0 494 52">
+		<at widget="main_menu/campaign/mission_resume" x="0" y="0"/>
 	</look>
 	<look name="main_menu/campaign/mission_resume" box="0 0 494 52" picture="main_menu/campaign/continue_494x52">
 		<at widget="main_menu/campaign/resume_art" x="0" y="0"/>

@@ -893,6 +893,8 @@ static void campaign_missions_update(struct widget_instance *list)
 	boolean tall = menu_engine_looks();
 	boolean resume_shown = !campaign_cards.custom && campaign.saved_level != NONE && count > 0;
 	short cards_top = resume_shown ? MISSION_RESUME_CARDS_TOP : MISSION_TALL_TOP;
+	/* (CONTINUE, shown, has the focus: set with it, below) */
+	boolean resume_focused = FALSE;
 	/* (a card the pointer passes over: lit, and kept the focus, but not
 	chosen) */
 	boolean hovered = focused_slot != NONE && ui_widget_port_hover_focused();
@@ -1011,14 +1013,16 @@ static void campaign_missions_update(struct widget_instance *list)
 	picture, mission and difficulty; the cards under it lower; the focus on it
 	as the screen opens; lit while it has the focus) */
 	{
+		struct widget_instance *row = named(screen, "mission_resume_row", 0);
 		struct widget_instance *resume = named(screen, "mission_resume", 0);
-		boolean shown = tall && resume_shown;
+		boolean shown = tall && resume_shown && row && resume;
 
-		visible_set(resume, shown);
+		visible_set(row, shown);
 		if (shown)
 		{
 			if (campaign_cards.resume_focus)
-				screen->focused_child = resume;
+				screen->focused_child = row;
+			row->focused_child = resume;
 			campaign_level_title(campaign.saved_level, TRUE, text, MISSION_TEXT_LENGTH);
 			menu_text_box_fit(named(resume, "resume_title", 0), text, 0);
 			{
@@ -1040,9 +1044,10 @@ static void campaign_missions_update(struct widget_instance *list)
 			if (named(resume, "resume_badge", 0))
 				named(resume, "resume_badge", 0)->animation.current_frame_index =
 					(short)MAX(campaign.saved_difficulty, 0);
-			resume->animation.current_frame_index = screen->focused_child == resume ? 1 : 0;
+			resume_focused = screen->focused_child == row;
+			resume->animation.current_frame_index = resume_focused ? 1 : 0;
 			/* (one thing lit: the chosen card resting while CONTINUE has the focus) */
-			if (screen->focused_child == resume)
+			if (screen->focused_child == row)
 			{
 				for (slot = 0; slot < MISSION_SLOTS; slot++)
 				{
@@ -1053,16 +1058,16 @@ static void campaign_missions_update(struct widget_instance *list)
 				}
 			}
 		}
-		else if (screen->focused_child == resume)
+		else if (row && screen->focused_child == row)
 			screen->focused_child = list;
 		campaign_cards.resume_focus = FALSE;
 	}
-	/* (RESTART on the saved game's card) */
-	visible_set(named(screen, "prompt_restart", 0), count > 0 &&
-		campaign_restart_offered(campaign.saved_level, campaign_cards.custom, campaign_cards.chosen));
+	/* (RESTART on the saved game's card; in the tall layout, while CONTINUE
+	has the focus, the saved game's to restart, and on no card) */
+	visible_set(named(screen, "prompt_restart", 0), count > 0 && (tall ? resume_focused :
+		campaign_restart_offered(campaign.saved_level, campaign_cards.custom, campaign_cards.chosen)));
 	campaign_text_set_ascii(named(screen, "prompt_select", 0),
-		!campaign_cards.custom && count > 0 && (tall ? resume_shown && screen->focused_child == named(screen,
-			"mission_resume", 0) : campaign_cards.chosen == campaign.saved_level) ?
+		!campaign_cards.custom && count > 0 && (tall ? resume_focused : campaign_cards.chosen == campaign.saved_level) ?
 		"%a-button RESUME" : "%a-button SELECT");
 	profile_name_show(screen);
 }
@@ -1096,7 +1101,7 @@ shown) or the cards (down) given the focus */
 static boolean campaign_missions_up_down(struct widget_instance *widget, boolean up)
 {
 	struct widget_instance *screen = screen_of(widget);
-	struct widget_instance *target = named(screen, up ? "mission_resume" : "mission_cards", 0);
+	struct widget_instance *target = named(screen, up ? "mission_resume_row" : "mission_cards", 0);
 
 	if (!target || !target->visible || screen->focused_child == target)
 		return TRUE;
@@ -1416,7 +1421,18 @@ static boolean campaign_menu_event(struct widget_instance *widget, char const *n
 	if (!strcmp(name, "restart ask"))
 		return campaign_restart_ask(NONE);
 	if (!strcmp(name, "missions restart"))
+	{
+		/* (the tall layout's: CONTINUE's, its saved game's, while it has
+		the focus; none on the cards) */
+		if (menu_engine_looks())
+		{
+			struct widget_instance *screen = screen_of(widget);
+
+			return screen && screen->focused_child && screen->focused_child == named(screen, "mission_resume_row", 0) &&
+				screen->focused_child->visible ? campaign_restart_ask(NONE) : FALSE;
+		}
 		return campaign_restart_ask(campaign_cards.chosen);
+	}
 	if (!strcmp(name, "restart"))
 		return campaign_restart(controller);
 	if (!strcmp(name, "restart cancel"))

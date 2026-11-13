@@ -8224,7 +8224,12 @@ def _mission_resume() -> list:
     # (the words as far from the picture as the badge is from the frame's right)
     margin = 12
     text_x = inset + art_w + margin
-    lines = _widget(f"{base}/mission_resume", [("width", width), ("height", height),
+    # (in a list of its own, as the cards are in theirs: the pointer over it gives it the focus, lit, and a click
+    # presses A on it, as on a card)
+    lines = _widget(f"{base}/mission_resume_row", [("type", "column_list"), ("width", width), ("height", height),
+                                                   ("flags", "pass_unhandled_to_focused_child")],
+                    [f'<child widget="{base}/mission_resume"/>'])
+    lines += _widget(f"{base}/mission_resume", [("width", width), ("height", height),
                                                ("bitmap", f"{base}/continue_{width}x{height}")],
                     [*(f'<on event="{event}" run="port campaign continue"/>' for event in ("a", "start")),
                      '<on event="left_mouse" run="mouse emit accept event"/>',
@@ -8288,7 +8293,7 @@ def _missions() -> list:
                      f'<child widget="{base}/source_tabs" x="{640 - 28 - 2 * SETTINGS_TAB_STEP - 26}" y="{tabs_y}"/>',
                      *(f'<child widget="{base}/mission_dot_{index}"/>' for index in range(MISSION_DOTS)),
                      f'<child widget="{base}/mission_empty"/>',
-                     f'<child widget="{base}/mission_resume" x="{(640 - MISSION_RESUME[0]) // 2}" '
+                     f'<child widget="{base}/mission_resume_row" x="{(640 - MISSION_RESUME[0]) // 2}" '
                      f'y="{MISSION_RESUME_TOP}"/>',
                      f'<child widget="{base}/mission_prompts" y="{prompts_y}"/>'])
     lines += _mission_resume()
