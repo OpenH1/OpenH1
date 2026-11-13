@@ -73,7 +73,8 @@ DELIBERATE = [("profile_settings", _shows_menu_engine)]
 # hand-written screen's blocks (pc\screens\...), not the classic's. They are checked by screenshots and scripted
 # runs instead
 HAND_WRITTEN = re.compile(r"^main_menu/main_menu$|^main_menu/multiplayer_type_select/join_game/join_game_screen$"
-                          r"|^main_menu/settings_select/player_setup/player_profile_edit/color_edit/color_select_screen$")
+                          r"|^main_menu/settings_select/player_setup/player_profile_edit/color_edit/color_select_screen$"
+                          r"|^main_menu/profile_manager/player_profile_manager$")
 
 
 def is_hand_written(screen: str, classic: dict, new: dict) -> bool:

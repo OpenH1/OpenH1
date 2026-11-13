@@ -8878,6 +8878,8 @@ static void widget_instance_render_recursive(
 	/* port: (a hand-written screen's item's own picture) */
 	struct ui_widget_definition pictured;
 	long picture_index;
+	/* port: (its definition's own box, before a hand-written screen's) */
+	rectangle2d own_bounds = definition->bounds;
 
 	/* port: a screen the port's menu engine draws (port/linux/game/menu_engine.c) */
 	if (!widget->parent && menu_engine_screen_draw(widget, clip_rect, offset, focus, use_nifty_plasma_fx))
@@ -9063,6 +9065,18 @@ static void widget_instance_render_recursive(
 				texels.x1 = (short)((long)(bounds.x1 - bounds.x0) * bitmap->width / frame_width);
 				texels.y1 = (short)((long)(bounds.y1 - bounds.y0) * bitmap->height / frame_height);
 				shown = bounds.x1 > bounds.x0 && bounds.y1 > bounds.y0;
+			}
+			/* port: a hand-written screen's picture shrunk whole to the box
+			it is drawn in: the texels its widget's own size shows, drawn
+			over the box (a tall panel's Spartan's original picture:
+			port/linux/game/menu_screen.c) */
+			else if (menu_screen_picture_stretched(widget))
+			{
+				placed = TRUE;
+				texels.x0 = 0;
+				texels.y0 = 0;
+				texels.x1 = (short)(own_bounds.x1 - own_bounds.x0);
+				texels.y1 = (short)(own_bounds.y1 - own_bounds.y0);
 			}
 			/* port: a widget the wide layout made wider than its picture, or
 			one whose picture keeps its ends (keep_ends) at another width:

@@ -7,13 +7,15 @@ the screens' registry (port/linux/game/menu_screen.c) gives the table. The
 table is the view: its row widgets, the focus among them, their cells drawn;
 the source is what is listed: how many rows, which is first on the table
 (the rows scroll), which is chosen, and each row's cells. The server
-browser's is menu_functions.c's (pc_menu_browser_source).
+browser's and Select Profile's are menu_functions.c's (pc_menu_browser_source,
+pc_menu_profile_source).
 */
 
 #ifndef MENU_TABLE_H
 #define MENU_TABLE_H
 
 struct widget_instance;
+struct event_record;
 
 #define MENU_TABLE_TEXT_LENGTH 64
 #define MENU_TABLE_BADGE_LENGTH 8
@@ -64,6 +66,9 @@ struct menu_table_source
 	/* the row's cell of the column (by its id; focused: the row has the
 	focus) */
 	void (*cell)(short index, char const *column, int focused, struct menu_table_cell *cell);
+	/* the table's screen opened (not made again by a hot reload): NULL,
+	nothing to do */
+	void (*opened)(void);
 };
 
 /* ---------- the server browser's (menu_functions.c) */
@@ -73,6 +78,15 @@ extern struct menu_table_source const pc_menu_browser_source;
 int pc_menu_browser_value(char const *name, char *value, unsigned long size);
 /* a search's words set ("browser.search.<column>") */
 void pc_menu_browser_search_set(char const *name, char const *text);
+
+/* ---------- Select Profile's (menu_functions.c) */
+
+extern struct menu_table_source const pc_menu_profile_source;
+/* a binding's value, UTF-8 ("profile.<name>": nonzero if it has one) */
+int pc_menu_profile_value(char const *name, char *value, unsigned long size);
+/* the row's profile (NONE: the chosen one's) made player 1's: zero for the
+row that makes one */
+int pc_menu_profile_choose(struct widget_instance *widget, struct event_record *event, short row);
 
 /* ---------- the menus' text fields and text (menu_functions.c), for the
 hand-written screens' searches */

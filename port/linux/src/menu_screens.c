@@ -389,6 +389,87 @@ static int button_read(struct reader *reader, XML_Char const **attributes, int p
 	return block;
 }
 
+/* a <spartan>: on the screen, its box in the menus' 640 by 480 (x, y,
+width, height); in a <panel>, a line of it (height, its width the panel's).
+Its color the focused <colors> item's, the profile's, or a binding's (a
+color's number, random, or none) */
+static int spartan_read(struct reader *reader, XML_Char const **attributes, int parent_block)
+{
+	static char const *const names[] = { "x", "y", "width", "height", "color", "players", NULL };
+	static char const *const panel_names[] = { "height", "color", NULL };
+	static long const defaults[] = { 440, 80, 160, 320 };
+	char const *values[8];
+	struct menu_screen *screen = reader->screen;
+	int panel = parent_block >= 0;
+	int block;
+
+	if (panel)
+	{
+		char const *read[3];
+
+		attributes_read(reader, "spartan", attributes, panel_names, read);
+		values[0] = values[1] = values[2] = values[5] = NULL;
+		values[3] = read[0];
+		values[4] = read[1];
+	}
+	else
+		attributes_read(reader, "spartan", attributes, names, values);
+	if (!reader->failed && kind_count(screen, MENU_SCREEN_SPARTAN))
+		reader_problem(reader, "a screen has one <spartan>", NULL);
+	block = block_add(reader, MENU_SCREEN_SPARTAN, parent_block);
+	if (block >= 0 && !reader->failed)
+	{
+		struct menu_screen_block *spartan = &screen->blocks[block];
+		long *box[4];
+		int index;
+
+		box[0] = &spartan->box_x;
+		box[1] = &spartan->box_y;
+		box[2] = &spartan->box_width;
+		box[3] = &spartan->box_height;
+		for (index = 0; index < 4 && !reader->failed; index++)
+		{
+			char *end = NULL;
+
+			*box[index] = panel ? 0 : defaults[index];
+			if (index == 3 && panel)
+				*box[index] = 200;
+			if (!values[index])
+				continue;
+			*box[index] = strtol(values[index], &end, 10);
+			if (!end || *end || *box[index] < (index < 2 ? -480 : 1) || *box[index] > (panel ? 360 : 1280))
+				reader_problem(reader, panel ? "a panel's <spartan>'s height is a number, 1 to 360: \"%s\"" :
+					"a <spartan>'s x, y, width and height are numbers of the menus' 640 by 480: \"%s\"",
+					values[index]);
+		}
+		spartan->color = MENU_SCREEN_SPARTAN_PROFILE;
+		if (!reader->failed && values[4])
+		{
+			if (!strcmp(values[4], "focus"))
+				spartan->color = MENU_SCREEN_SPARTAN_FOCUS;
+			else if (strcmp(values[4], "profile"))
+			{
+				/* (a binding giving the color) */
+				spartan->color = MENU_SCREEN_SPARTAN_BINDING;
+				spartan->value = values[4];
+				binding_check(reader, values[4]);
+			}
+		}
+		spartan->players = 1;
+		if (!reader->failed && values[5])
+		{
+			char *end = NULL;
+
+			spartan->players = (int)strtol(values[5], &end, 10);
+			if (!end || *end || spartan->players < 1 || spartan->players > 4)
+				reader_problem(reader, "a <spartan>'s players are 1 to 4: \"%s\"", values[5]);
+		}
+		if (!reader->failed && spartan->color != MENU_SCREEN_SPARTAN_PROFILE && spartan->players != 1)
+			reader_problem(reader, "a <spartan> of the focused color, or a binding's, is one player's", NULL);
+	}
+	return block;
+}
+
 /* the new blocks' elements (<tabs>, <table>, <panel>, <search> and what is
 in them): the element read into its block, or -2 if it is none of them */
 static int element_more(struct reader *reader, char const *name, XML_Char const **attributes, int parent_element,
@@ -567,7 +648,7 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 	}
 	else if (parent_element == _element_panel && (!strcmp(name, "heading") || !strcmp(name, "text")))
 	{
-		static char const *const names[] = { "text", "lines", "touch-lines", "when", NULL };
+		static char const *const names[] = { "text", "lines", "touch-lines", "when", "if", NULL };
 		int heading = !strcmp(name, "heading");
 
 		*element = heading ? _element_panel_heading : _element_panel_text;
@@ -579,6 +660,7 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 
 			text->label = values[0];
 			text->when = values[3];
+			text->condition = values[4];
 			text->lines = 1;
 			if (!text->label)
 				reader_problem(reader, "<%s> has no text", name);
@@ -588,7 +670,7 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 			text->touch_lines = text->lines;
 			if (!reader->failed && values[2])
 				text->touch_lines = number_read(reader, values[2], "a text's touch-lines", 1, 8);
-			shown_check(reader, NULL, text->when);
+			shown_check(reader, text->condition, text->when);
 		}
 	}
 	else if (parent_element == _element_panel && !strcmp(name, "pills"))
@@ -649,6 +731,11 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 			text_attribute_check(reader, values[1]);
 			shown_check(reader, NULL, pair->when);
 		}
+	}
+	else if (parent_element == _element_panel && !strcmp(name, "spartan"))
+	{
+		*element = _element_spartan;
+		block = spartan_read(reader, attributes, parent_block);
 	}
 	else if ((parent_element == _element_header || parent_element == _element_table ||
 		parent_element == _element_panel) && !strcmp(name, "button"))
@@ -849,56 +936,8 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	else if (parent_element == _element_screen && !strcmp(name, "spartan"))
 	{
-		static char const *const names[] = { "x", "y", "width", "height", "color", "players", NULL };
-		static long const defaults[] = { 440, 80, 160, 320 };
-
 		element = _element_spartan;
-		attributes_read(reader, name, attributes, names, values);
-		if (!reader->failed && kind_count(screen, MENU_SCREEN_SPARTAN))
-			reader_problem(reader, "a screen has one <spartan>", NULL);
-		block = block_add(reader, MENU_SCREEN_SPARTAN, -1);
-		if (block >= 0 && !reader->failed)
-		{
-			struct menu_screen_block *spartan = &screen->blocks[block];
-			long *box[4];
-			int index;
-
-			box[0] = &spartan->box_x;
-			box[1] = &spartan->box_y;
-			box[2] = &spartan->box_width;
-			box[3] = &spartan->box_height;
-			for (index = 0; index < 4 && !reader->failed; index++)
-			{
-				char *end = NULL;
-
-				*box[index] = defaults[index];
-				if (!values[index])
-					continue;
-				*box[index] = strtol(values[index], &end, 10);
-				if (!end || *end || *box[index] < (index < 2 ? -480 : 1) || *box[index] > 1280)
-					reader_problem(reader, "a <spartan>'s x, y, width and height are numbers of the menus' 640 by 480: "
-						"\"%s\"", values[index]);
-			}
-			spartan->color = MENU_SCREEN_SPARTAN_PROFILE;
-			if (!reader->failed && values[4])
-			{
-				if (!strcmp(values[4], "focus"))
-					spartan->color = MENU_SCREEN_SPARTAN_FOCUS;
-				else if (strcmp(values[4], "profile"))
-					reader_problem(reader, "a <spartan>'s color is focus or profile: \"%s\"", values[4]);
-			}
-			spartan->players = 1;
-			if (!reader->failed && values[5])
-			{
-				char *end = NULL;
-
-				spartan->players = (int)strtol(values[5], &end, 10);
-				if (!end || *end || spartan->players < 1 || spartan->players > 4)
-					reader_problem(reader, "a <spartan>'s players are 1 to 4: \"%s\"", values[5]);
-			}
-			if (!reader->failed && spartan->color == MENU_SCREEN_SPARTAN_FOCUS && spartan->players != 1)
-				reader_problem(reader, "a <spartan> of the focused color is one player's", NULL);
-		}
+		block = spartan_read(reader, attributes, -1);
 	}
 	else if (parent_element == _element_screen && !strcmp(name, "buttons"))
 	{

@@ -155,6 +155,11 @@ own), a card and its parts scaled to fill their room; *bounds comes in as
 the definition's and goes out as the box it is drawn in. FALSE for a widget
 drawn as its definition has it */
 boolean menu_screen_item_picture(struct widget_instance const *widget, long *bitmap_tag, rectangle2d *bounds);
+/* whether a hand-written screen's picture is shrunk whole to the box it is
+drawn in (what its widget's own size shows of it), not cut to it: the
+original picture in a tall panel's <spartan> line, smaller than the
+picture */
+boolean menu_screen_picture_stretched(struct widget_instance const *widget);
 /* "port screen do", an item's A: its action run */
 boolean menu_screen_do(struct widget_instance *item, struct event_record *event, boolean *deleted);
 /* "port screen key", a button bar prompt's A (a click, a tap): its key

@@ -294,7 +294,23 @@ int main(int argc, char **argv)
 			screen.blocks[0].box_width > 0 && screen.blocks[0].box_height > 0, "four, of the profiles");
 		menu_screen_free(&screen);
 		refused("<screen name=\"main\"><spartan players=\"5\"/></screen>", "players are 1 to 4");
-		refused("<screen name=\"main\"><spartan color=\"red\"/></screen>", "color is focus or profile");
+		refused("<screen name=\"main\"><spartan color=\"red\"/></screen>", "no binding {red}");
+		/* (a binding's color, and in a panel a line of its height) */
+		CHECK(read_text("<screen name=\"main\"><spartan color=\"profile.color\"/></screen>", &screen, problem),
+			"refused: %s", problem);
+		CHECK(screen.blocks[0].color == MENU_SCREEN_SPARTAN_BINDING &&
+			!strcmp(screen.blocks[0].value, "profile.color"), "a binding's color");
+		menu_screen_free(&screen);
+		CHECK(read_text("<screen name=\"main\"><panel><heading text=\"A\"/><spartan height=\"150\" "
+			"color=\"profile.color\"/></panel></screen>", &screen, problem), "refused: %s", problem);
+		CHECK(screen.blocks[2].kind == MENU_SCREEN_SPARTAN && screen.blocks[2].parent == 0 &&
+			screen.blocks[2].box_height == 150, "a panel's Spartan");
+		menu_screen_free(&screen);
+		refused("<screen name=\"main\"><panel><spartan x=\"4\"/></panel></screen>", "has no attribute x");
+		refused("<screen name=\"main\"><panel><spartan height=\"400\"/></panel></screen>", "1 to 360");
+		refused("<screen name=\"main\"><spartan color=\"profile.color\" players=\"2\"/></screen>",
+			"one player's");
+		refused("<screen name=\"main\"><spartan/><panel><spartan/></panel></screen>", "one <spartan>");
 		refused("<screen name=\"main\"><spartan width=\"wide\"/></screen>", "are numbers");
 		refused("<screen name=\"main\"><spartan color=\"focus\" players=\"2\"/></screen>", "one player's");
 		refused("<screen name=\"main\"><spartan/><spartan/></screen>", "one <spartan>");
@@ -383,6 +399,44 @@ int main(int argc, char **argv)
 		CHECK(found && !strcmp(found->blocks[2].label, "FIGHT"), "the file read again is not the screen");
 		CHECK(menu_screens_generation("main") > generation, "the generation did not change");
 		CHECK(!menu_screens_find("versus"), "a screen no file has is found");
+	}
+	else if (!strcmp(name, "profile_select"))
+	{
+		struct menu_screen_block const *table, *spartan;
+
+		/* (the real Select Profile's file: its table of profiles, its panel
+		with the chosen one's Spartan in its color, and its bar) */
+		CHECK(read_text(profile_select_xml, &screen, problem), "Select Profile's file is refused: %s", problem);
+		CHECK(!strcmp(screen.name, "profile_select") && !screen.back, "its name or back");
+		table = &screen.blocks[kind_first(&screen, MENU_SCREEN_TABLE)];
+		CHECK(!strcmp(table->source, "profiles") && !strcmp(table->action, "profile select"),
+			"the table's source or do");
+		spartan = &screen.blocks[kind_first(&screen, MENU_SCREEN_SPARTAN)];
+		CHECK(screen.blocks[spartan->parent].kind == MENU_SCREEN_PANEL &&
+			spartan->color == MENU_SCREEN_SPARTAN_BINDING && !strcmp(spartan->value, "profile.color"),
+			"the panel's Spartan, in the profile's color");
+		CHECK(kind_total(&screen, MENU_SCREEN_BUTTON, -2) == 4, "%d buttons",
+			kind_total(&screen, MENU_SCREEN_BUTTON, -2));
+		/* (BACK at the bar's left, the rest at its right; the difficulty's
+		line gone while the profile has none) */
+		{
+			int index, backs = 0, rights = 0, difficulty = 0;
+
+			for (index = 0; index < screen.block_count; index++)
+			{
+				struct menu_screen_block const *block = &screen.blocks[index];
+
+				if (block->kind == MENU_SCREEN_BUTTON && !strcmp(block->key, "back"))
+					backs += !block->side;
+				else if (block->kind == MENU_SCREEN_BUTTON)
+					rights += block->side && !strcmp(block->side, "right");
+				else if (block->kind == MENU_SCREEN_PANEL_TEXT && block->condition)
+					difficulty += !strcmp(block->condition, "profile.difficulty");
+			}
+			CHECK(backs == 1 && rights == 3, "BACK at the left (%d), the rest at the right (%d)", backs, rights);
+			CHECK(difficulty == 1, "the difficulty's line has no if");
+		}
+		menu_screen_free(&screen);
 	}
 	else if (!strcmp(name, "browser"))
 	{
@@ -480,14 +534,18 @@ int main(int argc, char **argv)
 	else if (!strcmp(name, "panel"))
 	{
 		CHECK(read_text("<screen name=\"t\"><panel><heading text=\"{test.value}\" lines=\"2\"/>"
-			"<text text=\"A\" lines=\"3\" touch-lines=\"4\"/><pills><pill text=\"B\" tone=\"test.value\" "
+			"<text text=\"A\" lines=\"3\" touch-lines=\"4\" if=\"test.flag\"/><pills><pill text=\"B\" tone=\"test.value\" "
 			"width=\"64\"/><pill text=\"C\" tone=\"2\" width=\"64\"/></pills><pair label=\"P\" value=\"1\"/>"
 			"<button key=\"accept\" label=\"JOIN\" do=\"quit\"/></panel></screen>", &screen, problem),
 			"a good panel refused: %s", problem);
 		CHECK(screen.blocks[kind_first(&screen, MENU_SCREEN_PANEL_TEXT)].lines == 3 &&
 			screen.blocks[kind_first(&screen, MENU_SCREEN_PANEL_TEXT)].touch_lines == 4, "a text's lines");
+		CHECK(screen.blocks[kind_first(&screen, MENU_SCREEN_PANEL_TEXT)].condition &&
+			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_PANEL_TEXT)].condition, "test.flag"), "a text's if");
 		menu_screen_free(&screen);
 		refused("<screen name=\"t\"><panel/></screen>", "has nothing in it");
+		refused("<screen name=\"t\"><panel><text text=\"A\" if=\"nothing.here\"/></panel></screen>",
+			"no binding {nothing.here}");
 		refused("<screen name=\"t\"><panel><text/></panel></screen>", "<text> has no text");
 		refused("<screen name=\"t\"><panel><text text=\"A\" lines=\"9\"/></panel></screen>", "lines is a number");
 		refused("<screen name=\"t\"><panel><pills/></panel></screen>", "has no <pill>");

@@ -13,7 +13,7 @@ screen down: <title-art/>, <header> (title, picture, detail, a <button>),
 <cards> holding <card>s, <tabs> (current) holding <tab>s, <table> (source,
 sorted, do, empty) holding <column>s (each a <search> in its title) and a
 <button>, <search>, <panel> holding <heading>, <text>, <pills> of <pill>s,
-<pair> and <button>, <space/>, and <buttons> holding <button>s (key, label,
+<pair>, <spartan> and <button>, <space/>, and <buttons> holding <button>s (key, label,
 do, width, if). Texts may hold bindings, {name}, filled from C; a do and the
 screen's back are actions, a table's source a row source, an if, a current,
 a sorted and a search's value bindings: names the game knows. All are
@@ -67,11 +67,14 @@ enum menu_screen_block_kind
 	MENU_SCREEN_PAIR
 };
 
-/* a <spartan>'s color: the focused <colors> item's, or the profile's */
+/* a <spartan>'s color: the focused <colors> item's, the profile's, or a
+binding's (its value, the block's value: a color's number, random, or none
+for no Spartan) */
 enum menu_screen_spartan_color
 {
 	MENU_SCREEN_SPARTAN_FOCUS,
-	MENU_SCREEN_SPARTAN_PROFILE
+	MENU_SCREEN_SPARTAN_PROFILE,
+	MENU_SCREEN_SPARTAN_BINDING
 };
 
 /* a column's cells: words, words in white (the row's name), a ping (its
@@ -108,13 +111,14 @@ struct menu_screen_block
 	char const *focus;
 	char const *hints[MENU_SCREEN_MAXIMUM_HINTS];
 	int hint_count;
-	/* (a <spartan>'s box in the menus' 640 by 480, its color's source and
+	/* (a <spartan>'s box in the menus' 640 by 480 (in a <panel>, its
+	height alone: its width and place the panel's), its color's source and
 	how many side by side) */
 	long box_x, box_y, box_width, box_height;
 	int color;
 	int players;
 	/* (a binding named: a tabs' current, a table's sorted, a search's
-	value; NULL, none) */
+	value, a <spartan>'s color; NULL, none) */
 	char const *value;
 	/* (the binding whose value must not be empty for the block to be
 	shown, checked each frame: its if; NULL, always) */

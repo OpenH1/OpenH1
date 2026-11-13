@@ -9,7 +9,7 @@ back without one. -->
 	<header title="PROFILE COLOR"/>
 	<space/>
 	<colors id="colors"/>
-	<spartan x="380" y="64" width="200" height="350" color="focus"/>
+	<spartan x="380" y="84" width="200" height="300" color="focus"/>
 	<space/>
 	<buttons>
 		<button key="accept" label="SELECT"/>

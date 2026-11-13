@@ -2881,6 +2881,35 @@ boolean menu_tags_open(
 	return TRUE;
 }
 
+/* a widget's background's bitmap tag, NONE for none: the hand-written tall
+screens' (menu_screen.c), which make the tall layout's where the screen they
+take the place of has none */
+long menu_tags_background(
+	long tag_index)
+{
+	struct ui_widget_definition const *definition = tag_index != NONE ?
+		tag_get(UI_WIDGET_DEFINITION_TAG, tag_index) : NULL;
+
+	return definition ? definition->background_bitmap.index : NONE;
+}
+
+/* the screen before the widget's gone back to, as a handler's back goes (its
+history, its sound): the hand-written screens' actions (menu_screen.c) */
+void menu_tags_back(
+	struct widget_instance *widget,
+	struct event_record *event,
+	boolean *deleted)
+{
+	struct ui_widget_event_handler_reference handler;
+
+	*deleted = FALSE;
+	memset(&handler, 0, sizeof(handler));
+	reference_clear(&handler.sound_effect, SOUND_TAG);
+	reference_clear(&handler.widget_tag, UI_WIDGET_DEFINITION_TAG);
+	SET_FLAG(handler.flags, _event_handler_go_back_to_previous_widget_bit, TRUE);
+	ui_widget_port_handler_run(widget, event, &handler, deleted);
+}
+
 short menu_tags_handler_event(
 	void const *handlers,
 	long index)

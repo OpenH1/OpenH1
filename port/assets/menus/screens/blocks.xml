@@ -89,6 +89,9 @@ screen file's, set on each widget as the screen is made. -->
 	<!-- the screen's parts that take no focus, under the body (the panel's
 picture, the line, the words for no rows) -->
 	<widget name="screens/layer" width="640" height="480"/>
+	<!-- the tall layout's background (its band's line, its footer's), for a screen that takes the place of one
+	without its own (on a touchscreen, background_tall_touch: menu_tags.c's widget_build) -->
+	<widget name="screens/background" width="640" height="480" bitmap="main_menu/parts/background_tall"/>
 	<widget name="screens/body" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_children"/>
 	<!-- a bar of one or more buttons in the body (the panel's, a table's) -->
 	<widget name="screens/bar" type="column_list" width="640" height="24" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
