@@ -4103,13 +4103,14 @@ BOOL platform_ui_pointer_read(struct platform_ui_pointer *pointer)
 	presses alone: the mouse of whoever is at the computer moves no focus) */
 	if (test_menu_run())
 	{
-		/* (but its own clicks: "click:<x>:<y>", platform_test_menu_click;
+		/* (but its own clicks and moves: "click:<x>:<y>" and "point:<x>:<y>",
+		platform_test_menu_click;
 		and its own mouse's wheel, the others' events left out:
 		test_menu_mouse_ignored) */
 		float x, y;
 		int width, height;
 		int wheel_steps = pointer->wheel_steps;
-		BOOL clicked = active && platform_test_menu_click(&x, &y);
+		int clicked = active ? platform_test_menu_click(&x, &y) : 0;
 
 		if (!active || (!clicked && !wheel_steps))
 			return FALSE;
@@ -4121,7 +4122,7 @@ BOOL platform_ui_pointer_read(struct platform_ui_pointer *pointer)
 		pointer->x = pointer->click_x = x * width;
 		pointer->y = pointer->click_y = y * height;
 		pointer->moved = TRUE;
-		pointer->left_clicks = 1;
+		pointer->left_clicks = clicked == 1;
 		return TRUE;
 	}
 	return active;

@@ -1893,7 +1893,8 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 /* debug.test_input "menu:...": its "click:<x>:<y>" (x and y, 0 to 1 of the
 window) clicks the menus' pointer there, once, in its second
 (platform_ui_pointer_read, sdl_platform.c: the mouse's own path through the
-menus) */
+menus), and its "point:<x>:<y>" moves the pointer there without a click (a
+hover); returns 1 for a click, 2 for a move */
 int platform_test_menu_click(float *x, float *y)
 {
 	static Uint64 clicked_step = (Uint64)-1;
@@ -1913,11 +1914,11 @@ int platform_test_menu_click(float *x, float *y)
 		token += length;
 	}
 	step = elapsed / 1000;
-	if (!length || strncmp(token, "click:", 6) || step == clicked_step ||
+	if (!length || (strncmp(token, "click:", 6) && strncmp(token, "point:", 6)) || step == clicked_step ||
 		sscanf(token + 6, "%f:%f", x, y) != 2)
 		return 0;
 	clicked_step = step;
-	return 1;
+	return *token == 'c' ? 1 : 2;
 }
 
 /* debug.test_input "menu:...": its "mouse:<button>", a click of that mouse
