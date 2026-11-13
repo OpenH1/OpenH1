@@ -1074,16 +1074,25 @@ static void screen_spartan_frame(struct screen_open *open, long focused)
 	struct menu_screen_block const *block = &open->spartan;
 	boolean drawn = FALSE;
 	short player, first = screen_spartan_color(open, focused, 0);
+	short players = (short)block->players;
+	short test_colors[MAXIMUM_MENU_SPARTANS];
+	short tested = menu_spartan_test_colors(test_colors);
 
-	for (player = 0; player < block->players; player++)
+	/* (debug: HALO_MENU_SPARTAN_TEST's colors in place of its players') */
+	if (tested)
 	{
-		short color = player ? screen_spartan_color(open, focused, player) : first;
+		players = tested;
+		first = test_colors[0];
+	}
+	for (player = 0; player < players; player++)
+	{
+		short color = tested ? test_colors[player] : player ? screen_spartan_color(open, focused, player) : first;
 
 		if (color < 0 || color >= SCREEN_COLOR_COUNT || !menu_spartan_available())
 			continue;
-		menu_spartan_place_in_menus(player, color,
-			(real)block->box_x + (real)block->box_width * ((real)player + 0.5f) / (real)block->players,
-			(real)(block->box_y + block->box_height), (real)block->box_height / (real)(block->players > 2 ? 2 : 1));
+		menu_spartan_place(player, color,
+			(real)block->box_x + (real)block->box_width * ((real)player + 0.5f) / (real)players,
+			(real)(block->box_y + block->box_height), (real)block->box_height / (real)(players > 2 ? 2 : 1));
 		drawn |= player == 0;
 	}
 	if (open->spartan_picture)
@@ -1091,6 +1100,21 @@ static void screen_spartan_frame(struct screen_open *open, long focused)
 		open->spartan_picture->visible = !drawn;
 		open->spartan_picture->animation.current_frame_index =
 			(short)(first >= 0 && first < SCREEN_COLOR_COUNT ? first : SCREEN_SPARTAN_RANDOM_FRAME);
+	}
+}
+
+void menu_screen_widget_drawing(struct widget_instance const *widget, point2d offset)
+{
+	long index;
+
+	for (index = 0; widget && index < SCREEN_MAXIMUM_OPEN; index++)
+	{
+		struct screen_open const *open = &screens.open[index];
+
+		/* (its <spartan>'s Spartans in their view, where the picture is in
+		the widgets' order: over what is drawn before, under what after) */
+		if (open->widget && open->has_spartan && open->spartan_picture == widget)
+			menu_spartan_draw(offset.x, offset.y);
 	}
 }
 

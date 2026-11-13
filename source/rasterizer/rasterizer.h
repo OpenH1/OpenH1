@@ -419,6 +419,15 @@ void rasterizer_present(struct bitmap_data *screenshot_bitmap, const point2d *sc
 void rasterizer_dispose(void);
 void rasterizer_window_get_fog(
 	struct render_fog *fog);
+/* port: a view of its own in a rectangle of the window, among its draws:
+its camera (its viewport the rectangle) and frustum, its depth cleared
+there, no fog; ended, the window's own again (the menus' Spartan:
+port/linux/game/menu_spartan.c) */
+void rasterizer_view_begin(
+	struct render_camera const *camera,
+	struct render_frustum const *frustum);
+void rasterizer_view_end(
+	void);
 void rasterizer_window_set_fog(
 	struct render_fog const *fog);
 void rasterizer_set_vblank_callback(

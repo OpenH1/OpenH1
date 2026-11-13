@@ -5711,6 +5711,14 @@ void halo_screen_panini(short x0, short y0, short x1, short y1, const float proj
 	xgpu_backend_panini(target->target.number, corners, projection);
 }
 
+/* display.hdr: the draws from now on the HUD's and the menus' again, after
+a view of the world's drawn among them (the menus' Spartan's own view:
+port/linux/game/menu_spartan.c), whose models' draws were the 3D view's */
+void halo_hdr_interface(void)
+{
+	hdr.view = FALSE;
+}
+
 /* display.hdr's tone map of a window's 3D view (source/render/render.c),
 before its anti-aliasing and the HUD: the draws from now on are the HUD's
 and the menus' (xgpu_hdr.h) */

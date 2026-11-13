@@ -317,6 +317,9 @@ _end), and what the code drawing knows of them (HALO_HDR_KIND_*, 0 none) */
 void halo_screen_tone_map(short x0, short y0, short x1, short y1);
 void halo_hdr_category(int category);
 void halo_hdr_draw_kind(int kind);
+/* ... and the draws from now on the HUD's and menus' again, after a view of
+the world's drawn among them (port/linux/game/menu_spartan.c) */
+void halo_hdr_interface(void);
 /* debug.render_marks: what the draws that follow belong to, for the
 inspector's replay (port/linux/game/render_marks.c) */
 #include "render_marks.h"
