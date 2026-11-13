@@ -63,7 +63,7 @@ centred, and the bar's wide layout reaches the screen's edges up to 16:9.
 | `<list>` | `id`, `focus` | A list of items. The d-pad, the stick and the mouse wheel move through it, wrapping from the last item to the first, as the classic lists do. `focus` is the id of the item focused when the screen first opens. After that the screen remembers the last focused item |
 | `<item>` | `label` (required), `do` (required), `id`, `hint`, `when` | One item. A, Start, a click or a tap runs `do`. `hint` is the line shown under the item while it is focused. Write `<hint>` children instead to give alternatives: the first whose bindings all have values is shown. `when` lists platforms (`desktop android vr hdr touch pointer computer`, as for `platform=` in the menu files) and the item is made only on one of them |
 | `<space/>` | | Takes the height left over (several spaces share it) |
-| `<buttons>` | | The button-hint bar |
+| `<buttons>` | | The button bar: each button a prompt, as Choose Mission's footer has them (its key's picture and word, lit while it has the focus; A, a click or a tap presses its key, accept running the chosen item's action), BACK at the left and the rest from the right, past 16:9 at the screen's edges, and on a touchscreen raised above a phone's safe area with the tall layout's footer (`foot`) |
 | `<button>` | `key` (`accept`, `back`, `x`, `y`), `label` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word |
 
 The reader checks each file whole. A file is refused if it has any of these
@@ -125,7 +125,7 @@ before: `ui_widget.c` makes its stand-in widget and keeps it in the history.
 The engine (`menu_engine_screen_opened`) then asks `menu_screen_opened`, which
 deletes the stand-in's own children and makes the screen's blocks in their
 place. Each block is a widget of `screens/blocks.xml` (`screens/title_art`,
-`screens/list`, `screens/item`, `screens/hint`, `screens/buttons`). It gets
+`screens/list`, `screens/item`, `screens/hint`, `screens/prompt`). It gets
 its words (`parameters.text_box.text`) and its place (its offsets) from the
 file. From then on the engine draws the widgets and takes their events
 exactly as it does for any screen's widgets. Focus, the controller, the

@@ -4,7 +4,7 @@
 	<look name="main_menu/settings/header_settings" type="text" box="24 0 616 40" wide="-106 0" past="-143 0">
 		<text font="heading" color="#FF2995FD" at="0 9" string_list="main_menu/settings/tall_titles" scale="1.4 1.4"/>
 	</look>
-	<look name="main_menu/settings/tab_panel" box="388 78 612 438" wide="138 -32" past="50 93" place="keep_ends" picture="main_menu/settings/tab_panel_tall">
+	<look name="main_menu/settings/tab_panel" box="388 78 612 438" wide="138 -32" past="50 93" place="keep_ends above_foot" picture="main_menu/settings/tab_panel_tall">
 		<at widget="main_menu/settings/panel_name" x="400" y="90"/>
 		<at widget="main_menu/settings/panel_value" x="400" y="104"/>
 		<at widget="main_menu/settings/panel_classic" x="409" y="130"/>
@@ -25,7 +25,7 @@
 		<at widget="main_menu/settings/panel_facts" x="400" y="398"/>
 		<at widget="main_menu/settings/panel_facts_values" x="400" y="398"/>
 	</look>
-	<look name="main_menu/settings/page_panel" box="388 50 612 438" wide="138 -32" past="50 93" place="keep_ends" picture="main_menu/settings/page_panel_tall">
+	<look name="main_menu/settings/page_panel" box="388 50 612 438" wide="138 -32" past="50 93" place="keep_ends above_foot" picture="main_menu/settings/page_panel_tall">
 		<at widget="main_menu/settings/panel_name" x="400" y="62"/>
 		<at widget="main_menu/settings/panel_value" x="400" y="76"/>
 		<at widget="main_menu/settings/panel_classic" x="409" y="102"/>

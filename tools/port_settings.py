@@ -520,9 +520,15 @@ SEGMENT_NOT = {"display.vrr", "display.resolution", "display.window_size", "disp
 #   at 16:9 and wider, in between on a screen between them (menu_tags.c's pc_menu_text_scale); laid out in its
 #   font and drawn larger by the high-res text's distance fields (rasterizer_text_set_scale), about its box's
 #   middle
+# - on a touchscreen, the footer raised TALL_FOOT_LIFT (tall_foot): its line (TALL_BACKGROUND's _touch picture), what
+#   is placed in its band (flagged foot) and the panels that reach down to it (flagged above_foot, the lift shorter,
+#   their pictures' _touch), so that its prompts' words clear a phone's safe area at the screen's foot
 # Settings' tabs and pages are laid out in it (SETTINGS_TALL); another screen opts in by writing its widgets in
 # it too (tall_widgets).
 TALL_BAND, TALL_FOOTER = 40, 37
+# (the footer's prompts' words end 11 units above the screen's foot, a phone's safe area there 25.6: menu_tags.c's
+# TALL_FOOT_LIFT, menu_layout.c's MENU_LAYOUT_PHONE_FOOT)
+TALL_FOOT_LIFT = 16
 TALL_BACKGROUND = "main_menu/parts/background_tall"
 TALL_TITLE_SCALE = 1.4
 # (the words of the titles that are the PC version's pictures, not TITLES')
@@ -535,6 +541,40 @@ PAST_HALF = PAST_EXTRA // 2
 def past(dx: float = 0, dw: float = 0):
     """a widget's past attribute: moved dx, dw wider, on a 21:9 screen past 16:9 (None: neither)"""
     return f"{round(dx)} {round(dw)}" if round(dx) or round(dw) else None
+
+
+def touch_picture(name: str) -> str:
+    """the picture a look's picture is on a touchscreen, where the menus have it (menu_tags.c's look_make): the
+    tall layout's drawn for its footer's lift"""
+    return f"{name}_touch"
+
+
+def _flagged(element, flag: str) -> None:
+    flags = (element.get("flags") or "").split()
+    if flag not in flags:
+        element.set("flags", " ".join([*flags, flag]))
+
+
+def tall_foot(widgets: dict) -> None:
+    """the tall layout's footer raised on a touchscreen (TALL_FOOT_LIFT), in widgets (<widget> elements by name, all
+    in the tall layout): the bars placed in its band (a list placed at or below its line, 480 - TALL_FOOTER: not
+    the rows the engine lays out past it, scrolled) flagged foot, moved up by the lift there (and what is in it: menu_tags.c's ui_widget_port_foot_offset); a panel that reaches
+    down to its line (its foot within the lift above it) flagged above_foot, the lift shorter there, its picture's
+    _touch (tall_foot_pictures)"""
+    line = 480 - TALL_FOOTER
+    for element in widgets.values():
+        for child in element.iter("child"):
+            if int(child.get("y", 0)) >= line and child.get("widget") in widgets and \
+                    widgets[child.get("widget")].get("type") == "column_list":
+                _flagged(widgets[child.get("widget")], "foot")
+    for element in widgets.values():
+        if element.get("bitmap") and int(element.get("height", 480)) >= TALL_PANEL_LEAST and \
+                line - TALL_FOOT_LIFT < int(element.get("top", 0)) + int(element.get("height", 480)) <= line:
+            _flagged(element, "above_foot")
+
+
+# (a panel, not a row: tall_foot's above_foot)
+TALL_PANEL_LEAST = 100
 
 
 def tall_title(name: str, strings: str, index: int) -> list:
@@ -2823,8 +2863,15 @@ def tall_widgets() -> list:
     lines = []
     for folder, page in PAGES.items():
         lines += _settings_page(folder, page, SETTINGS_TALL)
-    return lines + _settings_shared(SETTINGS_TALL) + _settings_search(SETTINGS_TALL) + _browser_tall_widgets() + \
-        _missions_tall_widgets()
+    # (Settings' footer raised on a touchscreen: tall_foot)
+    root = ElementTree.fromstring("<menus>" + "\n".join(lines + _settings_shared(SETTINGS_TALL) +
+                                                       _settings_search(SETTINGS_TALL)) + "</menus>")
+    tall_foot({element.get("name"): element for element in root.iter("widget")})
+    settings = []
+    for element in root:
+        element.tail = None
+        settings.append(ElementTree.tostring(element, encoding="unicode"))
+    return settings + _browser_tall_widgets() + _missions_tall_widgets()
 
 
 def settings_files() -> dict:
@@ -2865,11 +2912,12 @@ def _svg(width: int, height: int, body: list) -> str:
                       f'viewBox="0 0 {width} {height}">', *body, "</svg>", ""])
 
 
-def tall_background_svg() -> str:
+def tall_background_svg(footer_height: int = TALL_FOOTER) -> str:
     """the tall layout's background (TALL_BACKGROUND), as bitmaps/gradient is drawn (4 wide, repeated across;
     its 512 rows the screen's 480 and room under them): the slim header's band, dark, its line under it, the
-    gradient's body to the footer's line, and the footer's band, as bitmaps/gradient's are"""
-    footer = 480 - TALL_FOOTER
+    gradient's body to the footer's line, and the footer's band, as bitmaps/gradient's are (footer_height: the
+    footer's, its touch picture's raised by TALL_FOOT_LIFT)"""
+    footer = 480 - footer_height
     return "\n".join([
         '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="512" viewBox="0 0 4 512">', "<defs>",
         f'<linearGradient id="g0" gradientUnits="userSpaceOnUse" x1="0" y1="{TALL_BAND + 1}" x2="0" y2="{footer}">',
@@ -2962,10 +3010,13 @@ def settings_pictures() -> list:
                                                        "#2299ff", 2)]), SEGMENT_LEAST, tall_segment)]),
     ]
     for kind, top in (("tab", tall.tab_top), ("page", tall.page_top)):
-        height = tall.panel_bottom - top
-        pictures.append((tall.panel_picture.format(kind=kind), [(_svg(SETTINGS_PANEL_WIDTH, height, [
-            _rounded(SETTINGS_PANEL_WIDTH, height, 1, 9.5, "#000e23", 0.88, "#2995ff", 2)]),
-            SETTINGS_PANEL_WIDTH, height)]))
+        # (and on a touchscreen the footer's lift shorter: tall_foot)
+        for name, height in ((tall.panel_picture.format(kind=kind), tall.panel_bottom - top),
+                             (touch_picture(tall.panel_picture.format(kind=kind)),
+                              tall.panel_bottom - top - TALL_FOOT_LIFT)):
+            pictures.append((name, [(_svg(SETTINGS_PANEL_WIDTH, height, [
+                _rounded(SETTINGS_PANEL_WIDTH, height, 1, 9.5, "#000e23", 0.88, "#2995ff", 2)]),
+                SETTINGS_PANEL_WIDTH, height)]))
     pictures.append((f"{SETTINGS}/still_frame", [
         (_svg(still_w, still_h, [_rounded(still_w, still_h, rim / 2, radius - rim / 2, stroke="#1d4f8a",
                                           stroke_width=rim)]), still_w, still_h),
@@ -5425,8 +5476,14 @@ def parts_pictures() -> list:
             'fill-opacity="0.45"/>']), HUB_ITEM[0], PART_SECTION_HEIGHT)]),
         *((part_panel(*panel[2:]), [(framed(*panel[2:], "#000e23", 0.88, "#2995ff", 9.5), *panel[2:])])
           for panel in (BROWSER_PANEL, BROWSER_TALL["BROWSER_PANEL"])),
-        # (the tall layout's background: BROWSER_TALL's)
+        # (and on a touchscreen the tall panel the footer's lift shorter: tall_foot)
+        (touch_picture(part_panel(*BROWSER_TALL["BROWSER_PANEL"][2:])),
+         [(framed(BROWSER_TALL["BROWSER_PANEL"][2], BROWSER_TALL["BROWSER_PANEL"][3] - TALL_FOOT_LIFT, "#000e23",
+                  0.88, "#2995ff", 9.5),
+           BROWSER_TALL["BROWSER_PANEL"][2], BROWSER_TALL["BROWSER_PANEL"][3] - TALL_FOOT_LIFT)]),
+        # (the tall layout's background: BROWSER_TALL's; and on a touchscreen its footer raised: tall_foot)
         (TALL_BACKGROUND, [(tall_background_svg(), 4, 512)]),
+        (touch_picture(TALL_BACKGROUND), [(tall_background_svg(TALL_FOOTER + TALL_FOOT_LIFT), 4, 512)]),
         (part_panel(*HUB_PANEL[2:]), [(framed(*HUB_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5), *HUB_PANEL[2:])]),
         *((part_pill(width), pill(width)) for width in (BROWSER_TICK_BADGE, BROWSER_PILL, BROWSER_WIDE_PILL)),
         (part_button(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
@@ -5993,6 +6050,7 @@ def _browser_tall_widgets() -> list:
     classic = parsed(_browsers())
     with _browser_geometry(BROWSER_TALL):
         tall = parsed(_browsers())
+    tall_foot(tall)
     lines = []
     for name, element in tall.items():
         if element.get("wide") and not element.get("past") and not BROWSER_TALL_CENTRED.search(name) and \
@@ -8195,6 +8253,7 @@ def _missions_tall_widgets() -> list:
                                                *CAMPAIGN_PROMPT_BACK[3:])]))
     finally:
         _MISSIONS_TALL = False
+    tall_foot(tall)
     # (past 16:9, the footer's prompts and the band's tabs to the screen's edges, as the title is)
     for name, dx in ((f"{CAMPAIGN}/prompt_back", -PAST_HALF), (f"{CAMPAIGN}/prompt_play", PAST_HALF),
                      (f"{CAMPAIGN}/tab_halo", PAST_HALF), (f"{CAMPAIGN}/tab_custom", PAST_HALF),

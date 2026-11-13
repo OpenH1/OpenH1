@@ -7,7 +7,7 @@ The generators (tools/ce_menus.py, tools/port_settings.py) call it once they hav
 the widgets and their look cannot disagree; `python3 tools/menu_look.py` writes it again from them alone. The
 engine (port/linux/game/menu_engine.c) draws the generated screens from it, not from their widget definitions.
 
-    <look name="main_menu/..." type="text" box="x0 y0 x1 y1" wide="dx dw" past="dx dw" place="anchor_left stretch keep_ends"
+    <look name="main_menu/..." type="text" box="x0 y0 x1 y1" wide="dx dw" past="dx dw" place="anchor_left stretch keep_ends foot above_foot"
           picture="<bitmap>" radius="8" effects="flash_bitmap nifty_fx" list="items_in_code ..."
           header="<bitmap>" header_box="x0 y0 x1 y1" footer="<bitmap>" footer_box="x0 y0 x1 y1">
         <text font="large" color="#AARRGGBB" align="center" at="x y" flags="wrap ..." string_list="<strings>"
@@ -35,7 +35,7 @@ LOOK = "model/look"
 NOT_WIDGETS = ("bitmaps.xml", "strings.xml")
 
 # the widget flags that are look (the rest are behaviour, the widgets' definitions' until the engine has it)
-PLACE_FLAGS = ("anchor_left", "anchor_right", "stretch", "keep_ends")
+PLACE_FLAGS = ("anchor_left", "anchor_right", "stretch", "keep_ends", "foot", "above_foot")
 EFFECT_FLAGS = ("flash_bitmap", "nifty_fx")
 
 

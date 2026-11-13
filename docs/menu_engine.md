@@ -402,6 +402,17 @@ looks are the tall ones. A screen opts in so:
   distance fields, about the text box's middle (`ui_widget.c`'s
   `ui_widget_port_text_scale_begin`, `rasterizer_text_set_scale`; a field
   typed into keeps its font's size, for its caret);
+- on a touchscreen, its footer raised `TALL_FOOT_LIFT` units, so that its
+  prompts' words clear a phone's safe area at the screen's foot
+  (`tall_foot`, which the generators run on every tall screen's widgets):
+  the bars placed in the footer's band flagged `foot` (moved up by the lift,
+  `menu_tags.c`'s `ui_widget_port_foot_offset`), the panels that reach down
+  to its line flagged `above_foot` (the lift shorter), the footer's line and
+  those panels drawn from their pictures' `_touch` versions (`look_make`),
+  the tall geometry's rows and panel ending the lift higher
+  (`menu_engine_geometry_bottom`), and Choose Mission's CONTINUE and cards
+  moved up into the room around them (`campaign_menu.inc`'s
+  `mission_resume_raise`); the computer's layout is as it was;
 - for a settings screen, its model's `geometry="tall"`, the model's
   `<geometry name="tall" ... scrolls="true">`, which the engine lays its rows
   out in (`engine_geometry`) and scrolls by (`engine_scroll`: its rows cut to

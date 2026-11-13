@@ -24,7 +24,7 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/profile_settings/tabs" x="0" y="46"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/profile_settings/tabs_search" x="0" y="46"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/profile_settings/button_bar" role="buttons" type="column_list" box="0 0 640 28">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/profile_settings/button_bar" role="buttons" type="column_list" box="0 0 640 28" place="foot">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/profile_settings/button_defaults" x="24" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/profile_settings/button_ok" x="358" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/profile_settings/button_cancel" x="488" y="1"/>

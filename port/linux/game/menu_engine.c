@@ -410,7 +410,7 @@ static void engine_settings_layout(struct engine_screen *screen, struct widget_i
 	/* (scrolled: the rows up by as much, those out of the room drawn cut,
 	or not at all: engine_draw) */
 	screen->rows_top = top;
-	screen->rows_bottom = (short)geometry->rows_bottom;
+	screen->rows_bottom = (short)menu_engine_geometry_bottom(geometry, geometry->rows_bottom);
 	screen->rows_end = (short)(y - geometry->row_step + geometry->row_height);
 	if (geometry->scrolls)
 		engine_scroll(screen, focus_top, focus_bottom);
@@ -589,7 +589,8 @@ long menu_engine_search_find(struct widget_instance *list, char const *typed, me
 		boolean group = !index || !row->crumb || !engine.model->rows[ordered[index - 1].row].crumb ||
 			strcmp(row->crumb, engine.model->rows[ordered[index - 1].row].crumb);
 		long top = y + (group ? (rows_above ? geometry->section_gap : 0) + geometry->section_step : 0);
-		long room = geometry->rows_bottom - (index + 1 < engine.search.matched ? geometry->row_step : 0);
+		long room = menu_engine_geometry_bottom(geometry, geometry->rows_bottom) -
+			(index + 1 < engine.search.matched ? geometry->row_step : 0);
 		long tag;
 		struct widget_instance *made;
 
@@ -1395,6 +1396,11 @@ boolean menu_engine_lays_out(struct widget_instance *widget)
 	while (screen && screen->parent)
 		screen = screen->parent;
 	return engine_lays_out(engine_screen_of(screen), widget);
+}
+
+long menu_engine_geometry_bottom(struct halo_menu_model_geometry const *geometry, long bottom)
+{
+	return geometry->scrolls ? bottom - ui_widget_port_foot_lift() : bottom;
 }
 
 struct halo_menu_model_geometry const *menu_engine_settings_geometry(struct widget_instance *widget)

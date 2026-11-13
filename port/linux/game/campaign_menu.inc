@@ -69,8 +69,11 @@ no dots and no panel under them */
 #define MISSION_TALL_TOP 78
 #define MISSION_TALL_HEIGHT 326
 /* the tall layout's CONTINUE over the cards, with a saved game
-(port_settings.py's MISSION_RESUME_CARDS_TOP): the cards under it; and the
+(port_settings.py's MISSION_RESUME_TOP, MISSION_RESUME_CARDS_TOP): the cards
+under it (on a touchscreen, both moved up by parts of the footer's lift,
+mission_resume_raise); and the
 row's arrows' height (MISSION_ARROW) */
+#define MISSION_RESUME_TOP 48
 #define MISSION_RESUME_CARDS_TOP 108
 #define MISSION_ARROW_HEIGHT 64
 #define MISSION_TALL_OBJECTIVE_LINES 5
@@ -897,6 +900,17 @@ static void mission_panel_show(struct widget_instance *panel, short mission, sho
 /* "port campaign missions update", the row's list's: the chosen mission
 (one the pointer passed over, or tapped), the row laid out about it, the
 cards, the dots, the panel and the footer's SELECT or RESUME */
+/* how far up CONTINUE (cards: and the cards under it) are moved, with the
+tall layout's footer raised on a touchscreen (ui_widget_port_foot_lift):
+the room above, between and under them shared, the cards' foot above the
+footer's line (only CONTINUE's cards reach so low) */
+static short mission_resume_raise(boolean cards)
+{
+	short lift = ui_widget_port_foot_lift();
+
+	return (short)(cards ? 2 * lift / 3 : lift / 3);
+}
+
 static void campaign_missions_update(struct widget_instance *list)
 {
 	struct widget_instance *screen = screen_of(list);
@@ -906,7 +920,8 @@ static void campaign_missions_update(struct widget_instance *list)
 	/* (the new engine's tall layout: port_settings.py's _missions_tall_widgets) */
 	boolean tall = menu_engine_looks();
 	boolean resume_shown = !campaign_cards.custom && campaign.saved_level != NONE && count > 0;
-	short cards_top = resume_shown ? MISSION_RESUME_CARDS_TOP : MISSION_TALL_TOP;
+	short cards_top = resume_shown ? (short)(MISSION_RESUME_CARDS_TOP - mission_resume_raise(TRUE)) :
+		MISSION_TALL_TOP;
 	/* (CONTINUE, shown, has the focus: set with it, below) */
 	boolean resume_focused = FALSE;
 	/* (a card the pointer passes over: lit, and kept the focus, but not
@@ -1064,6 +1079,7 @@ static void campaign_missions_update(struct widget_instance *list)
 		visible_set(row, shown);
 		if (shown)
 		{
+			row->vertical_offset = (short)(MISSION_RESUME_TOP - mission_resume_raise(FALSE));
 			if (campaign_cards.resume_focus)
 				screen->focused_child = row;
 			row->focused_child = resume;
