@@ -69,12 +69,12 @@ char *tag_get_name(long tag_index);
 
 enum
 {
-	BITMAP_TAG = 'bitm',
-	POINT_PHYSICS_TAG = 'pphy',
-	SOUND_TAG = 'snd!',
-	SCENARIO_TAG = 'scnr',
-	ACTOR_TAG = 'actr',
-	ACTOR_VARIANT_TAG = 'actv',
+	GROUP_BITMAP = 'bitm',
+	GROUP_POINT_PHYSICS = 'pphy',
+	GROUP_SOUND = 'snd!',
+	GROUP_SCENARIO = 'scnr',
+	GROUP_ACTOR = 'actr',
+	GROUP_ACTOR_VARIANT = 'actv',
 
 	/* the units the map's grunts are (a map's grunt variants share a few) */
 	MAXIMUM_GRUNT_UNITS = 32,
@@ -260,7 +260,7 @@ static boolean grunt_birthday_party_may_play(
 	instances = cache_files_tag_instances(&count);
 	for (index = 0; instances && index < count && !scenario; index++)
 	{
-		if (instances[index].group_tag == SCENARIO_TAG && instances[index].base_address)
+		if (instances[index].group_tag == GROUP_SCENARIO && instances[index].base_address)
 			scenario = instances[index].base_address;
 	}
 	if (!scenario || scenario->type != _scenario_type_solo)
@@ -280,14 +280,14 @@ static void grunt_units_find(
 	long variant_index;
 
 	grunt_birthday_party.grunt_unit_count = 0;
-	tag_iterator_new(&iterator, ACTOR_VARIANT_TAG);
+	tag_iterator_new(&iterator, GROUP_ACTOR_VARIANT);
 	while ((variant_index = tag_iterator_next(&iterator)) != NONE)
 	{
 		struct actor_variant_definition const *variant = actor_variant_definition_get(variant_index);
 		long unit_index = variant->unit_reference.index;
 		short index;
 
-		if (!tag_index_is_group(variant->actor_reference.index, ACTOR_TAG) ||
+		if (!tag_index_is_group(variant->actor_reference.index, GROUP_ACTOR) ||
 			actor_definition_get(variant->actor_reference.index)->type != _actor_grunt ||
 			!tag_index_is_group(unit_index, OBJECT_DEFINITION_TAG))
 		{
@@ -359,8 +359,8 @@ static void confetti_particle_make(
 		FLAG(_confetti_particle_dies_in_water_bit) | FLAG(_confetti_particle_self_illuminated_bit);
 	snprintf(tags->bitmap_name, sizeof(tags->bitmap_name), "%s", tag_get_name(bitmap_index));
 	snprintf(tags->physics_name, sizeof(tags->physics_name), "%s", tag_get_name(physics_index));
-	confetti_reference(&particle->bitmap, BITMAP_TAG, tags->bitmap_name, bitmap_index);
-	confetti_reference(&particle->physics, POINT_PHYSICS_TAG, tags->physics_name, physics_index);
+	confetti_reference(&particle->bitmap, GROUP_BITMAP, tags->bitmap_name, bitmap_index);
+	confetti_reference(&particle->physics, GROUP_POINT_PHYSICS, tags->physics_name, physics_index);
 	confetti_reference(&particle->collision_material_effects, 'foot', tags->no_name, NONE);
 	confetti_reference(&particle->collision_effect, EFFECT_DEFINITION_TAG, tags->no_name, NONE);
 	confetti_reference(&particle->effect, EFFECT_DEFINITION_TAG, tags->no_name, NONE);
@@ -387,7 +387,7 @@ static void confetti_particle_make(
 	particle->shader.shader.base.type = CONFETTI_SHADER_TYPE_EFFECT;
 	particle->shader.framebuffer_blend_function = 0;
 	particle->shader.framebuffer_fade_mode = 0;
-	confetti_reference(&particle->shader.secondary_map, BITMAP_TAG, tags->no_name, NONE);
+	confetti_reference(&particle->shader.secondary_map, GROUP_BITMAP, tags->no_name, NONE);
 }
 
 /* the effect: one event, at the head, of the particle in every color */
@@ -442,8 +442,8 @@ static boolean confetti_make(
 	struct cache_file_tag_instance *instances;
 	struct confetti_tags *tags;
 	long count, index, salt = 0;
-	long bitmap_index = first_loaded(BITMAP_TAG, confetti_bitmaps, (short)NUMBEROF(confetti_bitmaps));
-	long physics_index = first_loaded(POINT_PHYSICS_TAG, confetti_physics, (short)NUMBEROF(confetti_physics));
+	long bitmap_index = first_loaded(GROUP_BITMAP, confetti_bitmaps, (short)NUMBEROF(confetti_bitmaps));
+	long physics_index = first_loaded(GROUP_POINT_PHYSICS, confetti_physics, (short)NUMBEROF(confetti_physics));
 	real inverse_sprite_size;
 
 	if (bitmap_index == NONE || physics_index == NONE)
@@ -520,7 +520,7 @@ void grunt_birthday_party_tags_loaded(
 	grunt_units_find();
 	if (!grunt_birthday_party.grunt_unit_count)
 		return;
-	grunt_birthday_party.cheer_index = tag_loaded(SOUND_TAG, GRUNT_CHEER);
+	grunt_birthday_party.cheer_index = tag_loaded(GROUP_SOUND, GRUNT_CHEER);
 	confetti_make();
 }
 
@@ -572,7 +572,7 @@ boolean grunt_birthday_party_burst(
 		effect_index = effect_new_unattached_from_markers(grunt_birthday_party.effect_index, NONE, NULL, 1, names,
 			&head, global_up3d, 1.0f, 1.0f, NULL, NULL, TRUE);
 	}
-	if (grunt_birthday_party.cheer_index != NONE && tag_index_is_group(grunt_birthday_party.cheer_index, SOUND_TAG))
+	if (grunt_birthday_party.cheer_index != NONE && tag_index_is_group(grunt_birthday_party.cheer_index, GROUP_SOUND))
 	{
 		sound_index = object_impulse_sound_new(unit_index, grunt_birthday_party.cheer_index, NONE, global_origin3d,
 			global_forward3d, 1.0f);
