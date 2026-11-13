@@ -335,6 +335,10 @@ int main(int argc, char **argv)
 		refused("<screen name=\"main\"><list><item label=\"A\" do=\"open nowhere\"/></list></screen>",
 			"no action \"open nowhere\"");
 		refused("<screen name=\"main\" back=\"explode\"><title-art/></screen>", "no action \"explode\"");
+		refused("<screen name=\"main\" start=\"explode\"><title-art/></screen>", "no action \"explode\"");
+		CHECK(read_text("<screen name=\"main\" start=\"quit\"><title-art/></screen>", &screen, problem) &&
+			screen.start && !strcmp(screen.start, "quit"), "a screen's start is not read: %s", problem);
+		menu_screen_free(&screen);
 		/* (every action the game has is one a file may name) */
 		{
 			unsigned index;
@@ -516,7 +520,7 @@ int main(int argc, char **argv)
 		refused(TABLE("<column label=\"A\" width=\"10\"/>"), "<column> has no id");
 		refused(TABLE("<column id=\"a\"/>"), "<column> has no width");
 		refused(TABLE("<column id=\"a\" width=\"wide\"/>"), "width is a number");
-		refused(TABLE("<column id=\"a\" width=\"10\" kind=\"bars\"/>"), "kind is text, strong, ping or star");
+		refused(TABLE("<column id=\"a\" width=\"10\" kind=\"bars\"/>"), "kind is text, strong, ping, star or dot");
 		refused(TABLE("<column id=\"a\" width=\"10\" align=\"center\"/>"), "align is left or right");
 		refused(TABLE("<column id=\"a\" width=\"10\" touch=\"1 2\"/>"), "touch is");
 		refused(TABLE("<column id=\"a\" width=\"10\" sort=\"sort nowhere\"/>"), "no action \"sort nowhere\"");
@@ -557,9 +561,109 @@ int main(int argc, char **argv)
 		refused("<screen name=\"t\"><panel><pair label=\"A\"/></panel></screen>", "<pair> has no value");
 		refused("<screen name=\"t\"><panel><pair value=\"A\"/></panel></screen>", "<pair> has no label");
 	}
+	else if (!strcmp(name, "lanes"))
+	{
+		struct menu_screen_block const *table;
+
+		/* (a table of lanes: its lanes, each its label, detail and tone (a
+		number or a binding), its left and right; a dot's column) */
+		CHECK(read_text("<screen name=\"t\"><table source=\"test.rows\" lanes=\"2\" left=\"quit\" right=\"quit\">"
+			"<lane label=\"RED\" detail=\"{test.value}\" tone=\"0\"/><lane label=\"{test.value}\" tone=\"test.value\"/>"
+			"<column id=\"dot\" kind=\"dot\" width=\"8\"/>" COLUMN "</table></screen>", &screen, problem),
+			"a good table of lanes refused: %s", problem);
+		table = &screen.blocks[kind_first(&screen, MENU_SCREEN_TABLE)];
+		CHECK(table->lanes == 2 && !strcmp(table->left_action, "quit") && !strcmp(table->right_action, "quit"),
+			"the table's lanes, left or right");
+		CHECK(kind_total(&screen, MENU_SCREEN_LANE, kind_first(&screen, MENU_SCREEN_TABLE)) == 2 &&
+			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_LANE)].empty, "{test.value}"), "the lanes as read");
+		CHECK(block_of(&screen, "dot")->cell == MENU_SCREEN_CELL_DOT, "the dot's column");
+		menu_screen_free(&screen);
+		CHECK(read_text(TABLE(COLUMN), &screen, problem) && screen.blocks[kind_first(&screen, MENU_SCREEN_TABLE)].lanes == 1,
+			"a table without lanes is not of one lane: %s", problem);
+		menu_screen_free(&screen);
+		refused("<screen name=\"t\"><table source=\"test.rows\" lanes=\"5\">" COLUMN "</table></screen>",
+			"lanes is a number");
+		refused("<screen name=\"t\"><table source=\"test.rows\"><lane label=\"A\"/>" COLUMN "</table></screen>",
+			"lanes=\"2\" or more");
+		refused("<screen name=\"t\"><table source=\"test.rows\" lanes=\"2\"><lane label=\"A\"/>" COLUMN "</table>"
+			"</screen>", "a <lane> for each lane");
+		refused("<screen name=\"t\"><table source=\"test.rows\" lanes=\"2\"><lane/><lane label=\"B\"/>" COLUMN
+			"</table></screen>", "<lane> has no label");
+		refused("<screen name=\"t\"><table source=\"test.rows\" lanes=\"2\"><lane label=\"A\" tone=\"nothing.here\"/>"
+			"<lane label=\"B\"/>" COLUMN "</table></screen>", "no binding {nothing.here}");
+		refused("<screen name=\"t\"><table source=\"test.rows\" lanes=\"2\"><lane label=\"A\" tone=\"7\"/>"
+			"<lane label=\"B\"/>" COLUMN "</table></screen>", "tone is a number");
+		refused("<screen name=\"t\"><table source=\"test.rows\" lanes=\"2\"><lane label=\"{nothing.here}\"/>"
+			"<lane label=\"B\"/>" COLUMN "</table></screen>", "no binding {nothing.here}");
+		refused("<screen name=\"t\"><table source=\"test.rows\" left=\"go nowhere\">" COLUMN "</table></screen>",
+			"no action \"go nowhere\"");
+		refused("<screen name=\"t\"><table source=\"test.rows\" right=\"go nowhere\">" COLUMN "</table></screen>",
+			"no action \"go nowhere\"");
+	}
+	else if (!strcmp(name, "choice"))
+	{
+		struct menu_screen_block const *choice;
+
+		/* (a panel's choice: its label, value, left and right, its if and
+		dim; and several buttons, one over another) */
+		CHECK(read_text("<screen name=\"t\"><panel><choice label=\"BOTS\" value=\"{test.value}\" left=\"quit\" "
+			"right=\"quit\" if=\"test.flag\" dim=\"test.flag\"/><button key=\"accept\" label=\"A\" do=\"quit\"/>"
+			"<button key=\"accept\" label=\"B\" do=\"quit\"/></panel></screen>", &screen, problem),
+			"a good choice refused: %s", problem);
+		choice = &screen.blocks[kind_first(&screen, MENU_SCREEN_CHOICE)];
+		CHECK(!strcmp(choice->label, "BOTS") && !strcmp(choice->hints[0], "{test.value}") &&
+			!strcmp(choice->left_action, "quit") && !strcmp(choice->right_action, "quit") &&
+			!strcmp(choice->condition, "test.flag") && !strcmp(choice->dim, "test.flag"), "the choice as read");
+		CHECK(kind_total(&screen, MENU_SCREEN_BUTTON, kind_first(&screen, MENU_SCREEN_PANEL)) == 2, "the panel's buttons");
+		menu_screen_free(&screen);
+		refused("<screen name=\"t\"><panel><choice value=\"V\" left=\"quit\" right=\"quit\"/></panel></screen>",
+			"<choice> has no label");
+		refused("<screen name=\"t\"><panel><choice label=\"A\" left=\"quit\" right=\"quit\"/></panel></screen>",
+			"<choice> has no value");
+		refused("<screen name=\"t\"><panel><choice label=\"A\" value=\"V\" left=\"quit\"/></panel></screen>",
+			"no left or no right");
+		refused("<screen name=\"t\"><panel><choice label=\"A\" value=\"V\" right=\"quit\"/></panel></screen>",
+			"no left or no right");
+		refused("<screen name=\"t\"><panel><choice label=\"A\" value=\"V\" left=\"go nowhere\" right=\"quit\"/>"
+			"</panel></screen>", "no action \"go nowhere\"");
+		refused("<screen name=\"t\"><panel><choice label=\"A\" value=\"{nothing.here}\" left=\"quit\" right=\"quit\"/>"
+			"</panel></screen>", "no binding {nothing.here}");
+		refused("<screen name=\"t\"><panel><choice label=\"A\" value=\"V\" left=\"quit\" right=\"quit\" "
+			"dim=\"nothing.here\"/></panel></screen>", "no binding {nothing.here}");
+		refused("<screen name=\"t\"><choice label=\"A\" value=\"V\" left=\"quit\" right=\"quit\"/></screen>",
+			"is not one of what");
+	}
+	else if (!strcmp(name, "lobby"))
+	{
+		struct menu_screen_block const *table;
+		int table_index, index, choices = 0, panel_buttons = 0, rights = 0;
+
+		/* (the real lobby's file: its table of two lanes (red's and blue's)
+		of the players, its panel's choices (the host's bots) and buttons,
+		its bar: LEAVE at the left, the rest at the right) */
+		CHECK(read_text(lobby_xml, &screen, problem), "the lobby's file is refused: %s", problem);
+		CHECK(!strcmp(screen.name, "lobby") && !screen.back, "its name or back");
+		table_index = kind_first(&screen, MENU_SCREEN_TABLE);
+		table = &screen.blocks[table_index];
+		CHECK(!strcmp(table->source, "lobby.players") && table->lanes == 2 && !strcmp(table->left_action, "lobby team red")
+			&& !strcmp(table->right_action, "lobby team blue") && !strcmp(table->action, "lobby row"), "the table");
+		CHECK(kind_total(&screen, MENU_SCREEN_LANE, table_index) == 2, "the lanes");
+		CHECK(block_of(&screen, "dot")->cell == MENU_SCREEN_CELL_DOT && block_of(&screen, "tag")->right, "the columns");
+		for (index = 0; index < screen.block_count; index++)
+		{
+			struct menu_screen_block const *block = &screen.blocks[index];
+
+			choices += block->kind == MENU_SCREEN_CHOICE;
+			panel_buttons += block->kind == MENU_SCREEN_BUTTON && screen.blocks[block->parent].kind == MENU_SCREEN_PANEL;
+			rights += block->kind == MENU_SCREEN_BUTTON && block->side && !strcmp(block->side, "right");
+		}
+		CHECK(choices == 3 && panel_buttons == 3, "%d choices, %d panel buttons", choices, panel_buttons);
+		CHECK(rights == 5, "%d buttons at the bar's right", rights);
+		menu_screen_free(&screen);
+	}
 	else if (!strcmp(name, "buttons"))
 	{
-		static char const *const keys[] = { "accept", "back", "x", "y", "lb", "rb", "lt", "rt", "r3", "view" };
+		static char const *const keys[] = { "accept", "back", "x", "y", "lb", "rb", "lt", "rt", "r3", "view", "dpad" };
 		unsigned index;
 
 		for (index = 0; index < sizeof(keys) / sizeof(keys[0]); index++)
@@ -578,6 +682,12 @@ int main(int argc, char **argv)
 			"no binding {nothing.here}");
 		refused("<screen name=\"t\"><buttons><button key=\"x\" label=\"A\" width=\"0\"/></buttons></screen>",
 			"width is a number");
+		refused("<screen name=\"t\"><buttons><button key=\"x\" label=\"A\" touch-width=\"0\"/></buttons></screen>",
+			"touch-width is a number");
+		CHECK(read_text("<screen name=\"t\"><buttons><button key=\"x\" label=\"A\" touch-width=\"80\"/></buttons>"
+			"</screen>", &screen, problem) && screen.blocks[kind_first(&screen, MENU_SCREEN_BUTTON)].touch_width == 80,
+			"a button's touch-width is not read: %s", problem);
+		menu_screen_free(&screen);
 		refused("<screen name=\"t\"><header title=\"T\"><button key=\"view\" label=\"{nothing.here}\"/></header>"
 			"</screen>", "no binding {nothing.here}");
 	}

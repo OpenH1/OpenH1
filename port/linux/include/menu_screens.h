@@ -11,9 +11,9 @@ A screen file holds <screen> (name, back), and in it, from the top of the
 screen down: <title-art/>, <header> (title, picture, detail, a <button>),
 <list> (focus) holding <item>s (id, label, hint or <hint>s, do, when),
 <cards> holding <card>s, <tabs> (current) holding <tab>s, <table> (source,
-sorted, do, empty) holding <column>s (each a <search> in its title) and a
+sorted, do, empty, lanes, left, right) holding <lane>s, <column>s (each a <search> in its title) and a
 <button>, <search>, <panel> holding <heading>, <text>, <pills> of <pill>s,
-<pair>, <spartan> and <button>, <space/>, <box> (x, y, width, align) holding a
+<pair>, <choice>, <spartan> and <button>s, <space/>, <box> (x, y, width, align) holding a
 <list> and a <legend> (x), <objectives> (title), and <buttons> holding
 <button>s (key, label, do, width, if). Texts may hold bindings, {name}, filled from C; a do and the
 screen's back are actions, a table's source a row source, an if, a current,
@@ -66,6 +66,11 @@ enum menu_screen_block_kind
 	MENU_SCREEN_PILLS,
 	MENU_SCREEN_PILL,
 	MENU_SCREEN_PAIR,
+	/* (a table's lane: its rows side by side with the other lanes', each
+	lane its panel, title and detail) */
+	MENU_SCREEN_LANE,
+	/* (a panel's choice: its label, its value between arrows, stepped) */
+	MENU_SCREEN_CHOICE,
 	/* (a framed box, the pause menu's: its <list> in it, its rows as many
 	as are shown, and its <legend> under them; the box as tall as they need,
 	from the top or about its middle (align: side), its x and width the
@@ -96,7 +101,9 @@ enum menu_screen_cell_kind
 	MENU_SCREEN_CELL_TEXT,
 	MENU_SCREEN_CELL_STRONG,
 	MENU_SCREEN_CELL_PING,
-	MENU_SCREEN_CELL_STAR
+	MENU_SCREEN_CELL_STAR,
+	/* (a dot of a colour, by its frame: a team's) */
+	MENU_SCREEN_CELL_DOT
 };
 
 /* a building block: its kind, the block it is in (-1: the screen), and what
@@ -155,16 +162,25 @@ struct menu_screen_block
 	short touch_x, touch_y, touch_width, touch_move, touch_grow;
 	/* (a panel's text: the lines it wraps to, and on a touchscreen) */
 	short lines, touch_lines;
-	/* (a pill's frame, a number, or a binding's name giving one) */
+	/* (a pill's frame, a number, or a binding's name giving one; a lane's) */
 	char const *tone;
+	/* (a table's lanes, 1 for none; the actions of left and right on its
+	rows, and on a choice (right also A); a choice's binding whose value
+	dims it, its steps then refused) */
+	short lanes;
+	char const *left_action;
+	char const *right_action;
+	char const *dim;
 	long line;
 };
 
 struct menu_screen
 {
 	char const *name;
-	/* (B and Back: an action, NULL for the screen before) */
+	/* (B and Back: an action, NULL for the screen before; Start anywhere on
+	the screen: an action, NULL for its widgets') */
 	char const *back;
+	char const *start;
 	char const *file;
 	struct menu_screen_block blocks[MENU_SCREEN_MAXIMUM_BLOCKS];
 	int block_count;

@@ -48,6 +48,24 @@ NEGATIVE_CONTROLS = {
                            "panel"),
     # a column's touch place's numbers not counted: "1 2" taken
     "touch-short": ("if (count != 5 || *at", "if (*at", "table"),
+    # a <lane> taken in a table of no lanes
+    "lane-unlaned": ("if (!reader->failed && table->lanes < 2)", "if (0)", "lanes"),
+    # a table of lanes taken with fewer <lane>s than its lanes
+    "lanes-uncounted": ("if (lanes && lanes != screen->blocks[self].lanes)", "if (lanes > 99)", "lanes"),
+    # a table's left not checked: an action the game has not got taken
+    "table-left-unchecked": ("\t\t\t\taction_check(reader, table->left_action);\n", "\n", "lanes"),
+    # a dot's column refused (the kinds counted short)
+    "dot-unknown": ("for (kind = 0; kind < 5 && values[2]; kind++)", "for (kind = 0; kind < 4 && values[2]; kind++)",
+                    "lanes"),
+    # a choice with no right taken
+    "choice-no-right": ("else if (!choice->left_action || !choice->right_action)", "else if (!choice->left_action)",
+                        "choice"),
+    # a screen's start not checked: an action the game has not got taken
+    "start-unchecked": ("\t\tif (!reader->failed && screen->start)\n\t\t\taction_check(reader, screen->start);",
+                        "(void)0;", "actions"),
+    # a choice's dim not checked
+    "choice-dim-unchecked": ("if (!reader->failed && choice->dim)\n\t\t\t\tbinding_check(reader, choice->dim);",
+                             "(void)0;", "choice"),
     # an item's if not checked: a binding the game has not got taken
     "item-if-unchecked": ("\t\t\tif (!reader->failed && item->condition)\n\t\t\t\tbinding_check(reader, item->condition);\n",
                           "\n", "box"),
@@ -124,6 +142,8 @@ def built(fault=None):
                                        c_string((ROOT / "port/assets/menus/screens/browser.xml").read_bytes()) + ";\n" +
                                        "static char const profile_select_xml[] =\n" +
                                        c_string((ROOT / "port/assets/menus/screens/profile_select.xml").read_bytes()) +
+                                       ";\n" + "static char const lobby_xml[] =\n" +
+                                       c_string((ROOT / "port/assets/menus/screens/lobby.xml").read_bytes()) +
                                        ";\n" + "static char const pause_xml[] =\n" +
                                        c_string((ROOT / "port/assets/menus/screens/pause.xml").read_bytes()) + ";\n" +
                                        "static char const pause_campaign_xml[] =\n" +
@@ -141,7 +161,7 @@ def built(fault=None):
 
 
 CASES = ["main", "hints", "good", "syntax", "elements", "spartan", "items", "actions", "bindings", "when",
-         "kept", "browser", "profile_select", "tabs", "table", "panel", "buttons", "box"]
+         "kept", "browser", "profile_select", "tabs", "table", "panel", "buttons", "lanes", "choice", "lobby", "box"]
 
 
 @pytest.mark.parametrize("case", CASES)
@@ -171,6 +191,7 @@ def test_actions_registered():
     functions = read("port/linux/game/menu_functions.c")
     browser = re.search(r"\nint pc_menu_browser_value\(.*?\n\}\n", functions, re.S).group(0)
     profile = re.search(r"\nint pc_menu_profile_value\(.*?\n\}\n", functions, re.S).group(0)
+    lobby = re.search(r"\nint pc_menu_lobby_value\(.*?\n\}\n", read("port/linux/game/lobby_menu.inc"), re.S).group(0)
     bindings = set(re.findall(r'"([^"]+)"', re.search(r"screen_binding_names\[\] =\n\{\n(.*?)\n\};", source,
                                                         re.S).group(1)))
     for binding in bindings:
@@ -180,6 +201,8 @@ def test_actions_registered():
             assert f'"{binding}"' in browser, binding
         elif binding.startswith("profile."):
             assert f'"{binding}"' in profile, binding
+        elif binding.startswith("lobby."):
+            assert f'"{binding}"' in lobby, binding
         else:
             assert f'"{binding}"' in value, binding
     sources = re.findall(r'"([^"]+)"', re.search(r"screen_source_names\[\] =\n\{\n(.*?)\n\};", source,
@@ -194,7 +217,7 @@ def test_main_menu_files_listed():
     import json
     listed = json.loads(read("port/assets/menus/menus.json"))["files"]
     assert "screens/main.xml" in listed and "screens/blocks.xml" in listed and "screens/browser.xml" in listed
-    assert "screens/profile_select.xml" in listed
+    assert "screens/profile_select.xml" in listed and "screens/lobby.xml" in listed
     assert "screens/pause.xml" in listed and "screens/pause_campaign.xml" in listed
     files = read("port/linux/src/menu_files.c")
     assert 'strncmp(files[index].path, "screens/", 8) || !strcmp(files[index].path, "screens/blocks.xml")' in files

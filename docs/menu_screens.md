@@ -60,13 +60,13 @@ centred, and the bar's wide layout reaches the screen's edges up to 16:9.
 
 | Element | Attributes | Meaning |
 | --- | --- | --- |
-| `<screen>` | `name` (required), `back` | The screen. `back` is the action for B and Back; without it, B goes back to the screen before |
+| `<screen>` | `name` (required), `back`, `start` | The screen. `back` is the action for B and Back; without it, B goes back to the screen before. `start` is the action for Start anywhere on the screen (the lobby's start, as the generated lobby's every control's Start); where it does nothing (a player's), Start is the screen's widgets' and its own handlers' |
 | `<title-art/>` | | Halo's title art, where the main menu has it. If the screen's blocks need more height than the canvas has, this block gives up some of its room |
 | `<list>` | `id`, `focus` | A list of items. The d-pad, the stick and the mouse wheel move through it, wrapping from the last item to the first, as the classic lists do. `focus` is the id of the item focused when the screen first opens. After that the screen remembers the last focused item |
 | `<item>` | `label` (required), `do` (required), `id`, `hint`, `when`, `if` | One item. A, Start, a click or a tap runs `do`. `hint` is the line shown under the item while it is focused. Write `<hint>` children instead to give alternatives: the first whose bindings all have values is shown. `when` lists platforms (`desktop android vr hdr touch pointer computer`, as for `platform=` in the menu files) and the item is made only on one of them; `if` names a binding that must have a value for it to be made |
 | `<space/>` | | Takes the height left over (several spaces share it) |
 | `<buttons>` | | The button bar: each button a prompt, as Choose Mission's footer has them (its key's picture and word, lit while it has the focus; A, a click or a tap presses its key, accept running the chosen item's action), BACK at the left and the rest from the right, past 16:9 at the screen's edges, and on a touchscreen raised above a phone's safe area with the tall layout's footer (`foot`) |
-| `<button>` | `key` (`accept`, `back`, `x`, `y`, `lb`, `rb`, `lt`, `rt`, `r3`, `view`), `label`, `side`, `do`, `width`, `if`, `when` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word. `do` is the action the key (anywhere on the screen) and a click run; without it, the key is pressed. In a tall screen's bar (below), `width` is its least width, `if` a binding that must have a value for it to be shown, two buttons of one key share one place, shown as their `if`s say, and the buttons run from the left one after another, but those of `side="right"` (written after the rest) end at the right margin, as Select Profile's BACK at the left and OK, CREATE NEW and DELETE at the right (on a touchscreen, `side` changes nothing) |
+| `<button>` | `key` (`accept`, `back`, `x`, `y`, `lb`, `rb`, `lt`, `rt`, `r3`, `view`, `dpad`), `label`, `side`, `do`, `width`, `touch-width`, `if`, `when` | One hint in the bar: the key's picture (on the keyboard, the key the menus use for it) and its word. `do` is the action the key (anywhere on the screen) and a click run; without it, the key is pressed. In a tall screen's bar (below), `width` is its least width, `if` a binding that must have a value for it to be shown, two buttons of one key share one place, shown as their `if`s say, and the buttons run from the left one after another, but those of `side="right"` (written after the rest) end at the right margin, as Select Profile's BACK at the left and OK, CREATE NEW and DELETE at the right (on a touchscreen, `side` changes nothing; on a wide screen those of `side="right"` keep to its right edge, wherever their place); `touch-width` is its width on a touchscreen (the bar's own by default). `dpad`'s picture is the D-pad's left and right (none on the keyboard, whose arrows are the menus' left and right) and no key presses it: it is a click's, a tap's or A's on it |
 | `<colors>` | `id` | The player profile's colors, one item each, under one another in its name and its color (white while focused). It is the screen's list (a screen has one `<list>`, `<cards>` or `<colors>`). The profile's own color is focused first. A chooses the color for the profile being edited, as the PC version's color picker did, and goes back |
 | `<spartan>` | `x`, `y`, `width`, `height`, `color` (`focus`, `profile`, or a binding), `players` (1 to 4) | The Spartan, which the game draws (port/linux/game/menu_spartan.c) standing in this box of the 640 by 480 canvas, its feet at the box's foot, as tall as the box. It is drawn in a view of its own where the block is in the screen's order: over the screen's background and the blocks before it, under those after, with its own fixed camera, depth and light, so nothing of the menus' scene (the ring, the sky) cuts it and the scene's camera never moves or tilts it. It takes no room in the layout. `color="focus"` follows the focused `<colors>` item; `profile` (the default) is the color of the profile being edited, else the player's own, live as it changes; any other word is a binding whose value is the color's number (`random` for random), read each frame, and while it has no value there is neither Spartan nor picture. `players` puts that many side by side, each its local player's profile's color. A random color's Spartan cycles through the profile colors in their list's order, one a second (each held three quarters of a second, then blended into the next), on the menus' frame clock, so it cycles while the game is paused too; side by side, each random one is a quarter of the round on from the one before. Where there is no Spartan (no multiplayer map exported one, a refused file, `display.menu_pictures` off, no profile), the box shows the original picture of the color (ui.map's `player_color_marine_large`, frame 18, the "?", for random or no profile). It is gone as soon as its screen closes |
 
@@ -110,8 +110,9 @@ Profile's, whose generated screen's was its inner screen's).
 | `<header>` | `title`, `picture`, `detail` | (in a tall screen) its title's words in the band, `detail` at the band's right (on a touchscreen, under the title), and a `<button>` in the band |
 | `<tabs>` | `current`, `if`, `when` | A strip of tabs: `current` names the binding whose value is the current tab's id (framed, its words white). LB and RB (Q and E) run the `do` of the tab either side, the keys' prompts beside the strip; the d-pad steps the strip, A or a click runs a tab's `do` |
 | `<tab>` | `id` (required), `label` (required), `do` (required), `when` | One tab |
-| `<table>` | `source` (required), `sorted`, `do`, `empty` | A live table: its rows come from the row source C names `source` (below), as many as fit over the panel's foot, scrolling at their ends. `do` is the action A, a click or a double click on a row runs (the row given to it); `sorted` names the binding whose value is the column sorted by and its way (`players down`); `empty` the words in the rows' place while there are none |
-| `<column>` | `id` (required), `width` (required), `label`, `kind`, `grow`, `gap`, `align`, `sort`, `do`, `title-width`, `touch`, `when` | One column, from the left: `kind` its cells, `text` (the default), `strong` (white words), `ping` (the ping's bars and its number) or `star` (a favorite's star). `width` and `gap` (the room before it, 4) in the menus' units; `grow`, how much wider it is at 16:9; `align` its words at its `right`. Its title (`label`) runs `sort` when chosen, its arrow after the words when `sorted` names it; `title-width` its title's width, if not its words'. `do`: a click on a cell of it runs that, not the table's. `touch`: its place in a touchscreen's row, `x y width move grow` |
+| `<table>` | `source` (required), `sorted`, `do`, `empty`, `lanes`, `left`, `right` | A live table: its rows come from the row source C names `source` (below), as many as fit over the panel's foot, scrolling at their ends. `do` is the action A, a click or a double click on a row runs (the row given to it); `sorted` names the binding whose value is the column sorted by and its way (`players down`); `empty` the words in the rows' place while there are none. `left` and `right` are the actions left and right on a row run (the row given). `lanes` (1 to 4, 1 by default) lays its rows out in that many lanes side by side, as the generated lobby's teams' columns: each lane a panel from the titles' place to the rows' foot, its `<lane>`'s title and detail at its top, its rows (18 tall, 20 apart, 8 in from its sides, the computer's on a touchscreen too) under them; it has no columns' titles nor headings, and no row scrolls: the source's rows are each lane's places in turn (the first lane's, then the next's), every place a row, shown while the source says one is there (its `state`). A row's picture is framed while the source marks it as its own, the brighter with the focus. Its columns' places are from a row's left, their `width` and `grow` a lane's |
+| `<lane>` | `label` (required), `detail`, `tone` | (in a `<table lanes="N">`, one for each lane, in order) A lane's title at its top's left, large, in its tone's colour, and its `detail` at its top's right. `tone` (a number, or a binding giving one): 0 red's (the panel's edge and the title red), 1 blue's, 2 neither (the panel across all the lanes, the title its own blue). A lane whose label has no value is gone, and the panel across them all is drawn: the lobby's PLAYERS, one list down both lanes, its count at the second lane's right |
+| `<column>` | `id` (required), `width` (required), `label`, `kind`, `grow`, `gap`, `align`, `sort`, `do`, `title-width`, `touch`, `when` | One column, from the left: `kind` its cells, `text` (the default), `strong` (white words), `ping` (the ping's bars and its number), `star` (a favorite's star) or `dot` (a dot of a team's colour: red's, blue's or no team's, by the source's frame). `width` and `gap` (the room before it, 4) in the menus' units; `grow`, how much wider it is at 16:9; `align` its words at its `right`. Its title (`label`) runs `sort` when chosen, its arrow after the words when `sorted` names it; `title-width` its title's width, if not its words'. `do`: a click on a cell of it runs that, not the table's. `touch`: its place in a touchscreen's row, `x y width move grow` |
 | `<search>` | `value` (required), `label`, `if`, `when` | A search: in a `<column>`, its magnifying glass after the column's title, the field typed into in the title's place and its X; at the screen's level, a field of its own at the top's right (a touchscreen's). A, a click or a tap types into it; each letter typed sets the binding `value` (the list filtered at once); Enter, A again or the focus taken off it keeps the words; B and Esc clear them; the X clears them |
 | `<button>` | (in a `<table>`) | A button under the table's words for none (CLEAR SEARCH), shown as its `if` says, the focus on it as it comes |
 | `<panel>` | `if` | The details beside the table: its lines one after another from its top, and a `<button>` at its foot |
@@ -120,7 +121,8 @@ Profile's, whose generated screen's was its inner screen's).
 | `<pills>`, `<pill>` | `text` (required), `width` (required), `tone` | A row of pills (as many to a line as fit): each its words, its frame `tone` (a number, or a binding giving one) |
 | `<pair>` | `label` (required), `value` (required), `when` | A label at the left and its value, large, at the right |
 | `<spartan>` | (in a `<panel>`) `height`, `color` | A line of the panel as tall as `height` (200 by default, at most 360), the Spartan standing in it in the middle of the panel (moved and grown with it on a wide screen), its feet at the line's foot (the line after it a 25th of its height lower, for the feet drawn under it); its color as a screen's `<spartan>`'s, and where there is no Spartan the original picture is shrunk to the line, whole. A screen has one `<spartan>`, in its panel or of its own |
-| `<button>` | (in a `<panel>`) | The panel's button at its foot (JOIN GAME), shown as its `if` says |
+| `<choice>` | `label` (required), `value` (required), `left` (required), `right` (required), `if`, `dim`, `when` | (in a `<panel>`) A choice of the panel's, a line of it the focus steps to: its label at its left, its value's words between the spinners' arrows. Left runs `left`, right and A `right`, a click or a tap on its left half `left`, on its right half `right` (the source of its value then changes it: the lobby's BOTS, SKILL and TEAMS). While its `if` has no value it is gone, the lines after it moved up into its place; while `dim` has a value it is dimmed and passed over by the focus, and its keys do nothing. 22 tall (32 on a touchscreen) |
+| `<button>` | (in a `<panel>`) | The panel's buttons, one over another up from its foot, the last at the foot (JOIN GAME; the lobby's START GAME): filled, its key's picture before its words; those over it outlined, their words alone in their middle (the lobby's HOST CONTROLS and GAME SETTINGS), each shown as its `if` says, in its place. Up to 4 |
 
 A panel's line whose text has a binding of no value (or none at all) is not
 shown, and its place stays (one whose `if` has none is gone, its place
@@ -153,6 +155,13 @@ profile.
 | --- | --- |
 | `browser.games` | The server browser's games (below) |
 | `profiles` | The player profiles, and the row that makes one (Select Profile, below); its one column `name` |
+| `lobby.players` | The lobby's players (below), in a table of two lanes: red's and blue's (a game without teams' one list down both); its columns `dot`, `name` (a player's speaker beside it in voice chat) and `tag` |
+
+A cell may give shorter words (`fallback`), shown in place of its own where
+they would be cut short (a bot's tag: BOT where BOT · NORMAL does not fit),
+and a network machine whose speaker (network_voice.c's: talking, or muted)
+is drawn just left of its words. A source's `state` (optional) says of each
+row whether it is there, and whether it is marked as its own.
 
 The reader checks each file whole. A file is refused if it has any of these
 problems: bad XML; an element where it may not be; an attribute an element
@@ -169,7 +178,11 @@ source, a source the game has not got, no `<column>`, a column with no id or
 width, a `kind`, `align` or `touch` it may not have; a `<search>` with no
 value; a `<panel>` with nothing in it, a `<pill>` with no width, a `<pair>`
 with no value; a binding named alone (`current`, `sorted`, `value`, `if`,
-`tone`) that the game has not got; a second `<tabs>`, `<table>` or
+`tone`, `dim`) that the game has not got; a `<lane>` in a table of fewer
+than 2 lanes, a table of lanes with some `<lane>`s but not one for each lane,
+a lane's `tone` past 2; a `<choice>` with no label, value, left or right, or
+a left or right the game has not got; a `<table>`'s `left` or `right` the
+game has not got; a second `<tabs>`, `<table>` or
 `<panel>`.
 
 - an embedded or menus-folder file that is refused at start leaves no
@@ -202,6 +215,12 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | `{profile.name}`, `{profile.controls}`, `{profile.difficulty}`, `{profile.level}` | The chosen profile's name, controls (`Default`, `Inverted`), best difficulty finished (none before a level is) and current level (`The Pillar of Autumn`); none on the row that makes one |
 | `{profile.color}`, `{profile.chosen}` | (for a `<spartan>`'s color and `if`s) the chosen profile's color's number, or `random`; whether a profile (not the row that makes one) is chosen |
 | `{profile.current}` | Player 1's profile's name (the active one, else the one used last) |
+| `{lobby.title}`, `{lobby.subtitle}` | The lobby's title (GAME LOBBY), and the game's name, where it is and its players (`Player's game · Local network · 4 of 16 players · 2 bots`; a game of this machine alone's `Offline with bots · 3 players`) |
+| `{lobby.red}`, `{lobby.blue}`, `{lobby.red.count}`, `{lobby.blue.count}`, `{lobby.red.tone}`, `{lobby.blue.tone}` | The lanes: RED and BLUE in a team game, each its count (`2 PLAYERS`) and tone (0, 1); in a game without teams PLAYERS alone (blue's none), `3 OF 16` at blue's right, tone 2 |
+| `{lobby.gametype}`, `{lobby.map}`, `{lobby.limits}`, `{lobby.kind}`, `{lobby.kind.tone}`, `{lobby.tick}`, `{lobby.opence}`, `{lobby.after}` | The next game: its gametype, map (a co-op game's level and difficulty), limits (`50 kills · 10 min`), GOAT H1 or LEGACY and its pill's tone, its tick rate (`120 TICK`), OPENCE CAN JOIN (the host's, while OpenCE's players may join), the game after it (a host's playlist's) |
+| `{lobby.bots}`, `{lobby.skill}`, `{lobby.teams}`, `{lobby.bots.shown}`, `{lobby.bots.locked}`, `{lobby.bots.count.locked}` | The host's bots: BOTS' choice (`ADD 3`), SKILL, TEAMS; (for `if`s and `dim`s) whether the host has them (any game but co-op), whether the gametype is one they do not play, and BOTS' a matchmaking game's too |
+| `{lobby.status}`, `{lobby.start}`, `{lobby.waiting}` | How the game is (the countdown, the invite copied, how another controller joins...); START GAME's words (or `STARTING IN 3`); a player's (`Waiting for the host`) |
+| `{lobby.host}`, `{lobby.settings}`, `{lobby.controls}`, `{lobby.team.change}`, `{lobby.invite}`, `{lobby.add}` | (for `if`s) START GAME's (the host's), GAME SETTINGS', HOST CONTROLS' (a network game's host's, a dedicated server's admin's), CHANGE TEAM's, COPY INVITE's, ADD PLAYER's |
 
 ## Actions
 
@@ -241,6 +260,10 @@ sounds and the fades are the game's.
 | `profile select` | The row's profile (OK: the chosen one's) made player 1's, and back to the screen before; on the row that makes one, the question whether to make one |
 | `profile new` | A new profile's name asked (CREATE NEW) |
 | `profile delete` | The question whether to delete the chosen profile (DELETE) |
+| `lobby row` | A lobby's row chosen: a click on it puts this player on its lane's team (in a team game), as a click on the generated lobby's column; A (Start) starts the game (the host's) |
+| `lobby start`, `lobby team red`, `lobby team blue`, `lobby team toggle` | The game started (START GAME); this player put on red's or blue's team (left and right on the players), or the other (CHANGE TEAM) |
+| `lobby invite`, `lobby settings`, `lobby host`, `lobby add player` | The invite copied; Server Setup in the lobby's place (GAME SETTINGS); Host Controls (HOST CONTROLS); another player of this machine added (ADD PLAYER) |
+| `lobby bots left`, `lobby bots right`, `lobby skill left`, `lobby skill right`, `lobby teams left`, `lobby teams right` | The host's bots' choices stepped: BOTS to the choice before or after (at its ends no further), SKILL and TEAMS round, written to `config.toml` as the generated lobby's spinners write them |
 
 A file is checked against `screen_action_names` as it is read, and
 `tools/harness/tests/test_menu_screens.py` checks that every name there has an
@@ -343,6 +366,39 @@ studio's reload (`debug.menu_studio`, F7) reads them again.
 5. If it replaces a screen that `tools/menu_parity.py` compares, add the
    screen to `HAND_WRITTEN` there. The classic engine still draws the old
    screen; the new engine's side must have drawn the hand-written blocks.
+
+## The lobby
+
+`screens/lobby.xml` takes the place of the lobby (`main_menu/
+multiplayer_type_select/lobby/lobby_screen`), a network game's and a game of
+this machine alone's, in the new engine; the classic engine keeps the
+generated one. GAME LOBBY in the band, the game's name, where it is and its
+players at its right; the players in a table of two lanes, red's and blue's
+(`RED`, `BLUE`, each its count; in a game without teams `PLAYERS`, one list
+down both, `3 OF 16` at its right), each row a player's dot, name (and its
+controller, `(P2)`, of this machine's players when it has more than one; its
+speaker while it talks in voice chat) and tag (HOST, BOT and the bots' skill
+where it fits, PARTY, GOAT H1, OPENCE), this machine's own framed, `+3 more`
+in a lane's last row where it has more than its rows; the next game in the
+panel (its gametype, map, limits, GOAT H1 or LEGACY, its tick rate, OPENCE CAN
+JOIN, THEN), the host's bots (BOTS, SKILL, TEAMS: dimmed for a gametype they
+do not play), how the game is, and HOST CONTROLS, GAME SETTINGS and START
+GAME, or a player's `Waiting for the host`; LEAVE at the bar's left, CHANGE
+TEAM, COPY INVITE and ADD PLAYER at its right (on a touchscreen HOST CONTROLS
+in the bar, the panel's room the bots').
+
+What it shows and does is the generated lobby's (menu_functions.c's
+`lobby_menu.inc`): its model (`lobby_board_model`, the players, their
+columns, tags and order, what is offered, the panel's words) is worked out
+for both views, the generated screen's widgets (`lobby_board_update`) and the
+hand-written screen's table and bindings (`pc_menu_lobby_source`,
+`pc_menu_lobby_value`). Left and right on the players put this player on
+red's or blue's team, a click on a lane's row on its team, A or Start on them
+the host's start; the generated screen's own keys stay its stand-in's (B
+leaves, START joins another controller's player, X adds one, Y the map vote
+or COPY INVITE), and what its list did each frame (the split screen's
+players joining, the map vote's screen) is done each frame it is drawn
+(`pc_menu_lobby_frame`).
 
 ## The profile color screen
 

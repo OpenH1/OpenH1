@@ -96,7 +96,7 @@ picture, the line, the words for no rows) -->
 	<!-- a bar of one or more buttons in the body (the panel's, a table's) -->
 	<widget name="screens/bar" type="column_list" width="640" height="24" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
 	<!-- the band's detail, at its right (on a touchscreen, under the title's left) -->
-	<widget name="screens/header_detail" type="text" width="240" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_flags="no_focus_test"/>
+	<widget name="screens/header_detail" type="text" width="312" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_flags="no_focus_test"/>
 	<widget name="screens/header_detail_left" type="text" width="300" height="16" font="ui\small_ui" color="#FF6F9CD0" text_flags="no_focus_test"/>
 	<!-- tabs: a strip, each tab framed (its picture's frames: the current
 	one's, and the one with the focus outlined), A or a click does its do;
@@ -192,6 +192,22 @@ picture, the line, the words for no rows) -->
 	<widget name="screens/cell_lock" width="16" height="16" bitmap="main_menu/multiplayer_type_select/join_game/locked_icon"/>
 	<widget name="screens/cell_bars" width="24" height="16" bitmap="main_menu/multiplayer_type_select/ping_bars"/>
 	<widget name="screens/cell_star" width="16" height="18" bitmap="main_menu/multiplayer_type_select/join_game/favorite_star"/>
+	<!-- a dot of a colour, by its frame: red's, blue's, and a game without teams' (the lobby's players) -->
+	<widget name="screens/cell_dot" width="8" height="8" bitmap="main_menu/parts/dot_8"/>
+	<!-- a table's lanes (lanes="2": the lobby's teams' columns): each lane's panel (a team's edge by its frame, or
+	the panel across them all), its title (in its tone's colour) and its detail; a lane's row, framed when it is
+	marked as its own and the brighter with the focus (its picture's four frames), left and right its table's -->
+	<widget name="screens/lane" width="196" height="362" flags="keep_ends" bitmap="main_menu/parts/team_panel_196x362"/>
+	<widget name="screens/lane_title" type="text" width="120" height="22" font="ui\large_ui" color="#FF2896FF" text_flags="no_focus_test"/>
+	<widget name="screens/lane_detail" type="text" width="90" height="16" font="ui\small_ui" color="#FF6F9CD0" align="right" text_flags="no_focus_test"/>
+	<widget name="screens/lane_row" width="180" height="18" flags="keep_ends" bitmap="main_menu/parts/lane_row_180x18">
+		<on event="a" run="port screen do"/>
+		<on event="start" run="port screen do"/>
+		<on event="left" run="port screen left"/>
+		<on event="right" run="port screen right"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<on event="double_click" run="port screen do"/>
+	</widget>
 	<!-- a table's words while it has no rows -->
 	<widget name="screens/table_empty" type="text" width="356" height="80" font="ui\large_ui" color="#FF2896FF" align="center" text_flags="no_focus_test"/>
 	<!-- a table's button under its words (CLEAR SEARCH) -->
@@ -208,11 +224,30 @@ picture, the line, the words for no rows) -->
 	<widget name="screens/pair_label" type="text" width="70" height="20" font="ui\small_ui" color="#FF6F9CD0" text_flags="no_focus_test"/>
 	<widget name="screens/pair_value" type="text" width="148" height="24" font="ui\large_ui" color="#FFFFFFFF" align="right" text_flags="no_focus_test"/>
 	<widget name="screens/pill" type="text" width="64" height="16" bitmap="main_menu/parts/pill_64" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="-1" text_flags="no_focus_test"/>
-	<widget name="screens/panel_button" type="text" width="148" height="24" flags="keep_ends" bitmap="main_menu/parts/button_148x24" font="ui\small_ui" color="#FFFFFFFF" text_x="12" text_y="3">
+	<widget name="screens/panel_button" type="text" width="148" height="24" flags="keep_ends" bitmap="main_menu/parts/button_148x24" font="ui\small_ui" color="#FFFFFFFF" text_x="6" text_y="3">
 		<on event="a" run="port screen do"/>
 		<on event="start" run="port screen do"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
+	<!-- a panel's button over its last: outlined, filled while it has the focus, its words alone in its middle (the
+	lobby's HOST CONTROLS and GAME SETTINGS) -->
+	<widget name="screens/panel_button_outline" type="text" width="148" height="24" flags="keep_ends" bitmap="main_menu/parts/outline_148x24" font="ui\small_ui" color="#FFCFE3FF" align="center" text_y="3">
+		<on event="a" run="port screen do"/>
+		<on event="start" run="port screen do"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<!-- a panel's choice: its row (lit while it has the focus), its label, its value between its arrows; left and
+	right step it, A steps it right, a click or a tap on its left half left, on its right half right -->
+	<widget name="screens/choice" width="148" height="22" flags="keep_ends" bitmap="main_menu/parts/item_148x22">
+		<on event="a" run="port screen do"/>
+		<on event="left" run="port screen left"/>
+		<on event="right" run="port screen right"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="screens/choice_label" type="text" width="58" height="16" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test"/>
+	<widget name="screens/choice_value" type="text" width="86" height="16" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test"/>
+	<widget name="screens/choice_left" width="6" height="12" bitmap="bitmaps/arrow_sm_left"/>
+	<widget name="screens/choice_right" width="6" height="12" bitmap="bitmaps/arrow_sm_right"/>
 	<!-- a footer of prompts each as wide as its words, spread across the
 	bar (a table's screen's) -->
 	<widget name="screens/prompt_spread" type="text" width="96" height="24" flags="keep_ends" bitmap="main_menu/parts/item_96x24" font="ui\small_ui" color="#FFCFE3FF" text_x="5" text_y="3">

@@ -93,6 +93,7 @@ their handlers open opens.
 #include "interface/player_ui.h"
 #include "interface/ui_widget.h"
 #include "interface/ui_widget_event_handler_functions.h"
+#include "interface/ui_widget_game_data_input_functions.h"
 #include "main/main.h"
 #include "networking/network_game_manager.h"
 #include "saved games/player_profile.h"
@@ -5821,7 +5822,13 @@ Xbox's networking, run by the engine's port entry points
 speaker icon, either lobby's */
 #define LOBBY_BOARD_ROWS 13
 #define LOBBY_BOARD_COLUMNS 2
-#define LOBBY_ICON_ROWS (LOBBY_BOARD_ROWS * LOBBY_BOARD_COLUMNS)
+/* (and the hand-written lobby's lanes' rows, at most: lobby_menu.inc's
+lobby_board_lay_out_rows) */
+#define LOBBY_LAYOUT_ROWS 16
+#define LOBBY_ICON_ROWS (LOBBY_LAYOUT_ROWS * LOBBY_BOARD_COLUMNS)
+/* (the game's data input "net splitscreen prejoin players", by its index:
+menu_tags.c's game_data_input_names) */
+#define LOBBY_PREJOIN_FUNCTION 12
 #define TEXT_FIELD_LENGTH 128
 #define PLAYLIST_READ_ONLY_BIT 0x40000000UL
 /* (a key stroke's modifier, as input_xbox.c has them: shift, control) */
@@ -14210,6 +14217,10 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "port screen key"))
 		{
 			return menu_screen_key(widget, event, widget_deleted, controller);
+		}
+		else if (!strcmp(name, "port screen left") || !strcmp(name, "port screen right"))
+		{
+			return menu_screen_step(widget, event, widget_deleted, (short)(!strcmp(name, "port screen left") ? -1 : 1));
 		}
 		else if (!strcmp(name, "profile set edit begin"))
 		{

@@ -26,9 +26,9 @@ BROWSER_TALL, _browser and _touch_browser) */
 
 /* the band, its title's detail at its right, a button in it */
 #define TALL_BAND 40
-#define TALL_DETAIL_X 372
+#define TALL_DETAIL_X 300
 #define TALL_DETAIL_Y 11
-#define TALL_DETAIL_WIDTH 240
+#define TALL_DETAIL_WIDTH 312
 #define TALL_BUTTON_X 276
 #define TALL_BUTTON_Y 8
 #define TALL_BUTTON_WIDTH 148
@@ -106,7 +106,7 @@ them, the search at the top's right, the bar's top and its buttons' widths */
 #define TOUCH_TABLE_WIDTH 364
 #define TOUCH_ROWS_BOTTOM 410
 #define TOUCH_DETAIL_X 66
-#define TOUCH_DETAIL_Y 4
+#define TOUCH_DETAIL_Y 46
 #define TOUCH_EMPTY_Y 230
 #define TOUCH_TABLE_BUTTON_Y 316
 #define TOUCH_TABLE_BUTTON_WIDTH 200
@@ -147,6 +147,39 @@ pills) and a text after a pair, a pill row's step, a pair's step */
 #define PANEL_PAIR_STEP 22
 #define PANEL_PAIR_LABEL_Y 3
 #define PANEL_PAIR_LABEL_WIDTH 70
+/* a table's lanes (lanes="2", the lobby's teams), side by side, as the
+generated lobby's columns (tools/port_settings.py's LOBBY_*): the gap
+between two, each its panel from the titles' top (a touchscreen's, the
+chips') to the rows' bottom, its title and detail at its top, its rows under
+them, each 8 in from its sides; a row's cells' words and dot in it */
+#define TALL_LANE_GAP 12
+#define TALL_LANE_TITLE_X 12
+#define TALL_LANE_TITLE_Y 8
+#define TALL_LANE_DETAIL_Y 12
+#define TALL_LANE_DETAIL_WIDTH 90
+#define TALL_LANE_ROWS_TOP 36
+#define TALL_LANE_ROW_STEP 20
+#define TALL_LANE_ROW_HEIGHT 18
+#define TALL_LANE_ROW_INSET 8
+#define TALL_LANE_CELL_Y (-3)
+#define TALL_LANE_DOT 8
+/* (a lane's title's colour, by its tone: red's, blue's; the third, its
+own) */
+#define TALL_LANE_RED 0xFF6B5EFFUL
+#define TALL_LANE_BLUE 0x5AA9FFFFUL
+#define TALL_MAXIMUM_LANES 4
+/* a panel's choice: its height, its label's width, its value's place
+between the arrows from its left, the arrows' size; a touchscreen's
+height; the panel's buttons' gap one over another */
+#define PANEL_CHOICE_HEIGHT 22
+#define TOUCH_PANEL_CHOICE_HEIGHT 32
+#define PANEL_CHOICE_LABEL_X 8
+#define PANEL_CHOICE_LABEL_WIDTH 58
+#define PANEL_CHOICE_VALUE_X 58
+#define PANEL_CHOICE_ARROW 6
+#define PANEL_CHOICE_GAP 0
+#define PANEL_BUTTON_GAP 4
+#define TALL_MAXIMUM_PANEL_BUTTONS 4
 /* (a <spartan>'s line: the gap before and after it) */
 #define PANEL_SPARTAN_GAP 6
 #define PANEL_SPARTAN_FEET 25
@@ -158,12 +191,12 @@ pills) and a text after a pair, a pill row's step, a pair's step */
 /* (16:9's width past the 640, and 21:9's past 16:9's: menu_tags.c's) */
 #define TALL_PAST_EXTRA 286
 /* (a ping's colours by how good: menu_functions.c's) */
-#define TALL_MAXIMUM_ROWS 16
+#define TALL_MAXIMUM_ROWS 40
 #define TALL_MAXIMUM_COLUMNS 8
 #define TALL_MAXIMUM_SEARCHES 4
 #define TALL_MAXIMUM_TABS 8
 #define TALL_MAXIMUM_LINES 16
-#define TALL_MAXIMUM_BOXES 420
+#define TALL_MAXIMUM_BOXES 760
 #define TALL_MAXIMUM_TARGETS 128
 #define TALL_MAXIMUM_PROMPTS 10
 
@@ -222,6 +255,7 @@ enum
 	_target_search_clear,
 	_target_row,
 	_target_button,
+	_target_choice,
 };
 
 struct screen_target
@@ -246,6 +280,8 @@ struct screen_column
 
 struct screen_row_widgets
 {
+	/* (its lane, 0 for a table without) */
+	short lane;
 	struct widget_instance *row, *heading;
 	struct widget_instance *text[TALL_MAXIMUM_COLUMNS], *badge[TALL_MAXIMUM_COLUMNS], *lock[TALL_MAXIMUM_COLUMNS],
 		*picture[TALL_MAXIMUM_COLUMNS];
@@ -266,6 +302,8 @@ struct screen_line
 {
 	struct menu_screen_block const *block;
 	struct widget_instance *widget, *label;
+	/* (a choice's: its value and arrows, in its row) */
+	struct widget_instance *value, *arrows[2];
 	short width, grow;
 	/* (a panel's line: its top as made, and its room, which the lines
 	after it take while its if has no value) */
@@ -314,6 +352,17 @@ struct screen_tall
 	struct widget_instance *table_bar;
 	struct screen_prompt table_button;
 	struct menu_table_view view;
+	/* its lanes: how many, the rows each has, and each one's block, panel,
+	title and detail; the panel across them all, while a lane's label has
+	no value (one lane then) */
+	short lanes, lane_rows;
+	struct menu_screen_block const *lane_blocks[TALL_MAXIMUM_LANES];
+	struct widget_instance *lane_panels[TALL_MAXIMUM_LANES], *lane_titles[TALL_MAXIMUM_LANES],
+		*lane_details[TALL_MAXIMUM_LANES];
+	struct widget_instance *lane_span;
+	/* (the focus put on the bar for want of a row: back on the first row
+	that comes, unless it has been moved since) */
+	boolean focus_waiting;
 	/* the searches (a column's, or the screen's), the one typed into */
 	struct screen_search searches[TALL_MAXIMUM_SEARCHES];
 	long search_count;
@@ -322,8 +371,9 @@ struct screen_tall
 	struct menu_screen_block const *panel;
 	struct screen_line lines[TALL_MAXIMUM_LINES];
 	long line_count;
-	struct widget_instance *panel_bar;
-	struct screen_prompt panel_button;
+	struct widget_instance *panel_bars[TALL_MAXIMUM_PANEL_BUTTONS];
+	struct screen_prompt panel_buttons[TALL_MAXIMUM_PANEL_BUTTONS];
+	long panel_button_count;
 	struct widget_instance *panel_widget;
 	/* (its <spartan>: the original picture where it stands, as wide as the
 	picture's shape at its height, centred in the panel) */
@@ -517,9 +567,14 @@ static char const *tall_key_picture(char const *key)
 		{ "accept", "%a-button" }, { "back", "%b-button" }, { "x", "%x-button" }, { "y", "%y-button" },
 		{ "lb", "%white-button" }, { "rb", "%black-button" }, { "lt", "%left-trigger" },
 		{ "rt", "%right-trigger" }, { "r3", "%right-thumb" }, { "view", "%back-button" },
+		{ "dpad", "%dpad-left%dpad-right" },
 	};
 	long index;
 
+	/* (the D-pad: the keyboard has no key of its own for it, its arrows
+	the menus' left and right) */
+	if (!strcmp(key, "dpad") && halo_keyboard_prompts())
+		return "";
 	for (index = 0; index < NUMBEROF(pictures); index++)
 	{
 		if (!strcmp(pictures[index].key, key))
@@ -586,8 +641,11 @@ static short tall_prompt_end(char const *key, char const *label, boolean control
 	snprintf(spaced, sizeof(spaced), " %s", label);
 	if (controller)
 	{
-		advance = !strcmp(key, "rt") ? 69 : !strcmp(key, "lt") ? 62 : !strcmp(key, "r3") ? 65 : 9;
+		advance = !strcmp(key, "rt") ? 69 : !strcmp(key, "lt") ? 62 : !strcmp(key, "r3") ? 65 : !strcmp(key, "dpad") ? 40 :
+			9;
 	}
+	else if (!strcmp(key, "dpad"))
+		advance = 0;
 	else
 	{
 		short letters = tall_small_width(tall_keyboard_key(key));
@@ -622,7 +680,7 @@ static void tall_build_header(struct screen_tall *tall, struct widget_instance *
 	{
 		tall->detail = touch ?
 			tall_add(tall, screen, tall_tag("header_detail_left"), TOUCH_DETAIL_X, TOUCH_DETAIL_Y, -106, 0, 0, 0) :
-			tall_add(tall, screen, tall_tag("header_detail"), TALL_DETAIL_X, TALL_DETAIL_Y, 106, 0, 0, 0);
+			tall_add(tall, screen, tall_tag("header_detail"), TALL_DETAIL_X, TALL_DETAIL_Y, 106, 0, TALL_DETAIL_WIDTH, 0);
 	}
 	for (index = 0; index < file->block_count; index++)
 	{
@@ -779,6 +837,58 @@ static void tall_build_search(struct screen_tall *tall, struct menu_screen_block
 		search->clear->visible = FALSE;
 }
 
+static void tall_lanes_frame(struct screen_tall *tall);
+
+/* a table's lanes: their top, each one's width */
+static short tall_lanes_top(void)
+{
+	return ui_widget_port_touch_menus() ? TOUCH_CHIPS_Y : TALL_TITLES_Y;
+}
+
+static short tall_lane_width(short table_width, short lanes)
+{
+	return (short)((table_width - (lanes - 1) * TALL_LANE_GAP) / lanes);
+}
+
+/* a table's lanes (its <lane>s, in order): each its panel (a team's, by
+its tone), its title at its top's left and its detail at its right; and
+the panel across them all, shown while a lane's label has no value */
+static void tall_build_lanes(struct screen_tall *tall, struct menu_screen const *file, long table_index)
+{
+	boolean touch = ui_widget_port_touch_menus() != 0;
+	short table_width = touch ? TOUCH_TABLE_WIDTH : TALL_TABLE_WIDTH;
+	short lanes = tall->lanes, lane_width = tall_lane_width(table_width, lanes);
+	short top = tall_lanes_top(), bottom = touch ? TOUCH_ROWS_BOTTOM : TALL_ROWS_BOTTOM;
+	short grow = (short)(TALL_TABLE_GROW / lanes);
+	long index, lane = 0;
+
+	tall->lane_span = tall_add(tall, tall->owner, tall_tag("lane"), TALL_TABLE_X, top, -106, TALL_TABLE_GROW,
+		table_width, (short)(bottom - top));
+	tall_box_picture(tall, tall->lane_span, "main_menu/parts/panel_%dx%d", table_width, (short)(bottom - top));
+	visible_set_safe(tall->lane_span, FALSE);
+	for (index = 0; index < file->block_count && lane < lanes; index++)
+	{
+		struct menu_screen_block const *block = &file->blocks[index];
+
+		if (block->kind == MENU_SCREEN_LANE && block->parent == table_index)
+			tall->lane_blocks[lane++] = block;
+	}
+	for (lane = 0; lane < lanes; lane++)
+	{
+		short x = (short)(TALL_TABLE_X + lane * (lane_width + TALL_LANE_GAP)), move = (short)(-106 + lane * grow);
+
+		tall->lane_panels[lane] = tall_add(tall, tall->owner, tall_tag("lane"), x, top, move, grow, lane_width,
+			(short)(bottom - top));
+		tall_box_picture(tall, tall->lane_panels[lane], "main_menu/parts/team_panel_%dx%d", lane_width,
+			(short)(bottom - top));
+		tall->lane_titles[lane] = tall_add(tall, tall->owner, tall_tag("lane_title"), (short)(x + TALL_LANE_TITLE_X),
+			(short)(top + TALL_LANE_TITLE_Y), move, 0, 0, 0);
+		tall->lane_details[lane] = tall_add(tall, tall->owner, tall_tag("lane_detail"),
+			(short)(x + lane_width - TALL_LANE_TITLE_X - TALL_LANE_DETAIL_WIDTH), (short)(top + TALL_LANE_DETAIL_Y),
+			(short)(move + grow), 0, TALL_LANE_DETAIL_WIDTH, 0);
+	}
+}
+
 /* the table: its columns' titles (the computer's), the line under them, its
 rows (as many as fit over the panel's foot), each its cells, its words for
 no rows and its button */
@@ -791,6 +901,10 @@ static void tall_build_table(struct screen_tall *tall, struct menu_screen const 
 	short table_width = touch ? TOUCH_TABLE_WIDTH : TALL_TABLE_WIDTH;
 
 	tall->table = &file->blocks[table_index];
+	/* (a table of lanes': its columns from its rows' left (in from its
+	rounded end), with no titles) */
+	if (tall->table->lanes > 1)
+		x = TALL_LANE_ROW_INSET;
 	for (index = 0; index < NUMBEROF(screen_source_names); index++)
 	{
 		if (tall->table->source && !strcmp(tall->table->source, screen_source_names[index]))
@@ -832,7 +946,7 @@ static void tall_build_table(struct screen_tall *tall, struct menu_screen const 
 		move = (short)(move + block->grow);
 	}
 	/* (the titles, a searched column's with room for its glass) */
-	if (!touch)
+	if (!touch && tall->table->lanes < 2)
 	{
 		tall->titles = tall_add(tall, tall->body, tall_tag("titles"), 0, TALL_TITLES_Y, 0, 0, 0, 0);
 		for (column_index = 0; column_index < tall->column_count; column_index++)
@@ -890,24 +1004,50 @@ static void tall_build_table(struct screen_tall *tall, struct menu_screen const 
 			TALL_TABLE_GROW, TALL_TABLE_WIDTH, 0);
 		tall_box_picture(tall, tall->line, "main_menu/parts/line_%d", TALL_TABLE_WIDTH, 0);
 	}
-	/* (the rows) */
+	/* (the rows: a table of lanes', each lane's under its title, as many
+	as fit over its foot) */
+	tall->lanes = (short)MAX(1, MIN(tall->table->lanes, TALL_MAXIMUM_LANES));
+	if (tall->lanes > 1)
+		tall_build_lanes(tall, file, table_index);
 	tall->rows_y = touch ? TOUCH_ROWS_Y : TALL_ROWS_Y;
 	tall->row_height = touch ? TOUCH_TAP : TALL_ROW_HEIGHT;
 	tall->row_step = touch ? TOUCH_ROW_STEP : TALL_ROW_HEIGHT;
 	tall->row_count = (short)MIN(TALL_MAXIMUM_ROWS, ((touch ? TOUCH_ROWS_BOTTOM : TALL_ROWS_BOTTOM) - tall->rows_y +
 		tall->row_step - tall->row_height) / tall->row_step);
+	if (tall->lanes > 1)
+	{
+		tall->rows_y = (short)(tall_lanes_top() + TALL_LANE_ROWS_TOP);
+		tall->row_height = TALL_LANE_ROW_HEIGHT;
+		tall->row_step = TALL_LANE_ROW_STEP;
+		tall->lane_rows = (short)MIN(TALL_MAXIMUM_ROWS / tall->lanes, ((touch ? TOUCH_ROWS_BOTTOM : TALL_ROWS_BOTTOM) -
+			tall->rows_y + tall->row_step - tall->row_height) / tall->row_step);
+		tall->row_count = (short)(tall->lane_rows * tall->lanes);
+	}
 	for (index = 0; index < tall->row_count; index++)
 	{
 		struct screen_row_widgets *row = &tall->rows[index];
-		short y = (short)(tall->rows_y + index * tall->row_step);
+		short lane = (short)(tall->lanes > 1 ? index / tall->lane_rows : 0);
+		short y = (short)(tall->rows_y + (tall->lanes > 1 ? index % tall->lane_rows : index) * tall->row_step);
+		short row_x = TALL_TABLE_X, row_width = table_width, row_move = -106, row_grow = TALL_TABLE_GROW;
+		boolean laned = tall->lanes > 1;
 
 		memset(row, 0, sizeof(*row));
-		row->row = tall_add(tall, tall->body, tall_tag(touch ? "touch_row" : "row"), TALL_TABLE_X, y, -106,
-			TALL_TABLE_GROW, table_width, 0);
+		row->lane = lane;
+		if (laned)
+		{
+			short lane_width = tall_lane_width(table_width, tall->lanes);
+
+			row_x = (short)(TALL_TABLE_X + lane * (lane_width + TALL_LANE_GAP) + TALL_LANE_ROW_INSET);
+			row_width = (short)(lane_width - 2 * TALL_LANE_ROW_INSET);
+			row_grow = (short)(TALL_TABLE_GROW / tall->lanes);
+			row_move = (short)(-106 + lane * row_grow);
+		}
+		row->row = tall_add(tall, tall->body, tall_tag(laned ? "lane_row" : touch ? "touch_row" : "row"), row_x, y,
+			row_move, row_grow, row_width, laned ? tall->row_height : 0);
 		if (!row->row)
 			break;
-		tall_box_picture(tall, row->row, touch ? "main_menu/parts/touch_row_%dx%d" : "main_menu/parts/row_%dx%d",
-			table_width, tall->row_height);
+		tall_box_picture(tall, row->row, laned ? "main_menu/parts/lane_row_%dx%d" : touch ?
+			"main_menu/parts/touch_row_%dx%d" : "main_menu/parts/row_%dx%d", row_width, tall->row_height);
 		tall_target(tall, row->row, _target_row, (short)index, tall->table->action);
 		row->row->visible = FALSE;
 		for (column_index = 0; column_index < tall->column_count; column_index++)
@@ -919,7 +1059,24 @@ static void tall_build_table(struct screen_tall *tall, struct menu_screen const 
 			short icon_y = TALL_CELL_ICON_Y;
 			boolean large = FALSE;
 
-			if (touch)
+			if (laned)
+			{
+				/* (in its lane's row, from the row's left: its columns' moves
+				and growth the lane's; on a touchscreen, its touch place's x,
+				width, move and growth, where it has one) */
+				cx = (short)(row_x + column->x);
+				cy = (short)(y + TALL_LANE_CELL_Y);
+				cmove = (short)(row_move + column->move);
+				icon_y = (short)(-TALL_LANE_CELL_Y + (tall->row_height - TALL_LANE_DOT) / 2);
+				if (touch && block->touch_width)
+				{
+					cx = (short)(row_x + block->touch_x);
+					cw = block->touch_width;
+					cmove = (short)(row_move + block->touch_move);
+					cgrow = block->touch_grow;
+				}
+			}
+			else if (touch)
 			{
 				if (!block->touch_width)
 					continue;
@@ -937,24 +1094,31 @@ static void tall_build_table(struct screen_tall *tall, struct menu_screen const 
 				row->picture[column_index] = tall_add(tall, row->row, tall_tag("cell_star"), cx, (short)(cy + icon_y),
 					cmove, 0, 0, 0);
 				break;
+			case MENU_SCREEN_CELL_DOT:
+				row->picture[column_index] = tall_add(tall, row->row, tall_tag("cell_dot"), cx, (short)(cy + icon_y),
+					cmove, 0, 0, 0);
+				break;
 			case MENU_SCREEN_CELL_PING:
 				row->picture[column_index] = tall_add(tall, row->row, tall_tag("cell_bars"), cx,
-					(short)(cy + icon_y - (touch ? 1 : 0)), cmove, 0, 0, 0);
-				row->text[column_index] = tall_add(tall, row->row, tall_tag(touch ? "touch_cell_right" : "cell_right"),
-					cx, cy, cmove, cgrow, cw, 0);
+					(short)(cy + icon_y - (touch && !laned ? 1 : 0)), cmove, 0, 0, 0);
+				row->text[column_index] = tall_add(tall, row->row, tall_tag(touch && !laned ? "touch_cell_right" :
+					"cell_right"), cx, cy, cmove, cgrow, cw, 0);
 				break;
 			default:
-				row->text[column_index] = tall_add(tall, row->row, tall_tag(touch ? (large ? (block->right ?
+				row->text[column_index] = tall_add(tall, row->row, tall_tag(touch && !laned ? (large ? (block->right ?
 					"touch_cell_large_right" : "touch_cell_large") : (block->right ? "touch_cell_right" : "touch_cell")) :
 					block->right ? "cell_right" : "cell"), cx, cy, cmove, cgrow, cw, 0);
 				row->badge[column_index] = tall_add(tall, row->row, tall_tag("cell_badge"), cx,
-					(short)(cy + (touch ? 2 : icon_y)), cmove, 0, 0, 0);
+					(short)(cy + (touch && !laned ? 2 : icon_y)), cmove, 0, 0, 0);
 				row->lock[column_index] = tall_add(tall, row->row, tall_tag("cell_lock"), cx,
-					(short)(cy + (touch ? 2 : icon_y)), cmove, 0, 0, 0);
+					(short)(cy + (touch && !laned ? 2 : icon_y)), cmove, 0, 0, 0);
 				break;
 			}
 		}
-		/* (a heading's words, across the row from the first column of words) */
+		/* (a heading's words, across the row from the first column of
+		words; a table of lanes has none) */
+		if (laned)
+			continue;
 		{
 			short from = 0, to = table_width;
 
@@ -1034,11 +1198,25 @@ static void tall_build_panel(struct screen_tall *tall, struct menu_screen const 
 	short top = touch ? TOUCH_ROWS_Y : TALL_PANEL_Y;
 	short width = touch ? TOUCH_PANEL_WIDTH : TALL_PANEL_WIDTH;
 	short height = touch ? TOUCH_PANEL_HEIGHT : TALL_PANEL_HEIGHT;
-	short inner_x = (short)(left + TALL_PANEL_INSET), inner_width = (short)(width - 2 * TALL_PANEL_INSET);
-	short y = top, previous = NONE;
+	short inner_x, inner_width = (short)(width - 2 * TALL_PANEL_INSET);
+	short y, previous = NONE;
+	short button_height = touch ? TOUCH_TAP : TALL_PROMPT_HEIGHT, buttons = 0;
 	struct widget_instance *panel;
 	long index;
 
+	/* (beside a table of lanes on a touchscreen, from the lanes' top, which
+	have no chips over them) */
+	if (touch && tall->lanes > 1)
+	{
+		height = (short)(height + top - tall_lanes_top());
+		top = tall_lanes_top();
+	}
+	inner_x = (short)(left + TALL_PANEL_INSET);
+	y = top;
+	for (index = 0; index < file->block_count; index++)
+		buttons += file->blocks[index].kind == MENU_SCREEN_BUTTON && file->blocks[index].parent == panel_index &&
+			menu_screen_when(file->blocks[index].when);
+	buttons = (short)MIN(buttons, TALL_MAXIMUM_PANEL_BUTTONS);
 	tall->panel = &file->blocks[panel_index];
 	panel = tall_add(tall, tall->owner, tall_tag("panel"), left, top, TALL_PANEL_MOVE, TALL_PANEL_GROW, width,
 		(short)(height - (touch ? 0 : 0)));
@@ -1054,28 +1232,76 @@ static void tall_build_panel(struct screen_tall *tall, struct menu_screen const 
 			continue;
 		if (block->kind == MENU_SCREEN_BUTTON)
 		{
-			short button_height = touch ? TOUCH_TAP : TALL_PROMPT_HEIGHT;
-			short button_y = (short)(top + height - button_height - TALL_PANEL_BUTTON_FOOT);
+			/* (its buttons one over another up from its foot, the last at
+			the foot: the panel's action, filled; those over it outlined) */
+			long made = tall->panel_button_count;
+			boolean last = made == buttons - 1;
+			short button_y = (short)(top + height - TALL_PANEL_BUTTON_FOOT - (buttons - made) * button_height -
+				(buttons - made - 1) * PANEL_BUTTON_GAP);
+			struct screen_prompt *button = &tall->panel_buttons[made];
 			char label[MENU_SCREEN_MAXIMUM_TEXT];
 			char text[MENU_SCREEN_MAXIMUM_TEXT];
 
-			tall->panel_bar = tall_add(tall, tall->body, tall_tag("bar"), 0, button_y, 0, 0, 0, button_height);
-			tall->panel_button.widget = tall_add(tall, tall->panel_bar, tall_tag(touch ? "touch_button_large" :
-				"panel_button"), inner_x, button_y, TALL_PANEL_MOVE, TALL_PANEL_GROW, inner_width, 0);
-			tall_box_picture(tall, tall->panel_button.widget, touch ? "main_menu/parts/touch_button_%dx%d" :
-				"main_menu/parts/button_%dx%d", inner_width, button_height);
-			tall->panel_button.block = block;
-			snprintf(tall->panel_button.key, sizeof(tall->panel_button.key), "%s", block->key);
+			if (made >= buttons)
+				continue;
+			tall->panel_bars[made] = tall_add(tall, tall->body, tall_tag("bar"), 0, button_y, 0, 0, 0, button_height);
+			button->widget = tall_add(tall, tall->panel_bars[made], tall_tag(touch ? "touch_button_large" : last ?
+				"panel_button" : "panel_button_outline"), inner_x, button_y, TALL_PANEL_MOVE, TALL_PANEL_GROW,
+				inner_width, 0);
+			tall_box_picture(tall, button->widget, touch ? "main_menu/parts/touch_button_%dx%d" : last ?
+				"main_menu/parts/button_%dx%d" : "main_menu/parts/outline_%dx%d", inner_width, button_height);
+			button->block = block;
+			snprintf(button->key, sizeof(button->key), "%s", block->key);
 			tall_text(tall, block->label, label, sizeof(label));
-			snprintf(text, sizeof(text), touch ? "%s%s" : "%s %s", touch ? "" : tall_key_picture(block->key), label);
-			tall_text_set(tall->panel_button.widget, text);
+			/* (an outlined one its words alone) */
+			snprintf(text, sizeof(text), touch || !last ? "%s%s" : "%s %s", touch || !last ? "" :
+				tall_key_picture(block->key), label);
+			tall_text_set(button->widget, text);
 			if (block->action)
-				tall_target(tall, tall->panel_button.widget, _target_button, NONE, block->action);
-			if (tall->panel_bar)
+				tall_target(tall, button->widget, _target_button, NONE, block->action);
+			if (tall->panel_bars[made])
 			{
-				tall->panel_bar->visible = FALSE;
-				tall->panel_bar->focused_child = tall->panel_button.widget;
+				tall->panel_bars[made]->visible = FALSE;
+				tall->panel_bars[made]->focused_child = button->widget;
 			}
+			tall->panel_button_count++;
+			continue;
+		}
+		/* (a choice: a row of its own in the body (the focus steps to it),
+		its label at its left, its value between its arrows) */
+		if (block->kind == MENU_SCREEN_CHOICE)
+		{
+			short choice_height = touch ? TOUCH_PANEL_CHOICE_HEIGHT : PANEL_CHOICE_HEIGHT;
+			short value_x = (short)(inner_x + PANEL_CHOICE_VALUE_X), value_width = (short)(inner_width - PANEL_CHOICE_VALUE_X);
+			char label[MENU_SCREEN_MAXIMUM_TEXT];
+
+			if (tall->line_count >= TALL_MAXIMUM_LINES)
+				break;
+			y = (short)(y + (previous == NONE ? (touch ? TOUCH_PANEL_FIRST_GAP : PANEL_FIRST_GAP) : PANEL_CHOICE_GAP));
+			line = &tall->lines[tall->line_count++];
+			memset(line, 0, sizeof(*line));
+			line->block = block;
+			line->y = y;
+			line->room = choice_height;
+			line->width = inner_width;
+			line->grow = TALL_PANEL_GROW;
+			line->widget = tall_add(tall, tall->body, tall_tag("choice"), inner_x, y, TALL_PANEL_MOVE, TALL_PANEL_GROW,
+				inner_width, choice_height);
+			tall_box_picture(tall, line->widget, "main_menu/parts/item_%dx%d", inner_width, choice_height);
+			line->label = tall_add(tall, line->widget, tall_tag("choice_label"), (short)(inner_x + PANEL_CHOICE_LABEL_X),
+				(short)(y + (choice_height - 16) / 2), TALL_PANEL_MOVE, 0, PANEL_CHOICE_LABEL_WIDTH, 0);
+			tall_text(tall, block->label, label, sizeof(label));
+			tall_text_set(line->label, label);
+			line->arrows[0] = tall_add(tall, line->widget, tall_tag("choice_left"), value_x,
+				(short)(y + (choice_height - 12) / 2), TALL_PANEL_MOVE, 0, 0, 0);
+			line->value = tall_add(tall, line->widget, tall_tag("choice_value"), value_x, (short)(y + (choice_height - 16) / 2),
+				TALL_PANEL_MOVE, TALL_PANEL_GROW, value_width, 0);
+			line->arrows[1] = tall_add(tall, line->widget, tall_tag("choice_right"),
+				(short)(value_x + value_width - PANEL_CHOICE_ARROW - 4), (short)(y + (choice_height - 12) / 2),
+				(short)(TALL_PANEL_MOVE + TALL_PANEL_GROW), 0, 0, 0);
+			tall_target(tall, line->widget, _target_choice, (short)(tall->line_count - 1), block->right_action);
+			y = (short)(y + choice_height);
+			previous = MENU_SCREEN_CHOICE;
 			continue;
 		}
 		/* (the Spartan: a line as tall as it, the original picture in its
@@ -1202,6 +1428,7 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 	short y = touch ? TOUCH_BAR_Y : TALL_BAR_Y;
 	short slot_x[TALL_MAXIMUM_PROMPTS], slot_width[TALL_MAXIMUM_PROMPTS], widths[TALL_MAXIMUM_PROMPTS];
 	short grown[TALL_MAXIMUM_PROMPTS];
+	boolean on_left[TALL_MAXIMUM_PROMPTS];
 	short right_width = 0;
 	char const *previous_key = NULL;
 	long index, count = 0;
@@ -1236,7 +1463,8 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 		time, by their ifs) */
 		shared = previous_key && !strcmp(previous_key, button->key);
 		if (touch)
-			width = !strcmp(button->key, "back") ? TOUCH_BACK_WIDTH : TOUCH_PROMPT_WIDTH;
+			width = button->touch_width ? button->touch_width : !strcmp(button->key, "back") ? TOUCH_BACK_WIDTH :
+				TOUCH_PROMPT_WIDTH;
 		else
 			width = tall_prompt_width(tall, button);
 		/* (the right end's first: from where they end at the right margin) */
@@ -1293,12 +1521,16 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 	for (index = 0; index < count; index++)
 	{
 		struct screen_box *box = tall_box_of(tall, tall->prompts[index].widget);
-		boolean left = slot_x[index] + slot_width[index] / 2 < 320;
 
+		/* (side="right"'s at the right edge, wherever their place; on a
+		touchscreen, BACK at the right edge, the rest in a row from the
+		left) */
+		on_left[index] = touch ? strcmp(tall->prompts[index].key, "back") != 0 :
+			slot_x[index] + slot_width[index] / 2 < 320 && !tall_prompt_right(tall->prompts[index].block);
 		if (!box)
 			continue;
 		box->centred = TRUE;
-		box->dx = (short)(left ? -106 : 106);
+		box->dx = (short)(on_left[index] ? -106 : 106);
 	}
 	if (any_grown)
 	{
@@ -1314,7 +1546,7 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 
 			if (index && slot_x[index] == slot_x[index - 1])
 				continue;
-			if (slot_x[index] + slot_width[index] / 2 >= 320)
+			if (!on_left[index])
 				continue;
 			for (other = index; other < count && slot_x[other] == slot_x[index]; other++)
 				slot_grown = (short)MAX(slot_grown, grown[other]);
@@ -1336,7 +1568,7 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 			long other;
 			short most = 0;
 
-			if (slot_x[index] + slot_width[index] / 2 < 320)
+			if (on_left[index])
 				continue;
 			for (other = 0; other < count; other++)
 			{
@@ -1351,7 +1583,7 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 			short slot_grown = 0;
 			long other;
 
-			if (slot_x[place] + slot_width[place] / 2 < 320 || (place && slot_x[place] == slot_x[place - 1]))
+			if (on_left[place] || (place && slot_x[place] == slot_x[place - 1]))
 				continue;
 			for (other = place; other < count && slot_x[other] == slot_x[place]; other++)
 				slot_grown = (short)MAX(slot_grown, grown[other]);
@@ -1480,6 +1712,7 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 			tall->searches[index].list->focused_child = tall->searches[index].icon;
 	}
 	snprintf(open->back, sizeof(open->back), "%s", screen->back ? screen->back : "");
+	snprintf(open->start, sizeof(open->start), "%s", screen->start ? screen->start : "");
 	open->generation = menu_screens_generation(screen->name);
 	return TRUE;
 }
@@ -1781,6 +2014,7 @@ static void tall_rows_frame(struct screen_tall *tall, struct widget_instance *sc
 	view->focused = focused;
 	view->hover = ui_widget_port_hover_focused();
 	view->titles = tall->titles && tall->titles->visible;
+	view->lanes = tall->lanes;
 	view->chosen = NONE;
 	view->focus = NONE;
 	if (tall->source)
@@ -1792,6 +2026,8 @@ static void tall_rows_frame(struct screen_tall *tall, struct widget_instance *sc
 	}
 	if (view->focus_titles && tall->titles && tall->titles->visible)
 		tall_focus(tall->body, tall->titles);
+	if (tall->lanes > 1)
+		tall_lanes_frame(tall);
 	for (index = 0; index < tall->row_count; index++)
 	{
 		struct screen_row_widgets *row = &tall->rows[index];
@@ -1799,16 +2035,27 @@ static void tall_rows_frame(struct screen_tall *tall, struct widget_instance *sc
 		unsigned short words[MENU_TABLE_TEXT_LENGTH];
 		boolean heading;
 		boolean row_focused = tall->body->focused_child == row->row;
+		int state = MENU_TABLE_ROW_PLAIN;
 
 		if (!row->row)
 			continue;
-		row->row->visible = row_index < view->count;
+		/* (a table of lanes': every place its own row, shown while the
+		source has a row there; a row marked framed, the brighter with the
+		focus) */
+		if (tall->lanes > 1)
+			row_index = (short)index;
+		if (tall->source && tall->source->state && row_index < view->count)
+			state = tall->source->state(row_index);
+		row->row->visible = row_index < view->count && state != MENU_TABLE_ROW_NONE;
+		row->row->disabled = !row->row->visible;
 		if (!row->row->visible)
 			continue;
-		heading = tall->source && tall->source->heading(row_index, words, MENU_TABLE_TEXT_LENGTH);
+		heading = tall->lanes < 2 && tall->source && tall->source->heading(row_index, words, MENU_TABLE_TEXT_LENGTH);
 		visible_set_safe(row->heading, heading);
 		row->row->animation.current_frame_index = (short)(heading ? 0 : row_index == view->chosen ? 2 :
 			row_focused ? 1 : 0);
+		if (tall->lanes > 1)
+			row->row->animation.current_frame_index = (short)((state == MENU_TABLE_ROW_MARKED ? 2 : 0) + row_focused);
 		if (heading)
 		{
 			pc_menu_text_fit(row->heading, words, tall_width(tall, row->heading));
@@ -1831,6 +2078,7 @@ static void tall_rows_frame(struct screen_tall *tall, struct widget_instance *sc
 			}
 			memset(&cell, 0, sizeof(cell));
 			cell.frame = NONE;
+			cell.speaker = NONE;
 			if (tall->source)
 				tall->source->cell(row_index, column->block->id, row_focused, &cell);
 			if (row->picture[column_index])
@@ -1847,7 +2095,12 @@ static void tall_rows_frame(struct screen_tall *tall, struct widget_instance *sc
 				room = (short)(TALL_BADGE_WIDTH + TALL_BADGE_GAP);
 			if (cell.lock)
 				room = (short)(room + TALL_LOCK_WIDTH + TALL_BADGE_GAP);
+			/* (its shorter words where its own would be cut short) */
+			if (cell.fallback[0] && pc_menu_text_width(row->text[column_index], cell.text) > width - room)
+				csmemcpy(cell.text, cell.fallback, sizeof(cell.text));
 			drawn = pc_menu_text_fit(row->text[column_index], cell.text, (short)(width - room));
+			if (cell.speaker != NONE)
+				pc_menu_speaker_note(row->text[column_index], cell.speaker);
 			tall_color(tall, row->text[column_index], cell.color ? cell.color :
 				column->block->cell == MENU_SCREEN_CELL_STRONG ? 0xFFFFFFFFUL : 0);
 			box = tall_box_of(tall, row->text[column_index]);
@@ -1913,6 +2166,103 @@ static void tall_rows_frame(struct screen_tall *tall, struct widget_instance *sc
 	}
 }
 
+/* a table's lanes: each its title (its label's words, in its tone's
+colour) and its detail; a lane whose label has no value gone, its panel's
+place the lane's before it's (the panel across them all for one lane) */
+static void tall_lanes_frame(struct screen_tall *tall)
+{
+	short lane, shown = 0;
+
+	for (lane = 0; lane < tall->lanes; lane++)
+	{
+		struct menu_screen_block const *block = tall->lane_blocks[lane];
+		char text[MENU_SCREEN_MAXIMUM_TEXT];
+		char tone_text[16];
+		boolean titled = block && tall_text(tall, block->label, text, sizeof(text));
+		short tone = (short)lane;
+
+		if (block && block->tone)
+			tone = (short)atoi(block->tone[0] >= '0' && block->tone[0] <= '9' ? block->tone :
+				tall_binding(tall, block->tone, tone_text, sizeof(tone_text)));
+		shown += titled;
+		visible_set_safe(tall->lane_titles[lane], titled);
+		visible_set_safe(tall->lane_panels[lane], titled && tone < 2);
+		if (tall->lane_panels[lane])
+			tall->lane_panels[lane]->animation.current_frame_index = (short)MIN(MAX(tone, 0), 1);
+		if (titled)
+		{
+			tall_text_set(tall->lane_titles[lane], text);
+			tall_color(tall, tall->lane_titles[lane], tone == 0 ? TALL_LANE_RED : tone == 1 ? TALL_LANE_BLUE : 0);
+		}
+		if (tall->lane_details[lane])
+		{
+			boolean detailed = block && block->empty && tall_text(tall, block->empty, text, sizeof(text)) && text[0];
+
+			tall->lane_details[lane]->visible = detailed;
+			if (detailed)
+				tall_text_set(tall->lane_details[lane], text);
+		}
+	}
+	/* (one lane titled, or a lane of no team's: the panel across them) */
+	{
+		boolean span = shown < tall->lanes;
+
+		for (lane = 0; lane < tall->lanes && !span; lane++)
+			span = tall->lane_panels[lane] && !tall->lane_panels[lane]->visible;
+		visible_set_safe(tall->lane_span, span);
+		for (lane = 0; lane < tall->lanes && span; lane++)
+			visible_set_safe(tall->lane_panels[lane], FALSE);
+	}
+}
+
+/* a panel's choice: moved up by the lines gone before it, its value's
+words, dimmed (and passed over by the focus) while its dim has a value */
+static void tall_choice_frame(struct screen_tall *tall, struct screen_line *line, short lift)
+{
+	struct menu_screen_block const *block = line->block;
+	struct widget_instance *parts[4];
+	char text[MENU_SCREEN_MAXIMUM_TEXT * 2];
+	char dim[MENU_SCREEN_MAXIMUM_TEXT];
+	boolean dimmed = block->dim && tall_binding(tall, block->dim, dim, sizeof(dim))[0];
+	short index;
+
+	parts[0] = line->label;
+	parts[1] = line->value;
+	parts[2] = line->arrows[0];
+	parts[3] = line->arrows[1];
+	{
+		struct screen_box *box = tall_box_of(tall, line->widget);
+		short moved = (short)(line->y - lift - (box ? box->y : 0));
+
+		if (box)
+			box->y = (short)(box->y + moved);
+		for (index = 0; index < 4; index++)
+		{
+			struct screen_box *part = tall_box_of(tall, parts[index]);
+
+			if (part)
+				part->y = (short)(part->y + moved);
+		}
+	}
+	line->widget->visible = TRUE;
+	line->widget->disabled = dimmed;
+	line->widget->alpha_modifier = dimmed ? 0.4f : 1.0f;
+	for (index = 0; index < 4; index++)
+	{
+		if (parts[index])
+			parts[index]->alpha_modifier = dimmed ? 0.4f : 1.0f;
+	}
+	if (line->value && tall_text(tall, block->hints[0], text, sizeof(text)))
+	{
+		unsigned short wide_text[MENU_SCREEN_MAXIMUM_TEXT * 2];
+
+		tall_utf16(text, wide_text, NUMBEROF(wide_text));
+		pc_menu_text_fit(line->value, wide_text, (short)(tall_width(tall, line->value) - 2 * (PANEL_CHOICE_ARROW + 2)));
+	}
+	if (dimmed && tall->body->focused_child == line->widget)
+		tall->body->focused_child = NULL;
+}
+
 /* the panel's lines: each its binding's words (a heading's and a text's
 wrapped to their lines), shown while they have some */
 static void tall_panel_frame(struct screen_tall *tall)
@@ -1936,7 +2286,14 @@ static void tall_panel_frame(struct screen_tall *tall)
 		if (block->condition && !tall_shown(tall, block))
 		{
 			line->widget->visible = FALSE;
+			if (block->kind == MENU_SCREEN_CHOICE)
+				line->widget->disabled = TRUE;
 			lift = (short)(lift + line->room);
+			continue;
+		}
+		if (block->kind == MENU_SCREEN_CHOICE)
+		{
+			tall_choice_frame(tall, line, lift);
 			continue;
 		}
 		{
@@ -1981,12 +2338,27 @@ static void tall_panel_frame(struct screen_tall *tall)
 			break;
 		}
 	}
-	if (tall->panel_bar)
+	for (index = 0; index < tall->panel_button_count; index++)
 	{
-		boolean shown = tall_shown(tall, tall->panel_button.block);
+		struct screen_prompt *button = &tall->panel_buttons[index];
+		boolean shown = tall_shown(tall, button->block);
 
-		tall->panel_bar->visible = shown;
-		tall->panel_bar->disabled = !shown;
+		if (!tall->panel_bars[index])
+			continue;
+		tall->panel_bars[index]->visible = shown;
+		tall->panel_bars[index]->disabled = !shown;
+		/* (its words again: they may have bindings, START GAME's countdown) */
+		if (shown && button->widget)
+		{
+			char label[MENU_SCREEN_MAXIMUM_TEXT];
+			char text[MENU_SCREEN_MAXIMUM_TEXT];
+
+			boolean plain = touch || index < tall->panel_button_count - 1;
+
+			tall_text(tall, button->block->label, label, sizeof(label));
+			snprintf(text, sizeof(text), plain ? "%s%s" : "%s %s", plain ? "" : tall_key_picture(button->key), label);
+			tall_text_set(button->widget, text);
+		}
 	}
 }
 
@@ -2035,9 +2407,12 @@ static void tall_frame(struct screen_open *open)
 	if (tall->detail)
 	{
 		char text[MENU_SCREEN_MAXIMUM_TEXT];
+		unsigned short wide_text[MENU_SCREEN_MAXIMUM_TEXT];
 
+		/* (cut short with "..." where it is wider than its place) */
 		tall_text(tall, tall->header->empty, text, sizeof(text));
-		tall_text_set(tall->detail, text);
+		tall_utf16(text, wide_text, NUMBEROF(wide_text));
+		pc_menu_text_fit(tall->detail, wide_text, tall_width(tall, tall->detail));
 	}
 	if (open->header)
 	{
@@ -2063,12 +2438,24 @@ static void tall_frame(struct screen_open *open)
 		screen->focused_child = tall->body;
 	/* (the focus off what cannot have it: the first row, else the bar) */
 	focused = tall->body->focused_child;
-	if (!focused || !focused->visible || focused->disabled)
+	if (tall->focus_waiting && focused != tall->bar)
+		tall->focus_waiting = FALSE;
+	if (!focused || !focused->visible || focused->disabled || tall->focus_waiting)
 	{
-		if (tall->rows[0].row && tall->rows[0].row->visible)
-			tall_focus(tall->body, tall->rows[0].row);
-		else if (tall->bar)
+		short row;
+
+		for (row = 0; row < tall->row_count && !(tall->rows[row].row && tall->rows[row].row->visible); row++)
+			;
+		if (row < tall->row_count && (row == 0 || tall->lanes > 1))
+		{
+			tall_focus(tall->body, tall->rows[row].row);
+			tall->focus_waiting = FALSE;
+		}
+		else if (tall->bar && focused != tall->bar)
+		{
 			tall_focus(tall->body, tall->bar);
+			tall->focus_waiting = tall->lanes > 1;
+		}
 	}
 	tall_place(tall, screen);
 	/* (the panel's Spartan: in the middle of the panel as wide as it is now,
@@ -2162,9 +2549,70 @@ static boolean tall_do(struct screen_open *open, struct widget_instance *widget,
 			screen_action_row = NONE;
 			return result;
 		}
+		case _target_choice:
+		{
+			/* (A, or a click or a tap on its right half: its right; on its
+			left half, its left) */
+			struct screen_line const *line = &tall->lines[target->index];
+			short x, y;
+			char const *action = line->block->right_action;
+
+			if (line->widget->disabled)
+				return FALSE;
+			if (ui_widget_port_take_click(&x, &y))
+			{
+				struct screen_box const *box = tall_box_of(tall, line->widget);
+
+				if (box && x < box->at_x + tall_width(tall, line->widget) / 2 + PANEL_CHOICE_VALUE_X / 2)
+					action = line->block->left_action;
+			}
+			result = screen_action_run(widget, event, action, deleted);
+			if (result && !*deleted)
+				ui_play_audio_feedback_sound(TALL_SOUND_FORWARD);
+			return result;
+		}
 		default:
 			return target->action && screen_action_run(widget, event, target->action, deleted);
 		}
+	}
+	return FALSE;
+}
+
+/* left or right (step -1 or 1) on a widget of the screen: a choice's left
+or right, a row's its table's (its row given), FALSE for what it leaves */
+static boolean tall_step(struct screen_open *open, struct widget_instance *widget, struct event_record *event,
+	boolean *deleted, short step)
+{
+	struct screen_tall *tall = tall_of(open);
+	long index;
+
+	*deleted = FALSE;
+	for (index = 0; tall && index < tall->target_count; index++)
+	{
+		struct screen_target const *target = &tall->targets[index];
+		char const *action = NULL;
+		boolean result;
+
+		if (target->widget != widget)
+			continue;
+		if (target->kind == _target_choice)
+		{
+			struct screen_line const *line = &tall->lines[target->index];
+
+			if (line->widget->disabled)
+				return FALSE;
+			action = step < 0 ? line->block->left_action : line->block->right_action;
+		}
+		else if (target->kind == _target_row)
+			action = step < 0 ? tall->table->left_action : tall->table->right_action;
+		if (!action)
+			return FALSE;
+		screen_action_row = target->kind == _target_row ? target->index : NONE;
+		result = screen_action_run(widget, event, action, deleted);
+		screen_action_row = NONE;
+		if (result && !*deleted && target->kind == _target_choice)
+			ui_play_audio_feedback_sound(TALL_SOUND_FORWARD);
+		return result;
 	}
 	return FALSE;
 }
@@ -2200,13 +2648,14 @@ static boolean tall_key(struct screen_open *open, struct widget_instance *screen
 		return screen_action_run(screen, event, tall->tab_blocks[at]->action, deleted);
 	}
 	{
-		struct screen_prompt *prompts[TALL_MAXIMUM_PROMPTS + 3];
+		struct screen_prompt *prompts[TALL_MAXIMUM_PROMPTS + TALL_MAXIMUM_PANEL_BUTTONS + 2];
 		long count = 0;
 
 		for (index = 0; index < tall->prompt_count; index++)
 			prompts[count++] = &tall->prompts[index];
 		prompts[count++] = &tall->header_button;
-		prompts[count++] = &tall->panel_button;
+		for (index = 0; index < tall->panel_button_count; index++)
+			prompts[count++] = &tall->panel_buttons[index];
 		prompts[count++] = &tall->table_button;
 		for (index = 0; index < count; index++)
 		{

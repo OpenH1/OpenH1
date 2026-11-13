@@ -69,6 +69,8 @@ enum reader_element
 	_element_pills,
 	_element_pill,
 	_element_pair,
+	_element_lane,
+	_element_choice,
 	_element_box,
 	_element_legend,
 	_element_objectives
@@ -219,7 +221,7 @@ static short number_read(struct reader *reader, char const *text, char const *wh
 /* whether a key is one a <button> may name */
 static int key_known(char const *key)
 {
-	static char const *const keys[] = { "accept", "back", "x", "y", "lb", "rb", "lt", "rt", "r3", "view" };
+	static char const *const keys[] = { "accept", "back", "x", "y", "lb", "rb", "lt", "rt", "r3", "view", "dpad" };
 	unsigned index;
 
 	for (index = 0; key && index < sizeof(keys) / sizeof(keys[0]); index++)
@@ -359,8 +361,8 @@ static void touch_read(struct reader *reader, struct menu_screen_block *column, 
 label, and what it does (do: an action; none, its key pressed) */
 static int button_read(struct reader *reader, XML_Char const **attributes, int parent_block)
 {
-	static char const *const names[] = { "key", "label", "side", "do", "width", "if", "when", NULL };
-	char const *values[8];
+	static char const *const names[] = { "key", "label", "side", "do", "width", "if", "when", "touch-width", NULL };
+	char const *values[9];
 	struct menu_screen *screen = reader->screen;
 	int block;
 
@@ -377,7 +379,7 @@ static int button_read(struct reader *reader, XML_Char const **attributes, int p
 		button->condition = values[5];
 		button->when = values[6];
 		if (!key_known(button->key))
-			reader_problem(reader, "<button>'s key is accept, back, x, y, lb, rb, lt, rt, r3 or view", NULL);
+			reader_problem(reader, "<button>'s key is accept, back, x, y, lb, rb, lt, rt, r3, view or dpad", NULL);
 		else if (!button->label || !button->label[0])
 			reader_problem(reader, "<button> has no label", NULL);
 		else if (button->side && strcmp(button->side, "left") && strcmp(button->side, "right"))
@@ -387,6 +389,8 @@ static int button_read(struct reader *reader, XML_Char const **attributes, int p
 			action_check(reader, button->action);
 		if (!reader->failed && values[4])
 			button->width = number_read(reader, values[4], "a <button>'s width", 1, 640);
+		if (!reader->failed && values[7])
+			button->touch_width = number_read(reader, values[7], "a <button>'s touch-width", 1, 640);
 		shown_check(reader, button->condition, button->when);
 	}
 	return block;
@@ -530,7 +534,7 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 	}
 	else if (parent_element == _element_screen && !strcmp(name, "table"))
 	{
-		static char const *const names[] = { "id", "source", "sorted", "do", "empty", NULL };
+		static char const *const names[] = { "id", "source", "sorted", "do", "empty", "lanes", "left", "right", NULL };
 
 		*element = _element_table;
 		attributes_read(reader, name, attributes, names, values);
@@ -545,6 +549,9 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 			table->value = values[2];
 			table->action = values[3];
 			table->empty = values[4];
+			table->lanes = 1;
+			table->left_action = values[6];
+			table->right_action = values[7];
 			if (!table->source || !table->source[0])
 				reader_problem(reader, "<table> has no source", NULL);
 			else
@@ -554,13 +561,46 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 			if (!reader->failed && table->action)
 				action_check(reader, table->action);
 			text_attribute_check(reader, table->empty);
+			if (!reader->failed && values[5])
+				table->lanes = number_read(reader, values[5], "a <table>'s lanes", 1, 4);
+			if (!reader->failed && table->left_action)
+				action_check(reader, table->left_action);
+			if (!reader->failed && table->right_action)
+				action_check(reader, table->right_action);
+		}
+	}
+	else if (parent_element == _element_table && !strcmp(name, "lane"))
+	{
+		static char const *const names[] = { "label", "detail", "tone", NULL };
+		struct menu_screen_block const *table = &screen->blocks[parent_block];
+
+		*element = _element_lane;
+		attributes_read(reader, name, attributes, names, values);
+		if (!reader->failed && table->lanes < 2)
+			reader_problem(reader, "a <lane> is in a <table> of lanes=\"2\" or more", NULL);
+		block = block_add(reader, MENU_SCREEN_LANE, parent_block);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *lane = &screen->blocks[block];
+
+			lane->label = values[0];
+			lane->empty = values[1];
+			lane->tone = values[2];
+			if (!lane->label)
+				reader_problem(reader, "<lane> has no label", NULL);
+			text_attribute_check(reader, lane->label);
+			text_attribute_check(reader, lane->empty);
+			if (!reader->failed && lane->tone && (lane->tone[0] < '0' || lane->tone[0] > '9'))
+				binding_check(reader, lane->tone);
+			else if (!reader->failed && lane->tone)
+				number_read(reader, lane->tone, "a <lane>'s tone", 0, 2);
 		}
 	}
 	else if (parent_element == _element_table && !strcmp(name, "column"))
 	{
 		static char const *const names[] = { "id", "label", "kind", "width", "grow", "align", "sort", "do", "touch",
 			"when", "gap", "title-width", NULL };
-		static char const *const kinds[] = { "text", "strong", "ping", "star" };
+		static char const *const kinds[] = { "text", "strong", "ping", "star", "dot" };
 
 		*element = _element_column;
 		attributes_read(reader, name, attributes, names, values);
@@ -576,7 +616,7 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 			column->action = values[7];
 			column->when = values[9];
 			column->cell = -1;
-			for (kind = 0; kind < 4 && values[2]; kind++)
+			for (kind = 0; kind < 5 && values[2]; kind++)
 			{
 				if (!strcmp(values[2], kinds[kind]))
 					column->cell = kind;
@@ -586,7 +626,7 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 			if (!column->id || !column->id[0])
 				reader_problem(reader, "<column> has no id", NULL);
 			else if (column->cell < 0)
-				reader_problem(reader, "a <column>'s kind is text, strong, ping or star: \"%s\"", values[2]);
+				reader_problem(reader, "a <column>'s kind is text, strong, ping, star or dot: \"%s\"", values[2]);
 			else if (!values[3])
 				reader_problem(reader, "<column> has no width", NULL);
 			else
@@ -735,6 +775,42 @@ static int element_more(struct reader *reader, char const *name, XML_Char const 
 			shown_check(reader, NULL, pair->when);
 		}
 	}
+	else if (parent_element == _element_panel && !strcmp(name, "choice"))
+	{
+		static char const *const names[] = { "label", "value", "left", "right", "if", "dim", "when", NULL };
+
+		*element = _element_choice;
+		attributes_read(reader, name, attributes, names, values);
+		block = block_add(reader, MENU_SCREEN_CHOICE, parent_block);
+		if (block >= 0 && !reader->failed)
+		{
+			struct menu_screen_block *choice = &screen->blocks[block];
+
+			choice->label = values[0];
+			choice->hints[0] = values[1];
+			choice->hint_count = values[1] != NULL;
+			choice->left_action = values[2];
+			choice->right_action = values[3];
+			choice->condition = values[4];
+			choice->dim = values[5];
+			choice->when = values[6];
+			if (!choice->label || !choice->label[0])
+				reader_problem(reader, "<choice> has no label", NULL);
+			else if (!values[1])
+				reader_problem(reader, "<choice> has no value", NULL);
+			else if (!choice->left_action || !choice->right_action)
+				reader_problem(reader, "<choice> has no left or no right", NULL);
+			text_attribute_check(reader, choice->label);
+			text_attribute_check(reader, values[1]);
+			if (!reader->failed && choice->left_action)
+				action_check(reader, choice->left_action);
+			if (!reader->failed && choice->right_action)
+				action_check(reader, choice->right_action);
+			if (!reader->failed && choice->dim)
+				binding_check(reader, choice->dim);
+			shown_check(reader, choice->condition, choice->when);
+		}
+	}
 	else if (parent_element == _element_panel && !strcmp(name, "spartan"))
 	{
 		*element = _element_spartan;
@@ -770,16 +846,19 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 	}
 	if (!strcmp(name, "screen") && parent_element == -1)
 	{
-		static char const *const names[] = { "name", "back", NULL };
+		static char const *const names[] = { "name", "back", "start", NULL };
 
 		element = _element_screen;
 		attributes_read(reader, name, attributes, names, values);
 		screen->name = values[0];
 		screen->back = values[1];
+		screen->start = values[2];
 		if (!reader->failed && (!screen->name || !screen->name[0]))
 			reader_problem(reader, "<screen> has no name", NULL);
 		if (!reader->failed && screen->back)
 			action_check(reader, screen->back);
+		if (!reader->failed && screen->start)
+			action_check(reader, screen->start);
 	}
 	else if (parent_element == _element_screen && (!strcmp(name, "title-art") || !strcmp(name, "space")))
 	{
@@ -1079,6 +1158,15 @@ static void XMLCALL element_end(void *data, XML_Char const *name)
 					!strcmp(screen->blocks[other].id, child->id))
 					reader_problem(reader, "two of its blocks' id is \"%s\"", child->id);
 			}
+		}
+		if (!reader->failed && element == _element_table)
+		{
+			int lanes = 0;
+
+			for (index = 0; index < screen->block_count; index++)
+				lanes += screen->blocks[index].parent == self && screen->blocks[index].kind == MENU_SCREEN_LANE;
+			if (lanes && lanes != screen->blocks[self].lanes)
+				reader_problem(reader, "a <table> of lanes has a <lane> for each lane, or none", NULL);
 		}
 		if (!reader->failed && !children)
 		{

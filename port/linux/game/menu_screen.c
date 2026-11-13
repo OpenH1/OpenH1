@@ -235,6 +235,8 @@ static boolean screen_call_search(struct widget_instance *widget, struct event_r
 	boolean *deleted);
 static boolean screen_call_profile(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted);
+static boolean screen_call_lobby(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted);
 static boolean screen_call_close(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted);
 /* the row of the table an action is run for (0 up, on the table), NONE for
@@ -308,6 +310,26 @@ static struct screen_action const screen_actions[] =
 		NULL },
 	{ "profile delete", NULL, NULL, "request del player profile", NULL,
 		"error/confirm_delete_profile_modal_fullscreen", NULL },
+	/* (the lobby's, screens/lobby.xml, as the generated lobby's
+	(menu_functions.c's lobby_menu.inc): a row chosen (a click its lane's
+	team, else the host's start), the start, a team (left and right on the
+	players, CHANGE TEAM), the invite copied, Server Setup, Host Controls,
+	another player of this machine, and the bots' choices stepped) */
+	{ "lobby row", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby start", NULL, NULL, "port lobby start", NULL, NULL, NULL },
+	{ "lobby team red", NULL, NULL, "port lobby team red", NULL, NULL, NULL },
+	{ "lobby team blue", NULL, NULL, "port lobby team blue", NULL, NULL, NULL },
+	{ "lobby team toggle", NULL, NULL, "port lobby team toggle", NULL, NULL, NULL },
+	{ "lobby invite", NULL, NULL, "port lobby invite", NULL, NULL, NULL },
+	{ "lobby settings", NULL, NULL, "port lobby settings", NULL, NULL, NULL },
+	{ "lobby host", NULL, NULL, "port host open", NULL, "main_menu/host_controls/host_controls_screen", NULL },
+	{ "lobby add player", NULL, NULL, "port lobby add player", NULL, NULL, NULL },
+	{ "lobby bots left", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby bots right", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby skill left", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby skill right", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby teams left", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	{ "lobby teams right", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
 	/* (the pause menu's, screens/pause.xml and pause_campaign.xml, as its
 	rows did on the map's: the screen closed (RESUME GAME), or every screen
 	(B; the campaign's RESUME GAME); the player out of a multiplayer game
@@ -332,7 +354,10 @@ static char const *const screen_action_names[] =
 	"browser tab dedicated", "browser tab openh1", "browser tab legacy", "browser tab coop", "browser tab favorites",
 	"browser sort players", "browser sort ping", "browser sort server", "browser sort map", "browser sort mode",
 	"browser sort next", "browser favorite", "browser join", "browser refresh", "browser filters", "profile select",
-	"profile new", "profile delete", "close", "close all", "pause leave", "open host controls", "pause end game",
+	"profile new", "profile delete", "lobby row", "lobby start", "lobby team red", "lobby team blue",
+	"lobby team toggle", "lobby invite", "lobby settings", "lobby host", "lobby add player", "lobby bots left",
+	"lobby bots right", "lobby skill left", "lobby skill right", "lobby teams left", "lobby teams right",
+	"close", "close all", "pause leave", "open host controls", "pause end game",
 	"pause friendly fire", "pause revert", "pause restart", "pause quit",
 };
 
@@ -354,7 +379,12 @@ static char const *const screen_binding_names[] =
 	"browser.panel.kind.tone", "browser.panel.tick", "browser.panel.opence", "browser.panel.players",
 	"browser.panel.ping", "browser.panel.status", "browser.joinable", "browser.server", "browser.link",
 	"browser.filtered", "profile.title", "profile.name", "profile.level", "profile.difficulty", "profile.controls",
-	"profile.color", "profile.chosen", "profile.current", "pause.friendly_fire", "pause.host_controls",
+	"profile.color", "profile.chosen", "profile.current", "lobby.title", "lobby.subtitle", "lobby.red",
+	"lobby.red.count", "lobby.red.tone", "lobby.blue", "lobby.blue.count", "lobby.blue.tone", "lobby.gametype",
+	"lobby.map", "lobby.limits", "lobby.kind", "lobby.kind.tone", "lobby.tick", "lobby.opence", "lobby.after",
+	"lobby.bots", "lobby.bots.shown", "lobby.bots.locked", "lobby.bots.count.locked", "lobby.skill", "lobby.teams",
+	"lobby.status", "lobby.start", "lobby.host", "lobby.settings", "lobby.controls", "lobby.waiting",
+	"lobby.team.change", "lobby.invite", "lobby.add", "pause.friendly_fire", "pause.host_controls",
 	"pause.end_game", "pause.chapters",
 };
 
@@ -363,12 +393,14 @@ static struct menu_table_source const *const screen_sources[] =
 {
 	&pc_menu_browser_source,
 	&pc_menu_profile_source,
+	&pc_menu_lobby_source,
 };
 
 static char const *const screen_source_names[] =
 {
 	"browser.games",
 	"profiles",
+	"lobby.players",
 };
 
 static int screen_value(void *context, char const *name, char *value, unsigned long size)
@@ -386,6 +418,9 @@ static int screen_value(void *context, char const *name, char *value, unsigned l
 	/* (Select Profile's: menu_functions.c's) */
 	if (!strncmp(name, "profile.", 8))
 		return pc_menu_profile_value(name, value, size);
+	/* (the lobby's: menu_functions.c's lobby_menu.inc) */
+	if (!strncmp(name, "lobby.", 6))
+		return pc_menu_lobby_value(name, value, size);
 	/* (the pause menu's: the rows this machine's has, as menu_tags.c adds
 	them to the map's; FRIENDLY FIRE's words, this machine's choice) */
 	if (!strncmp(name, "pause.", 6))
@@ -454,6 +489,11 @@ static struct screen_place const screen_places[] =
 	/* (Settings' MANAGE PROFILES: the profiles, the chosen one's Spartan
 	beside them) */
 	{ "profile_select", "main_menu\\profile_manager\\player_profile_manager", NULL, NULL },
+	/* (the lobby, a network game's and a game of this machine alone's: its
+	generated screen's own handlers kept (B leaves, START joins another
+	player, X adds one, Y the map vote or the invite), and what its list did
+	each frame done: pc_menu_lobby_frame) */
+	{ "lobby", "main_menu\\multiplayer_type_select\\lobby\\lobby_screen", pc_menu_lobby_frame, NULL },
 	/* (the pause menu, in place of the map's: menu_screen_pause_name opens
 	these, a campaign's or a multiplayer game's, pausing the game or not) */
 	{ "pause", "screens\\pause", NULL, NULL },
@@ -488,6 +528,7 @@ struct screen_open
 	char actions[SCREEN_MAXIMUM_ITEMS][SCREEN_ACTION_LENGTH];
 	long item_count;
 	char back[SCREEN_ACTION_LENGTH];
+	char start[SCREEN_ACTION_LENGTH];
 	/* (a button over a generated screen, its own widgets kept: the
 	browser's; and the child its focus goes back to from the button) */
 	boolean extra;
@@ -1082,6 +1123,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		open->list->parameters.list.selected_index = (short)focus_index;
 	}
 	snprintf(open->back, sizeof(open->back), "%s", screen->back ? screen->back : "");
+	snprintf(open->start, sizeof(open->start), "%s", screen->start ? screen->start : "");
 	open->generation = menu_screens_generation(screen->name);
 	return TRUE;
 }
@@ -1794,6 +1836,26 @@ static boolean screen_call_profile(struct widget_instance *widget, struct event_
 	return TRUE;
 }
 
+/* the lobby's actions of C's own (menu_functions.c's lobby_menu.inc), the
+row given */
+static boolean screen_call_lobby(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted)
+{
+	int lobby_deleted = FALSE;
+	boolean result = pc_menu_lobby_action(widget, event, name, screen_action_row, &lobby_deleted) != 0;
+
+	*deleted = lobby_deleted != 0;
+	return result;
+}
+
+boolean menu_screen_step(struct widget_instance *widget, struct event_record *event, boolean *deleted, short step)
+{
+	struct screen_open *open = screen_open_of(widget_instance_get_topmost_parent(widget));
+
+	*deleted = FALSE;
+	return open && tall_of(open) && tall_step(open, widget, event, deleted, step);
+}
+
 boolean menu_screen_do(struct widget_instance *item, struct event_record *event, boolean *deleted)
 {
 	struct screen_open *open = screen_open_of(widget_instance_get_topmost_parent(item));
@@ -1844,6 +1906,14 @@ boolean menu_screen_back(struct widget_instance *widget, struct event_record *ev
 	struct screen_open *open = screen_open_of(widget);
 
 	*deleted = FALSE;
+	/* (Start anywhere on a screen of its own start: that, where it does
+	something) */
+	if (open && open->start[0] && event->type == SCREEN_EVENT_BUTTON && event->data.button.value == 1 &&
+		event->data.button.index == _gamepad_binary_button_start &&
+		screen_action_run(widget, event, open->start, deleted))
+	{
+		return TRUE;
+	}
 	/* (a tall screen's keys: its buttons' and its tabs') */
 	if (open && tall_of(open) && tall_key(open, widget, event, deleted))
 		return TRUE;
