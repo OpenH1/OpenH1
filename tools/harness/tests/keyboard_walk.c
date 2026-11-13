@@ -57,6 +57,13 @@ const char *config_string(const char *name)
 	return "";
 }
 
+/* (each player's, their profile's: config.toml's here) */
+const char *config_player_string(int local_player, const char *name)
+{
+	(void)local_player;
+	return config_string(name);
+}
+
 unsigned long config_changes(void)
 {
 	return setting_changes;

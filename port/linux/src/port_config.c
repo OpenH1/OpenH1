@@ -3251,7 +3251,7 @@ static char *config_default_text(void)
 		config_append(&text, buffer);
 		for (other = index; other < NUMBER_OF_CONFIG_SETTINGS; other++)
 		{
-			if ((config_settings[other].platforms & CONFIG_PLATFORM) &&
+			if ((config_settings[other].platforms & CONFIG_PLATFORM) && config_settings[other].scope != _scope_profile &&
 				!strncmp(config_settings[other].name, setting->name, length + 1))
 				config_append_setting(&text, &config_settings[other]);
 		}
