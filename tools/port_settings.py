@@ -5513,6 +5513,7 @@ def parts_pictures() -> list:
                                            (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h),
                                            (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h)]),
         *lobby_pictures(framed, highlight),
+        *screen_pictures(framed, highlight),
         *touch_pictures(),
         # (the searches' fields, magnifying glass and X: Lucide's,
         # port/assets/icons/lucide)
@@ -5572,6 +5573,51 @@ def lobby_pictures(framed, highlight) -> list:
         (part_button(start_w, start_h), [(framed(start_w, start_h, "#1e5fd1", 0.9, "#5aa9ff"), start_w, start_h),
                                          (framed(start_w, start_h, "#2a6fe0", 1.0, "#b8dbff"), start_w, start_h)]),
     ]
+
+
+# the hand-written screens' tall layout's parts (port/linux/game/menu_screen_tall.inc): a table of lanes' (the
+# lobby's teams, screens/lobby.xml) width, its lanes' top and bottom, the gap between two lanes and their rows'
+# inset and height, on the computer and on a touchscreen; a panel's choice's size (its width the panel's inside)
+# and an outlined button's
+SCREEN_LANES = {"computer": (404, 74, 436), "touch": (364, 76, 410)}
+SCREEN_LANE_GAP, SCREEN_LANE_INSET, SCREEN_LANE_ROW = 12, 8, 18
+SCREEN_CHOICE_HEIGHTS = {"computer": (148, 22), "touch": (188, 40)}
+SCREEN_PANEL_BUTTON = (148, 24)
+
+
+def screen_lane_sizes(lanes: int = 2) -> list:
+    """(table width, lane width, lanes' height, a lane's row's width) of a table of lanes, each layout's"""
+    sizes = []
+    for width, top, bottom in SCREEN_LANES.values():
+        lane = (width - (lanes - 1) * SCREEN_LANE_GAP) // lanes
+        sizes.append((width, lane, bottom - top, lane - 2 * SCREEN_LANE_INSET))
+    return sizes
+
+
+def screen_pictures(framed, highlight) -> list:
+    """the hand-written screens' parts at their sizes: a table of lanes' panels (each a team's, red's edge then
+    blue's by the frame, and the panel across them), its rows (a player's, focused, marked as its own (framed),
+    and its own focused: the generated lobby's rows'), a panel's choices' rows (lit with the focus) and its
+    outlined buttons, and a touchscreen's panel beside the lanes"""
+    pictures = []
+    for width, lane, height, row in screen_lane_sizes():
+        pictures.append((part_team_panel(lane, height), [(framed(lane, height, "#081a40", 0.9, edge, 9.5), lane, height)
+                                                         for _, edge in LOBBY_TEAM_COLORS]))
+        pictures.append((part_panel(width, height), [(framed(width, height, "#081a40", 0.9, "#1f4f9a", 9.5), width,
+                                                      height)]))
+        pictures.append((f"{PARTS}/lane_row_{row}x{SCREEN_LANE_ROW}", [
+            (framed(row, SCREEN_LANE_ROW, "#0b2252", 0.9, "none", 5), row, SCREEN_LANE_ROW),
+            (framed(row, SCREEN_LANE_ROW, "#002244", 0.9, "#2299ff", 5), row, SCREEN_LANE_ROW),
+            (framed(row, SCREEN_LANE_ROW, "#0e2a63", 1.0, "#3d8bff", 5), row, SCREEN_LANE_ROW),
+            (framed(row, SCREEN_LANE_ROW, "#0d3a7a", 1.0, "#b8dbff", 5), row, SCREEN_LANE_ROW)]))
+    for width, height in SCREEN_CHOICE_HEIGHTS.values():
+        pictures.append((part_highlight(width, height), highlight(width, height)))
+    button_w, button_h = SCREEN_PANEL_BUTTON
+    pictures.append((part_outline(button_w, button_h), [
+        (framed(button_w, button_h, "none", 1.0, "#2f7fff"), button_w, button_h),
+        (framed(button_w, button_h, "#0d3a7a", 0.9, "#b8dbff"), button_w, button_h)]))
+    # (a touchscreen's panel beside the lanes, from their top: the touch layouts' own size, touch_pictures')
+    return pictures
 
 
 def _part_text(name: str, pairs: list) -> list:

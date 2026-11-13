@@ -92,9 +92,11 @@ more than its rows show (the last row then says so: in a game without teams,
 blue's column's) */
 struct lobby_board_layout
 {
-	short rows[LOBBY_BOARD_COLUMNS][LOBBY_BOARD_ROWS];
+	short rows[LOBBY_BOARD_COLUMNS][LOBBY_LAYOUT_ROWS];
 	short counts[LOBBY_BOARD_COLUMNS];
 	short more[LOBBY_BOARD_COLUMNS];
+	/* (each column's rows laid out) */
+	short row_count;
 };
 
 /* what the lobby offers this machine */
@@ -176,18 +178,22 @@ static short lobby_board_rank(struct lobby_board_entry const *entry)
 	return entry->bot ? 3 : 2;
 }
 
-/* the entries (in the game's order) into the columns' rows: a team game's
-by team, else one list down red's column and on down blue's; a column
-with more than its rows shows one fewer, and how many more in its last */
-static void lobby_board_lay_out(struct lobby_board_entry const *entries, short count, boolean teams,
+/* the entries (in the game's order) into the columns' rows (rows of them
+each, at most LOBBY_LAYOUT_ROWS: the generated screen's LOBBY_BOARD_ROWS,
+the hand-written one's as many as its lanes have): a team game's by team,
+else one list down red's column and on down blue's; a column with more
+than its rows shows one fewer, and how many more in its last */
+static void lobby_board_lay_out_rows(struct lobby_board_entry const *entries, short count, boolean teams, short rows,
 	struct lobby_board_layout *layout)
 {
 	short order[LOBBY_BOARD_ENTRIES];
 	short column, row, index, rank, shown, total = 0;
 
+	rows = (short)MIN(MAX(rows, 1), LOBBY_LAYOUT_ROWS);
+	layout->row_count = rows;
 	for (column = 0; column < LOBBY_BOARD_COLUMNS; column++)
 	{
-		for (row = 0; row < LOBBY_BOARD_ROWS; row++)
+		for (row = 0; row < LOBBY_LAYOUT_ROWS; row++)
 			layout->rows[column][row] = NONE;
 		layout->counts[column] = 0;
 		layout->more[column] = 0;
@@ -204,10 +210,9 @@ static void lobby_board_lay_out(struct lobby_board_entry const *entries, short c
 	}
 	if (!teams)
 	{
-		shown = (short)(total <= LOBBY_BOARD_COLUMNS * LOBBY_BOARD_ROWS ? total :
-			LOBBY_BOARD_COLUMNS * LOBBY_BOARD_ROWS - 1);
+		shown = (short)(total <= LOBBY_BOARD_COLUMNS * rows ? total : LOBBY_BOARD_COLUMNS * rows - 1);
 		for (index = 0; index < shown; index++)
-			layout->rows[index / LOBBY_BOARD_ROWS][index % LOBBY_BOARD_ROWS] = order[index];
+			layout->rows[index / rows][index % rows] = order[index];
 		layout->counts[0] = total;
 		layout->more[LOBBY_BOARD_COLUMNS - 1] = (short)(total - shown);
 		return;
@@ -223,17 +228,24 @@ static void lobby_board_lay_out(struct lobby_board_entry const *entries, short c
 
 			if (team != column)
 				continue;
-			if (in_column < LOBBY_BOARD_ROWS)
+			if (in_column < rows)
 				layout->rows[column][in_column] = order[index];
 			in_column++;
 		}
 		layout->counts[column] = in_column;
-		if (in_column > LOBBY_BOARD_ROWS)
+		if (in_column > rows)
 		{
-			layout->rows[column][LOBBY_BOARD_ROWS - 1] = NONE;
-			layout->more[column] = (short)(in_column - LOBBY_BOARD_ROWS + 1);
+			layout->rows[column][rows - 1] = NONE;
+			layout->more[column] = (short)(in_column - rows + 1);
 		}
 	}
+}
+
+/* ... in the generated screen's rows */
+static void lobby_board_lay_out(struct lobby_board_entry const *entries, short count, boolean teams,
+	struct lobby_board_layout *layout)
+{
+	lobby_board_lay_out_rows(entries, count, teams, LOBBY_BOARD_ROWS, layout);
 }
 
 /* what the lobby offers: the host's start and settings (a player waits for
@@ -539,33 +551,67 @@ static boolean lobby_board_bots_load(struct widget_instance *spinner)
 	return TRUE;
 }
 
-/* "port lobby board update" (the list's) */
-static void lobby_board_update(struct widget_instance *list)
+/* what the lobby shows, worked out from what this machine knows: the
+generated screen's widgets (lobby_board_update) and the hand-written
+screen's table and bindings (screens/lobby.xml: pc_menu_lobby_source,
+pc_menu_lobby_value) are its two views */
+struct lobby_board_model
 {
-	static struct lobby_board_entry entries[LOBBY_BOARD_ENTRIES];
-	static struct network_player *players[LOBBY_BOARD_ENTRIES];
-	struct widget_instance *screen = screen_of(list);
-	struct widget_instance *panel = named(screen, "board_panel", 0);
-	struct widget_instance *bar = named(list, "board_prompts", 0);
+	void *client;
+	struct network_game *game;
+	short state;
+	boolean host, local, dedicated, teams, own_player;
+	short machine, count, mode, seconds;
+	struct lobby_board_entry entries[LOBBY_BOARD_ENTRIES];
+	struct network_player *players[LOBBY_BOARD_ENTRIES];
+	struct lobby_board_layout layout;
+	struct lobby_board_controls controls;
+	/* (the next game's: an OpenH1 game's or Legacy's, its rate) */
+	boolean standard;
+	long rate;
+	/* (the host's: whether OpenCE's players may join; THEN's game after this
+	one, and HOST CONTROLS, the host's or a dedicated server's admin's) */
+	boolean opence, then, host_controls;
+	wchar_t subtitle[SETTINGS_PANEL_TEXT_LENGTH];
+	wchar_t gametype[ROW_TEXT_LENGTH];
+	wchar_t map[SETTINGS_PANEL_TEXT_LENGTH];
+	wchar_t limits[SETTINGS_PANEL_TEXT_LENGTH];
+	wchar_t after[SETTINGS_PANEL_TEXT_LENGTH];
+	wchar_t status[SETTINGS_PANEL_TEXT_LENGTH];
+	/* (START GAME's words, or the countdown; a player's waiting's) */
+	wchar_t start[ROW_TEXT_LENGTH];
+	wchar_t waiting[ROW_TEXT_LENGTH];
+};
+
+/* the model made now, its columns of rows rows (lobby_board_lay_out_rows);
+and what the lobby does each frame its screen is shown, whichever draws it:
+a dedicated server's map vote's screen (map_vote_lobby_check), the players
+counted (lobby_player_count) */
+static void lobby_board_model_make(struct lobby_board_model *model, short rows)
+{
 	void *client = global_network_game_client_get();
 	struct network_game *game = client ? network_game_client_get_game(client) : NULL;
 	short state_data, state = client ? network_game_client_get_state(client, &state_data) : NONE;
 	boolean host = global_network_game_server_get() != NULL;
-	boolean local = host && network_game_is_splitscreen_local();
-	/* (a dedicated server's game: no host's player, its own rules start it) */
-	boolean dedicated = !host && lobby_joined_dedicated;
-	short machine = network_game_client_get_local_machine_index();
-	boolean players_focused = list->focused_child && !strcmp(list->focused_child->name, "board_players");
 	struct p2p_party_status party;
-	struct lobby_board_layout layout;
-	struct lobby_board_controls controls;
-	wchar_t text[SETTINGS_PANEL_TEXT_LENGTH];
 	char link[TEXT_FIELD_LENGTH];
-	short count = 0, column, row, index, mode = _game_mode_none, seconds = NONE;
-	boolean teams = FALSE, own_player = FALSE;
+	short count = 0, index;
+	wchar_t *text;
 
+	model->client = client;
+	model->state = state;
+	model->host = host;
+	model->local = host && network_game_is_splitscreen_local();
+	/* (a dedicated server's game: no host's player, its own rules start it) */
+	model->dedicated = !host && lobby_joined_dedicated;
+	model->machine = network_game_client_get_local_machine_index();
+	model->mode = _game_mode_none;
+	model->seconds = NONE;
+	model->teams = FALSE;
+	model->own_player = FALSE;
 	if (!game || state < _client_state_pregame)
 		game = NULL;
+	model->game = game;
 	/* (a dedicated server's map vote begun: its screen, map_vote_lobby_check) */
 	if (game)
 		map_vote_lobby_check();
@@ -573,49 +619,51 @@ static void lobby_board_update(struct widget_instance *list)
 	for (index = 0; game && index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS; index++)
 	{
 		struct network_player *player = &game->players[index];
-		struct lobby_board_entry *entry = &entries[count];
+		struct lobby_board_entry *entry = &model->entries[count];
 		long player_machine = player->machine_index;
 
 		if (!network_player_is_valid(player))
 			continue;
-		players[count++] = player;
+		model->players[count++] = player;
 		entry->team = player->team_index;
 		entry->bot = bots_machine_is_bot(player_machine);
-		entry->own = !entry->bot && player_machine == machine;
+		entry->own = !entry->bot && player_machine == model->machine;
 		/* (a player knows the host's machine as the game's first: the
 		host's own client joins it first) */
-		entry->host = !entry->bot && player_machine == (host ? machine : 0);
+		entry->host = !entry->bot && player_machine == (host ? model->machine : 0);
 		entry->party = !entry->bot && lobby_board_in_party(&party, player);
 		entry->kind = _lobby_kind_unknown;
 		if (host && network_standard_machine_is_opence(player_machine))
 			entry->kind = _lobby_kind_opence;
 		else if ((host && network_standard_machine_is_openh1(player_machine)) || entry->own)
 			entry->kind = _lobby_kind_openh1;
-		own_player |= entry->own;
+		model->own_player |= entry->own;
 	}
+	model->count = count;
 	lobby_player_count = count;
 	if (game)
 	{
-		mode = game_modes_variant_mode(&game->variant, &game->variant_options);
-		teams = lobby_board_teams(game->variant.universal_variant.teams, mode);
-		seconds = network_game_client_get_seconds_to_game_start(client);
+		model->mode = game_modes_variant_mode(&game->variant, &game->variant_options);
+		model->teams = lobby_board_teams(game->variant.universal_variant.teams, model->mode);
+		model->seconds = network_game_client_get_seconds_to_game_start(client);
 	}
-	lobby_board_lay_out(entries, count, teams, &layout);
+	lobby_board_lay_out_rows(model->entries, count, model->teams, rows, &model->layout);
 	lobby_board_controls_for(host, game && !game->variant.game_engine_index,
-		game && bots_play_game_engine(game->variant.game_engine_index), teams,
-		own_player, lobby_board_invite(link, sizeof(link)) > 0, lobby_local_player_count() < MAXIMUM_LOCAL_PLAYERS,
-		&controls);
+		game && bots_play_game_engine(game->variant.game_engine_index), model->teams,
+		model->own_player, lobby_board_invite(link, sizeof(link)) > 0, lobby_local_player_count() < MAXIMUM_LOCAL_PLAYERS,
+		&model->controls);
 
 	/* (the game's name, where it is, its players: a game of this machine
 	alone's none, as no one else sees it) */
+	text = model->subtitle;
 	text[0] = 0;
-	if (game && local)
+	if (game && model->local)
 	{
 		boolean bots = FALSE;
 
 		for (index = 0; index < count; index++)
-			bots |= entries[index].bot;
-		usnprintf(text, NUMBEROF(text) - 1, count == 1 ? L"%s \x00B7 1 player" : L"%s \x00B7 %d players",
+			bots |= model->entries[index].bot;
+		usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, count == 1 ? L"%s \x00B7 1 player" : L"%s \x00B7 %d players",
 			bots ? L"Offline with bots" : L"Offline", count);
 	}
 	else if (game)
@@ -625,21 +673,141 @@ static void lobby_board_update(struct widget_instance *list)
 
 		/* (and the host's bots among them, bots.c's) */
 		for (index = 0; index < count; index++)
-			bots += entries[index].bot ? 1 : 0;
-		lobby_board_game_name(game, entries, players, count, name, NUMBEROF(name));
-		usnprintf(text, NUMBEROF(text) - 1, L"%s \x00B7 %s \x00B7 %d of %d players", name,
-			dedicated ? L"Dedicated server" : controls.invite ? L"Internet" : L"Local network", count,
+			bots += model->entries[index].bot ? 1 : 0;
+		lobby_board_game_name(game, model->entries, model->players, count, name, NUMBEROF(name));
+		usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, L"%s \x00B7 %s \x00B7 %d of %d players", name,
+			model->dedicated ? L"Dedicated server" : model->controls.invite ? L"Internet" : L"Local network", count,
 			game->maximum_players);
 		if (bots)
 		{
 			size_t length = ustrlen(text);
 
-			usnprintf(text + length, NUMBEROF(text) - 1 - length, bots == 1 ? L" \x00B7 1 bot" : L" \x00B7 %d bots",
-				bots);
+			usnprintf(text + length, SETTINGS_PANEL_TEXT_LENGTH - 1 - length, bots == 1 ? L" \x00B7 1 bot" :
+				L" \x00B7 %d bots", bots);
 		}
 	}
-	text[NUMBEROF(text) - 1] = 0;
-	menu_text_box_fit(named(screen, "board_subtitle", 0), text, 0);
+	text[SETTINGS_PANEL_TEXT_LENGTH - 1] = 0;
+
+	/* (the next game) */
+	model->gametype[0] = model->map[0] = model->limits[0] = model->status[0] = model->start[0] = 0;
+	model->waiting[0] = model->after[0] = 0;
+	model->standard = FALSE;
+	model->rate = 0;
+	model->opence = FALSE;
+	if (game)
+	{
+		wchar_t const *kind = game_modes_variant_kind_name(&game->variant, &game->variant_options);
+
+		model->standard = host ? network_standard_hosting() : network_standard_agreed_rate() > 0;
+		model->rate = network_standard_agreed_rate();
+		ustrncpy(model->gametype, game->variant.human_readable_game_description,
+			MIN(NUMBEROF(model->gametype), NUMBEROF(game->variant.human_readable_game_description) + 1) - 1);
+		model->gametype[MIN(NUMBEROF(model->gametype), NUMBEROF(game->variant.human_readable_game_description) + 1) - 1] =
+			0;
+		if (!model->gametype[0])
+			ustrncpy(model->gametype, kind ? kind : game->variant.game_engine_index ?
+				engine_names[PIN(game->variant.game_engine_index, 0, 5)] : L"CO-OP", NUMBEROF(model->gametype) - 1);
+		model->gametype[NUMBEROF(model->gametype) - 1] = 0;
+		lobby_board_map_text(game->map.name, model->map, NUMBEROF(model->map));
+		/* (a co-op game's difficulty after its level) */
+		if (!game->variant.game_engine_index && campaign_level_of(game->map.name) != NONE)
+		{
+			wchar_t difficulty[ROW_TEXT_LENGTH];
+			size_t length = ustrlen(model->map);
+
+			map_difficulty_text(game->difficulty, difficulty);
+			usnprintf(model->map + length, NUMBEROF(model->map) - 1 - length, L" \x00B7 %s", difficulty);
+			model->map[NUMBEROF(model->map) - 1] = 0;
+		}
+		lobby_board_limits_text(game, model->limits, NUMBEROF(model->limits));
+		model->opence = host && !model->local && network_standard_hosting_mixed();
+
+		/* (how the game is: the countdown, the link just copied, how
+		another player of this machine joins, Infection's teams, waiting
+		for other machines) */
+		text = model->status;
+		if (model->seconds > 0)
+			usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, L"The game starts in %d.", model->seconds);
+		else if (model->seconds == 0)
+			usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, L"The game is starting.");
+		else if (lobby_board.copied_time && system_milliseconds() - lobby_board.copied_time < LOBBY_BOARD_COPIED_TIME)
+			usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, L"Invite copied: paste it in a chat to your friends.");
+		else if (model->controls.bots_locked)
+			usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, L"Bots play every gametype but Race.");
+		else if (lobby_join.adding)
+			usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, L"New player: press START.");
+		else if (model->mode == _game_mode_infection)
+			usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, L"Infection: the zombies are chosen when the game starts.");
+		else if (host && !model->local && game->machine_count < 2)
+			usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, L"Waiting for players to join.");
+		else if (model->dedicated)
+			usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, L"A dedicated server: it starts once enough players join.");
+		else if (lobby_local_player_count() < MAXIMUM_LOCAL_PLAYERS)
+		{
+			short controller;
+
+			for (controller = 0; controller < MAXIMUM_LOCAL_PLAYERS; controller++)
+			{
+				if (input_has_gamepad(controller) && !lobby_controller_playing(controller))
+					usnprintf(text, SETTINGS_PANEL_TEXT_LENGTH - 1, L"Another controller: START joins.");
+			}
+		}
+		text[SETTINGS_PANEL_TEXT_LENGTH - 1] = 0;
+		/* (START GAME's words, the countdown's; a player's waiting) */
+		if (model->seconds > 0)
+			usnprintf(model->start, NUMBEROF(model->start) - 1, model->controls.start ? L"STARTING IN %d" :
+				L"Starting in %d", model->seconds);
+		else if (model->seconds == 0)
+			usnprintf(model->start, NUMBEROF(model->start) - 1, model->controls.start ? L"STARTING..." : L"Starting...");
+		else
+			usnprintf(model->start, NUMBEROF(model->start) - 1, model->dedicated ? L"Waiting for players" :
+				!model->controls.start ? L"Waiting for the host" : L"START GAME");
+		model->start[NUMBEROF(model->start) - 1] = 0;
+		if (model->controls.waiting)
+			ustrncpy(model->waiting, model->start, NUMBEROF(model->waiting) - 1);
+	}
+	/* (a network game's host: the game after this one, its playlist's, and
+	HOST CONTROLS: network_host_game.c; a dedicated server's admin's too:
+	network_admin.c) */
+	{
+		struct server_entry after;
+		boolean now;
+		boolean hosting = game && host && !model->local && network_host_controls_available();
+
+		model->then = hosting && network_host_game_next(&after, &now) && !now;
+		if (model->then)
+			network_host_game_entry_shown(&after, model->after, NUMBEROF(model->after));
+		model->host_controls = hosting || (game && !host && network_admin_remote());
+	}
+}
+
+/* "port lobby board update" (the list's) */
+static void lobby_board_update(struct widget_instance *list)
+{
+	static struct lobby_board_model model;
+	struct lobby_board_entry const *entries = model.entries;
+	struct network_player *const *players = model.players;
+	struct widget_instance *screen = screen_of(list);
+	struct widget_instance *panel = named(screen, "board_panel", 0);
+	struct widget_instance *bar = named(list, "board_prompts", 0);
+	struct network_game *game;
+	boolean players_focused = list->focused_child && !strcmp(list->focused_child->name, "board_players");
+	struct lobby_board_layout layout;
+	struct lobby_board_controls controls;
+	wchar_t text[SETTINGS_PANEL_TEXT_LENGTH];
+	short count, column, row, index;
+	boolean teams, host, local;
+
+	lobby_board_model_make(&model, LOBBY_BOARD_ROWS);
+	game = model.game;
+	count = model.count;
+	teams = model.teams;
+	host = model.host;
+	local = model.local;
+	layout = model.layout;
+	controls = model.controls;
+	(void)local;
+	menu_text_box_fit(named(screen, "board_subtitle", 0), model.subtitle, 0);
 
 	/* (the teams' columns, or one list) */
 	for (column = 0; column < LOBBY_BOARD_COLUMNS; column++)
@@ -739,40 +907,19 @@ static void lobby_board_update(struct widget_instance *list)
 	if (game)
 	{
 		struct widget_instance *pill;
-		wchar_t const *kind = game_modes_variant_kind_name(&game->variant, &game->variant_options);
-		wchar_t gametype[NUMBEROF(game->variant.human_readable_game_description) + 1];
-		boolean standard = host ? network_standard_hosting() : network_standard_agreed_rate() > 0;
-		long rate = network_standard_agreed_rate();
 
-		ustrncpy(gametype, game->variant.human_readable_game_description, NUMBEROF(gametype) - 1);
-		gametype[NUMBEROF(gametype) - 1] = 0;
-		if (!gametype[0])
-			ustrncpy(gametype, kind ? kind : game->variant.game_engine_index ?
-				engine_names[PIN(game->variant.game_engine_index, 0, 5)] : L"CO-OP", NUMBEROF(gametype) - 1);
-		menu_text_box_fit(named(panel, "board_gametype", 0), gametype, 0);
-		lobby_board_map_text(game->map.name, text, NUMBEROF(text));
-		/* (a co-op game's difficulty after its level) */
-		if (!game->variant.game_engine_index && campaign_level_of(game->map.name) != NONE)
-		{
-			wchar_t difficulty[ROW_TEXT_LENGTH];
-			size_t length = ustrlen(text);
-
-			map_difficulty_text(game->difficulty, difficulty);
-			usnprintf(text + length, NUMBEROF(text) - 1 - length, L" \x00B7 %s", difficulty);
-			text[NUMBEROF(text) - 1] = 0;
-		}
-		menu_text_box_fit(named(panel, "board_map", 0), text, 0);
-		lobby_board_limits_text(game, text, NUMBEROF(text));
-		menu_text_box_fit(named(panel, "board_limits", 0), text, 0);
+		menu_text_box_fit(named(panel, "board_gametype", 0), model.gametype, 0);
+		menu_text_box_fit(named(panel, "board_map", 0), model.map, 0);
+		menu_text_box_fit(named(panel, "board_limits", 0), model.limits, 0);
 		if ((pill = named(panel, "board_kind", 0)) != NULL)
 		{
-			pill->animation.current_frame_index = standard ? 0 : 1;
-			text_set(pill, standard ? L"GOAT H1" : L"LEGACY");
+			pill->animation.current_frame_index = model.standard ? 0 : 1;
+			text_set(pill, model.standard ? L"GOAT H1" : L"LEGACY");
 		}
 		if ((pill = named(panel, "board_tick", 0)) != NULL)
 		{
 			pill->animation.current_frame_index = 2;
-			usnprintf(text, NUMBEROF(text) - 1, L"%ld TICK", standard && rate > 0 ? rate : 30L);
+			usnprintf(text, NUMBEROF(text) - 1, L"%ld TICK", model.standard && model.rate > 0 ? model.rate : 30L);
 			text[NUMBEROF(text) - 1] = 0;
 			text_set(pill, text);
 		}
@@ -781,48 +928,13 @@ static void lobby_board_update(struct widget_instance *list)
 			pill->animation.current_frame_index = 2;
 			text_set(pill, L"OPENCE CAN JOIN");
 		}
-		visible_set(named(panel, "board_opence", 0), host && !local && network_standard_hosting_mixed());
-
-		/* (how the game is: the countdown, the link just copied, how
-		another player of this machine joins, Infection's teams, waiting
-		for other machines) */
-		text[0] = 0;
-		if (seconds > 0)
-			usnprintf(text, NUMBEROF(text) - 1, L"The game starts in %d.", seconds);
-		else if (seconds == 0)
-			usnprintf(text, NUMBEROF(text) - 1, L"The game is starting.");
-		else if (lobby_board.copied_time && system_milliseconds() - lobby_board.copied_time < LOBBY_BOARD_COPIED_TIME)
-			usnprintf(text, NUMBEROF(text) - 1, L"Invite copied: paste it in a chat to your friends.");
-		else if (controls.bots_locked)
-			usnprintf(text, NUMBEROF(text) - 1, L"Bots play every gametype but Race.");
-		else if (lobby_join.adding)
-			usnprintf(text, NUMBEROF(text) - 1, L"New player: press START.");
-		else if (mode == _game_mode_infection)
-			usnprintf(text, NUMBEROF(text) - 1, L"Infection: the zombies are chosen when the game starts.");
-		else if (host && !local && game->machine_count < 2)
-			usnprintf(text, NUMBEROF(text) - 1, L"Waiting for players to join.");
-		else if (dedicated)
-			usnprintf(text, NUMBEROF(text) - 1, L"A dedicated server: it starts once enough players join.");
-		else if (lobby_local_player_count() < MAXIMUM_LOCAL_PLAYERS)
-		{
-			short controller;
-
-			for (controller = 0; controller < MAXIMUM_LOCAL_PLAYERS; controller++)
-			{
-				if (input_has_gamepad(controller) && !lobby_controller_playing(controller))
-					usnprintf(text, NUMBEROF(text) - 1, L"Another controller: START joins.");
-			}
-		}
-		text[NUMBEROF(text) - 1] = 0;
-		menu_text_box_wrap(named(panel, "board_status", 0), text, 2);
-		if (seconds > 0)
-			usnprintf(text, NUMBEROF(text) - 1, controls.start ? L"STARTING IN %d" : L"Starting in %d", seconds);
-		else if (seconds == 0)
-			usnprintf(text, NUMBEROF(text) - 1, controls.start ? L"STARTING..." : L"Starting...");
+		visible_set(named(panel, "board_opence", 0), model.opence);
+		menu_text_box_wrap(named(panel, "board_status", 0), model.status, 2);
+		/* (START GAME's words with its key's picture, but on a touchscreen) */
+		if (model.seconds < 0 && controls.start && !ui_widget_port_touch_menus())
+			usnprintf(text, NUMBEROF(text) - 1, L"%%a-button %s", model.start);
 		else
-			usnprintf(text, NUMBEROF(text) - 1, dedicated ? L"Waiting for players" :
-				!controls.start ? L"Waiting for the host" :
-				ui_widget_port_touch_menus() ? L"START GAME" : L"%%a-button START GAME");
+			usnprintf(text, NUMBEROF(text) - 1, L"%s", model.start);
 		text[NUMBEROF(text) - 1] = 0;
 		text_set(named(list, "board_start", 0), text);
 		text_set(named(panel, "board_waiting", 0), text);
@@ -866,23 +978,12 @@ static void lobby_board_update(struct widget_instance *list)
 			setting_changed_save(spinner, setting);
 	}
 	/* (a network game's host: the game after this one, its playlist's, and
-	HOST CONTROLS: network_host_game.c) */
-	{
-		struct server_entry after;
-		boolean now;
-		boolean hosting = game && host && !local && network_host_controls_available();
-		boolean then = hosting && network_host_game_next(&after, &now) && !now;
-
-		if (then)
-		{
-			network_host_game_entry_shown(&after, text, NUMBEROF(text));
-			menu_text_box_fit(named(panel, "board_after", 0), text, 0);
-		}
-		visible_set(named(panel, "board_after", 0), then);
-		visible_set(named(panel, "board_after_label", 0), then);
-		/* (and a dedicated server's admin's: network_admin.c) */
-		visible_set(named(list, "board_host", 0), hosting || (game && !host && network_admin_remote()));
-	}
+	HOST CONTROLS: network_host_game.c; a dedicated server's admin's too) */
+	if (model.then)
+		menu_text_box_fit(named(panel, "board_after", 0), model.after, 0);
+	visible_set(named(panel, "board_after", 0), model.then);
+	visible_set(named(panel, "board_after_label", 0), model.then);
+	visible_set(named(list, "board_host", 0), model.host_controls);
 	menu_prompts_show(bar, "prompt_team", controls.team_change);
 	menu_prompts_show(bar, "prompt_invite", controls.invite);
 	menu_prompts_show(bar, "prompt_add", controls.add_player);
@@ -980,6 +1081,330 @@ static boolean lobby_board_settings(struct widget_instance *widget, boolean *wid
 		return campaign_fail();
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
 	return ui_widget_port_switch(widget, SERVER_SETUP_NAME, widget_deleted);
+}
+
+/* ---- the hand-written lobby (screens/lobby.xml, docs/menu_screens.md):
+the same model in the new engine's tall layout. Its table (the row source
+lobby.players) has a lane for each team's column, red's and blue's (in a
+game without teams one list down both, under PLAYERS), each place of a lane
+a row; its panel and bar the lobby.* bindings; its actions the generated
+screen's functions, or these */
+
+static void lobby_utf8(wchar_t const *wide, char *text, short size);
+
+static struct
+{
+	struct lobby_board_model model;
+	/* when the model was made (system_milliseconds), and the rows each lane
+	has (the table's: lanes' places) */
+	unsigned long made_at;
+	boolean made;
+	short rows;
+} lobby_screen;
+
+/* the model as this frame has it (made again once a frame: the bindings and
+the table read it in turn) */
+static struct lobby_board_model *lobby_screen_model(void)
+{
+	unsigned long now = system_milliseconds();
+
+	if (!lobby_screen.made || lobby_screen.made_at != now)
+	{
+		lobby_board_model_make(&lobby_screen.model, lobby_screen.rows ? lobby_screen.rows : LOBBY_LAYOUT_ROWS);
+		lobby_screen.made = TRUE;
+		lobby_screen.made_at = now;
+	}
+	return &lobby_screen.model;
+}
+
+/* a lane's place's player (index: the lane's rows in turn), NONE for none,
+and whether it is the lane's last, which says how many more */
+static short lobby_screen_entry(short index, boolean *more)
+{
+	struct lobby_board_model *model = lobby_screen_model();
+	short rows = model->layout.row_count, column = (short)(index / MAX(rows, 1)), row = (short)(index % MAX(rows, 1));
+
+	*more = FALSE;
+	if (column < 0 || column >= LOBBY_BOARD_COLUMNS || row >= rows)
+		return NONE;
+	*more = model->layout.rows[column][row] == NONE && row == rows - 1 && model->layout.more[column] > 0;
+	return model->layout.rows[column][row];
+}
+
+static void lobby_screen_update(struct menu_table_view *view)
+{
+	short lanes = (short)MAX(view->lanes, 1);
+
+	lobby_screen.rows = (short)MIN(MAX(view->shown / lanes, 1), LOBBY_LAYOUT_ROWS);
+	lobby_screen.made = FALSE;
+	lobby_screen_model();
+	view->count = view->shown;
+	view->first = 0;
+	view->chosen = NONE;
+	view->focus = NONE;
+	/* (the speakers of the rows drawn this frame, noted as their cells are:
+	pc_menu_speaker_note) */
+	lobby_icons.count = 0;
+	lobby_icons.updated_at = system_milliseconds();
+}
+
+static int lobby_screen_heading(short index, unsigned short *words, short size)
+{
+	(void)index;
+	(void)words;
+	(void)size;
+	return FALSE;
+}
+
+static int lobby_screen_state(short index)
+{
+	boolean more;
+	short shown = lobby_screen_entry(index, &more);
+
+	if (shown == NONE)
+		return more ? MENU_TABLE_ROW_PLAIN : MENU_TABLE_ROW_NONE;
+	return lobby_screen.model.entries[shown].own ? MENU_TABLE_ROW_MARKED : MENU_TABLE_ROW_PLAIN;
+}
+
+/* a row's cells: its player's dot (its team's, or a game without teams'),
+name (its controller's too, of this machine's players when it has more than
+one; its speaker in voice chat) and tag (a bot's with the bots' skill where
+it fits); the lane's last, how many more */
+static void lobby_screen_cell(short index, char const *column, int focused, struct menu_table_cell *cell)
+{
+	struct lobby_board_model *model = lobby_screen_model();
+	boolean more;
+	short shown = lobby_screen_entry(index, &more);
+	struct lobby_board_entry const *entry = shown != NONE ? &model->entries[shown] : NULL;
+	wchar_t text[ROW_TEXT_LENGTH];
+
+	(void)focused;
+	text[0] = 0;
+	if (!strcmp(column, "dot"))
+	{
+		cell->frame = (short)(!entry ? NONE : model->teams ? (entry->team == 1 ? 1 : 0) : 2);
+		return;
+	}
+	if (more && !strcmp(column, "name"))
+	{
+		short lane = (short)(index / MAX(model->layout.row_count, 1));
+
+		usnprintf(text, NUMBEROF(text) - 1, L"+%d more", model->layout.more[lane]);
+	}
+	else if (entry && !strcmp(column, "name"))
+	{
+		struct network_player const *player = model->players[shown];
+		wchar_t name[NUMBEROF(player->name) + 1];
+
+		ustrncpy(name, player->name, NUMBEROF(player->name));
+		name[NUMBEROF(player->name)] = 0;
+		if (entry->own && lobby_local_player_count() >= 2)
+			usnprintf(text, NUMBEROF(text) - 1, L"%s (P%d)", name, player->controller_index + 1);
+		else
+			usnprintf(text, NUMBEROF(text) - 1, L"%s", name);
+		cell->speaker = player->machine_index;
+	}
+	else if (entry && !strcmp(column, "tag"))
+	{
+		static wchar_t const *const skills[] = { L"EASY", L"NORMAL", L"HEROIC", L"LEGENDARY" };
+		short letter;
+
+		ustrncpy(text, lobby_tag_words[lobby_board_tag(entry)], NUMBEROF(text) - 1);
+		if (entry->bot)
+		{
+			/* (BOT alone where BOT and the skill would be cut short) */
+			for (letter = 0; text[letter] && letter < MENU_TABLE_TEXT_LENGTH - 1; letter++)
+				cell->fallback[letter] = (unsigned short)text[letter];
+			cell->fallback[letter] = 0;
+			usnprintf(text, NUMBEROF(text) - 1, L"BOT \x00B7 %s", skills[PIN(bots_skill(), 0, (short)NUMBEROF(skills) - 1)]);
+		}
+	}
+	text[NUMBEROF(text) - 1] = 0;
+	{
+		short letter;
+
+		for (letter = 0; text[letter] && letter < MENU_TABLE_TEXT_LENGTH - 1; letter++)
+			cell->text[letter] = (unsigned short)text[letter];
+		cell->text[letter] = 0;
+	}
+}
+
+struct menu_table_source const pc_menu_lobby_source =
+{
+	lobby_screen_update, lobby_screen_heading, lobby_screen_cell, NULL, lobby_screen_state,
+};
+
+void pc_menu_speaker_note(struct widget_instance *text, long machine)
+{
+	if (!text || lobby_icons.count >= LOBBY_ICON_ROWS)
+		return;
+	lobby_icons.texts[lobby_icons.count] = text;
+	lobby_icons.machines[lobby_icons.count] = machine;
+	lobby_icons.count++;
+	lobby_icons.updated_at = system_milliseconds();
+}
+
+/* text (UTF-16) as a binding's value, UTF-8: nonzero if it has any */
+static int lobby_screen_words(wchar_t const *text, char *value, unsigned long size)
+{
+	lobby_utf8(text, value, (short)MIN(size, 0x7FFF));
+	return value[0] != 0;
+}
+
+/* a lobby.* binding's value (docs/menu_screens.md's table) */
+int pc_menu_lobby_value(char const *name, char *value, unsigned long size)
+{
+	struct lobby_board_model *model = lobby_screen_model();
+	struct lobby_board_controls const *controls = &model->controls;
+	wchar_t text[ROW_TEXT_LENGTH];
+	boolean yes = FALSE;
+
+	if (!size)
+		return 0;
+	value[0] = 0;
+	text[0] = 0;
+	if (!strcmp(name, "lobby.title"))
+		usnprintf(text, NUMBEROF(text) - 1, L"LOBBY");
+	else if (!strcmp(name, "lobby.subtitle"))
+		return lobby_screen_words(model->subtitle, value, size);
+	/* (the lanes: RED and BLUE in a team game, each its players' count;
+	else PLAYERS across both, how many of the most at its right) */
+	else if (!strcmp(name, "lobby.red"))
+		usnprintf(text, NUMBEROF(text) - 1, model->teams ? L"RED" : L"PLAYERS");
+	else if (!strcmp(name, "lobby.blue") && model->teams)
+		usnprintf(text, NUMBEROF(text) - 1, L"BLUE");
+	else if ((!strcmp(name, "lobby.red.count") || !strcmp(name, "lobby.blue.count")) && model->teams)
+	{
+		short count = model->layout.counts[name[6] == 'b' ? 1 : 0];
+
+		usnprintf(text, NUMBEROF(text) - 1, count == 1 ? L"1 PLAYER" : L"%d PLAYERS", count);
+	}
+	else if (!strcmp(name, "lobby.blue.count") && model->game)
+		usnprintf(text, NUMBEROF(text) - 1, L"%d OF %d", model->count, model->game->maximum_players);
+	else if (!strcmp(name, "lobby.red.tone"))
+		usnprintf(text, NUMBEROF(text) - 1, model->teams ? L"0" : L"2");
+	else if (!strcmp(name, "lobby.blue.tone"))
+		usnprintf(text, NUMBEROF(text) - 1, model->teams ? L"1" : L"2");
+	/* (the panel: the next game) */
+	else if (!model->game && !strncmp(name, "lobby.", 6) && strcmp(name, "lobby.add") && strcmp(name, "lobby.invite"))
+		return 0;
+	else if (!strcmp(name, "lobby.gametype"))
+		return lobby_screen_words(model->gametype, value, size);
+	else if (!strcmp(name, "lobby.map"))
+		return lobby_screen_words(model->map, value, size);
+	else if (!strcmp(name, "lobby.limits"))
+		return lobby_screen_words(model->limits, value, size);
+	else if (!strcmp(name, "lobby.kind"))
+		usnprintf(text, NUMBEROF(text) - 1, model->standard ? L"GOAT H1" : L"LEGACY");
+	else if (!strcmp(name, "lobby.kind.tone"))
+		usnprintf(text, NUMBEROF(text) - 1, model->standard ? L"0" : L"1");
+	else if (!strcmp(name, "lobby.tick"))
+		usnprintf(text, NUMBEROF(text) - 1, L"%ld TICK", model->standard && model->rate > 0 ? model->rate : 30L);
+	else if (!strcmp(name, "lobby.opence") && model->opence)
+		usnprintf(text, NUMBEROF(text) - 1, L"OPENCE CAN JOIN");
+	else if (!strcmp(name, "lobby.after") && model->then)
+		return lobby_screen_words(model->after, value, size);
+	/* (the host's bots: BOTS' choice, SKILL and TEAMS, dimmed for a gametype
+	the bots do not play, BOTS for a matchmaking game's too) */
+	else if (!strcmp(name, "lobby.bots"))
+		network_host_controls_bot_choice_words(network_host_controls_bots_chosen(), text, NUMBEROF(text));
+	else if (!strcmp(name, "lobby.skill"))
+	{
+		static wchar_t const *const skills[] = { L"EASY", L"NORMAL", L"HEROIC", L"LEGENDARY" };
+
+		usnprintf(text, NUMBEROF(text) - 1, L"%s", skills[PIN(bots_skill(), 0, (short)NUMBEROF(skills) - 1)]);
+	}
+	else if (!strcmp(name, "lobby.teams"))
+		usnprintf(text, NUMBEROF(text) - 1, bots_teams() == _bots_teams_against ? L"AGAINST YOU" : L"EVEN");
+	else if (!strcmp(name, "lobby.bots.shown"))
+		yes = controls->bots;
+	else if (!strcmp(name, "lobby.bots.locked"))
+		yes = controls->bots_locked;
+	else if (!strcmp(name, "lobby.bots.count.locked"))
+		yes = controls->bots_locked || bots_matchmaking_on();
+	/* (how the game is; START GAME's words, the countdown; a player's
+	waiting) */
+	else if (!strcmp(name, "lobby.status"))
+		return lobby_screen_words(model->status, value, size);
+	else if (!strcmp(name, "lobby.start"))
+		return lobby_screen_words(model->start, value, size);
+	else if (!strcmp(name, "lobby.waiting"))
+		return lobby_screen_words(model->waiting, value, size);
+	/* (what is offered, for ifs) */
+	else if (!strcmp(name, "lobby.host"))
+		yes = controls->start;
+	else if (!strcmp(name, "lobby.settings"))
+		yes = controls->settings;
+	else if (!strcmp(name, "lobby.controls"))
+		yes = model->host_controls;
+	else if (!strcmp(name, "lobby.team.change"))
+		yes = controls->team_change;
+	else if (!strcmp(name, "lobby.invite"))
+		yes = controls->invite;
+	else if (!strcmp(name, "lobby.add"))
+		yes = controls->add_player;
+	else
+		return 0;
+	if (yes)
+		usnprintf(text, NUMBEROF(text) - 1, L"1");
+	text[NUMBEROF(text) - 1] = 0;
+	return lobby_screen_words(text, value, size);
+}
+
+/* the lobby's actions of its own: a row chosen (a click on a lane: its
+team, as a click on the generated screen's column; else the host's start,
+as A on its players), the bots' choices stepped (BOTS' choices at their
+ends no further; SKILL and TEAMS round), as the generated screen's spinners
+write them */
+int pc_menu_lobby_action(struct widget_instance *widget, struct event_record *event, char const *name, short row,
+	int *deleted)
+{
+	struct lobby_board_model *model = lobby_screen_model();
+	short controller = event_controller(widget, event);
+	short step = (short)(strstr(name, " left") ? -1 : 1);
+	short x, y;
+
+	*deleted = FALSE;
+	if (!strcmp(name, "lobby row"))
+	{
+		short rows = MAX(model->layout.row_count, 1);
+
+		if (!ui_widget_port_take_click(&x, &y))
+			return lobby_board_start();
+		if (!model->teams || row == NONE)
+			return TRUE;
+		return lobby_board_team(widget, controller, (short)(row / rows == 1 ? 1 : 0));
+	}
+	if (!model->controls.bots || model->controls.bots_locked)
+		return FALSE;
+	if (!strncmp(name, "lobby bots ", 11))
+	{
+		short chosen = network_host_controls_bots_chosen();
+		short stepped = network_host_controls_bot_choice_step(chosen, step);
+		long number;
+		short kind = network_host_controls_bot_choice(stepped, &number);
+
+		return !bots_matchmaking_on() && stepped != chosen && network_host_controls_choose_bots(kind, number);
+	}
+	if (!strncmp(name, "lobby skill ", 12))
+	{
+		static char const *const skills[] = { "easy", "normal", "heroic", "legendary" };
+
+		return config_write("bots.skill", skills[(bots_skill() + step + 4) % 4]) != 0;
+	}
+	if (!strncmp(name, "lobby teams ", 12))
+		return config_write("bots.teams", bots_teams() == _bots_teams_against ? "even" : "against") != 0;
+	return FALSE;
+}
+
+/* each frame the hand-written lobby is drawn: what the generated screen's
+list did (its data inputs: the split screen's players who want to play
+added, "net splitscreen prejoin players"; the model made, which opens the
+map vote's screen) */
+void pc_menu_lobby_frame(struct widget_instance *screen)
+{
+	ui_widget_game_data_function_invoke(screen, LOBBY_PREJOIN_FUNCTION);
+	lobby_screen_model();
 }
 
 /* ---- what Discord is told (p2p_discord_set_game, from party_update) */

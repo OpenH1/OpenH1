@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The lobby (docs/menu_screens.md), a network game's and a game of this
+machine alone's, in place of the generated lobby (main_menu/
+multiplayer_type_select/lobby/lobby_screen) in the new engine. The tall
+layout: LOBBY in the band, the game's name, where it is and its players at
+its right; the players in a lane for each team (RED and BLUE, each its count;
+in a game without teams one list, PLAYERS, down both), each a row of its dot,
+name and tag (HOST, BOT and the bots' skill, PARTY, GOAT H1, OPENCE), this
+machine's own framed; the next game in the panel beside them, the host's bots
+(BOTS, SKILL, TEAMS), how the game is, and HOST CONTROLS, GAME SETTINGS and
+START GAME (a player's WAITING FOR THE HOST); BACK (LEAVE) at the bar's left,
+CHANGE TEAM, COPY INVITE and ADD PLAYER at its right. What it shows and does
+is menu_functions.c's lobby_menu.inc, as for the generated screen (the row
+source lobby.players, the lobby.* bindings and actions): left and right on
+the players change this player's team, a click on a lane's row puts them on
+its team, A on them (Start) starts the host's game; the generated screen's
+own keys stay (B leaves, START joins another controller's player, X adds
+one, Y the map vote or COPY INVITE). -->
+<screen name="lobby">
+	<header title="{lobby.title}" detail="{lobby.subtitle}"/>
+	<table source="lobby.players" lanes="2" do="lobby row" left="lobby team red" right="lobby team blue">
+		<lane label="{lobby.red}" detail="{lobby.red.count}" tone="lobby.red.tone"/>
+		<lane label="{lobby.blue}" detail="{lobby.blue.count}" tone="lobby.blue.tone"/>
+		<column id="dot" kind="dot" width="8" gap="0"/>
+		<column id="name" kind="strong" width="84" grow="48" gap="6"/>
+		<column id="tag" width="72" grow="24" gap="2" align="right"/>
+	</table>
+	<panel>
+		<text text="NEXT GAME"/>
+		<heading text="{lobby.gametype}"/>
+		<text text="{lobby.map}"/>
+		<text text="{lobby.limits}"/>
+		<pills>
+			<pill text="{lobby.kind}" tone="lobby.kind.tone" width="64"/>
+			<pill text="{lobby.tick}" tone="2" width="64"/>
+			<pill text="{lobby.opence}" tone="2" width="132"/>
+		</pills>
+		<text text="THEN: {lobby.after}" if="lobby.after"/>
+		<choice label="BOTS" value="{lobby.bots}" left="lobby bots left" right="lobby bots right" if="lobby.bots.shown" dim="lobby.bots.count.locked"/>
+		<choice label="SKILL" value="{lobby.skill}" left="lobby skill left" right="lobby skill right" if="lobby.bots.shown" dim="lobby.bots.locked"/>
+		<choice label="TEAMS" value="{lobby.teams}" left="lobby teams left" right="lobby teams right" if="lobby.bots.shown" dim="lobby.bots.locked"/>
+		<text text="{lobby.status}" lines="2"/>
+		<heading text="{lobby.waiting}" if="lobby.waiting"/>
+		<button key="accept" label="HOST CONTROLS" if="lobby.controls" do="lobby host" when="pointer"/>
+		<button key="accept" label="GAME SETTINGS" if="lobby.settings" do="lobby settings"/>
+		<button key="accept" label="{lobby.start}" if="lobby.host" do="lobby start"/>
+	</panel>
+	<buttons>
+		<button key="back" label="LEAVE"/>
+		<button key="dpad" label="CHANGE TEAM" side="right" if="lobby.team.change" do="lobby team toggle"/>
+		<button key="y" label="COPY INVITE" side="right" if="lobby.invite"/>
+		<button key="x" label="ADD PLAYER" side="right" if="lobby.add"/>
+		<button key="rt" label="HOST CONTROLS" side="right" if="lobby.controls" do="lobby host" when="touch"/>
+	</buttons>
+</screen>

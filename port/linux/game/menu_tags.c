@@ -633,8 +633,8 @@ static char const *const port_function_names[] =
 	"port doubles init", "port doubles dispose", "port doubles host", "port doubles find", "port doubles friend",
 	"port doubles join", "port doubles invite", "port doubles x",
 	/* (a hand-written screen's item: its action; and a prompt of its button
-	bar: its key, menu_screen.c) */
-	"port screen do", "port screen key",
+	bar: its key; left and right on a row or a choice, menu_screen.c) */
+	"port screen do", "port screen key", "port screen left", "port screen right",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from

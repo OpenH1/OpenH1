@@ -32,6 +32,10 @@ struct menu_table_view
 	short focused;
 	short hover;
 	short titles;
+	/* (in) a table of lanes' (lanes="2"): how many, its rows each lane's
+	in turn (the first lane's, then the next's), all of them shown (first
+	0); 1 for none */
+	short lanes;
 	/* (out) the rows in all; the first on the table; the row chosen (its
 	details the panel's: NONE, none); the row of the table to give the focus
 	(NONE: as it is), or the titles */
@@ -54,6 +58,22 @@ struct menu_table_cell
 	/* a pill after the words (empty: none), and a lock after them */
 	unsigned short badge[MENU_TABLE_BADGE_LENGTH];
 	short lock;
+	/* its shorter words, shown in place of its words where they would be
+	cut short (empty: none) */
+	unsigned short fallback[MENU_TABLE_TEXT_LENGTH];
+	/* a network machine whose speaker (network_voice.c's: talking, or
+	muted) is drawn just left of its words: NONE, none */
+	long speaker;
+};
+
+/* a row's state (a table's source's state): not shown (a lane's place
+with no row), a row, or a row marked as its own (framed: this machine's
+players) */
+enum
+{
+	MENU_TABLE_ROW_NONE,
+	MENU_TABLE_ROW_PLAIN,
+	MENU_TABLE_ROW_MARKED
 };
 
 struct menu_table_source
@@ -69,6 +89,9 @@ struct menu_table_source
 	/* the table's screen opened (not made again by a hot reload): NULL,
 	nothing to do */
 	void (*opened)(void);
+	/* the row's state (MENU_TABLE_ROW_*): NULL, every row up to the count
+	a row */
+	int (*state)(short index);
 };
 
 /* ---------- the server browser's (menu_functions.c) */
@@ -87,6 +110,22 @@ int pc_menu_profile_value(char const *name, char *value, unsigned long size);
 /* the row's profile (NONE: the chosen one's) made player 1's: zero for the
 row that makes one */
 int pc_menu_profile_choose(struct widget_instance *widget, struct event_record *event, short row);
+
+/* ---------- the lobby's (menu_functions.c's lobby_menu.inc) */
+
+extern struct menu_table_source const pc_menu_lobby_source;
+/* a binding's value, UTF-8 ("lobby.<name>": nonzero if it has one) */
+int pc_menu_lobby_value(char const *name, char *value, unsigned long size);
+/* an action of the lobby's ("lobby <what>"; row: the table's row it is for,
+NONE for none): FALSE if it did nothing */
+int pc_menu_lobby_action(struct widget_instance *widget, struct event_record *event, char const *name, short row,
+	int *deleted);
+/* each frame the lobby's screen is drawn: what its generated screen's list
+did each frame (the split screen's players joining, the map vote's screen) */
+void pc_menu_lobby_frame(struct widget_instance *screen);
+/* a text box drawn with a machine's speaker beside it (the voice chat's:
+menu_functions_text_box_drawn), this frame */
+void pc_menu_speaker_note(struct widget_instance *text, long machine);
 
 /* ---------- the menus' text fields and text (menu_functions.c), for the
 hand-written screens' searches */

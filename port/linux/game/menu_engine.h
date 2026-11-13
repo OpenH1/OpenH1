@@ -165,5 +165,8 @@ boolean menu_screen_do(struct widget_instance *item, struct event_record *event,
 /* "port screen key", a button bar prompt's A (a click, a tap): its key
 pressed (accept: the item chosen's action) */
 boolean menu_screen_key(struct widget_instance *prompt, struct event_record *event, boolean *deleted, short controller);
+/* "port screen left", "port screen right" (step -1, 1): left or right on a
+tall screen's row (its table's left or right) or panel's choice */
+boolean menu_screen_step(struct widget_instance *widget, struct event_record *event, boolean *deleted, short step);
 
 #endif

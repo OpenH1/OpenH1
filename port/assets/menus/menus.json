@@ -290,6 +290,7 @@
   "screens/blocks.xml",
   "screens/browser.xml",
   "screens/campaign.xml",
+  "screens/lobby.xml",
   "screens/main.xml",
   "screens/profile_color.xml",
   "screens/profile_select.xml",
