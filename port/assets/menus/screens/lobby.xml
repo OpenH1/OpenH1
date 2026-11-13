@@ -15,7 +15,11 @@ source lobby.players, the lobby.* bindings and actions): left and right on
 the players change this player's team, a click on a lane's row puts them on
 its team, A on them (Start) starts the host's game; the generated screen's
 own keys stay (B leaves, START joins another controller's player, X adds
-one, Y the map vote or COPY INVITE). -->
+one, Y the map vote or COPY INVITE). Under the players, the lobby's text
+chat (network_chat.c's lobby lines, each name in its team's colour): T or Y
+on the keyboard, LB (CHAT) or A on its line on a controller (the on-screen
+keyboard), a tap on it on a touchscreen; the host's LOBBY TEXT CHAT has it
+on or off for everyone. -->
 <screen name="lobby" start="lobby start">
 	<header title="{lobby.title}" detail="{lobby.subtitle}"/>
 	<table source="lobby.players" lanes="2" do="lobby row" left="lobby team red" right="lobby team blue">
@@ -45,12 +49,14 @@ one, Y the map vote or COPY INVITE). -->
 		<button key="accept" label="GAME SETTINGS" if="lobby.settings" do="lobby settings"/>
 		<button key="accept" label="{lobby.start}" if="lobby.host" do="lobby start"/>
 	</panel>
+	<chat source="lobby.chat" lines="5" do="lobby chat"/>
 	<buttons>
 		<button key="back" label="LEAVE" touch-width="84"/>
 		<button key="dpad" label="CHANGE TEAM" side="right" if="lobby.team.change" do="lobby team toggle" touch-width="120"/>
 		<button key="y" label="COPY INVITE" side="right" if="lobby.invite" when="pointer"/>
 		<button key="y" label="INVITE" side="right" if="lobby.invite" touch-width="80" when="touch"/>
 		<button key="x" label="ADD PLAYER" side="right" if="lobby.add" touch-width="106"/>
+		<button key="lb" label="CHAT" side="right" if="lobby.chat" do="lobby chat" when="pointer"/>
 		<button key="rt" label="HOST CONTROLS" side="right" if="lobby.controls" do="lobby host" touch-width="130" when="touch"/>
 	</buttons>
 </screen>

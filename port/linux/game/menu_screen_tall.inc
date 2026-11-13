@@ -180,6 +180,18 @@ height; the panel's buttons' gap one over another */
 #define PANEL_CHOICE_GAP 0
 #define PANEL_BUTTON_GAP 4
 #define TALL_MAXIMUM_PANEL_BUTTONS 4
+/* a chat (<chat>, the lobby's) under the table, across it: its line's
+height, the line typed's (a touchscreen's), its inner margin, the gap over
+it; the on-screen keyboard's rows' height over the panel's foot */
+#define TALL_CHAT_LINE 15
+#define TOUCH_CHAT_LINE 16
+#define TALL_CHAT_INPUT 20
+#define TOUCH_CHAT_INPUT 40
+#define TALL_CHAT_INSET 6
+#define TALL_CHAT_GAP 8
+#define TALL_CHAT_NAME_GAP 6
+#define TALL_CHAT_KEYBOARD_ROW 30
+#define TALL_MAXIMUM_CHAT_LINES 12
 /* (a <spartan>'s line: the gap before and after it) */
 #define PANEL_SPARTAN_GAP 6
 #define PANEL_SPARTAN_FEET 25
@@ -256,6 +268,7 @@ enum
 	_target_row,
 	_target_button,
 	_target_choice,
+	_target_chat,
 };
 
 struct screen_target
@@ -363,6 +376,14 @@ struct screen_tall
 	/* (the focus put on the bar for want of a row: back on the first row
 	that comes, unless it has been moved since) */
 	boolean focus_waiting;
+	/* its chat: its block and source, its height (the table's foot over it),
+	its panel, each line's name and words, the line typed's place, and the
+	layer its on-screen keyboard is drawn on, over the rest */
+	struct menu_screen_block const *chat;
+	struct menu_chat_source const *chat_source;
+	short chat_height;
+	struct widget_instance *chat_panel, *chat_names[TALL_MAXIMUM_CHAT_LINES], *chat_texts[TALL_MAXIMUM_CHAT_LINES];
+	struct widget_instance *chat_input, *chat_keyboard;
 	/* the searches (a column's, or the screen's), the one typed into */
 	struct screen_search searches[TALL_MAXIMUM_SEARCHES];
 	long search_count;
@@ -571,9 +592,9 @@ static char const *tall_key_picture(char const *key)
 	};
 	long index;
 
-	/* (the D-pad: the keyboard has no key of its own for it, its arrows
-	the menus' left and right) */
-	if (!strcmp(key, "dpad") && halo_keyboard_prompts())
+	/* (the D-pad: no picture of its own (the keyboard's arrows are the
+	menus' left and right), its words alone) */
+	if (!strcmp(key, "dpad"))
 		return "";
 	for (index = 0; index < NUMBEROF(pictures); index++)
 	{
@@ -641,7 +662,7 @@ static short tall_prompt_end(char const *key, char const *label, boolean control
 	snprintf(spaced, sizeof(spaced), " %s", label);
 	if (controller)
 	{
-		advance = !strcmp(key, "rt") ? 69 : !strcmp(key, "lt") ? 62 : !strcmp(key, "r3") ? 65 : !strcmp(key, "dpad") ? 40 :
+		advance = !strcmp(key, "rt") ? 69 : !strcmp(key, "lt") ? 62 : !strcmp(key, "r3") ? 65 : !strcmp(key, "dpad") ? 0 :
 			9;
 	}
 	else if (!strcmp(key, "dpad"))
@@ -839,6 +860,14 @@ static void tall_build_search(struct screen_tall *tall, struct menu_screen_block
 
 static void tall_lanes_frame(struct screen_tall *tall);
 
+/* the table's rows' foot: over its chat, if it has one */
+static short tall_rows_bottom(struct screen_tall const *tall)
+{
+	short bottom = ui_widget_port_touch_menus() ? TOUCH_ROWS_BOTTOM : TALL_ROWS_BOTTOM;
+
+	return (short)(tall->chat ? bottom - tall->chat_height - TALL_CHAT_GAP : bottom);
+}
+
 /* a table's lanes: their top, each one's width */
 static short tall_lanes_top(void)
 {
@@ -858,7 +887,7 @@ static void tall_build_lanes(struct screen_tall *tall, struct menu_screen const 
 	boolean touch = ui_widget_port_touch_menus() != 0;
 	short table_width = touch ? TOUCH_TABLE_WIDTH : TALL_TABLE_WIDTH;
 	short lanes = tall->lanes, lane_width = tall_lane_width(table_width, lanes);
-	short top = tall_lanes_top(), bottom = touch ? TOUCH_ROWS_BOTTOM : TALL_ROWS_BOTTOM;
+	short top = tall_lanes_top(), bottom = tall_rows_bottom(tall);
 	short grow = (short)(TALL_TABLE_GROW / lanes);
 	long index, lane = 0;
 
@@ -1012,14 +1041,14 @@ static void tall_build_table(struct screen_tall *tall, struct menu_screen const 
 	tall->rows_y = touch ? TOUCH_ROWS_Y : TALL_ROWS_Y;
 	tall->row_height = touch ? TOUCH_TAP : TALL_ROW_HEIGHT;
 	tall->row_step = touch ? TOUCH_ROW_STEP : TALL_ROW_HEIGHT;
-	tall->row_count = (short)MIN(TALL_MAXIMUM_ROWS, ((touch ? TOUCH_ROWS_BOTTOM : TALL_ROWS_BOTTOM) - tall->rows_y +
+	tall->row_count = (short)MIN(TALL_MAXIMUM_ROWS, (tall_rows_bottom(tall) - tall->rows_y +
 		tall->row_step - tall->row_height) / tall->row_step);
 	if (tall->lanes > 1)
 	{
 		tall->rows_y = (short)(tall_lanes_top() + TALL_LANE_ROWS_TOP);
 		tall->row_height = TALL_LANE_ROW_HEIGHT;
 		tall->row_step = TALL_LANE_ROW_STEP;
-		tall->lane_rows = (short)MIN(TALL_MAXIMUM_ROWS / tall->lanes, ((touch ? TOUCH_ROWS_BOTTOM : TALL_ROWS_BOTTOM) -
+		tall->lane_rows = (short)MIN(TALL_MAXIMUM_ROWS / tall->lanes, (tall_rows_bottom(tall) -
 			tall->rows_y + tall->row_step - tall->row_height) / tall->row_step);
 		tall->row_count = (short)(tall->lane_rows * tall->lanes);
 	}
@@ -1603,6 +1632,41 @@ static void tall_build_bar(struct screen_tall *tall, struct menu_screen const *f
 	}
 }
 
+/* a chat: its panel across the table's foot, its lines (each its name,
+then its words after it), the line typed's place (the focus steps to it: A,
+a click or a tap its do), and the layer its on-screen keyboard is drawn on */
+static void tall_build_chat(struct screen_tall *tall)
+{
+	boolean touch = ui_widget_port_touch_menus() != 0;
+	short width = touch ? TOUCH_TABLE_WIDTH : TALL_TABLE_WIDTH;
+	short bottom = touch ? TOUCH_ROWS_BOTTOM : TALL_ROWS_BOTTOM;
+	short top = (short)(bottom - tall->chat_height), y;
+	short line_height = touch ? TOUCH_CHAT_LINE : TALL_CHAT_LINE;
+	short input_height = touch ? TOUCH_CHAT_INPUT : TALL_CHAT_INPUT;
+	short line;
+
+	tall->chat_panel = tall_add(tall, tall->owner, tall_tag("chat"), TALL_TABLE_X, top, -106, TALL_TABLE_GROW, width,
+		tall->chat_height);
+	tall_box_picture(tall, tall->chat_panel, "main_menu/parts/panel_%dx%d", width, tall->chat_height);
+	y = (short)(top + TALL_CHAT_INSET);
+	for (line = 0; line < tall->chat->lines && line < TALL_MAXIMUM_CHAT_LINES; line++)
+	{
+		tall->chat_names[line] = tall_add(tall, tall->owner, tall_tag("chat_name"), TALL_TABLE_X + 2 * TALL_CHAT_INSET,
+			y, -106, 0, 0, line_height);
+		tall->chat_texts[line] = tall_add(tall, tall->owner, tall_tag("chat_text"), TALL_TABLE_X + 2 * TALL_CHAT_INSET,
+			y, -106, TALL_TABLE_GROW, (short)(width - 4 * TALL_CHAT_INSET), line_height);
+		visible_set_safe(tall->chat_names[line], FALSE);
+		visible_set_safe(tall->chat_texts[line], FALSE);
+		y = (short)(y + line_height);
+	}
+	tall->chat_input = tall_add(tall, tall->body, tall_tag(touch ? "chat_input_touch" : "chat_input"),
+		TALL_TABLE_X + TALL_CHAT_INSET, (short)(bottom - TALL_CHAT_INSET - input_height), -106, TALL_TABLE_GROW,
+		(short)(width - 2 * TALL_CHAT_INSET), input_height);
+	tall_box_picture(tall, tall->chat_input, "main_menu/parts/item_%dx%d", (short)(width - 2 * TALL_CHAT_INSET),
+		input_height);
+	tall_target(tall, tall->chat_input, _target_chat, NONE, tall->chat->action);
+}
+
 /* the screen made: the tall layout's blocks in their places */
 static boolean tall_build(struct screen_open *open, struct menu_screen const *screen)
 {
@@ -1648,6 +1712,24 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 	tall->body = tall_add(tall, widget, tall_tag("body"), 0, 0, 0, 0, 0, 0);
 	if (!tall->owner || !tall->body)
 		return FALSE;
+	/* (its chat first found: the table ends over it) */
+	for (index = 0; index < screen->block_count; index++)
+	{
+		struct menu_screen_block const *block = &screen->blocks[index];
+		long source;
+
+		if (block->kind != MENU_SCREEN_CHAT || !menu_screen_when(block->when))
+			continue;
+		for (source = 0; source < NUMBEROF(screen_chat_names); source++)
+		{
+			if (block->source && !strcmp(block->source, screen_chat_names[source]))
+				tall->chat_source = screen_chats[source];
+		}
+		tall->chat = block;
+		tall->chat_height = (short)(2 * TALL_CHAT_INSET + MIN(block->lines, TALL_MAXIMUM_CHAT_LINES) *
+			(ui_widget_port_touch_menus() ? TOUCH_CHAT_LINE : TALL_CHAT_LINE) +
+			(ui_widget_port_touch_menus() ? TOUCH_CHAT_INPUT : TALL_CHAT_INPUT) + 2);
+	}
 	for (index = 0; index < screen->block_count; index++)
 	{
 		struct menu_screen_block const *block = &screen->blocks[index];
@@ -1690,7 +1772,10 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 		open->spartan = *tall->spartan;
 		open->spartan_picture = tall->spartan_picture;
 	}
-	/* (the table's button after the panel's, the bar last) */
+	/* (the chat's line typed after the panel's, the table's button, the bar
+last) */
+	if (tall->chat)
+		tall_build_chat(tall);
 	if (table_index != NONE)
 		tall_build_table_button(tall, screen, table_index);
 	for (index = 0; index < screen->block_count; index++)
@@ -1698,6 +1783,9 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 		if (screen->blocks[index].kind == MENU_SCREEN_BUTTONS)
 			tall_build_bar(tall, screen, index);
 	}
+	/* (the chat's on-screen keyboard's layer, over everything) */
+	if (tall->chat)
+		tall->chat_keyboard = tall_add(tall, widget, tall_tag("layer"), 0, 0, 0, 0, 0, 0);
 	/* (the focus: the tabs, else the first row; the rows' source then
 	moves it) */
 	widget->focused_child = tall->body;
@@ -2263,6 +2351,83 @@ static void tall_choice_frame(struct screen_tall *tall, struct screen_line *line
 		tall->body->focused_child = NULL;
 }
 
+/* the chat: its newest lines (as many as it has places), each its name in
+its colour and its words after it; the line typed in its place with the
+caret (or the source's prompt), lit while it has the focus */
+static void tall_chat_frame(struct screen_tall *tall)
+{
+	struct menu_chat_line lines[TALL_MAXIMUM_CHAT_LINES];
+	short shown = tall->chat ? (short)MIN(tall->chat->lines, TALL_MAXIMUM_CHAT_LINES) : 0;
+	short count = 0, line, first;
+	boolean visible = tall->chat && tall_shown(tall, tall->chat);
+	int keyboard = FALSE;
+	char const *typed = NULL;
+
+	if (!tall->chat)
+		return;
+	visible_set_safe(tall->chat_panel, visible);
+	visible_set_safe(tall->chat_input, visible);
+	if (tall->chat_input)
+		tall->chat_input->disabled = !visible;
+	if (visible && tall->chat_source)
+	{
+		count = tall->chat_source->lines(lines, TALL_MAXIMUM_CHAT_LINES);
+		typed = tall->chat_source->typed(&keyboard);
+	}
+	first = (short)MAX(0, count - shown);
+	for (line = 0; line < shown; line++)
+	{
+		struct menu_chat_line const *said = first + line < count ? &lines[first + line] : NULL;
+		struct widget_instance *name = tall->chat_names[line], *words = tall->chat_texts[line];
+		short name_width = 0;
+
+		visible_set_safe(name, visible && said && said->name[0]);
+		visible_set_safe(words, visible && said);
+		if (!said || !words)
+			continue;
+		if (name && said->name[0])
+		{
+			unsigned short spoken[MENU_TABLE_BADGE_LENGTH * 2 + 2];
+			short letter;
+
+			for (letter = 0; said->name[letter] && letter < MENU_TABLE_BADGE_LENGTH * 2; letter++)
+				spoken[letter] = said->name[letter];
+			spoken[letter++] = ':';
+			spoken[letter] = 0;
+			name_width = pc_menu_text_fit(name, spoken, 0);
+			tall_color(tall, name, said->color);
+		}
+		{
+			struct screen_box *box = tall_box_of(tall, words), *name_box = tall_box_of(tall, name);
+
+			if (box && name_box)
+				box->x = (short)(name_box->x + (name_width ? name_width + TALL_CHAT_NAME_GAP : 0));
+			pc_menu_text_fit(words, said->text, (short)(tall_width(tall, words) - (name_width ? name_width +
+				TALL_CHAT_NAME_GAP : 0)));
+			if (!said->name[0])
+				tall_color(tall, words, said->color);
+			else
+				tall_color(tall, words, 0);
+		}
+	}
+	if (tall->chat_input && visible)
+	{
+		boolean focused = tall->body->focused_child == tall->chat_input;
+		char text[MENU_SCREEN_MAXIMUM_TEXT];
+
+		if (typed)
+			pc_menu_text_field_show(tall->chat_input, typed, TRUE);
+		else
+		{
+			char const *prompt = tall->chat_source && tall->chat_source->prompt ? tall->chat_source->prompt() : "";
+
+			snprintf(text, sizeof(text), "%s", prompt ? prompt : "");
+			tall_text_set(tall->chat_input, text);
+		}
+		tall->chat_input->animation.current_frame_index = (short)(focused || typed);
+	}
+}
+
 /* the panel's lines: each its binding's words (a heading's and a text's
 wrapped to their lines), shown while they have some */
 static void tall_panel_frame(struct screen_tall *tall)
@@ -2430,6 +2595,7 @@ static void tall_frame(struct screen_open *open)
 		tall_rows_frame(tall, screen);
 	}
 	tall_panel_frame(tall);
+	tall_chat_frame(tall);
 	tall_bar_frame(tall);
 	/* (the band's button: the focus back to the body once the pointer is
 	not what gave the button it, as the browser's HOST over its generated
@@ -2477,6 +2643,44 @@ static void tall_frame(struct screen_open *open)
 			screen_spartan_frame(open, NONE);
 		}
 	}
+}
+
+/* the chat's on-screen keyboard, where it is up: over the panel's lower
+part (on a touchscreen, across the screen's foot over the bar), its keys'
+place noted for taps (the screen's units: menu_spartan.c's) */
+long halo_screen_width(void);
+
+static void tall_chat_keyboard_draw(struct screen_tall *tall, point2d offset)
+{
+	int keyboard = FALSE;
+	short screen_width = (short)halo_screen_width();
+	short ui_offset = (short)((screen_width - SCREEN_WIDTH) / 2);
+	struct screen_box const *panel = tall->panel_widget ? tall_box_of(tall, tall->panel_widget) : NULL;
+	short x0, x1, y1, y0;
+
+	if (!tall->chat_source || !tall->chat_source->keyboard || !tall->chat_source->typed(&keyboard) || !keyboard)
+		return;
+	if (ui_widget_port_touch_menus() || !panel)
+	{
+		x0 = (short)(SCREEN_WIDTH / 2 - 260);
+		x1 = (short)(SCREEN_WIDTH / 2 + 260);
+		y1 = (short)(SCREEN_HEIGHT - 8);
+	}
+	else
+	{
+		x0 = panel->at_x;
+		x1 = (short)(panel->at_x + tall_width(tall, tall->panel_widget));
+		y1 = (short)(TALL_PANEL_Y + TALL_PANEL_HEIGHT - 4);
+	}
+	y0 = (short)(y1 - 5 * TALL_CHAT_KEYBOARD_ROW);
+	{
+		short font_width;
+		long font = tall->chat_input ? ui_widget_port_text_box_font(tall->chat_input, &font_width) : NONE;
+
+		tall->chat_source->keyboard(font, (short)(offset.x + x0), (short)(offset.y + y0), (short)(offset.x + x1),
+			(short)(offset.y + y1), screen_width, (short)SCREEN_HEIGHT);
+	}
+	(void)ui_offset;
 }
 
 /* ---------- events */
@@ -2549,6 +2753,8 @@ static boolean tall_do(struct screen_open *open, struct widget_instance *widget,
 			screen_action_row = NONE;
 			return result;
 		}
+		case _target_chat:
+			return target->action && screen_action_run(widget, event, target->action, deleted);
 		case _target_choice:
 		{
 			/* (A, or a click or a tap on its right half: its right; on its

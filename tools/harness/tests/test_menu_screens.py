@@ -60,6 +60,12 @@ NEGATIVE_CONTROLS = {
     # a choice with no right taken
     "choice-no-right": ("else if (!choice->left_action || !choice->right_action)", "else if (!choice->left_action)",
                         "choice"),
+    # a chat's source not checked: one the game has not got taken
+    "chat-source-unchecked": ("else if (screen_names && !name_known(screen_names->chats, screen_names->chat_count, "
+                              "chat->source,", "else if (0 && !name_known(screen_names->chats, screen_names->chat_count, "
+                              "chat->source,", "chat"),
+    # a second chat taken
+    "chat-two": ("one_check(reader, MENU_SCREEN_CHAT, \"chat\");", "(void)0;", "chat"),
     # a screen's start not checked: an action the game has not got taken
     "start-unchecked": ("\t\tif (!reader->failed && screen->start)\n\t\t\taction_check(reader, screen->start);",
                         "(void)0;", "actions"),
@@ -95,10 +101,11 @@ def game_names():
     source = read("port/linux/game/menu_screen.c")
     lines = []
     for table, name in (("screen_action_names", "game_actions"), ("screen_binding_names", "game_bindings"),
-                        ("screen_source_names", "game_sources")):
+                        ("screen_source_names", "game_sources"), ("screen_chat_names", "game_chats")):
         body = re.search(r"static char const \*const " + table + r"\[\] =\n\{\n(.*?)\n\};", source, re.S).group(1)
         # (and the test's own: a binding of a value and a row source, for the blocks' cases)
-        extra = {"game_bindings": '"test.value", "test.flag",', "game_sources": '"test.rows",'}.get(name, "")
+        extra = {"game_bindings": '"test.value", "test.flag",', "game_sources": '"test.rows",',
+                 "game_chats": '"test.chat",'}.get(name, "")
         lines.append(f"static char const *const {name}[] =\n{{\n{extra}\n{body}\n}};")
     return "\n".join(lines) + "\n"
 
@@ -161,7 +168,8 @@ def built(fault=None):
 
 
 CASES = ["main", "hints", "good", "syntax", "elements", "spartan", "items", "actions", "bindings", "when",
-         "kept", "browser", "profile_select", "tabs", "table", "panel", "buttons", "lanes", "choice", "lobby", "box"]
+         "kept", "browser", "profile_select", "tabs", "table", "panel", "buttons", "lanes", "choice", "lobby", "chat",
+         "box"]
 
 
 @pytest.mark.parametrize("case", CASES)

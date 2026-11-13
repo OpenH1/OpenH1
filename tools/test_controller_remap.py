@@ -708,7 +708,7 @@ def test_chat_owner_identity_and_per_port_hold_over(tmp_path):
 #define csmemset memset
 #define DATUM_INDEX_TO_ABSOLUTE_INDEX(p) ((p)&65535)
 typedef int boolean;
-static struct {boolean active,physical,report,chosen;short channel,controller;long player;char text[256];} chat_input;
+static struct {boolean active,physical,report,chosen,lobby;short channel,controller,lobby_slot;long player;char text[256];} chat_input;
 /* the channel chosen last: player 2's the vehicle's, the others' everyone's (network_chat.c's own are chat_logic's) */
 #define config_string(name) "all,all,vehicle"
 static int game_engine_has_teams(void){return 1;}

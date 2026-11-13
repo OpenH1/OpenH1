@@ -5597,14 +5597,34 @@ SCREEN_LANES = {"computer": (404, 74, 436), "touch": (364, 76, 410)}
 SCREEN_LANE_GAP, SCREEN_LANE_INSET, SCREEN_LANE_ROW = 12, 8, 18
 SCREEN_CHOICE_HEIGHTS = {"computer": (148, 22), "touch": (188, 32)}
 SCREEN_PANEL_BUTTON = (148, 24)
+# a chat under a table (<chat>: the lobby's, 5 lines), on the computer and on a touchscreen: its line's and its line
+# typed's heights, its inner margin and the gap over it (the table's foot over it)
+SCREEN_CHAT_LINES = (5,)
+SCREEN_CHAT = {"computer": (15, 20), "touch": (16, 40)}
+SCREEN_CHAT_INSET, SCREEN_CHAT_GAP = 6, 8
+
+
+def screen_chat_sizes() -> list:
+    """(layout, width, height) of each chat's panel, and (width, height) of its line typed, each layout's"""
+    sizes = []
+    for layout, (width, _, _) in SCREEN_LANES.items():
+        line, typed = SCREEN_CHAT[layout]
+        for lines in SCREEN_CHAT_LINES:
+            sizes.append((layout, width, 2 * SCREEN_CHAT_INSET + lines * line + typed + 2,
+                          (width - 2 * SCREEN_CHAT_INSET, typed)))
+    return sizes
 
 
 def screen_lane_sizes(lanes: int = 2) -> list:
-    """(table width, lane width, lanes' height, a lane's row's width) of a table of lanes, each layout's"""
+    """(table width, lane width, lanes' height, a lane's row's width) of a table of lanes, each layout's: alone,
+    and over a chat"""
     sizes = []
-    for width, top, bottom in SCREEN_LANES.values():
+    for layout, (width, top, bottom) in SCREEN_LANES.items():
         lane = (width - (lanes - 1) * SCREEN_LANE_GAP) // lanes
-        sizes.append((width, lane, bottom - top, lane - 2 * SCREEN_LANE_INSET))
+        feet = [bottom] + [bottom - height - SCREEN_CHAT_GAP for chat_layout, _, height, _ in screen_chat_sizes()
+                           if chat_layout == layout]
+        for foot in feet:
+            sizes.append((width, lane, foot - top, lane - 2 * SCREEN_LANE_INSET))
     return sizes
 
 
@@ -5614,11 +5634,17 @@ def screen_pictures(framed, highlight) -> list:
     and its own focused: the generated lobby's rows'), a panel's choices' rows (lit with the focus) and its
     outlined buttons, and a touchscreen's panel beside the lanes"""
     pictures = []
+    for _, width, height, (typed_w, typed_h) in screen_chat_sizes():
+        pictures.append((part_panel(width, height), [(framed(width, height, "#000e23", 0.88, "#2995ff", 9.5), width,
+                                                      height)]))
+        pictures.append((part_highlight(typed_w, typed_h), highlight(typed_w, typed_h)))
     for width, lane, height, row in screen_lane_sizes():
         pictures.append((part_team_panel(lane, height), [(framed(lane, height, "#081a40", 0.9, edge, 9.5), lane, height)
                                                          for _, edge in LOBBY_TEAM_COLORS]))
         pictures.append((part_panel(width, height), [(framed(width, height, "#081a40", 0.9, "#1f4f9a", 9.5), width,
                                                       height)]))
+        if any(name == f"{PARTS}/lane_row_{row}x{SCREEN_LANE_ROW}" for name, _ in pictures):
+            continue
         pictures.append((f"{PARTS}/lane_row_{row}x{SCREEN_LANE_ROW}", [
             (framed(row, SCREEN_LANE_ROW, "#0b2252", 0.9, "none", 5), row, SCREEN_LANE_ROW),
             (framed(row, SCREEN_LANE_ROW, "#002244", 0.9, "#2299ff", 5), row, SCREEN_LANE_ROW),

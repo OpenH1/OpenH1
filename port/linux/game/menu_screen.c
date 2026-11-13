@@ -330,6 +330,9 @@ static struct screen_action const screen_actions[] =
 	{ "lobby skill right", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
 	{ "lobby teams left", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
 	{ "lobby teams right", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	/* (the lobby's chat: a line begun, the on-screen keyboard's on a
+	controller or a touchscreen) */
+	{ "lobby chat", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
 	/* (the pause menu's, screens/pause.xml and pause_campaign.xml, as its
 	rows did on the map's: the screen closed (RESUME GAME), or every screen
 	(B; the campaign's RESUME GAME); the player out of a multiplayer game
@@ -357,7 +360,7 @@ static char const *const screen_action_names[] =
 	"profile new", "profile delete", "lobby row", "lobby start", "lobby team red", "lobby team blue",
 	"lobby team toggle", "lobby invite", "lobby settings", "lobby host", "lobby add player", "lobby bots left",
 	"lobby bots right", "lobby skill left", "lobby skill right", "lobby teams left", "lobby teams right",
-	"close", "close all", "pause leave", "open host controls", "pause end game",
+	"lobby chat", "close", "close all", "pause leave", "open host controls", "pause end game",
 	"pause friendly fire", "pause revert", "pause restart", "pause quit",
 };
 
@@ -384,7 +387,7 @@ static char const *const screen_binding_names[] =
 	"lobby.map", "lobby.limits", "lobby.kind", "lobby.kind.tone", "lobby.tick", "lobby.opence", "lobby.after",
 	"lobby.bots", "lobby.bots.shown", "lobby.bots.locked", "lobby.bots.count.locked", "lobby.skill", "lobby.teams",
 	"lobby.status", "lobby.start", "lobby.host", "lobby.settings", "lobby.controls", "lobby.waiting",
-	"lobby.team.change", "lobby.invite", "lobby.add", "pause.friendly_fire", "pause.host_controls",
+	"lobby.team.change", "lobby.invite", "lobby.add", "lobby.chat", "pause.friendly_fire", "pause.host_controls",
 	"pause.end_game", "pause.chapters",
 };
 
@@ -401,6 +404,17 @@ static char const *const screen_source_names[] =
 	"browser.games",
 	"profiles",
 	"lobby.players",
+};
+
+/* the chats a <chat> may name (menu_table.h), and their names */
+static struct menu_chat_source const *const screen_chats[] =
+{
+	&pc_menu_lobby_chat,
+};
+
+static char const *const screen_chat_names[] =
+{
+	"lobby.chat",
 };
 
 static int screen_value(void *context, char const *name, char *value, unsigned long size)
@@ -462,6 +476,7 @@ static struct menu_screen_names const screen_names =
 	screen_action_names, NUMBEROF(screen_action_names),
 	screen_binding_names, NUMBEROF(screen_binding_names),
 	screen_source_names, NUMBEROF(screen_source_names),
+	screen_chat_names, NUMBEROF(screen_chat_names),
 };
 
 /* the menus' screens a hand-written one takes the place of, by its name, and
@@ -1639,6 +1654,9 @@ void menu_screen_widget_drawing(struct widget_instance const *widget, point2d of
 		the widgets' order: over what is drawn before, under what after) */
 		if (open->widget && open->has_spartan && open->spartan_picture == widget)
 			menu_spartan_draw(offset.x, offset.y);
+		/* (its chat's on-screen keyboard, over everything) */
+		if (open->widget && tall_screens[index] && tall_screens[index]->chat_keyboard == widget)
+			tall_chat_keyboard_draw(tall_screens[index], offset);
 	}
 }
 

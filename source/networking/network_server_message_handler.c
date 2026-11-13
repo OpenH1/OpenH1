@@ -1546,6 +1546,20 @@ boolean network_game_server_handle_client_message(
 					}
 					break;
 				}
+				/* (port: the lobby's text chat, from any machine that joined,
+				in the lobby too, from its stream alone: network_chat.c) */
+				if (network_chat_handles_lobby_message(message, message_buffer_size))
+				{
+					long machine_index;
+
+					if (network_game_server_client_machine_is_joined_to_game(server, machine) &&
+						network_game_server_get_client_machine(server, machine, &machine_index))
+					{
+						network_game_server_client_machine_heard(server, machine);
+						network_chat_handle_lobby_message(machine_index, message, message_buffer_size, TRUE);
+					}
+					break;
+				}
 				/* (in game, from a machine that has loaded it, as a datagram
 				is: else dropped) */
 				if (network_game_server_client_machine_is_joined_to_game(server, machine) &&

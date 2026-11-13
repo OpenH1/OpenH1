@@ -6860,6 +6860,14 @@ void network_distributed_handle_message(
 		network_voice_handle_message(machine_index, message, size);
 		return;
 	}
+	/* (the lobby's text chat, apart from a game's, over the stream alone:
+	network_chat.c) */
+	if (network_chat_handles_lobby_message(message, size))
+	{
+		network_chat_handle_lobby_message(machine_index, message, size, machine_index != NONE ?
+			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
+		return;
+	}
 	/* (map sharing's, in the lobby too, over the host's connection alone:
 	map_share.c) */
 	if (map_share_handles_message(message, size))

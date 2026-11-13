@@ -1286,8 +1286,11 @@ int pc_menu_lobby_value(char const *name, char *value, unsigned long size)
 	else if (!strcmp(name, "lobby.blue.tone"))
 		usnprintf(text, NUMBEROF(text) - 1, model->teams ? L"1" : L"2");
 	/* (the panel: the next game) */
-	else if (!model->game && !strncmp(name, "lobby.", 6) && strcmp(name, "lobby.add") && strcmp(name, "lobby.invite"))
+	else if (!model->game && !strncmp(name, "lobby.", 6) && strcmp(name, "lobby.add") && strcmp(name, "lobby.invite") &&
+		strcmp(name, "lobby.chat"))
+	{
 		return 0;
+	}
 	else if (!strcmp(name, "lobby.gametype"))
 		return lobby_screen_words(model->gametype, value, size);
 	else if (!strcmp(name, "lobby.map"))
@@ -1343,6 +1346,9 @@ int pc_menu_lobby_value(char const *name, char *value, unsigned long size)
 		yes = controls->invite;
 	else if (!strcmp(name, "lobby.add"))
 		yes = controls->add_player;
+	/* (the lobby's chat on: the host's, network_chat.c) */
+	else if (!strcmp(name, "lobby.chat"))
+		yes = network_chat_lobby_on();
 	else
 		return 0;
 	if (yes)
@@ -1365,6 +1371,17 @@ int pc_menu_lobby_action(struct widget_instance *widget, struct event_record *ev
 	short x, y;
 
 	*deleted = FALSE;
+	/* (the chat: a line begun, with the on-screen keyboard on a controller
+	and a touchscreen; on the keyboard, typed: network_chat.c) */
+	if (!strcmp(name, "lobby chat"))
+	{
+		boolean keyboard = ui_widget_port_touch_menus() || !halo_keyboard_prompts();
+
+		if (!network_chat_lobby_begin(keyboard ? controller : NONE, keyboard))
+			return FALSE;
+		ui_play_audio_feedback_sound(SOUND_FORWARD);
+		return TRUE;
+	}
 	if (!strcmp(name, "lobby row"))
 	{
 		short rows = MAX(model->layout.row_count, 1);
@@ -1405,7 +1422,67 @@ void pc_menu_lobby_frame(struct widget_instance *screen)
 {
 	ui_widget_game_data_function_invoke(screen, LOBBY_PREJOIN_FUNCTION);
 	lobby_screen_model();
+	/* (its chat's keys, T and Y, while it is shown) */
+	network_chat_lobby_frame();
 }
+
+/* ---- the lobby's chat (<chat source="lobby.chat">: network_chat.c's lobby
+lines, each its sender's name in its team's colour) */
+
+static short lobby_chat_lines(struct menu_chat_line *lines, short maximum)
+{
+	struct network_chat_lobby_line said[NETWORK_CHAT_LOBBY_LINES];
+	short count = network_chat_lobby_lines(said, (short)MIN(maximum, NETWORK_CHAT_LOBBY_LINES)), index;
+
+	for (index = 0; index < count; index++)
+	{
+		struct menu_chat_line *line = &lines[index];
+		short letter;
+
+		csmemset(line, 0, sizeof(*line));
+		for (letter = 0; letter < (short)NUMBEROF(said[index].name) && letter < (short)NUMBEROF(line->name) - 1 &&
+			said[index].name[letter]; letter++)
+			line->name[letter] = (unsigned short)said[index].name[letter];
+		for (letter = 0; letter < (short)NUMBEROF(line->text) - 1 && said[index].text[letter]; letter++)
+			line->text[letter] = (unsigned short)(unsigned char)said[index].text[letter];
+		/* (the scoreboard's team colours; a notice's pale gold) */
+		line->color = said[index].color == NETWORK_CHAT_LOBBY_RED ? 0xFF6B5EFFUL :
+			said[index].color == NETWORK_CHAT_LOBBY_BLUE ? 0x5AA9FFFFUL : 0xEDD173FFUL;
+	}
+	return count;
+}
+
+static char const *lobby_chat_typed(int *keyboard)
+{
+	boolean open = FALSE;
+	char const *typed = network_chat_lobby_typed(&open);
+
+	*keyboard = open;
+	return typed;
+}
+
+static void lobby_chat_keyboard(long font, short x0, short y0, short x1, short y1, short screen_width,
+	short screen_height)
+{
+	if (font != NONE)
+		network_chat_lobby_draw_keyboard(font, x0, y0, x1, y1, screen_width, screen_height);
+}
+
+/* the line typed's place's words while none is: how to begin one, or that
+the host has the chat off */
+static char const *lobby_chat_prompt(void)
+{
+	if (!network_chat_lobby_on())
+		return "Text chat is off in this lobby";
+	if (ui_widget_port_touch_menus())
+		return "Tap here to chat";
+	return halo_keyboard_prompts() ? "Press T to chat" : "%white-button Chat";
+}
+
+struct menu_chat_source const pc_menu_lobby_chat =
+{
+	lobby_chat_lines, lobby_chat_typed, lobby_chat_keyboard, lobby_chat_prompt,
+};
 
 /* ---- what Discord is told (p2p_discord_set_game, from party_update) */
 

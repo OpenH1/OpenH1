@@ -24,7 +24,9 @@ network_host_game.c's, by the host's own ways: this file only shows it.
   game's), Password (typed: a public internet game's, at once), Lock teams,
   Allow votekick, Listing (an internet game's), Max players (left and
   right: never fewer than are in it), Allow OpenCE players (an OpenH1
-  game's).
+  game's), Lobby text chat and Lobby voice chat (network.lobby_text_chat,
+  network.voice_lobby: on or off for everyone, the host's settings reaching
+  every machine as the chat's and the voice's do).
 - MAPS: the gametype (left and right: first CURRENT, the game's own with
   its score, time and rules, then the gametypes), then the multiplayer maps, the
   Xbox's and Custom Edition's; for the map chosen the panel's PLAY NOW
@@ -116,6 +118,11 @@ enum
 	_host_game_listing,
 	_host_game_maximum_players,
 	_host_game_opence,
+	/* the lobby's chats: its text (network.lobby_text_chat, network_chat.c)
+	and its voice (network.voice_lobby, network_voice.c), on or off for
+	everyone in it, the host's settings reaching each machine as they do */
+	_host_game_lobby_text_chat,
+	_host_game_lobby_voice_chat,
 	NUMBER_OF_HOST_GAME_ROWS,
 	MAXIMUM_HOST_GAME_ROWS = NUMBER_OF_HOST_GAME_ROWS,
 };
@@ -780,6 +787,18 @@ static void host_game_row_text(short row, wchar_t *label, wchar_t *value, wchar_
 		usnprintf(help, size - 1, L"Players of OpenCE may join from now on, playing at 30 ticks. Those in "
 			L"the game stay.");
 		break;
+	case _host_game_lobby_text_chat:
+		usnprintf(label, size - 1, L"LOBBY TEXT CHAT");
+		usnprintf(value, size - 1, config_boolean("network.lobby_text_chat") ? L"ON" : L"OFF");
+		usnprintf(help, size - 1, L"Everyone in the lobby can type to everyone, before and after a game. "
+			L"Changes at once, for everyone.");
+		break;
+	case _host_game_lobby_voice_chat:
+		usnprintf(label, size - 1, L"LOBBY VOICE CHAT");
+		usnprintf(value, size - 1, config_boolean("network.voice_lobby") ? L"ON" : L"OFF");
+		usnprintf(help, size - 1, L"Everyone in the lobby can hear everyone, before and after a game. "
+			L"Changes at once, for everyone.");
+		break;
 	default:
 		break;
 	}
@@ -1041,6 +1060,17 @@ static void host_game_row_change(struct widget_instance *row_widget, short row, 
 	case _host_game_opence:
 		network_host_controls_set_opence_joins(!network_host_controls_opence_joins());
 		break;
+	/* (written to config.toml, which the host's chat and voice read again
+	at once and tell every machine: network_chat.c, network_voice.c) */
+	case _host_game_lobby_text_chat:
+	case _host_game_lobby_voice_chat:
+	{
+		char const *setting = row == _host_game_lobby_text_chat ? "network.lobby_text_chat" : "network.voice_lobby";
+
+		if (!config_write(setting, config_boolean(setting) ? "false" : "true"))
+			platform_log("menus: could not write %s to config.toml", setting);
+		break;
+	}
 	default:
 		break;
 	}

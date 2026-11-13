@@ -1586,6 +1586,11 @@ static const struct config_setting config_settings[] =
 		"Hosting: the text chat: \"on\" (links in lines are refused), \"links\"\n"
 		"(links allowed) or \"off\", in either case; listed in the server\n"
 		"browser or not." },
+	{ "network.lobby_text_chat", _config_boolean, "true", "HALO_NET_LOBBY_TEXT_CHAT", _environment_value,
+		_platform_all,
+		"Hosting: the text chat in the lobby, before and after a game, where every\n"
+		"player reads every other (OpenH1's players: OpenCE's lobby has none); its\n"
+		"links as network.text_chat says (Host Controls' LOBBY TEXT CHAT)." },
 	{ "network.chat_channels", _config_string, "\"all\"", "HALO_NET_CHAT_CHANNELS", _environment_value,
 		_platform_all,
 		"The text chat's channel each local player chose last, which T\n"

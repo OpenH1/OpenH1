@@ -94,6 +94,7 @@ static struct menu_screen_names const names =
 	game_actions, sizeof(game_actions) / sizeof(game_actions[0]),
 	game_bindings, sizeof(game_bindings) / sizeof(game_bindings[0]),
 	game_sources, sizeof(game_sources) / sizeof(game_sources[0]),
+	game_chats, sizeof(game_chats) / sizeof(game_chats[0]),
 };
 
 /* the count of a screen's blocks of a kind (in the block parent; -2: any) */
@@ -633,6 +634,30 @@ int main(int argc, char **argv)
 		refused("<screen name=\"t\"><choice label=\"A\" value=\"V\" left=\"quit\" right=\"quit\"/></screen>",
 			"is not one of what");
 	}
+	else if (!strcmp(name, "chat"))
+	{
+		struct menu_screen_block const *chat;
+
+		/* (a chat under a table: its source, lines, do and if) */
+		CHECK(read_text("<screen name=\"t\"><table source=\"test.rows\">" COLUMN "</table><chat source=\"test.chat\" "
+			"lines=\"4\" do=\"quit\" if=\"test.flag\"/></screen>", &screen, problem), "a good chat refused: %s", problem);
+		chat = &screen.blocks[kind_first(&screen, MENU_SCREEN_CHAT)];
+		CHECK(!strcmp(chat->source, "test.chat") && chat->lines == 4 && !strcmp(chat->action, "quit") &&
+			!strcmp(chat->condition, "test.flag"), "the chat as read");
+		menu_screen_free(&screen);
+		CHECK(read_text("<screen name=\"t\"><chat source=\"test.chat\"/></screen>", &screen, problem) &&
+			screen.blocks[kind_first(&screen, MENU_SCREEN_CHAT)].lines == 5, "a chat's lines are not 5 at first: %s",
+			problem);
+		menu_screen_free(&screen);
+		refused("<screen name=\"t\"><chat/></screen>", "<chat> has no source");
+		refused("<screen name=\"t\"><chat source=\"nowhere\"/></screen>", "there is no chat \"nowhere\"");
+		refused("<screen name=\"t\"><chat source=\"test.chat\" lines=\"20\"/></screen>", "lines is a number");
+		refused("<screen name=\"t\"><chat source=\"test.chat\" do=\"go nowhere\"/></screen>", "no action \"go nowhere\"");
+		refused("<screen name=\"t\"><chat source=\"test.chat\" if=\"nothing.here\"/></screen>",
+			"no binding {nothing.here}");
+		refused("<screen name=\"t\"><chat source=\"test.chat\"/><chat source=\"test.chat\"/></screen>", "one <chat>");
+		refused("<screen name=\"t\"><panel><chat source=\"test.chat\"/></panel></screen>", "is not one of what");
+	}
 	else if (!strcmp(name, "lobby"))
 	{
 		struct menu_screen_block const *table;
@@ -658,7 +683,9 @@ int main(int argc, char **argv)
 			rights += block->kind == MENU_SCREEN_BUTTON && block->side && !strcmp(block->side, "right");
 		}
 		CHECK(choices == 3 && panel_buttons == 3, "%d choices, %d panel buttons", choices, panel_buttons);
-		CHECK(rights == 5, "%d buttons at the bar's right", rights);
+		CHECK(rights == 6, "%d buttons at the bar's right", rights);
+		CHECK(kind_first(&screen, MENU_SCREEN_CHAT) >= 0 &&
+			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_CHAT)].source, "lobby.chat"), "the lobby's chat");
 		menu_screen_free(&screen);
 	}
 	else if (!strcmp(name, "buttons"))
