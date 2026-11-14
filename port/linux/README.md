@@ -753,10 +753,14 @@ CAMPAIGN. It has three cards:
 - SPLIT SCREEN: Multiplayer > SPLIT-SCREEN CO-OP, as above.
 
 Network games have split screen too: up to 4 players on each computer. In
-the game lobby, another controller presses START to join, and the new
-player's profile is chosen on the ADD PLAYER screen that opens (with any
-controller). With one gamepad, choose the lobby's ADD PLAYER first (X, or
-E on the keyboard): until then that gamepad shares controller 1 with the keyboard. Two players on one profile get different names from the host. A
+the game lobby, another controller presses START (or A on START GAME) to
+join, or anyone chooses ADD PLAYER (X, or Tab on the keyboard); the ADD
+PLAYER screen that opens has a row for each controller: each new player
+presses A or START on their own controller to join, picks their profile
+with left and right, and presses A when ready; once everyone joining is
+ready, A or START (or DONE) adds them all. Only a player already in the
+game starts it with START. With one gamepad, choose the lobby's ADD PLAYER
+first: until then that gamepad shares controller 1 with the keyboard. Two players on one profile get different names from the host. A
 player's B in the lobby leaves the game alone, and the last player of the
 computer leaves it for all of them. When all the players are on the host's
 computer, START GAME starts the game without another computer, and a team

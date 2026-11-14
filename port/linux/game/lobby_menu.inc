@@ -1044,12 +1044,14 @@ static boolean lobby_board_team(struct widget_instance *widget, short controller
 /* "port lobby start" (START GAME, A or Start on the players, Start on the
 panel's controls): the host's game starts, at once (the host's own faster:
 network_game_server_game_start_request_event) once every machine has the
-map */
-static boolean lobby_board_start(void)
+map; by one of this machine's players alone (FALSE for another controller,
+which its START joins: "port lobby join", pc_menu_lobby_start) */
+static boolean lobby_board_start(short controller)
 {
 	void *client = global_network_game_client_get();
 
-	if (!global_network_game_server_get() || !client || !lobby_local_player_count())
+	if (!global_network_game_server_get() || !client || !lobby_local_player_count() ||
+		!lobby_controller_playing(controller))
 		return FALSE;
 	if (!network_game_client_request_start_time_change(client, TRUE))
 		return campaign_fail();
@@ -1063,7 +1065,7 @@ static boolean lobby_board_click(struct widget_instance *widget, short controlle
 	short x, y;
 
 	if (!ui_widget_port_take_click(&x, &y))
-		return lobby_board_start();
+		return lobby_board_start(controller);
 	if (!blue || !blue->visible)
 		return TRUE;
 	return lobby_board_team(widget, controller,
@@ -2016,7 +2018,7 @@ int pc_menu_lobby_action(struct widget_instance *widget, struct event_record *ev
 		short rows = MAX(model->layout.row_count, 1);
 
 		if (!ui_widget_port_take_click(&x, &y))
-			return lobby_board_start();
+			return lobby_board_start(controller);
 		if (!model->teams || row == NONE)
 			return TRUE;
 		return lobby_board_team(widget, controller, (short)(row / rows == 1 ? 1 : 0));

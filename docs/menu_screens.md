@@ -60,7 +60,7 @@ centred, and the bar's wide layout reaches the screen's edges up to 16:9.
 
 | Element | Attributes | Meaning |
 | --- | --- | --- |
-| `<screen>` | `name` (required), `back`, `start`, `background` | The screen. `back` is the action for B and Back; without it, B goes back to the screen before. `start` is the action for Start anywhere on the screen (the lobby's start, as the generated lobby's every control's Start); where it does nothing (a player's), Start is the screen's widgets' and its own handlers'. `background` (a tall screen's): `own` (the default), the generated screen's own background, the tall layout's where it has none; `tall`, the tall layout's in place of the generated screen's own (Profile Color's, whose generated screen's is the PC version's gradient, its band's line lower) |
+| `<screen>` | `name` (required), `back`, `start`, `background` | The screen. `back` is the action for B and Back; without it, B goes back to the screen before. `start` is the action for Start anywhere on the screen (the lobby's start, as the generated lobby's every control's Start: a controller not yet in the game joins, on Add Player's screen, and only a player's starts the game); where it does nothing (a player not the host), Start is the screen's widgets' and its own handlers'. `background` (a tall screen's): `own` (the default), the generated screen's own background, the tall layout's where it has none; `tall`, the tall layout's in place of the generated screen's own (Profile Color's, whose generated screen's is the PC version's gradient, its band's line lower) |
 | `<title-art/>` | | Halo's title art, where the main menu has it. If the screen's blocks need more height than the canvas has, this block gives up some of its room |
 | `<list>` | `id`, `focus` | A list of items. The d-pad, the stick and the mouse wheel move through it, wrapping from the last item to the first, as the classic lists do. `focus` is the id of the item focused when the screen first opens. After that the screen remembers the last focused item |
 | `<item>` | `label` (required), `do` (required), `id`, `hint`, `when`, `if` | One item. A, Start, a click or a tap runs `do`. `hint` is the line shown under the item while it is focused. Write `<hint>` children instead to give alternatives: the first whose bindings all have values is shown. `when` lists platforms (`desktop android vr hdr touch pointer computer`, as for `platform=` in the menu files) and the item is made only on one of them; `if` names a binding that must have a value for it to be made |
@@ -187,6 +187,7 @@ profile.
 | `profiles` | The player profiles, and the row that makes one (Select Profile, below); its one column `name` |
 | `lobby.players` | The lobby's players (below), in a table of two lanes: red's and blue's (a game without teams' one list down both); its columns `dot`, `name` (a player's speaker beside it in voice chat) and `tag` |
 | `profile.colors` | The profile colors, the PC version's picker's 18 and Random after them (Profile Color, below); its columns `swatch` and `name` (the color's name in its color, black's a grey) |
+| `add.players` | Add Player's rows (below): this machine's four controllers, P1 to P4; its columns `color` (a `swatch` of the profile's color), `controller`, `profile` and `state` (IN THE GAME, CHOOSING, READY), its players in the game and those joining framed as its own |
 
 A `<chat>`'s lines come from a chat source (`struct menu_chat_source`,
 `menu_table.h`) in `menu_screen.c`'s `screen_chats`, by its name in
@@ -273,6 +274,7 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | `{lobby.map.picture}`, `{lobby.description}`, `{lobby.where}` | The next game's map's frame of `mp_map_grafix` (an Xbox map's, a Custom Edition map's or a campaign level's display index, else the unknown map's), its gametype in a few words (what wins it), its map and limits on a line (`Blood Gulch · 50 kills`) |
 | `{lobby.lineup}` | The lineup's colors: a team game's four places of each team (red's, then blue's, `-` an empty one), else the first eight players; each the host first, then as they joined, in the color the game gives them (`red`, `blue`, else their profile color's number) |
 | `{lobby.lineup.names}` | The lineup's names: each place of `{lobby.lineup}`'s its player's name, in the same order, a line each (an empty place's line empty) |
+| `{add.count}`, `{add.title}`, `{add.profile}`, `{add.color}`, `{add.help}`, `{add.done}` | Add Player's: how many more may join (`2 MORE CAN JOIN`); the chosen row's player (`PLAYER 2`), profile, its color for a `<spartan>` (a number, or `random`) and what its controller does next; (for `if`s) DONE's, once every one joining is ready |
 | `{lobby.details}`, `{lobby.card}`, `{lobby.inviting}`, `{lobby.panel.open}` | (for the panels' `if`s) the panel shown: the next game's, a player's card, the friends to invite; another than the next game's (BACK's) |
 | `{lobby.card.name}`, `{lobby.card.color}`, `{lobby.card.ping}`, `{lobby.card.platform}`, `{lobby.card.party}`, `{lobby.card.facts}`, `{lobby.card.note}` | A card's player: their name, color (the lineup's word), ping (`45 ms`: a client's own to the host, the host's of a client as a game measured it; `Host`, `Bot`, `Not yet`), platform (GOAT H1, OpenCE, Bot; `Unknown` where this machine cannot tell), party (`Your party`, `You`, `None`), the three on one line (a touchscreen's), and what was just done or what they are to this profile (`Friend request sent.`) |
 | `{lobby.card.friend}`, `{lobby.card.mutable}`, `{lobby.card.mute}`, `{lobby.card.kick}` | (for `if`s, and MUTE's words) ADD FRIEND's (a code the host told, of no friend, request or block yet), MUTE's (another machine's player), `MUTE` or `UNMUTE`, KICK's (Host Controls' own, the host's) |
@@ -328,8 +330,9 @@ sounds and the fades are the game's.
 | `profile delete` | The question whether to delete the chosen profile (DELETE) |
 | `profile color` | The row's color (SELECT: the focused one's) made the profile being edited's, and back to the screen before; Random its color none, a new profile's |
 | `lobby row` | A lobby's row chosen: a click on it puts this player on its lane's team (in a team game), as a click on the generated lobby's column; A (Start) starts the game (the host's) |
-| `lobby start`, `lobby team red`, `lobby team blue`, `lobby team toggle` | The game started (START GAME); this player put on red's or blue's team (left and right on the players), or the other (CHANGE TEAM) |
-| `lobby invite`, `lobby settings`, `lobby host`, `lobby add player` | The invite copied; Server Setup in the lobby's place (GAME SETTINGS); Host Controls (HOST CONTROLS); another player of this machine added (ADD PLAYER) |
+| `lobby start`, `lobby team red`, `lobby team blue`, `lobby team toggle` | The game started (START GAME, a player's Start: a controller not in the game joins instead, on Add Player's screen); this player put on red's or blue's team (left and right on the players), or the other (CHANGE TEAM) |
+| `lobby invite`, `lobby settings`, `lobby host`, `lobby add player` | The invite copied; Server Setup in the lobby's place (GAME SETTINGS); Host Controls (HOST CONTROLS); Add Player's screen opened (ADD PLAYER) |
+| `add player done`, `add player back` | Add Player's: those joining, all ready, brought into the game (DONE, a player's START) and back; or let go of (BACK, B) and back |
 | `lobby chat` | A line of the lobby's chat begun: on the keyboard typed (Enter sends it, Esc lets it go); on a controller and a touchscreen with the on-screen keyboard |
 | `lobby bots left`, `lobby bots right`, `lobby skill left`, `lobby skill right`, `lobby teams left`, `lobby teams right` | The host's bots' choices stepped: BOTS to the choice before or after (at its ends no further), SKILL and TEAMS round, written to `config.toml` as the generated lobby's spinners write them |
 | `lobby card` | The row's player's card shown in the panel (theirs again: closed) |
@@ -358,9 +361,10 @@ join_game_screen`) in each of its modes, by `{browser.*}` bindings and `if`s:
   as it opens.
 
 The classic engine, PRO 2V2's browser and a refused or missing file keep the
-generated screen. HOST & MORE sits in the band in a bar of its own (out of
-the body, which the d-pad steps): its key, a click and a tap each press it,
-as the pointer clicks only a list's items.
+generated screen. HOST & MORE sits in the band in a bar of its own, the
+body's first block: the d-pad and the stick reach it (up from the tabs) as
+they reach every other focusable block, and A, its key (View, F1), a click
+and a tap each press it, as the pointer clicks only a list's items.
 
 What it lists and does is menu_functions.c's, as for the generated screen: the
 games found, their order, the groups and their headings, the filters, the
@@ -490,8 +494,9 @@ for both views, the generated screen's widgets (`lobby_board_update`) and the
 hand-written screen's table and bindings (`pc_menu_lobby_source`,
 `pc_menu_lobby_value`). Left and right on the players put this player on
 red's or blue's team, Start the host's start; the generated screen's own
-keys stay its stand-in's (B leaves, START joins another controller's
-player, X adds one, Y the map vote or COPY INVITE), and what its list did each frame (the split screen's
+keys stay its stand-in's (B leaves, X opens Add Player, Y the map vote or COPY
+INVITE); the Start of a controller not yet in the game opens Add Player with
+it joining (not the host's start: `pc_menu_lobby_start`), and what its list did each frame (the split screen's
 players joining, the map vote's screen) is done each frame it is drawn
 (`pc_menu_lobby_frame`).
 
@@ -578,6 +583,36 @@ new profile's), for which each game gives the player a color no one else
 has (`network_server_manager.c`'s `get_unique_random_color`); the PC
 version's picker had no row for it. The classic engine keeps its own screen
 and the original pictures.
+
+## Add Player
+
+`screens/add_player.xml` is the new menus' ADD PLAYER, in place of the
+classic one's (the next START of another controller, then the profile
+list of `main_menu/multiplayer_type_select/lobby/player_profile_screen`):
+the lobby's ADD PLAYER (X) and a game under way's (its preview's) open it,
+and so does the Start (or A on START GAME) of a controller not yet in the
+game, which joins on it at once. It does what the Xbox's Select Profile of
+four (`4way_start2join_screen`, Press A to Join) did, in the tall layout:
+ADD PLAYER in the band with how many more may join, a row for each of this
+machine's four controllers (`add.players`: its profile's color, P1 to P4,
+its profile, or Press A to join, or No controller, and IN THE GAME,
+CHOOSING or READY), and in the panel the chosen row (the controller that
+pressed last): its player, its profile, its Spartan in the profile's color,
+what its controller does next, and DONE once every one joining is ready.
+
+Its keys are taken by controller (`screen_places`' `key`,
+`pc_menu_add_player_key`), before its focus: a controller not in the game
+joins with A or START (several may, together), steps its own profile with
+left and right (the D-pad, the stick), is ready with A and goes back a step
+with B; once all are ready, A or START of one of them, DONE, or a player's
+START makes each of them a player of the game on its profile
+(`ui_widget_port_multiplayer_player`, which the lobby's "net splitscreen
+prejoin players" adds; the preview's JOIN GAME takes them all) and goes
+back. A joining controller's other keys do nothing, nor move the screen's
+focus, which is the players' in the game, as are its B and BACK (those
+joining let go of). While it is open, one gamepad sharing player 1's
+controller with the keyboard has its own (`pc_menu_split_players`), and
+joins as P2. The classic engine keeps the classic way.
 
 ## Select Profile
 
