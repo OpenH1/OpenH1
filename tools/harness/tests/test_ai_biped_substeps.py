@@ -15,7 +15,9 @@ CONTROLS = [
     ('unit->unit.actor_index != NONE || ', '', 'lane'),
     (' || unit->unit.swarm_actor_index != NONE', '', 'lane'),
     # (an OpenCE player's biped in a mixed game: network_standard.c)
-    ('return !network_standard_player_is_opence(unit->unit.player_index);', 'return TRUE;', 'lane'),
+    ('return !network_standard_player_is_opence(unit->unit.player_index) &&', 'return TRUE &&', 'lane'),
+    # (a rider in a vehicle's window: vehicle_riding_bipeds.c)
+    (' &&\n\t\t\t\t!biped_riding_holds_lane(root_index);', ';', 'lane'),
     # (an OpenCE player's projectile)
     ('return !network_standard_player_is_opence(object_get(root_index)->object.owner_player_index);', 'return TRUE;',
      'lane'),

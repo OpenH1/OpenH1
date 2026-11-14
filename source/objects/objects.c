@@ -62,6 +62,7 @@ OBJECTS.C
 #include "units/bipeds.h" /* port: a lift's riders of the micro lane */
 #include "units/vehicles.h" /* port: a player's vehicle, of the micro lane */
 #include "sim_rate.h" /* port: the sub-steps (port/linux/game/sim_rate.c) */
+#include "vehicle_riding_bipeds.h" /* port: port/linux/game/vehicle_riding_bipeds.c */
 #include "network_standard.h" /* port: an OpenCE player's lane (port/linux/game/network_standard.c) */
 /* port: object_bounds_cache.c's */
 void object_bounds_cache_update(long object_index, real_point3d const *center, real radius);
@@ -1347,9 +1348,11 @@ static boolean object_lane_micro_candidate(
 		struct unit_datum *unit = unit_get(root_index);
 
 		/* (an OpenCE player's in a mixed game moves once a tick, as on their
-		own machine: network_standard.c) */
+		own machine: network_standard.c; and a rider in a vehicle's window, as
+		at 30: vehicle_riding_bipeds.c's biped_riding_holds_lane) */
 		if (unit->unit.player_index != NONE)
-			return !network_standard_player_is_opence(unit->unit.player_index);
+			return !network_standard_player_is_opence(unit->unit.player_index) &&
+				!biped_riding_holds_lane(root_index);
 		return unit->unit.actor_index != NONE || unit->unit.swarm_actor_index != NONE;
 	}
 	case _object_type_vehicle:

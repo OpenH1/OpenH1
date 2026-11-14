@@ -23,6 +23,7 @@ The engine-facing riding hooks, kept separate from the decompiled biped physics.
 #include "network_coop.h" /* port/linux/game/network_coop.c */
 #include "vehicle_riding_bipeds.h"
 #include "saved games/game_state.h"
+#include "sim_rate.h" /* port/linux/game/sim_rate.c */
 
 /* port/linux/game/network_objects.c's (a vehicle a client puts where
 the host has it, with no physics of its own) */
@@ -95,12 +96,23 @@ void biped_riding_clear(
 	biped_riding_set(biped, &state);
 }
 
+/* the riders' lanes this tick (biped_riding_holds_lane, below) */
+static struct
+{
+	long time; /* the tick latched (NONE: none) */
+	short count;
+	long biped_indices[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	long vehicle_indices[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+} biped_riding_lanes = { NONE, 0 };
+
 void bipeds_riding_latch(
 	void)
 {
 	struct object_iterator iterator;
 	struct biped_datum *biped;
 
+	/* (a load or a new map: the riders' lanes taken again) */
+	biped_riding_lanes.time = NONE;
 	if (vehicle_riding_latch())
 		return;
 	object_iterator_new(&iterator, _object_mask_biped, 0);
@@ -920,6 +932,106 @@ boolean biped_riding_deferred(
 
 	/* (vehicle_riding_deferred's terms, read off the fields: no copy of the state) */
 	return biped->biped.riding_ticks > 0 && biped_riding_applies(biped);
+}
+
+/* the sub-steps of game.sim_rate 60 and 120 (sim_rate.h) and riding: a
+biped in a vehicle's window (on its deck, or in the air it left), and every
+vehicle such a biped names, move once a tick, in the objects' update, as at
+30 (objects.h's macro lane), the biped after the vehicle
+(objects_update_passes). The carry, the deck's turn of the view, the
+touches a vehicle's update records for its riders, the cabin and the window
+are all of the tick, from the vehicle's last update to its next: a rider
+moving in the sub-steps would see the vehicle where a sub-step sees it while
+the deck carried it the whole tick. So riding at 60 and 120 is riding at 30,
+the frames between the ticks drawn as every object of the macro lane is
+(render_interpolation.c). A biped that is not riding moves in the sub-steps
+as before, its riding (a deck it lands on) recorded at its tick's last
+sub-step (bipeds.c), so it rides from its next tick. With one sub-step a
+tick (30) nothing changes: the lanes move in the tick there.
+
+The lanes are taken as the objects' update begins (biped_riding_lanes_latch,
+objects_update_passes) and kept to the tick's end: a rider whose window ends
+in its update moved in its tick, and stays of the macro lane for the rest of
+it (the fast phase's slots, the frames' poses). Before the latch of a tick
+(the players' and the AI's updates before the objects') they are what the
+riding state says, which nothing changes until the objects' update */
+
+/* the riders now: each player's biped in a vehicle's window, and the vehicle
+it names; how many */
+static short biped_riding_lanes_find(
+	long *biped_indices,
+	long *vehicle_indices)
+{
+	struct data_iterator iterator;
+	struct player_datum *player;
+	short count = 0;
+
+	if (!vehicle_riding_enabled())
+		return 0;
+	data_iterator_new(&iterator, player_data);
+	while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL &&
+		count < HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
+	{
+		struct biped_datum *biped = player->unit_index != NONE ? biped_try_and_get(player->unit_index) : NULL;
+
+		if (biped && biped_riding_deferred(player->unit_index))
+		{
+			biped_indices[count] = player->unit_index;
+			vehicle_indices[count] = biped->biped.riding_object_index;
+			count++;
+		}
+	}
+	return count;
+}
+
+static void biped_riding_lanes_latch(
+	void)
+{
+	biped_riding_lanes.count = biped_riding_lanes_find(biped_riding_lanes.biped_indices, biped_riding_lanes.vehicle_indices);
+	biped_riding_lanes.time = game_time_get();
+}
+
+/* whether the object is a rider (biped) or a ridden deck (vehicle) this tick */
+static boolean biped_riding_lanes_hold(
+	long object_index,
+	boolean vehicle)
+{
+	long biped_indices[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	long vehicle_indices[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	long const *indices;
+	short count;
+	short index;
+
+	if (sim_substep_count() <= 1 || object_index == NONE)
+		return FALSE;
+	if (biped_riding_lanes.time == game_time_get())
+	{
+		count = biped_riding_lanes.count;
+		indices = vehicle ? biped_riding_lanes.vehicle_indices : biped_riding_lanes.biped_indices;
+	}
+	else
+	{
+		count = biped_riding_lanes_find(biped_indices, vehicle_indices);
+		indices = vehicle ? vehicle_indices : biped_indices;
+	}
+	for (index = 0; index < count; index++)
+	{
+		if (indices[index] == object_index)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+boolean biped_riding_holds_lane(
+	long biped_index)
+{
+	return biped_riding_lanes_hold(biped_index, FALSE);
+}
+
+boolean vehicle_riding_holds_lane(
+	long vehicle_index)
+{
+	return biped_riding_lanes_hold(vehicle_index, TRUE);
 }
 
 /* (vehicle_riding.c) */
@@ -1768,6 +1880,8 @@ void objects_update_passes(
 	/* (nothing rides while it is off: whether it is on cannot change inside the loop) */
 	boolean riding = vehicle_riding_enabled();
 
+	/* (the riders' lanes, for the tick: biped_riding_holds_lane) */
+	biped_riding_lanes_latch();
 	object_header = (struct object_header_datum *)object_header_data->data;
 	for (i = 0; i<object_header_data->count; ++object_header)
 	{

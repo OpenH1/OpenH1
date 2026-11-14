@@ -179,6 +179,11 @@ void bipeds_riding_latch(void);
 /* a biped that updates after the main loop, and a unit's velocity
 relative to the deck it rides (vehicle_riding.c) */
 boolean biped_riding_deferred(long biped_index);
+/* at game.sim_rate 60 and 120, a biped in a vehicle's window and the
+vehicles such bipeds name move once a tick, as at 30 (objects.h's macro
+lane: vehicle_riding_bipeds.c); FALSE at 30 */
+boolean biped_riding_holds_lane(long biped_index);
+boolean vehicle_riding_holds_lane(long vehicle_index);
 void biped_riding_take_off(long biped_index, struct biped_datum const *biped, struct vehicle_riding_state const *riding);
 void biped_riding_relative_velocity(long unit_index, real_vector3d *velocity);
 
