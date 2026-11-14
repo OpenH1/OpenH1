@@ -144,14 +144,6 @@ symbols in this file:
 #include "scenario/scenario.h" /* port: global_scenario_get */
 #include "structure_culling.h" /* port: port/linux/game/structure_culling.c */
 #include "mcc_share.h" /* port: port/linux/game/mcc_share.c */
-#ifdef HALO_ANDROID
-/* port: geometry the map holds and does not write, drawn on Android from
-GL buffers of its own (port/linux/src/d3d8_gl.c) */
-void xgpu_static_buffers_add(const void *buffers, long count, unsigned long stride, int indices, const void *end);
-void xgpu_static_buffers_remove(const void *buffers, long count, unsigned long stride, int indices);
-void xgpu_static_range_add(const void *start, unsigned long size, int indices);
-void xgpu_static_range_remove(const void *start, int indices);
-#endif
 
 /* ---------- constants */
 
@@ -643,12 +635,6 @@ void scenario_tags_unload(
 		custom_edition_cache_tags_unload();
 	else
 	{
-#ifdef HALO_ANDROID
-		struct cache_file_tag_header *tags = cache_file_globals.tag_header;
-
-		xgpu_static_buffers_remove(tags->vertex_buffers, tags->vertex_buffer_count, CACHE_FILE_BUFFER_SIZE, 0);
-		xgpu_static_buffers_remove(tags->index_buffers, tags->index_buffer_count, CACHE_FILE_BUFFER_SIZE, 1);
-#endif
 		tags_header_deregister_vertex_and_index_buffers(cache_file_globals.tag_header);
 	}
 	cache_file_globals.tags_loaded = FALSE;
@@ -1471,17 +1457,6 @@ long scenario_tags_load(
 			global_tag_instances = cache_file_globals.tag_header->tag_instances;
 			global_tag_count = cache_file_globals.tag_header->tag_count;
 			tags_header_register_vertex_and_index_buffers(cache_file_globals.tag_header);
-#ifdef HALO_ANDROID
-			/* port: (an Xbox map's model vertices and indices, in its tags
-			from the first buffer to their end) */
-			{
-				struct cache_file_tag_header *tags = cache_file_globals.tag_header;
-				const void *end = (const byte *)tag_cache_base_address + cache_file_globals.header.tag_data_size;
-
-				xgpu_static_buffers_add(tags->vertex_buffers, tags->vertex_buffer_count, CACHE_FILE_BUFFER_SIZE, 0, end);
-				xgpu_static_buffers_add(tags->index_buffers, tags->index_buffer_count, CACHE_FILE_BUFFER_SIZE, 1, end);
-			}
-#endif
 			cache_file_globals.tags_loaded = TRUE;
 			/* port: a PAL map played as the NTSC maps are (port/linux/game/pal_tags.c) */
 			{
@@ -1731,20 +1706,6 @@ boolean scenario_structure_bsp_load(
 		0xE0,
 		cache_file_globals.structure_bsp_header->signature==CACHE_FILE_STRUCTURE_BSP_HEADER_SIGNATURE);
 	structure_bsp_header_register_vertex_buffers(cache_file_globals.structure_bsp_header);
-#ifdef HALO_ANDROID
-	/* port: (an Xbox bsp's vertices and lightmap vertices, from the first
-	buffer to the bsp's end, and the indices its surfaces draw: a Custom
-	Edition bsp's too, whose vertices custom_edition_geometry.c gave buffers) */
-	{
-		const void *end = (const byte *)reference->base_address + reference->file_size;
-
-		xgpu_static_buffers_add(structure_bsp_header->vertex_buffers, structure_bsp_header->vertex_buffer_count,
-			CACHE_FILE_BUFFER_SIZE, 0, end);
-		xgpu_static_buffers_add(structure_bsp_header->index_buffers, structure_bsp_header->index_buffer_count,
-			CACHE_FILE_BUFFER_SIZE, 0, end);
-		xgpu_static_range_add(reference->base_address, (unsigned long)reference->file_size, 1);
-	}
-#endif
 	tag_instance = cache_get_tag_instance(reference->structure_bsp.index);
 	match_assert(
 		"c:\\halo\\SOURCE\\cache\\cache_files.c",
@@ -1775,15 +1736,6 @@ void scenario_structure_bsp_unload(
 		return;
 	}
 
-#ifdef HALO_ANDROID
-	{
-		struct cache_file_structure_bsp_header *bsp = cache_file_globals.structure_bsp_header;
-
-		xgpu_static_buffers_remove(bsp->vertex_buffers, bsp->vertex_buffer_count, CACHE_FILE_BUFFER_SIZE, 0);
-		xgpu_static_buffers_remove(bsp->index_buffers, bsp->index_buffer_count, CACHE_FILE_BUFFER_SIZE, 0);
-		xgpu_static_range_remove(reference->base_address, 1);
-	}
-#endif
 	structure_bsp_header_deregister_vertex_buffers(cache_file_globals.structure_bsp_header);
 	/* port: the buffers a Halo Custom Edition bsp was given
 	(port/linux/game/custom_edition_geometry.c) */

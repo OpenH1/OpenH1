@@ -32,7 +32,6 @@ host_sdl_window_size_in_pixels
 host_sdl_set_relative_mouse
 host_sdl_poll_event
 host_sdl_input_held
-host_sdl_text_input
 host_sdl_set_clipboard_text
 host_sdl_get_clipboard_text
 host_sdl_show_toast
