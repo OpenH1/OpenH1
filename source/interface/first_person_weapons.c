@@ -615,6 +615,16 @@ out of, else NONE; and the units its feeds show, each animated in a feed's
 slot (first_person_weapon_feeds) */
 long spartan_link_posed_unit(void);
 short spartan_link_linked_units(long *unit_indices, short maximum_count);
+void spartan_link_feed_state_log(long unit_index, char const *state, real firing_push_back_velocity);
+/* (the states' names, for that log) */
+static char const *const first_person_weapon_state_names[NUMBER_OF_FIRST_PERSON_WEAPON_STATES]=
+{
+	"idle", "overheating", "overheating_again", "overheated", "charged", "posing", "primary_fire",
+	"secondary_fire", "primary_misfire", "secondary_misfire", "melee", "light_on", "light_off",
+	"reload_while_empty", "reload_while_full", "shotgun_enter_reload", "shotgun_exit_reload_empty",
+	"shotgun_exit_reload_full", "put_away", "ready", "throw_grenade", "throw_grenade_overheated",
+	"overheated_exit", "overheating_super_recoil",
+};
 
 long first_person_weapon_get_local_index(
 	long weapon_index)
@@ -1347,6 +1357,12 @@ static void first_person_weapon_set_visibility(
 	if (visible!=first_person_weapon->visible &&
 		(FIRST_PERSON_WEAPON_FEED_SLOT(local_player_index) || dead_spectate_eyes_unit(local_player_index)!=NONE))
 	{
+		/* port: (a feed's, in debug.spartan_link_log: hidden as its teammate
+		zooms) */
+		if (FIRST_PERSON_WEAPON_FEED_SLOT(local_player_index))
+		{
+			spartan_link_feed_state_log(first_person_weapon->unit_index, visible ? "shown" : "hidden", 0.0f);
+		}
 		first_person_weapon->visible= visible;
 	}
 	else if (visible!=first_person_weapon->visible)
@@ -1603,6 +1619,12 @@ static void first_person_weapon_set_state(
 						first_person_weapon->state= new_state;
 						first_person_weapon->state_animation.index= animation_index;
 						first_person_weapon->state_animation.frame_index= 0;
+						/* port: (a feed's, in debug.spartan_link_log) */
+						if (FIRST_PERSON_WEAPON_FEED_SLOT(local_player_index))
+						{
+							spartan_link_feed_state_log(first_person_weapon->unit_index,
+								first_person_weapon_state_names[new_state], first_person_weapon->firing_push_back_velocity);
+						}
 					}
 				}
 			}

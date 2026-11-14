@@ -1434,6 +1434,20 @@ long spartan_link_posed_unit(
 	return spartan_link.drawing ? spartan_link.posed_unit : NONE;
 }
 
+/* (debug.spartan_link_log: a feed's first-person weapon's state as it
+changes, first_person_weapons.c's feeds' slots) */
+void spartan_link_feed_state_log(
+	long unit_index,
+	char const *state,
+	real firing_push_back_velocity)
+{
+	if (spartan_link.log)
+	{
+		platform_log("spartan link feed state: %ld %lx %s %.3f", game_time_get(), (unsigned long)unit_index, state,
+			firing_push_back_velocity);
+	}
+}
+
 short spartan_link_linked_units(
 	long *unit_indices,
 	short maximum_count)
