@@ -151,6 +151,9 @@ struct menu_screen_block
 	/* (a binding named: a tabs' current, a table's sorted, a search's
 	value, a <spartan>'s color; NULL, none) */
 	char const *value;
+	/* (a lineup's <spartan>'s names: the binding giving its places' names,
+	a line each, under its Spartans; NULL, none) */
+	char const *names;
 	/* (the binding whose value must not be empty for the block to be
 	shown, checked each frame: its if; NULL, always) */
 	char const *condition;

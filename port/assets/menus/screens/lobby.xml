@@ -30,7 +30,7 @@ its line on a controller (the on-screen keyboard), a tap on it on a
 touchscreen; the host's LOBBY TEXT CHAT has it on or off for everyone. -->
 <screen name="lobby" start="lobby start">
 	<header title="{lobby.title}" detail="{lobby.subtitle}" fallback="{lobby.subtitle.short}"/>
-	<spartan height="80" color="lobby.lineup" when="pointer"/>
+	<spartan height="80" color="lobby.lineup" names="lobby.lineup.names" when="pointer"/>
 	<table source="lobby.players" lanes="2" do="lobby card" left="lobby team red" right="lobby team blue">
 		<lane label="{lobby.red}" detail="{lobby.red.count}" tone="lobby.red.tone"/>
 		<lane label="{lobby.blue}" detail="{lobby.blue.count}" tone="lobby.blue.tone"/>

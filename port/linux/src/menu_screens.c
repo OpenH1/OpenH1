@@ -401,14 +401,15 @@ static int button_read(struct reader *reader, XML_Char const **attributes, int p
 /* a <spartan>: on the screen, its box in the menus' 640 by 480 (x, y,
 width, height); in a <panel>, a line of it (height, its width the panel's).
 Its color the focused <colors> item's, the profile's, or a binding's (a
-color's number, random, or none) */
+color's number, random, or none); a screen's own, its places' names (a
+binding's, a line each: a lineup's, under its Spartans) */
 static int spartan_read(struct reader *reader, XML_Char const **attributes, int parent_block)
 {
 	static char const *const names[] = { "x", "y", "width", "height", "color", "players", "touch-height", "when",
-		NULL };
+		"names", NULL };
 	static char const *const panel_names[] = { "height", "color", "touch-height", "when", NULL };
 	static long const defaults[] = { 440, 80, 160, 320 };
-	char const *values[9];
+	char const *values[10];
 	struct menu_screen *screen = reader->screen;
 	int panel = parent_block >= 0;
 	int block, index;
@@ -418,7 +419,7 @@ static int spartan_read(struct reader *reader, XML_Char const **attributes, int 
 		char const *read[5];
 
 		attributes_read(reader, "spartan", attributes, panel_names, read);
-		values[0] = values[1] = values[2] = values[5] = NULL;
+		values[0] = values[1] = values[2] = values[5] = values[8] = NULL;
 		values[3] = read[0];
 		values[4] = read[1];
 		values[6] = read[2];
@@ -487,6 +488,13 @@ static int spartan_read(struct reader *reader, XML_Char const **attributes, int 
 			spartan->touch_box_height = number_read(reader, values[6], "a <spartan>'s touch-height", 1, 360);
 		spartan->when = values[7];
 		shown_check(reader, NULL, spartan->when);
+		spartan->names = values[8];
+		if (!reader->failed && spartan->names)
+		{
+			binding_check(reader, spartan->names);
+			if (!reader->failed && spartan->color != MENU_SCREEN_SPARTAN_BINDING)
+				reader_problem(reader, "a <spartan>'s names are a lineup's: its color a binding's", NULL);
+		}
 	}
 	return block;
 }

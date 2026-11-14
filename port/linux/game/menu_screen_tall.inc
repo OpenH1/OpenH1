@@ -203,6 +203,10 @@ shape (the menus' pictures', 140 by 114: menu_pictures.h) */
 height, and the gap under it */
 #define TALL_LINEUP_MOST 160
 #define TALL_LINEUP_GAP 4
+/* (its places' names: the line under the Spartans' feet, in its height,
+and the gap between two places' names) */
+#define TALL_LINEUP_NAME 14
+#define TALL_LINEUP_NAME_GAP 4
 /* (a <spartan>'s line: the gap before and after it) */
 #define PANEL_SPARTAN_GAP 6
 #define PANEL_SPARTAN_FEET 25
@@ -440,6 +444,10 @@ struct screen_tall
 	struct widget_instance *lineup;
 	short lineup_height;
 	long lineup_spartan;
+	/* (its places' names, under their Spartans: its names' binding, NULL
+	for none) */
+	char const *lineup_names_binding;
+	struct widget_instance *lineup_names[MAXIMUM_MENU_SPARTAN_PLACES];
 	/* the bar's prompts */
 	struct widget_instance *bar;
 	struct screen_prompt prompts[TALL_MAXIMUM_PROMPTS];
@@ -1955,6 +1963,20 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 			visible_set_safe(tall->lineup, FALSE);
 			if (tall->lineup && screen_spartan_add(open, block, tall->lineup))
 				tall->lineup_spartan = open->spartan_count - 1;
+			/* (its places' names, over it: placed each frame under their
+			Spartans) */
+			if (tall->lineup_spartan != NONE && block->names)
+			{
+				short place;
+
+				tall->lineup_names_binding = block->names;
+				for (place = 0; place < MAXIMUM_MENU_SPARTAN_PLACES; place++)
+				{
+					tall->lineup_names[place] = tall_add(tall, tall->owner, tall_tag("lineup_name"), TALL_TABLE_X,
+						tall_lanes_base(tall), 0, 0, 0, TALL_LINEUP_NAME);
+					visible_set_safe(tall->lineup_names[place], FALSE);
+				}
+			}
 			break;
 		}
 		}
@@ -2970,6 +2992,88 @@ static void tall_bar_frame(struct screen_tall *tall)
 	}
 }
 
+/* the lineup's places' names: each place's (its names' binding's line)
+under its Spartan, centred under its feet (lower or higher as its place
+stands: menu_spartan_feet_lower) in the line under the Spartans, as wide as
+its place (cut short where it is wider), in its team's colour (red's,
+blue's; white without teams); an empty place's ("-", or no name) none, nor
+any where no Spartan is drawn */
+static void tall_lineup_names_frame(struct screen_tall *tall, struct screen_open *open)
+{
+	struct screen_spartan const *spartan;
+	struct menu_screen_block const *block;
+	char colors[MENU_SCREEN_MAXIMUM_TEXT], names[MENU_SCREEN_MAXIMUM_TEXT];
+	char const *color = colors, *name = names;
+	short place;
+
+	if (tall->lineup_spartan == NONE || !tall->lineup_names_binding)
+		return;
+	spartan = &open->spartans[tall->lineup_spartan];
+	block = &spartan->block;
+	tall_binding(tall, block->value, colors, sizeof(colors));
+	tall_binding(tall, tall->lineup_names_binding, names, sizeof(names));
+	/* (the places as screen_spartan_frame counts them: its colors' words) */
+	{
+		short places = 0;
+		char const *word = colors;
+
+		while (*word && places < spartan->places)
+		{
+			while (*word == ' ')
+				word++;
+			if (!*word)
+				break;
+			while (*word && *word != ' ')
+				word++;
+			places++;
+		}
+		for (place = 0; place < MAXIMUM_MENU_SPARTAN_PLACES; place++)
+		{
+			struct widget_instance *widget = tall->lineup_names[place];
+			struct screen_box *box = tall_box_of(tall, widget);
+			char line[MENU_SCREEN_MAXIMUM_TEXT];
+			unsigned short text[MENU_SCREEN_MAXIMUM_TEXT];
+			long length = 0, word_length = 0;
+			boolean shown;
+
+			/* (this place's color's word and name's line, and on to the next's) */
+			while (*color == ' ')
+				color++;
+			while (color[word_length] && color[word_length] != ' ')
+				word_length++;
+			while (name[length] && name[length] != '\n')
+				length++;
+			length = MIN(length, (long)sizeof(line) - 1);
+			memcpy(line, name, (size_t)length);
+			line[length] = 0;
+			shown = box && place < places && spartan->shown && menu_spartan_available() && line[0] &&
+				!(word_length == 1 && color[0] == '-');
+			visible_set_safe(widget, shown);
+			if (shown)
+			{
+				real width = (real)block->box_width / (real)places;
+				real middle = (real)block->box_x + width * ((real)place + 0.5f);
+				real feet = (real)(block->box_y + block->box_height) +
+					(real)block->box_height * menu_spartan_feet_lower((short)(spartan->first + place), spartan->places > 1);
+
+				box->width = (short)MAX(width - TALL_LINEUP_NAME_GAP, 8.0f);
+				box->at_x = (short)(middle - (real)box->width * 0.5f);
+				box->at_y = (short)(feet + 0.5f);
+				widget->horizontal_offset = (short)(box->at_x - (box->parent != NONE ? tall->boxes[box->parent].at_x : 0));
+				widget->vertical_offset = (short)(box->at_y - (box->parent != NONE ? tall->boxes[box->parent].at_y : 0));
+				tall_utf16(line, text, NUMBEROF(text));
+				pc_menu_text_fit(widget, text, box->width);
+				tall_color(tall, widget, word_length == 3 && !strncmp(color, "red", 3) ? TALL_LANE_RED :
+					word_length == 4 && !strncmp(color, "blue", 4) ? TALL_LANE_BLUE : 0);
+			}
+			color += word_length;
+			name += length;
+			if (*name == '\n')
+				name++;
+		}
+	}
+}
+
 static void tall_frame(struct screen_open *open)
 {
 	struct screen_tall *tall = tall_of(open);
@@ -3099,11 +3203,14 @@ static void tall_frame(struct screen_open *open)
 		block->box_x = lineup->at_x;
 		block->box_y = lineup->at_y;
 		block->box_width = tall_width(tall, tall->lineup);
-		block->box_height = tall->lineup_height;
+		/* (with names, the Spartans over their line: the lineup's height
+		theirs and their names' together) */
+		block->box_height = (short)(tall->lineup_height - (tall->lineup_names_binding ? TALL_LINEUP_NAME : 0));
 		open->spartans[tall->lineup_spartan].shown = TRUE;
 	}
 	if (open->spartan_count)
 		screen_spartan_frame(open, NONE);
+	tall_lineup_names_frame(tall, open);
 }
 
 /* the chat's on-screen keyboard, where it is up: over the panel's lower

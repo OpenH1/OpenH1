@@ -36,6 +36,10 @@ lineup or not (a lineup's each turned, nearer or further a little, from
 its place; one alone hardly turned). Each is drawn in a view of its own,
 about its box, its idle and now and then a fidget on the menus' clock */
 void menu_spartan_place(short index, short color_index, real x, real bottom, real height, boolean lineup);
+/* how much lower the Spartan index stands than its bottom, in parts of its
+height (a lineup's place a little nearer, lower; further, higher): where its
+feet are, for what is drawn under them (a lineup's names) */
+real menu_spartan_feet_lower(short index, boolean lineup);
 /* the armor's color of the Spartan index in the profile color color_index
 at the menus' frame time milliseconds: the color's own, or for
 MENU_SPARTAN_RANDOM the colors in turn, each held most of a second then

@@ -406,7 +406,7 @@ static char const *const screen_binding_names[] =
 	"lobby.card.party", "lobby.card.note", "lobby.card.facts", "lobby.card.friend",
 	"lobby.card.mutable", "lobby.card.mute", "lobby.card.kick", "lobby.friends", "lobby.friends.count",
 	"lobby.friend", "lobby.friend.where", "lobby.friends.said", "lobby.map.picture", "lobby.description",
-	"lobby.where", "lobby.lineup", "pause.friendly_fire", "pause.host_controls", "pause.end_game",
+	"lobby.where", "lobby.lineup", "lobby.lineup.names", "pause.friendly_fire", "pause.host_controls", "pause.end_game",
 	"pause.chapters",
 };
 

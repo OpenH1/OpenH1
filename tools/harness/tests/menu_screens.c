@@ -311,6 +311,21 @@ int main(int argc, char **argv)
 		refused("<screen name=\"main\"><panel><spartan height=\"400\"/></panel></screen>", "1 to 360");
 		refused("<screen name=\"main\"><spartan color=\"profile.color\" players=\"2\"/></screen>",
 			"one player's");
+		/* (a lineup's names, a binding's: none of a profile's Spartan, none
+		of no binding, none in a panel) */
+		CHECK(read_text("<screen name=\"main\"><spartan color=\"test.value\" names=\"test.flag\"/></screen>", &screen,
+			problem), "refused: %s", problem);
+		CHECK(screen.blocks[0].names && !strcmp(screen.blocks[0].names, "test.flag"), "a lineup's names");
+		menu_screen_free(&screen);
+		CHECK(read_text("<screen name=\"main\"><spartan color=\"test.value\"/></screen>", &screen, problem),
+			"refused: %s", problem);
+		CHECK(!screen.blocks[0].names, "names without a names attribute");
+		menu_screen_free(&screen);
+		refused("<screen name=\"main\"><spartan names=\"test.flag\"/></screen>", "names are a lineup's");
+		refused("<screen name=\"main\"><spartan color=\"test.value\" names=\"nothing.here\"/></screen>",
+			"no binding {nothing.here}");
+		refused("<screen name=\"main\"><panel><spartan color=\"test.value\" names=\"test.flag\"/></panel></screen>",
+			"has no attribute names");
 		/* (one of the screen's own and one in each panel: a player's card's
 		beside a lineup; a touchscreen's height) */
 		CHECK(read_text("<screen name=\"main\"><spartan color=\"test.value\" touch-height=\"60\"/><panel>"
@@ -754,7 +769,9 @@ int main(int argc, char **argv)
 		CHECK(kind_total(&screen, MENU_SCREEN_PANEL, -2) == 3 && kind_total(&screen, MENU_SCREEN_PICTURE, -2) == 1,
 			"the panels and the picture");
 		CHECK(kind_total(&screen, MENU_SCREEN_SPARTAN, -1) == 1 && kind_total(&screen, MENU_SCREEN_SPARTAN, -2) == 2 &&
-			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_SPARTAN)].value, "lobby.lineup"),
+			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_SPARTAN)].value, "lobby.lineup") &&
+			screen.blocks[kind_first(&screen, MENU_SCREEN_SPARTAN)].names &&
+			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_SPARTAN)].names, "lobby.lineup.names"),
 			"the lineup and the card's Spartan");
 		menu_screen_free(&screen);
 	}

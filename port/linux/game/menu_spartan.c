@@ -1460,6 +1460,18 @@ void menu_spartan_place(
 	spartan->lineup = lineup;
 }
 
+real menu_spartan_feet_lower(
+	short index,
+	boolean lineup)
+{
+	struct spartan_variation variation;
+
+	if (index < 0 || index >= MAXIMUM_MENU_SPARTANS)
+		return 0.0f;
+	spartan_variation_find(index, lineup, &variation);
+	return SPARTAN_LINEUP_NEARER_LOWER * variation.nearer;
+}
+
 real_rgb_color menu_spartan_color(
 	short index,
 	short color_index,

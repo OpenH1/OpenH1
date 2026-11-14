@@ -1242,11 +1242,14 @@ static void lobby_color_word(struct lobby_board_model const *model, struct netwo
 
 /* the lineup over the players (lobby.lineup): a team game's four of each
 team, red's places then blue's (an empty place "-"), else the first eight;
-each the host first, then as they joined (the game's record's order) */
-static void lobby_lineup(struct lobby_board_model const *model, char *value, unsigned long size)
+each the host first, then as they joined (the game's record's order). With
+names (lobby.lineup.names), each place's player's name in its place, a line
+each (an empty place's empty) */
+static void lobby_lineup(struct lobby_board_model const *model, boolean names, char *value, unsigned long size)
 {
-	short team, teams = model->teams ? 2 : 1;
+	short team, teams = model->teams ? 2 : 1, written = 0;
 	unsigned long used = 0;
+	char const *between = names ? "\n" : " ";
 
 	value[0] = 0;
 	for (team = 0; team < teams; team++)
@@ -1259,18 +1262,30 @@ static void lobby_lineup(struct lobby_board_model const *model, char *value, uns
 			for (index = 0; index < model->count && taken < places; index++)
 			{
 				struct lobby_board_entry const *entry = &model->entries[index];
-				char word[16];
+				char word[64];
 
 				if ((pass == 0) != (entry->host != FALSE) || (model->teams && (entry->team == 1 ? 1 : 0) != team))
 					continue;
-				lobby_color_word(model, model->players[index], word, sizeof(word));
-				used += (unsigned long)snprintf(value + used, used < size ? size - used : 0, "%s%s", used ? " " : "",
-					word);
+				if (names)
+				{
+					wchar_t name[NUMBEROF(model->players[index]->name) + 1];
+
+					ustrncpy(name, model->players[index]->name, NUMBEROF(model->players[index]->name));
+					name[NUMBEROF(model->players[index]->name)] = 0;
+					lobby_utf8(name, word, (short)sizeof(word));
+				}
+				else
+					lobby_color_word(model, model->players[index], word, sizeof(word));
+				used += (unsigned long)snprintf(value + used, used < size ? size - used : 0, "%s%s",
+					written++ ? between : "", word);
 				taken++;
 			}
 		}
 		for (; model->teams && taken < places; taken++)
-			used += (unsigned long)snprintf(value + used, used < size ? size - used : 0, "%s-", used ? " " : "");
+		{
+			used += (unsigned long)snprintf(value + used, used < size ? size - used : 0, "%s%s",
+				written++ ? between : "", names ? "" : "-");
+		}
 	}
 	if (used >= size && size)
 		value[size - 1] = 0;
@@ -1887,9 +1902,9 @@ int pc_menu_lobby_value(char const *name, char *value, unsigned long size)
 		else
 			ustrncpy(text, model->map, NUMBEROF(text) - 1);
 	}
-	else if (!strcmp(name, "lobby.lineup"))
+	else if (!strcmp(name, "lobby.lineup") || !strcmp(name, "lobby.lineup.names"))
 	{
-		lobby_lineup(model, value, size);
+		lobby_lineup(model, !strcmp(name, "lobby.lineup.names"), value, size);
 		return value[0] != 0;
 	}
 	else if (!strcmp(name, "lobby.gametype"))
