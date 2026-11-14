@@ -453,6 +453,10 @@ struct screen_tall
 	struct widget_instance *lineup_names[MAXIMUM_MENU_SPARTAN_PLACES];
 	/* the bar's prompts */
 	struct widget_instance *bar;
+	/* (its prompt to have the focus as the bar takes it, kept while the
+	focus is elsewhere: the bar's focused child is drawn lit, its parent's
+	focus or not, ui_widget.c's widget_instance_text_box_is_focused) */
+	struct widget_instance *bar_kept;
 	struct screen_prompt prompts[TALL_MAXIMUM_PROMPTS];
 	long prompt_count;
 	/* (the bar's prompts shown as it was last laid out, a bit of each) */
@@ -3004,6 +3008,28 @@ static void tall_bar_frame(struct screen_tall *tall)
 		tall_text_set(prompt->widget, text);
 	}
 	tall_focus_off_hidden(tall->bar);
+	/* (no prompt lit while the focus is not on the bar: its focused child
+	kept aside, and given back as the bar takes the focus) */
+	if (tall->bar && !ui_widget_port_touch_menus())
+	{
+		if (tall->body->focused_child != tall->bar && tall->bar->focused_child)
+		{
+			tall->bar_kept = tall->bar->focused_child;
+			tall->bar->focused_child = NULL;
+		}
+		else if (tall->body->focused_child == tall->bar && !tall->bar->focused_child)
+		{
+			struct widget_instance *child;
+
+			for (child = tall->bar->child; child && !tall->bar_kept; child = child->next)
+			{
+				if (child->visible)
+					tall->bar_kept = child;
+			}
+			if (tall->bar_kept)
+				tall_focus(tall->bar, tall->bar_kept);
+		}
+	}
 	if (tall->header_button.widget)
 	{
 		char label[MENU_SCREEN_MAXIMUM_TEXT];
