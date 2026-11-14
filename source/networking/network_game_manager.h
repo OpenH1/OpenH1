@@ -75,6 +75,10 @@ enum
 	feeds (network_standard_pro_game). Only a Standard host sets it, and its
 	OpenH1 machines alone read it */
 	_network_game_pro_rules_bit = 6,
+	/* not co-op's: an OpenH1 game's host forbids its players' hit sounds
+	(network.allow_hit_sounds false: network_standard_hit_sounds_allowed).
+	Only a Standard host sets it, and its OpenH1 machines alone read it */
+	_network_game_no_hit_sounds_bit = 7,
 };
 
 struct network_game

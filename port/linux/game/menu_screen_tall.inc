@@ -1868,6 +1868,7 @@ static boolean tall_build(struct screen_open *open, struct menu_screen const *sc
 	if (pc_menu_text_field_editing(NULL))
 		pc_menu_text_field_end(TRUE);
 	memset(tall, 0, sizeof(*tall));
+	tall->values.local_player_index = widget->local_player_index;
 	tall->search_editing = NONE;
 	tall_screens[open_index] = tall;
 	widget->focused_child = NULL;

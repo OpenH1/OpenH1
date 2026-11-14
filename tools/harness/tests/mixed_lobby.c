@@ -55,7 +55,7 @@ struct distributed_message_header
 /* the record, as far as the host changes it: everything else is copied */
 /* the record's pickup bit (network_game_manager.h) */
 enum { _network_game_hold_to_pick_up_bit = 3, _network_game_classic_turning_bit = 4,
-	_network_game_no_direct_camera_bit = 5, _network_game_pro_rules_bit = 6 };
+	_network_game_no_direct_camera_bit = 5, _network_game_pro_rules_bit = 6, _network_game_no_hit_sounds_bit = 7 };
 #define SET_FLAG(f, b, v) ((v) ? ((f) |= (unsigned)FLAG(b)) : ((f) &= (unsigned)~FLAG(b)))
 
 struct network_game
@@ -397,6 +397,10 @@ int main(int argc, char **argv)
 		CHECK(TEST_FLAG(server.game.cooperative_flags, _network_game_classic_turning_bit),
 			"the record does not say the players keep the original's facing");
 		SET_FLAG(legacy.cooperative_flags, _network_game_classic_turning_bit, FALSE);
+		/* (nor whether it forbids hit sounds: network.allow_hit_sounds, off here) */
+		CHECK(TEST_FLAG(server.game.cooperative_flags, _network_game_no_hit_sounds_bit),
+			"the record does not say the host forbids hit sounds");
+		SET_FLAG(legacy.cooperative_flags, _network_game_no_hit_sounds_bit, FALSE);
 		CHECK(!memcmp(record, &legacy, sizeof(legacy)), "an OpenCE machine's record is not a Legacy host's");
 		CHECK(server.game.standard_rate == 60, "the game's own record changed");
 		return 0;

@@ -359,6 +359,9 @@
 	<bitmap name="main_menu/settings/header_settings">
 		<frame png="ce/port/main_menu/settings/header_settings.png" width="512" height="64"/>
 	</bitmap>
+	<bitmap name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/voice_chat/header_voice_chat">
+		<frame png="ce/port/main_menu/settings_select/player_setup/player_profile_edit/audio_settings/voice_chat/header_voice_chat.png" width="512" height="64"/>
+	</bitmap>
 	<bitmap name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/header_key_bindings">
 		<frame png="ce/port/main_menu/settings_select/player_setup/player_profile_edit/controls_setup/header_key_bindings.png" width="512" height="64"/>
 	</bitmap>

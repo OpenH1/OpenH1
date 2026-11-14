@@ -542,6 +542,22 @@ void network_test_note_hit(
 		network_test_microseconds());
 }
 
+/* a hit sound played (hit_sounds.c): who hit whom, and their teams */
+void network_test_note_hit_sound(
+	long attacker_player_index,
+	long victim_player_index)
+{
+	struct player_datum *attacker = player_try_and_get(attacker_player_index);
+	struct player_datum *victim = player_try_and_get(victim_player_index);
+
+	if (network_test.mode == _network_test_off || network_test.mode == _network_test_probe || !attacker || !victim)
+		return;
+	platform_log("network test: hit sound player %d team %ld hit player %d team %ld at %llu",
+		(int)DATUM_INDEX_TO_ABSOLUTE_INDEX(attacker_player_index), (long)attacker->team_index,
+		(int)DATUM_INDEX_TO_ABSOLUTE_INDEX(victim_player_index), (long)victim->team_index,
+		network_test_microseconds());
+}
+
 /* appends to a line, cut short when it is full */
 static void network_test_append(
 	char *line,
@@ -1711,12 +1727,17 @@ static void network_test_run_lobby_cues(
 
 /* debug.network_test_cues: from the first tick every player waited for has a
 unit (logged, cues or not: where a test's seconds start), each line at its
-tick (the host's, or a game of one machine: a client runs none) */
+tick (the host's, or a game of one machine: a client runs none). A joining
+machine's seconds start so too, for its scripted player (debug.test_input's
+"script:", which plays on them: sim_trace.c's scenario clock) */
 static void network_test_run_cues(
 	void)
 {
-	if (network_test.mode != _network_test_host && network_test.mode != _network_test_log)
+	if (network_test.mode != _network_test_host && network_test.mode != _network_test_log &&
+		network_test.mode != _network_test_join)
+	{
 		return;
+	}
 	/* (between two ticks, as a frame of a game at 30 always is: not between
 	two sub-steps of an open tick, game.sim_rate's spread over the frames,
 	whose time is still the tick's: sim_rate.h) */
@@ -1736,6 +1757,8 @@ static void network_test_run_cues(
 		network_test.cues_start = game_time_get();
 		platform_log("network test: cues from tick %ld", network_test.cues_start);
 	}
+	if (network_test.mode == _network_test_join)
+		return;
 	while (network_test.next_cue < network_test.cue_count &&
 		game_time_get() >= network_test.cues_start + network_test.cues[network_test.next_cue].tick)
 	{

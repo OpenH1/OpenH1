@@ -614,6 +614,14 @@ static const struct config_setting config_settings[] =
 		"voices play whatever this is (audio.voice_volume 0 silences them)." },
 	{ "audio.voice_volume", _config_real, "1.0", "HALO_VOICE_VOLUME", _environment_value, _platform_all,
 		"The volume of the other players' voices (0 to 2)." },
+	{ "audio.hit_sounds", _config_boolean, "false", "HALO_HIT_SOUNDS", _environment_value, _platform_all,
+		"Multiplayer: a short beep each time you damage another player, as Halo\n"
+		"PC played one: only for damage the host dealt (none for hitting\n"
+		"yourself, nor teammates whom friendly fire spares), at the effects\n"
+		"volume. A network game's host may forbid them\n"
+		"(network.allow_hit_sounds). Each player's own: in a split screen, a\n"
+		"player's hits beep if that player's is on. The beep is a placeholder\n"
+		"for now.", _scope_player },
 	{ "audio.output_device", _config_string, "\"default\"", "HALO_AUDIO_OUTPUT_DEVICE", _environment_value,
 		_platform_desktop,
 		"Where the game's sound and the voices play: a device's name as Settings >\n"
@@ -1033,6 +1041,12 @@ static const struct config_setting config_settings[] =
 		"that is not the camera (a VR build's hand: past a corner the camera is\n"
 		"behind), no further than a player leaning out and an arm, and in front\n"
 		"of the eye. false: from the camera and vehicles' guns only." },
+	{ "network.allow_hit_sounds", _config_boolean, "true", "HALO_NET_ALLOW_HIT_SOUNDS", _environment_value,
+		_platform_all,
+		"Host: whether the players of your games may hear their hit sounds\n"
+		"(audio.hit_sounds, each player's own). false forbids them, for your\n"
+		"players and an OpenH1 game's clients (the game's settings carry it,\n"
+		"read in the lobby); a Legacy game's clients cannot be told." },
 	{ "network.predict_hits", _config_boolean, "true", "HALO_NET_PREDICT_HITS", _environment_value, _platform_all,
 		"Client of a GOAT H1 game: show your hits on other players at once\n"
 		"(the shield's flare and break, the flinch, the death), before the\n"
@@ -2154,6 +2168,12 @@ static const struct config_setting config_settings[] =
 		"\"<setting>=<value>@<seconds>\": that many seconds into a level (of its\n"
 		"game time), the setting is written as Settings' OK writes it, so that\n"
 		"a change in play can be timed (game/bsp_switch_test.c); \"\" never." },
+	{ "debug.audio_device_name", _config_string, "\"\"", "HALO_AUDIO_DEVICE_NAME", _environment_value,
+		_platform_desktop,
+		"A device of this name listed first in Settings > Audio's OUTPUT DEVICE\n"
+		"and INPUT DEVICE, as if the system had it (choosing it plays on the\n"
+		"system's default), so that a long name's row and panel can be tested;\n"
+		"\"\" none." },
 	{ "debug.network_test_pickup", _config_real, "0.0", "HALO_NETWORK_TEST_PICKUP", _environment_value, _platform_all,
 		"This many seconds into an automated test game the host stands its last\n"
 		"player on a weapon, which a joining player then picks up; 0 never." },

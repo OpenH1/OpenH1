@@ -53,7 +53,7 @@ long menu_tags_background(long tag_index);
 void menu_tags_background_set(long tag_index, long background_tag_index);
 long menu_tags_flags(long tag_index);
 short menu_tags_legend_growth(long legends_tag);
-unsigned long menu_tags_pause_rows(void);
+unsigned long menu_tags_pause_rows(short local_player_index);
 int halo_keyboard_prompts(void);
 boolean config_boolean(char const *name);
 struct widget_instance *ui_widget_port_add_child(struct widget_instance *parent, long tag_index,
@@ -384,7 +384,8 @@ static struct screen_action const screen_actions[] =
 	/* (the pause menu's, screens/pause.xml and pause_campaign.xml, as its
 	rows did on the map's: the screen closed (RESUME GAME), or every screen
 	(B; the campaign's RESUME GAME); the player out of a multiplayer game
-	(LEAVE GAME, the screen closed); the host's Host Controls and END GAME;
+	(LEAVE GAME, the screen closed); the host's Host Controls, END GAME and
+	Basic Training's CHAPTERS (its first local player's alone);
 	network co-op's FRIENDLY FIRE; the campaign's REVERT TO SAVED and
 	RESTART LEVEL, each its question first, and SAVE AND QUIT) */
 	{ "close", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_close },
@@ -392,6 +393,7 @@ static struct screen_action const screen_actions[] =
 	{ "pause leave", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_close },
 	{ "open host controls", NULL, NULL, "port host open", NULL, "main_menu/host_controls/host_controls_screen", NULL },
 	{ "pause end game", NULL, NULL, "port pause end game", NULL, NULL, NULL },
+	{ "pause chapters", NULL, NULL, "port training open", NULL, "main_menu/training/training_screen", NULL },
 	{ "pause friendly fire", NULL, NULL, "port coop friendly fire", NULL, NULL, NULL },
 	{ "pause revert", NULL, NULL, NULL, NULL, "ui\\shell\\error\\confirm_restartatsave_modal_fullscreen", NULL },
 	{ "pause restart", NULL, NULL, NULL, NULL, "ui\\shell\\error\\confirm_restartlevel_modal_fullscreen", NULL },
@@ -412,18 +414,20 @@ static char const *const screen_action_names[] =
 	"lobby bots right", "lobby skill left", "lobby skill right", "lobby teams left", "lobby teams right",
 	"lobby chat", "lobby card", "lobby card friend", "lobby card mute", "lobby card kick", "lobby friends",
 	"lobby friend left", "lobby friend right", "lobby friend invite", "lobby close",
-	"close", "close all", "pause leave", "open host controls", "pause end game",
+	"close", "close all", "pause leave", "open host controls", "pause end game", "pause chapters",
 	"pause friendly fire", "pause revert", "pause restart", "pause quit",
 };
 
 /* a binding's value: the saved game's mission and difficulty (player 1's
-profile's), none without one */
+profile's), none without one; the screen's local player (its widget's: a
+split screen's pause menu is its player's), whose the pause.* rows are */
 struct screen_values
 {
 	boolean read;
 	boolean saved;
 	char level[64];
 	char difficulty[64];
+	short local_player_index;
 };
 
 static char const *const screen_binding_names[] =
@@ -502,11 +506,12 @@ static int screen_value(void *context, char const *name, char *value, unsigned l
 	game: coop_menu.inc) */
 	if (!strncmp(name, "coop.", 5))
 		return pc_menu_coop_value(name, value, size);
-	/* (the pause menu's: the rows this machine's has, as menu_tags.c adds
-	them to the map's; FRIENDLY FIRE's words, this machine's choice) */
+	/* (the pause menu's: the rows this machine's has for the screen's local
+	player, as menu_tags.c adds them to the map's, the host's for its first
+	local player alone; FRIENDLY FIRE's words, this machine's choice) */
 	if (!strncmp(name, "pause.", 6))
 	{
-		unsigned long rows = menu_tags_pause_rows();
+		unsigned long rows = menu_tags_pause_rows(values->local_player_index);
 
 		if (!strcmp(name, "pause.friendly_fire") && TEST_FLAG(rows, _host_controls_pause_friendly_fire))
 			snprintf(value, size, config_boolean("network.coop_own_friendly_fire") ? "FRIENDLY FIRE ON" :
@@ -836,6 +841,13 @@ static struct widget_instance *screen_widget_add(struct widget_instance *parent,
 	return widget;
 }
 
+/* the bindings' values unread, for the open screen's local player */
+static void screen_values_clear(struct screen_values *values, struct screen_open const *open)
+{
+	memset(values, 0, sizeof(*values));
+	values->local_player_index = open && open->widget ? open->widget->local_player_index : NONE;
+}
+
 /* whether an item is made: its when holds, and its label's bindings have
 values */
 static boolean screen_item_shown(struct menu_screen_block const *item, struct screen_values *values, char *label,
@@ -941,7 +953,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		if (screen->blocks[index].kind == MENU_SCREEN_BOX)
 			return box_build(open, screen);
 	}
-	memset(&values, 0, sizeof(values));
+	screen_values_clear(&values, open);
 	/* (each block's room, from the top down: a space shares what is left) */
 	for (index = 0; index < screen->block_count; index++)
 	{
@@ -1343,7 +1355,7 @@ static boolean box_build(struct screen_open *open, struct menu_screen const *scr
 	}
 	if (!box || !list)
 		return FALSE;
-	memset(&values, 0, sizeof(values));
+	screen_values_clear(&values, open);
 	for (index = 0; index < screen->block_count; index++)
 	{
 		if (screen->blocks[index].kind == MENU_SCREEN_ITEM && screen->blocks[index].parent == list_index &&
@@ -1474,7 +1486,7 @@ static void box_frame(struct screen_open *open)
 	short growth = 0;
 	long index;
 
-	memset(&values, 0, sizeof(values));
+	screen_values_clear(&values, open);
 	for (index = 0; index < open->item_count; index++)
 	{
 		struct menu_screen_block const *item = open->item_blocks[index];
@@ -1711,7 +1723,7 @@ static short screen_spartan_colors(struct screen_open const *open, struct screen
 		char value[MENU_SCREEN_MAXIMUM_TEXT];
 		char const *word = value;
 
-		memset(&values, 0, sizeof(values));
+		screen_values_clear(&values, open);
 		if (!block->value || !screen_value(&values, block->value, value, sizeof(value)))
 		{
 			colors[0] = SCREEN_SPARTAN_NONE;
