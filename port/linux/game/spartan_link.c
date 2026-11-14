@@ -134,6 +134,7 @@ void lights_port_keep(boolean keep);
 /* port/linux/game/render_interpolation.c */
 void render_interpolation_unit_camera_position(long unit_index, real_point3d *position);
 real render_interpolation_fraction(void);
+real render_interpolation_first_person_feed_phase(void);
 
 /* port/linux/src/xinput_sdl.c */
 int halo_spartan_link_pad_pressed(short port);
@@ -1398,10 +1399,11 @@ boolean spartan_link_feed_begin(
 	lights_port_keep(TRUE);
 	if (spartan_link.log)
 	{
-		platform_log("spartan link: %ld %d %ld %d %.4f %.4f %.4f %.5f %.5f %.5f %.4f %.3f", game_time_get(),
+		platform_log("spartan link: %ld %d %ld %d %.4f %.4f %.4f %.5f %.5f %.5f %.4f %.3f %.3f", game_time_get(),
 			(int)local_player_index, (long)DATUM_INDEX_TO_ABSOLUTE_INDEX(feed->player_index), through_eyes ? 1 : 0,
 			camera->position.x, camera->position.y, camera->position.z, camera->forward.i, camera->forward.j,
-			camera->forward.k, camera->vertical_field_of_view, render_interpolation_fraction());
+			camera->forward.k, camera->vertical_field_of_view, render_interpolation_fraction(),
+			render_interpolation_first_person_feed_phase());
 	}
 	return TRUE;
 }
