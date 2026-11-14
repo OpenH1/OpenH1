@@ -61,6 +61,9 @@ COMPARE = ["--builds", "--simulation", "--ignore", "hs thread"]
 # what two runs of this build are compared by: everything the log has, the takers by their call sites (the same
 # build's), the frames' allocations too (fixed steps: the same frames each run)
 REPEAT_COMPARE = []
+# the tick whose game state the two runs write (debug.determinism_dump), for where they differ if they part there:
+# the first, which the map's loading leaves
+REPEAT_DUMP = "1"
 
 
 def play(name, folder, game, map_path, slot, trace=None):
@@ -97,18 +100,22 @@ def dumped(name, work, maps, trace, said):
     tick = re.search(r"debug\.determinism_dump=(\d+)", said)
     if not tick:
         return []
-    dump = dict(trace or {}, HALO_DETERMINISM_DUMP=tick.group(1))
-    # (all of them side by side again, as they parted: what reached one may be the machine's load)
-    for run in ("a", "b"):
-        play_all(runner.GAME, work / "dumped" / run, maps, dump)
-    folders = [work / "dumped" / run / name for run in ("a", "b")]
+    # (the runs themselves wrote the first tick's: REPEAT_DUMP)
+    folders = [work / run / name for run in ("baseline", "branch")]
+    said = "the game state at tick 1 compared:"
+    if tick.group(1) != REPEAT_DUMP:
+        dump = dict(trace or {}, HALO_DETERMINISM_DUMP=tick.group(1))
+        # (all of them side by side again, as they parted: what reached one may be the machine's load)
+        for run in ("a", "b"):
+            play_all(runner.GAME, work / "dumped" / run, maps, dump)
+        folders = [work / "dumped" / run / name for run in ("a", "b")]
+        said = f"played again, the game state at tick {tick.group(1)} compared:"
     bins = [folder / f"{LOG}.{tick.group(1)}.bin" for folder in folders]
     if not all(path.is_file() for path in bins):
-        return [f"(played again, no game state written at tick {tick.group(1)})"]
+        return [f"(no game state written at tick {tick.group(1)})"]
     compared = subprocess.run([sys.executable, str(ROOT / "tools/determinism_compare.py"), str(folders[0] / LOG),
                                str(folders[1] / LOG), "--dump", *map(str, bins)], capture_output=True, text=True)
-    return [f"played again, the game state at tick {tick.group(1)} compared:"] + \
-        (compared.stdout.strip().splitlines() or [compared.stderr.strip()])[:40]
+    return [said] + (compared.stdout.strip().splitlines() or [compared.stderr.strip()])[:60]
 
 
 def ticks_logged(path):
@@ -145,6 +152,8 @@ def main():
     program = runner.build(work)
     maps = {name: runner.generate(program, SCENARIOS[name][0], work / "maps" / name) for name in SCENARIOS}
     trace = dict(HALO_TRACE="trace.txt", HALO_TRACE_MUTATION=args.mutation) if args.trace or args.mutation else None
+    if args.repeat:
+        trace = dict(trace or {}, HALO_DETERMINISM_DUMP=REPEAT_DUMP)
     play_all(runner.GAME, work / "branch", maps, trace)
     if args.record:
         args.record.mkdir(parents=True, exist_ok=True)
