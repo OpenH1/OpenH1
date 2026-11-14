@@ -45,14 +45,15 @@ typedef word message_header;
 /* ---------- the fake world */
 
 /* the record's pickup bit (network_game_manager.h) */
-enum { _network_game_hold_to_pick_up_bit = 3, _network_game_classic_turning_bit = 4,
-	_network_game_no_direct_camera_bit = 5, _network_game_pro_rules_bit = 6, _network_game_no_hit_sounds_bit = 7 };
+enum { _network_game_hold_to_pick_up_bit = 0, _network_game_classic_turning_bit = 1,
+	_network_game_no_direct_camera_bit = 2, _network_game_pro_rules_bit = 3, _network_game_no_hit_sounds_bit = 4 };
 #define SET_FLAG(f, b, v) ((v) ? ((f) |= (unsigned)FLAG(b)) : ((f) &= (unsigned)~FLAG(b)))
 
 struct network_game
 {
 	short machine_count;
-	short standard_rate;
+	byte standard_rate;
+	byte standard_flags;
 	/* (the host's way of picking up a second weapon: network_standard.c's
 	_network_game_hold_to_pick_up_bit) */
 	byte cooperative_flags;
