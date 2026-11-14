@@ -287,8 +287,10 @@ static struct screen_action const screen_actions[] =
 	LINK, the lobby's fix: coop_menu.inc) */
 	{ "coop host", NULL, "port coop host begin", "new game if no plyr profiles", "port campaign init",
 		"main_menu/campaign/mission_screen", "main_menu/campaign/solo_creating_profile" },
+	/* (a profile made first if there is none, back to co-op's screen after:
+	Select Profile's own, not Multiplayer's, which ends on the hub) */
 	{ "coop join", NULL, NULL, "new game if no plyr profiles", NULL, "screens/coop_join",
-		"main_menu/profile_manager/multiplayer_creating_profile" },
+		"main_menu/profile_manager/pm_empty_creating_profile" },
 	{ "coop split", NULL, NULL, "port coop begin", NULL, "main_menu/multiplayer_type_select/coop/player_2_profile_screen",
 		NULL },
 	{ "coop host friends", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_coop },

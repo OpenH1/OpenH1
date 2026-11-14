@@ -601,19 +601,19 @@ int pc_menu_coop_value(char const *name, char *value, unsigned long size)
 		if (!config_boolean("network.online"))
 			usnprintf(text, NUMBEROF(text) - 1, L"NOT LISTED: internet play is off.");
 		else if (who == _coop_join_invite)
-			usnprintf(text, NUMBEROF(text) - 1, L"INVITE ONLY: only people you send your link to can join.");
+			usnprintf(text, NUMBEROF(text) - 1, L"INVITE ONLY: only people with your link can join.");
 		else if (who == _coop_join_anyone)
 		{
 			usnprintf(text, NUMBEROF(text) - 1, p2p_hosting_listed() ?
-				L"LISTED FOR ANYONE: it's in everyone's co-op list, friends' first." :
+				L"LISTED: anyone can find it in Co-op, JOIN." :
 				L"ANYONE CAN JOIN: listing your game...");
 		}
 		else
 		{
 			p2p_friends_state(&state);
-			usnprintf(text, NUMBEROF(text) - 1, state.online == 1 ?
-				L"FRIENDS CAN JOIN: it's in the co-op list of your 1 friend online." :
-				L"FRIENDS CAN JOIN: it's in the co-op list of your %d friends online.", state.online);
+			usnprintf(text, NUMBEROF(text) - 1, state.online == 1 ? L"FRIENDS CAN JOIN: 1 friend online sees it." :
+				state.online ? L"FRIENDS CAN JOIN: %d friends online see it." :
+				L"FRIENDS CAN JOIN: no friend is online yet.", state.online);
 		}
 	}
 	else if (!strcmp(name, "coop.link"))
