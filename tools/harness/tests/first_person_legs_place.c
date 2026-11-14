@@ -9,20 +9,28 @@ body of the test's own, a skeleton of the game's node names placed as the
 cyborg's are about its eye (standing, crouching, a crouch jump's), in views
 of the test's own:
 
-- planted (#724): the view tilted from level to looking straight down, and
-  turned: the legs' pose is the same in every frame, the body set back along
-  its own heading, its feet where the game has them less the set-back;
+- planted (#724, #772): the view tilted from level to looking straight down,
+  and turned: the legs' pose is the same in every frame, the body moved along
+  its own heading so that the eye is over the front of its hips and belly at
+  rest (the model's mesh's), its feet where the game has them less that; and
+  seen from the view drawn (render_interpolation_view_body), turned to the
+  lower body's own heading about the eye (first_person_legs_lower_get), the
+  same however the view turns;
+- turned: the lower body's heading turned, the pose turned as much about the
+  eye's vertical, nothing else changed;
 - stateless (#772): drawn again in the same view after other views, the pose
   is the same, whatever came before (no lean stepped frame by frame);
 - clear (#772): standing and crouching on the ground, nothing drawn is
   within the game's near distance of the eye nor above it, the chest and all
-  above it folded into the chest's joint, and nothing lowered;
+  above it folded into the chest's joint, the belly flattened onto its joint's
+  height, and nothing lowered;
 - crouch_jump (#692): the eye down at the hips: the body lowered as far as
   keeps its head below the eye as the ground's poses have it, nothing drawn
   near the eye;
 - rigid (#772): what is drawn is the game's pose moved whole: every two
   nodes drawn as far apart as the game has them (nothing stretched);
-- shadow: the shadow's pose is placed as the legs are, nothing folded.
+- shadow: the shadow's pose is placed as the legs are, nothing folded nor
+  flattened.
 */
 
 #include "harness.h"
@@ -40,6 +48,7 @@ struct model_node
 {
 	char name[TAG_STRING_LENGTH + 1];
 	short parent_node_index;
+	real_point3d default_translation;
 };
 struct tag_block
 {
@@ -69,6 +78,42 @@ static struct
 {
 	struct { real_point3d position; real_vector3d forward; } camera;
 } global_window_parameters;
+static real_point3d const test_origin3d = { 0.f, 0.f, 0.f };
+static real_vector3d const test_forward3d = { 1.f, 0.f, 0.f }, test_up3d = { 0.f, 0.f, 1.f };
+#define global_origin3d (&test_origin3d)
+#define global_forward3d (&test_forward3d)
+#define global_up3d (&test_up3d)
+
+/* the model's surface (object_mesh.h's), a few points of it */
+struct object_mesh_vertex
+{
+	real_point3d position;
+	byte nodes[2];
+	short weight;
+};
+struct object_mesh
+{
+	long vertex_count;
+	struct object_mesh_vertex *vertices;
+};
+static struct object_mesh test_mesh;
+#define object_mesh_get_model(index) (&test_mesh)
+
+/* the unit as a biped (first_person_legs_place's walk of its own, never
+drawn here) */
+struct biped_definition
+{
+	struct { real standing_camera_height, crouching_camera_height; } biped;
+};
+struct biped_datum
+{
+	long definition_index;
+	struct { real crouch; } biped;
+};
+static struct biped_definition test_biped_definition;
+static struct biped_datum test_biped;
+#define biped_try_and_get(index) (&test_biped)
+#define biped_definition_get(index) (&test_biped_definition)
 
 static struct model test_model;
 static struct object_definition test_definition;
@@ -76,9 +121,50 @@ static struct object_datum test_unit;
 #define object_try_and_get(index) (&test_unit)
 #define object_definition_get(index) (&test_definition)
 #define model_definition_get(index) (&test_model)
-#define render_interpolation_view_body(unit_index, move, heading) (memset((move), 0, sizeof(*(move))), FALSE)
+/* the view drawn (render_interpolation_view_body): none (the body's own
+place, the third person's), or the body turned about the eye from its heading
+to the view's, level */
+static boolean test_view_drawn;
+static boolean test_view_body(real_matrix4x3 *move, real_vector3d *heading);
+#define render_interpolation_view_body(unit_index, move, heading) test_view_body((move), (heading))
+
+#include "lower.inc"
+
+/* the lower body's own heading (first_person_legs_lower_get): the test's */
+static struct first_person_legs_lower test_lower;
+#define first_person_legs_lower_get(unit_index, model, count, aim) (&test_lower)
 
 #include "under_test.inc"
+
+static boolean test_view_body(real_matrix4x3 *move, real_vector3d *heading)
+{
+	real_vector3d view = global_window_parameters.camera.forward;
+	real from = atan2f(test_unit.object.forward.j, test_unit.object.forward.i), to, c, s;
+	real_point3d const *eye = &global_window_parameters.camera.position;
+
+	memset(move, 0, sizeof(*move));
+	move->scale = 1.f;
+	move->forward.i = 1.f;
+	move->left.j = 1.f;
+	move->up.k = 1.f;
+	*heading = test_unit.object.forward;
+	if (!test_view_drawn)
+		return FALSE;
+	view.k = 0.f;
+	to = atan2f(view.j, view.i);
+	c = cosf(to - from);
+	s = sinf(to - from);
+	move->forward.i = c;
+	move->forward.j = s;
+	move->left.i = -s;
+	move->left.j = c;
+	move->position.x = eye->x - (c * eye->x - s * eye->y);
+	move->position.y = eye->y - (s * eye->x + c * eye->y);
+	heading->i = cosf(to);
+	heading->j = sinf(to);
+	heading->k = 0.f;
+	return TRUE;
+}
 
 /* the game's near distance (rasterizer.c's rasterizer_global_defaults) */
 #define GAME_NEAR 0.0625f
@@ -91,7 +177,7 @@ enum
 };
 static struct model_node nodes_named[NODES] =
 {
-	{ "bip01 pelvis", NONE }, { "bip01 spine", PELVIS }, { "bip01 spine1", SPINE }, { "bip01 neck", SPINE1 },
+	{ "bip01 pelvis", NONE, { -0.008f, 0.002f, 0.394f } }, { "bip01 spine", PELVIS }, { "bip01 spine1", SPINE }, { "bip01 neck", SPINE1 },
 	{ "bip01 head", NECK }, { "bip01 l clavicle", SPINE1 }, { "bip01 l upperarm", LEFT_CLAVICLE },
 	{ "bip01 r clavicle", SPINE1 }, { "bip01 r upperarm", RIGHT_CLAVICLE },
 	{ "bip01 l thigh", PELVIS }, { "bip01 l calf", LEFT_THIGH }, { "bip01 l foot", LEFT_CALF },
@@ -129,6 +215,18 @@ static real const crouch_jump[NODES][3] =
 static real_point3d const test_eye = { 12.5f, -40.25f, 3.0f };
 static real_matrix4x3 game_pose[NODES];
 
+/* the model's surface at rest: the front of the hips and of the belly, and
+farther forward the knee's and the chest's, which are not the hips' */
+static struct object_mesh_vertex test_vertices[] =
+{
+	{ { 0.040f, 0.0f, 0.40f }, { PELVIS, PELVIS }, 32767 },
+	{ { 0.061f, 0.01f, 0.46f }, { SPINE, PELVIS }, 30000 },
+	{ { 0.030f, -0.05f, 0.30f }, { LEFT_THIGH, PELVIS }, 20000 },
+	{ { 0.150f, 0.05f, 0.20f }, { LEFT_CALF, LEFT_THIGH }, 32767 },
+	{ { 0.230f, 0.0f, 0.55f }, { SPINE1, SPINE }, 32767 },
+};
+#define TEST_FRONT 0.061f
+
 /* the game's pose of a body facing yaw (radians), each node where table puts
 it from the eye */
 static void body(real const table[NODES][3], real yaw)
@@ -138,6 +236,8 @@ static void body(real const table[NODES][3], real yaw)
 
 	test_model.nodes.count = NODES;
 	test_model.nodes.elements = nodes_named;
+	test_mesh.vertex_count = sizeof(test_vertices) / sizeof(test_vertices[0]);
+	test_mesh.vertices = test_vertices;
 	test_definition.object.model.index = 1;
 	test_unit.object.parent_object_index = NONE;
 	test_unit.object.forward.i = c;
@@ -207,6 +307,9 @@ static void check_drawn(real_matrix4x3 const *pose, char const *what, real_vecto
 			continue;
 		}
 		CHECK(pose[a].scale == 1.f, "%s: node %d scaled %g", what, a, pose[a].scale);
+		/* (the belly flattened onto its joint's height, the rest as it was) */
+		CHECK(fabsf(pose[a].up.k - game_pose[a].up.k * (a == SPINE ? FIRST_PERSON_LEGS_LID : 1.f)) < 1.0e-5f,
+			"%s: node %d flattened %g", what, a, pose[a].up.k);
 		/* (moved whole: as the hips are) */
 		CHECK(fabsf(pose[a].position.x - game_pose[a].position.x - moved->i) < 1.0e-5f &&
 			fabsf(pose[a].position.y - game_pose[a].position.y - moved->j) < 1.0e-5f &&
@@ -232,6 +335,40 @@ static void check_drawn(real_matrix4x3 const *pose, char const *what, real_vecto
 		test_eye.z - pose[SPINE1].position.z);
 }
 
+/* whether a pose is another turned by angle (radians) about the eye's
+vertical */
+static boolean same_pose(real_matrix4x3 const *pose, real_matrix4x3 const *other, real angle)
+{
+	real c = cosf(angle), s = sinf(angle);
+	short node;
+
+	for (node = 0; node < NODES; node++)
+	{
+		real x = other[node].position.x - test_eye.x, y = other[node].position.y - test_eye.y;
+		real_vector3d const *a[3] = { &pose[node].forward, &pose[node].left, &pose[node].up };
+		real_vector3d const *b[3] = { &other[node].forward, &other[node].left, &other[node].up };
+		short axis;
+
+		if (fabsf(pose[node].position.x - test_eye.x - (c * x - s * y)) > 1.0e-4f ||
+			fabsf(pose[node].position.y - test_eye.y - (s * x + c * y)) > 1.0e-4f ||
+			fabsf(pose[node].position.z - other[node].position.z) > 1.0e-4f ||
+			fabsf(pose[node].scale - other[node].scale) > 1.0e-5f)
+		{
+			return FALSE;
+		}
+		for (axis = 0; axis < 3; axis++)
+		{
+			if (fabsf(a[axis]->i - (c * b[axis]->i - s * b[axis]->j)) > 1.0e-4f ||
+				fabsf(a[axis]->j - (s * b[axis]->i + c * b[axis]->j)) > 1.0e-4f ||
+				fabsf(a[axis]->k - b[axis]->k) > 1.0e-4f)
+			{
+				return FALSE;
+			}
+		}
+	}
+	return TRUE;
+}
+
 int main(int argc, char **argv)
 {
 	char const *which = argc > 1 ? argv[1] : "";
@@ -250,9 +387,16 @@ int main(int argc, char **argv)
 		look(0, yaw);
 		memcpy(drawn, first_person_legs_node_matrices(0, game_pose), sizeof(drawn));
 		check_drawn(drawn, "level", &moved);
-		CHECK(fabsf(moved.i + (real)cos(yaw * _pi / 180.0) * FIRST_PERSON_LEGS_BACK) < 1.0e-5f &&
-			fabsf(moved.j + (real)sin(yaw * _pi / 180.0) * FIRST_PERSON_LEGS_BACK) < 1.0e-5f &&
-			fabsf(moved.k) < 1.0e-6f, "set back %g %g %g, not along the heading", moved.i, moved.j, moved.k);
+		{
+			/* (the eye over the front of the hips and belly at rest, along
+			the heading: the hips' rest place, the belly's front) */
+			real c = (real)cos(yaw * _pi / 180.0), s = (real)sin(yaw * _pi / 180.0);
+			real y = nodes_named[PELVIS].default_translation.y;
+
+			CHECK(fabsf(moved.i + c * TEST_FRONT - s * y) < 1.0e-5f && fabsf(moved.j + s * TEST_FRONT + c * y) < 1.0e-5f &&
+				fabsf(moved.k) < 1.0e-6f, "moved %g %g %g, not to the front of the hips along the heading", moved.i,
+				moved.j, moved.k);
+		}
 		for (turn = -60; turn <= 60; turn += 20)
 		{
 			for (pitch = 0; pitch >= -89; pitch -= 7)
@@ -263,6 +407,14 @@ int main(int argc, char **argv)
 				pose = first_person_legs_node_matrices(0, game_pose);
 				CHECK(pose && !memcmp(pose, drawn, sizeof(drawn)), "turned %d, pitched %d: the pose moved", turn,
 					pitch);
+				/* (and seen from the view drawn, turned there and back to
+				the lower body's heading, where it stands) */
+				test_view_drawn = TRUE;
+				test_lower.yaw = (real)(yaw * _pi / 180.0);
+				pose = first_person_legs_node_matrices(0, game_pose);
+				test_view_drawn = FALSE;
+				CHECK(pose && same_pose(pose, drawn, 0.f), "seen from the view drawn turned %d, pitched %d: the pose moved",
+					turn, pitch);
 			}
 		}
 		if (!strcmp(which, "stateless"))
@@ -274,6 +426,25 @@ int main(int argc, char **argv)
 			look(-80, yaw);
 			CHECK(!memcmp(first_person_legs_node_matrices(0, game_pose), drawn, sizeof(drawn)),
 				"the pose not the same drawn again");
+		}
+	}
+	else if (!strcmp(which, "turned"))
+	{
+		/* the lower body turned 40 degrees from the body's heading: the pose
+		turned as much about the eye */
+		double yaw = 30.0;
+
+		body(standing, (real)(yaw * _pi / 180.0));
+		look(-70, yaw);
+		memcpy(drawn, first_person_legs_node_matrices(0, game_pose), sizeof(drawn));
+		for (turn = -60; turn <= 60; turn += 30)
+		{
+			look(-70, yaw + turn);
+			test_view_drawn = TRUE;
+			test_lower.yaw = (real)((yaw + 40.0) * _pi / 180.0);
+			CHECK(same_pose(first_person_legs_node_matrices(0, game_pose), drawn, (real)(40.0 * _pi / 180.0)),
+				"the view turned %d: not the pose turned 40 degrees about the eye", turn);
+			test_view_drawn = FALSE;
 		}
 	}
 	else if (!strcmp(which, "clear"))
@@ -314,7 +485,7 @@ int main(int argc, char **argv)
 		for (node = 0; node < NODES; node++)
 		{
 			CHECK(shadow[node].scale == 1.f, "the shadow's node %d folded", node);
-			if (!above_chest(node))
+			if (!above_chest(node) && node != SPINE)
 			{
 				CHECK(!memcmp(&shadow[node], &drawn[node], sizeof(drawn[node])),
 					"the shadow's node %d not where the legs' is", node);

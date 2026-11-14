@@ -40,7 +40,8 @@ static boolean tag_name_ends(long tag, char const *end)
 	return length >= end_length && !strcmp(names[tag] + length - end_length, end);
 }
 
-static int keyboard_prompts;
+/* (__attribute__((unused)): the box read under test may not ask; newer clangs warn of a global set and never read) */
+static int keyboard_prompts __attribute__((unused));
 #define halo_keyboard_prompts() keyboard_prompts
 
 #include "under_test.inc"

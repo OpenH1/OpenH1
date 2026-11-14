@@ -39,6 +39,7 @@ made again only when the loaded tags change.
 #include "render_marks.h"
 
 int config_boolean(char const *name);
+unsigned long config_changes(void);
 void halo_screen_scale_axes(float scale[2]); /* port/linux/src/d3d8_device.c */
 
 /* port/linux/src/xgpu_backend.h */
@@ -190,9 +191,17 @@ static unsigned long group_slot(void const *group)
 
 void render_marks_frame_begin(void)
 {
+	/* (debug.render_marks, read again as the settings change: config_changes) */
+	static unsigned long read_at = (unsigned long)-1;
+	static boolean setting;
 	long tick;
 
-	render_marks_on = config_boolean("debug.render_marks");
+	if (read_at != config_changes())
+	{
+		read_at = config_changes();
+		setting = config_boolean("debug.render_marks") != 0;
+	}
+	render_marks_on = setting;
 	if (!render_marks_on)
 		return;
 	memset(made.groups, 0, sizeof(made.groups));

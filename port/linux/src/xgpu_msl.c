@@ -1034,10 +1034,23 @@ static void sample(struct xgpu_text *text, const struct xgpu_pixel_program *prog
 	unsigned int border = options->border[stage] & (sampler == _xgpu_sampler_3d ? 7 : 3);
 	char uv[160];
 
+	if ((options->border[stage] & XGPU_BORDER_REGION) && sampler == _xgpu_sampler_2d)
+	{
+		xgpu_text_append(text, "region_sample(tex%d, tex%d_sampler, (%s).xy, u.texture_scale[%d], u.texture_lod_bias[%d], "
+			"u.texture_border[%d], u.texture_border_linear[%d])", stage, stage, coordinates, stage, stage, stage, stage);
+		return;
+	}
 	if (sampler == _xgpu_sampler_3d || sampler == _xgpu_sampler_cube)
 		snprintf(uv, sizeof(uv), "(%s).xyz", coordinates);
 	else
 		snprintf(uv, sizeof(uv), "(%s).xy * u.texture_scale[%d].xy", coordinates, stage);
+	/* (the high-res text's distance fields: msdf_coverage) */
+	if ((options->border[stage] & XGPU_BORDER_MSDF) && sampler == _xgpu_sampler_2d)
+	{
+		xgpu_text_append(text, "msdf_coverage(tex%d.sample(tex%d_sampler, %s, bias(u.texture_lod_bias[%d])), %s, "
+			"float2(float(tex%d.get_width()), float(tex%d.get_height())))", stage, stage, uv, stage, uv, stage, stage);
+		return;
+	}
 	if (border && sampler != _xgpu_sampler_cube && sampler != _xgpu_sampler_2d_layered)
 		xgpu_text_append(text, "border_mix(");
 	else
@@ -1448,6 +1461,29 @@ static const char border_function[] =
 	"\t\tinside *= linear != 0.0 ? filtered : nearest;\n"
 	"\t}\n"
 	"\treturn mix(color, texel, float4(inside));\n"
+	"}\n"
+	/* a region of the texture (XGPU_BORDER_REGION: region its size, then
+	its origin) sampled as a texture of the region's own whose border is
+	beyond it: clamped to the region's edge texels, and the border mixed in
+	by how much of the lookup is inside the region */
+	"static inline float4 region_sample(texture2d<float> t, sampler s, float2 r, float4 region, float lod_bias, float4 color,\n"
+	"\tfloat linear)\n"
+	"{\n"
+	"\tfloat2 size = float2(float(t.get_width()), float(t.get_height())) * region.xy;\n"
+	"\tfloat2 half_texel = 0.5 / size;\n"
+	"\tfloat4 texel = t.sample(s, region.zw + clamp(r, half_texel, 1.0 - half_texel) * region.xy, bias(lod_bias));\n"
+	"\treturn border_mix(texel, float3(r, 0.5), float3(size, 1.0), 3u, color, linear);\n"
+	"}\n"
+	/* the high-res text's distance fields (XGPU_BORDER_MSDF): white, its
+	alpha the coverage of the edge where the median of the channels is 0.5,
+	over as many of the screen's pixels as XGPU_MSDF_RANGE texels are (at
+	least one) */
+	"static inline float4 msdf_coverage(float4 texel, float2 uv, float2 size)\n"
+	"{\n"
+	"\tfloat distance = max(min(texel.r, texel.g), min(max(texel.r, texel.g), texel.b));\n"
+	"\tfloat2 texels = fwidth(uv * size);\n"
+	"\tfloat pixels = max(" XGPU_MSDF_RANGE_TEXT " * 0.5 * (1.0 / max(texels.x, 1e-6) + 1.0 / max(texels.y, 1e-6)), 1.0);\n"
+	"\treturn float4(1.0, 1.0, 1.0, saturate((distance - 0.5) * pixels + 0.5));\n"
 	"}\n";
 
 /* ---------- display.hdr's tags (xgpu_hdr.h) */

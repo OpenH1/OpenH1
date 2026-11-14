@@ -3199,6 +3199,60 @@ static void lfe_lowpass(float *output, unsigned long frames)
 	}
 }
 
+/* ---------- subsonic filter
+
+The output loses what is below hearing before the limiter: a fourth-order
+Butterworth high pass at 20 Hz, two second-order sections (-3 dB at 20 Hz,
+-0.17 at 30, -0.02 at 40; -10 dB at 15 Hz, -24 at 10, -48 at 5). The maps'
+sounds carry some: the title music's second section is mostly 0-20 Hz under
+its notes, louder than all it has above 30 Hz (issue 879), and a30's
+opening a steady offset; nobody hears it, but it pumps speakers, makes the
+limiter turn the mix down for nothing and sets off headphones' loudness
+warnings. Fourth order, not second: that music's energy is at 10-20 Hz, by
+the corner, where a second order took 4.5 dB off and already 0.8 dB at
+30 Hz. The state is double: with poles this near 1, a float's rounding is
+itself a low rumble. Coefficients for OUTPUT_RATE (48 kHz), the bilinear
+transform's, Q 0.5412 and 1.3066. */
+
+static const double subsonic_sections[2][5] =
+{
+	/* b0, b1, b2, a1, a2 */
+	{ 0.9975854184988755, -1.995170836997751, 0.9975854184988755, -1.9951674183225134, 0.9951742556729882 },
+	{ 0.9989974292265931, -1.9979948584531861, 0.9989974292265931, -1.9979914349390586, 0.9979982819673134 },
+};
+
+typedef char subsonic_rate[OUTPUT_RATE == 48000 ? 1 : -1];
+
+/* each channel's sections' two states (transposed direct form II) */
+static double subsonic_state[MAXIMUM_OUTPUT_CHANNELS][2][2];
+
+static void subsonic(float *output, unsigned long frames)
+{
+	unsigned long frame, channel, section;
+
+	for (channel = 0; channel < output_channels; channel++)
+	{
+		for (section = 0; section < 2; section++)
+		{
+			const double *k = subsonic_sections[section];
+			double s1 = subsonic_state[channel][section][0], s2 = subsonic_state[channel][section][1];
+
+			for (frame = 0; frame < frames; frame++)
+			{
+				double in = output[frame * output_channels + channel];
+				double out = k[0] * in + s1;
+
+				s1 = k[1] * in - k[3] * out + s2;
+				s2 = k[2] * in - k[4] * out;
+				output[frame * output_channels + channel] = (float)out;
+			}
+			/* (denormals flushed: silence decays the state toward them) */
+			subsonic_state[channel][section][0] = fabs(s1) < 1e-30 ? 0.0 : s1;
+			subsonic_state[channel][section][1] = fabs(s2) < 1e-30 ? 0.0 : s2;
+		}
+	}
+}
+
 /* ---------- limiter
 
 The game sets its mix bins' headroom to 0 (sound_dsound_xbox.c), so the voices
@@ -4030,6 +4084,7 @@ static void mix(float *output, unsigned long frames, BOOL wait)
 	}
 	if (mix_profile_on)
 		mix_part_end(_mix_part_chat, &part_at);
+	subsonic(output, frames);
 	limit(output, frames);
 	sound_gain = sound_fade(output, frames, output_channels, sound_gain, sound_on);
 	record(output, frames);

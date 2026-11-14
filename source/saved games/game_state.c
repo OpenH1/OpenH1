@@ -380,6 +380,12 @@ void game_state_port_restamp_revert_time(
 void game_state_revert(
 	void)
 {
+	/* port: a demo's playback reverts to nothing of its own: the game state
+	the recording's revert gave comes whole with its next tick
+	(port/linux/game/demo.c), and after a seek the playback may have no
+	checkpoint (the map would start over) */
+	if (demo_playing())
+		return;
 	game_state_saved_game_written();
 	if (!game_state_globals.saved_game_valid && !recover_saved_games_hack)
 	{

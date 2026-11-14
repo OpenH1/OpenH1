@@ -18,8 +18,9 @@ guest names, written at a crash (host_memory_watch.c's report, a fatal error,
 an abort) with what the host logged of it and then the guest's log as
 report.c keeps it in memory, oldest first, so that the next start can offer
 to report it. It is written with open() and write() alone, which a signal
-handler may call; not on Windows, whose crash reports are its own
-(port/windows/host/host_crash_win.c).
+handler may call; on Windows with CreateFileW and WriteFile
+(port/windows/host/host_crash_win.c), its path made whole as it is named,
+and its lines written by the host's crash report (host_memory_watch_win.c).
 */
 
 #include "host.h"
@@ -174,7 +175,17 @@ static const char *crash_record_log;
 static uint32_t crash_record_log_size;
 static const uint64_t *crash_record_log_written;
 static volatile int crash_record_taken;
+const char *volatile host_crash_cause;
+#ifdef _WIN32
+/* (host_crash_win.c's: the record's file by Windows's functions) */
+void host_crash_file_name(const char *path);
+void *host_crash_file_create(void);
+void host_crash_file_write(void *file, const char *text, size_t length);
+void host_crash_file_close(void *file);
+static void *crash_record_handle;
+#else
 static int crash_record_file = -1;
+#endif
 
 void host_crash_record(const char *path, const char *log, uint32_t log_size, const uint64_t *log_written)
 {
@@ -182,11 +193,26 @@ void host_crash_record(const char *path, const char *log, uint32_t log_size, con
 	crash_record_log = log;
 	crash_record_log_size = log_size;
 	crash_record_log_written = log_written;
+#ifdef _WIN32
+	host_crash_file_name(crash_record_path);
+#endif
 }
 
-#ifndef _WIN32
+static int crash_record_is_open(void)
+{
+#ifdef _WIN32
+	return crash_record_handle != NULL;
+#else
+	return crash_record_file >= 0;
+#endif
+}
+
 static void crash_record_write(const char *text, size_t length)
 {
+#ifdef _WIN32
+	if (crash_record_handle)
+		host_crash_file_write(crash_record_handle, text, length);
+#else
 	while (length && crash_record_file >= 0)
 	{
 		ssize_t written = write(crash_record_file, text, length);
@@ -196,45 +222,44 @@ static void crash_record_write(const char *text, size_t length)
 		text += written;
 		length -= (size_t)written;
 	}
-}
 #endif
+}
 
 int host_crash_record_begin(const char *reason)
 {
-#ifndef _WIN32
 	/* (the first thread to crash writes it; the others' crashes are left out) */
 	if (!crash_record_path[0] || __atomic_exchange_n(&crash_record_taken, 1, __ATOMIC_ACQ_REL))
 		return 0;
+#ifdef _WIN32
+	crash_record_handle = host_crash_file_create();
+#else
 	crash_record_file = open(crash_record_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	if (crash_record_file < 0)
+#endif
+	if (!crash_record_is_open())
 		return 0;
 	host_crash_record_line(reason);
+	if (host_crash_cause)
+	{
+		crash_record_write("  ", 2);
+		host_crash_record_line(host_crash_cause);
+	}
 	return 1;
-#else
-	(void)reason;
-	return 0;
-#endif
 }
 
 void host_crash_record_line(const char *line)
 {
-#ifndef _WIN32
-	if (crash_record_file < 0 || !line)
+	if (!crash_record_is_open() || !line)
 		return;
 	crash_record_write(line, strlen(line));
 	crash_record_write("\n", 1);
-#else
-	(void)line;
-#endif
 }
 
 void host_crash_record_end(void)
 {
-#ifndef _WIN32
 	static const char heading[] = "\n--- the log's last lines\n";
 	uint64_t written, kept, first;
 
-	if (crash_record_file < 0)
+	if (!crash_record_is_open())
 		return;
 	if (crash_record_log && crash_record_log_size && crash_record_log_written)
 	{
@@ -252,6 +277,10 @@ void host_crash_record_end(void)
 		else
 			crash_record_write(crash_record_log + first, (size_t)kept);
 	}
+#ifdef _WIN32
+	host_crash_file_close(crash_record_handle);
+	crash_record_handle = NULL;
+#else
 	close(crash_record_file);
 	crash_record_file = -1;
 #endif
@@ -276,14 +305,13 @@ void host_fatal(const char *format, ...)
 	_exit(1);
 }
 
+/* (the record is the SIGABRT's, written by its handler with the stack:
+host_memory_watch.c's, on Windows host_crash_win.c's; the reason a line of
+it) */
 void host_abort(const char *reason)
 {
 	host_logf(HOST_LOG_FATAL, "guest abort: %s", reason ? reason : "");
-	if (host_crash_record_begin("abort"))
-	{
-		host_crash_record_line(reason);
-		host_crash_record_end();
-	}
+	host_crash_cause = reason;
 	abort();
 }
 
@@ -435,6 +463,48 @@ uint32_t host_make_boot(const struct host_environment *environment, const char *
 
 /* ---------- config.toml's settings the host reads */
 
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <sys/resource.h>
+
+/* (game.priority) the game's threads at the normal priority, not the
+launcher's: a new thread takes its creator's niceness, and a launcher may
+run at a low one (CachyOS's ananicy-cpp runs Steam at nice 16 as a
+"Launcher", and the games Steam starts take it), which leaves the game's
+threads behind every other program's work. Raised on the game thread before
+it makes the others (the render thread, the workers), so they take it too;
+the audio threads raise their own (host_sdl.c). Raising one's niceness
+back needs RLIMIT_NICE or RealtimeKit, which SDL asks for when setpriority
+is refused; a desktop has one or the other. "inherit": as launched */
+static void host_apply_priority(const char *mode)
+{
+	int niceness;
+
+	errno = 0;
+	niceness = getpriority(PRIO_PROCESS, 0);
+	if (errno)
+		return;
+	if (!strcmp(mode, "inherit"))
+	{
+		if (niceness > 0)
+			host_logf(HOST_LOG_INFO, "priority: nice %d, the launcher's (game.priority \"inherit\")", niceness);
+		return;
+	}
+	if (niceness <= 0)
+		return;
+	if (setpriority(PRIO_PROCESS, 0, 0) == 0 || SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_NORMAL))
+	{
+		errno = 0;
+		host_logf(HOST_LOG_INFO, "priority: started at nice %d (the launcher's), now %d (game.priority)", niceness,
+			getpriority(PRIO_PROCESS, 0));
+	}
+	else
+	{
+		host_logf(HOST_LOG_WARN, "priority: started at nice %d (the launcher's), and could not be raised (no "
+			"RLIMIT_NICE, no RealtimeKit): the game runs behind the computer's other work", niceness);
+	}
+}
+#endif
+
 /* (display.astc_textures' default, as port_config.c's) */
 char host_astc_textures[16] = "auto";
 int host_pass_times;
@@ -446,6 +516,8 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 	/* (debug.stall_ms' default, as port_config.c's) */
 	double stall_ms = 100.0;
 	int memory_watch = 1;
+	/* (game.priority's default, as port_config.c's) */
+	char priority_mode[16] = "normal";
 
 	if (result.ok)
 	{
@@ -454,6 +526,7 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 		toml_datum_t astc = toml_seek(result.toptab, "display.astc_textures");
 		toml_datum_t pass_times = toml_seek(result.toptab, "debug.pass_times");
 		toml_datum_t stall = toml_seek(result.toptab, "debug.stall_ms");
+		toml_datum_t priority = toml_seek(result.toptab, "game.priority");
 
 		sample_seconds = seconds.type == TOML_FP64 ? seconds.u.fp64 :
 			seconds.type == TOML_INT64 ? (double)seconds.u.int64 : 0.0;
@@ -465,6 +538,8 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 			host_pass_times = (int)pass_times.u.int64;
 		if (stall.type == TOML_FP64 || stall.type == TOML_INT64)
 			stall_ms = stall.type == TOML_FP64 ? stall.u.fp64 : (double)stall.u.int64;
+		if (priority.type == TOML_STRING)
+			snprintf(priority_mode, sizeof(priority_mode), "%s", priority.u.s);
 		toml_free(result);
 	}
 	if (getenv("HALO_ASTC_TEXTURES") && *getenv("HALO_ASTC_TEXTURES"))
@@ -475,6 +550,14 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 		host_pass_times = atoi(getenv("HALO_PASS_TIMES"));
 	if (getenv("HALO_SAMPLE"))
 		sample_seconds = atof(getenv("HALO_SAMPLE"));
+	if (getenv("HALO_PRIORITY") && *getenv("HALO_PRIORITY"))
+		snprintf(priority_mode, sizeof(priority_mode), "%s", getenv("HALO_PRIORITY"));
+#if defined(__linux__) && !defined(__ANDROID__)
+	/* (before the threads the game makes: they take it) */
+	host_apply_priority(priority_mode);
+#else
+	(void)priority_mode;
+#endif
 	if (getenv("HALO_STALL_MS") && *getenv("HALO_STALL_MS"))
 		stall_ms = atof(getenv("HALO_STALL_MS"));
 	host_stall_start(stall_ms);

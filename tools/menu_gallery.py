@@ -111,6 +111,32 @@ class Screen:
 
 # screens shown only for a moment, or that need a state a menu_open run has not (saving a profile)
 TRANSIENT = re.compile(r"_(saving|creating)_profile$|^error/warning_")
+# the event handler functions the game runs as it opens a screen that closes at once without what they do (the
+# tour runs them first, as the first player's press would: port/linux/game/menu_tour.c's menu_tour_setup; "close
+# keyboard" closes the keyboard one of them launched): a gametype being edited (the gametype editor's screens, which
+# "close if not editing profile" closes without one, a player profile being edited apart), and a name's keyboard
+TOUR_SETUP = {
+    "main_menu/settings_select/multiplayer_setup/create_and_edit_new_gametype_screen":
+        ("create&edit playlist profile", "close keyboard"),
+    "main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_edit_screen":
+        ("create&edit playlist profile", "close keyboard"),
+    "main_menu/settings_select/multiplayer_setup/name_edit/gametype_name_screen":
+        ("create&edit playlist profile", "close keyboard", "mp profile change name"),
+    "main_menu/settings_select/player_setup/player_profile_edit/name_edit/profile_name_screen":
+        ("player profile change name",),
+}
+# the screens the game shows only under the virtual keyboard, which neither updates nor draws the widgets while it is
+# up (ui_widget.c), and which close themselves once it closes (their auto_close): the keyboard is all they show, and
+# they write no layout on either engine
+UNDER_KEYBOARD = re.compile(r"/name_edit/[a-z_]+_name_screen$")
+
+
+def tour_line(name: str) -> str:
+    """a screen's line in a tour's list (debug.menu_tour) or debug.menu_open: its name and, a tab before each, the
+    functions the game runs as it opens it (TOUR_SETUP)"""
+    return "\t".join((name,) + TOUR_SETUP.get(name, ()))
+
+
 # VR's screens, drawn in the headset (--vr includes them)
 VR_SCREEN = re.compile(r"/vr_[a-z_]+/")
 
@@ -678,9 +704,11 @@ def map_cache_unchanged(template: Path) -> bool:
 
 
 def tour(build: Path, screens: list, variant: Variant, maps: Path, menus: Path, pictures: bool, xvfb: bool,
-         timeout: float, template: Path = None) -> dict:
+         timeout: float, template: Path = None, logs: list = None, profile: Path = None) -> dict:
     """one run of the game through the screens (debug.menu_tour), the menu files of a folder over its own
-    (its menus folder: no build for a change to them): {screen's name: (picture or None, layout or None)}"""
+    (its menus folder: no build for a change to them): {screen's name: (picture or None, layout or None)}
+    (logs: the run's log appended to it; profile: a save folder's player profiles, its u, the run starts with:
+    the screens that close at once with no profile being edited draw then)"""
     # (beside the template, on its file system, where its files can be cloned or linked: not a /tmp of RAM)
     if template:
         (MAP_CACHE_TEMPLATES / "runs").mkdir(parents=True, exist_ok=True)
@@ -701,7 +729,9 @@ def tour(build: Path, screens: list, variant: Variant, maps: Path, menus: Path, 
         environment = run_environment(variant, folder, timeout, pictures)
         if template:
             map_cache_clone(template, folder / "saves" / "z")
-        (folder / "data" / "tour.txt").write_text("".join(screen.name + "\n" for screen in screens))
+        if profile:
+            shutil.copytree(profile, folder / "saves" / "u", dirs_exist_ok=True)
+        (folder / "data" / "tour.txt").write_text("".join(tour_line(screen.name) + "\n" for screen in screens))
         (folder / "data" / "maps").symlink_to(maps.resolve())
         if sys.platform != "darwin":
             if xvfb and pictures:
@@ -718,6 +748,8 @@ def tour(build: Path, screens: list, variant: Variant, maps: Path, menus: Path, 
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
         text = (folder / "halo.log").read_text(errors="replace")
+        if logs is not None:
+            logs.append(text)
         if "debug.menu_tour: done" not in text:
             raise RuntimeError(f"the tour ({variant.description}) did not finish in {timeout:g} s\n{text[-2000:]}")
         results = {}

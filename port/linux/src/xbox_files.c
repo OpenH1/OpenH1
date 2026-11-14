@@ -698,7 +698,7 @@ static BOOL read_at(struct platform_file *file, LPVOID buffer, DWORD count, LPDW
 	BOOL positioned, unsigned long long offset)
 {
 	DWORD total = 0;
-	BOOL tracing = config_boolean("debug.load_trace");
+	BOOL tracing = halo_load_trace_enabled();
 	double started = tracing ? load_io_now() : 0.0;
 	double syscall_seconds = 0.0;
 	/* The renderer write-protects guest memory it caches (memory_watch.c),
@@ -765,7 +765,7 @@ static BOOL write_at(struct platform_file *file, LPCVOID buffer, DWORD count, LP
 	BOOL positioned, unsigned long long offset)
 {
 	DWORD total = 0;
-	BOOL tracing = config_boolean("debug.load_trace");
+	BOOL tracing = halo_load_trace_enabled();
 	double started = tracing ? load_io_now() : 0.0;
 
 	while (total < count)
@@ -1132,6 +1132,23 @@ BOOL WINAPI MoveFileA(LPCSTR existing_file_name, LPCSTR new_file_name)
 		return FALSE;
 	}
 	if (rename(from, to) != 0)
+	{
+		platform_set_last_error_from_errno(errno);
+		return FALSE;
+	}
+	return TRUE;
+}
+
+/* halo_linux_source_fixups.h's: the file at from put in to's place at once,
+replacing it (rename(2) replaces; the Windows host's renameat is MoveFileEx's
+replace) */
+int platform_replace_file(const char *from, const char *to)
+{
+	char from_path[1024], to_path[1024];
+
+	platform_translate_path(from, from_path, sizeof(from_path));
+	platform_translate_path(to, to_path, sizeof(to_path));
+	if (rename(from_path, to_path) != 0)
 	{
 		platform_set_last_error_from_errno(errno);
 		return FALSE;

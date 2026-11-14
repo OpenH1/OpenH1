@@ -50,6 +50,7 @@ STANDARD_FUNCTIONS = (
     "network_standard_machine_is_opence", "network_standard_machine_is_openh1", "network_standard_game_for_machine",
     "network_standard_note_opence_players", "network_standard_player_is_opence", "network_standard_new_game",
     "network_standard_handle_message", "network_standard_server_rate", "network_standard_stamp_game",
+    "network_standard_pro_hosting",
     "network_standard_join_token", "network_standard_client_joining", "network_standard_agreed_rate",
 )
 

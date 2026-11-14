@@ -56,6 +56,7 @@ void halo_menus_reload(void);
 unsigned long long halo_menus_files_stamp(void);
 void menu_tags_unloaded(void);
 void menu_tags_loaded(char const *map_name);
+void saving_screens_tags_loaded(void);
 void menu_tags_files_changed(void);
 boolean ui_widgets_active(void);
 /* (ui_widget.c) */
@@ -189,6 +190,8 @@ static void menu_studio_reload(
 	halo_menus_reload();
 	menu_tags_files_changed();
 	menu_tags_loaded("ui");
+	/* (their saving screens skipped, as when the map's tags load) */
+	saving_screens_tags_loaded();
 	if (!name[0] || !ui_widget_port_open_screen(name))
 	{
 		platform_log("menus: studio: %s could not be opened again; the main menu", name[0] ? name : "the screen");

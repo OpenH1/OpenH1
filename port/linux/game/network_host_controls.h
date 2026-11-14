@@ -20,6 +20,10 @@ enum
 	_host_controls_ban,
 	_host_controls_move_team,
 	_host_controls_mute,
+	/* (network co-op: the player brought beside the host's, the host's
+	player to them: network_host_controls_teleport) */
+	_host_controls_bring,
+	_host_controls_go_to,
 	NUMBER_OF_HOST_CONTROLS_ACTIONS
 };
 
@@ -85,6 +89,21 @@ enum
 	_host_bots_fill,
 };
 
+/* the rows a pause menu gets after its SETTINGS, before LEAVE GAME or
+REVERT TO SAVED (network_host_controls_pause_rows_for: a bit each, in this
+order; menu_tags.c's pause_list_patch) */
+enum
+{
+	/* network co-op's, each machine's own */
+	_host_controls_pause_friendly_fire,
+	/* Basic Training's chapters (basic_training.c) */
+	_host_controls_pause_chapters,
+	_host_controls_pause_host_controls,
+	/* a game of this machine alone's host's */
+	_host_controls_pause_end_game,
+	NUMBER_OF_HOST_CONTROLS_PAUSE_ROWS
+};
+
 /* the world behind Host Controls, dimmed (pixel32: black, three quarters
 over it) */
 #define NETWORK_HOST_CONTROLS_BACKDROP 0xC0000000
@@ -118,6 +137,28 @@ struct host_controls_player_view
 	(network_host_controls_team_moves_for) */
 	boolean teams;
 	boolean team_moves;
+	/* a network co-op game, and whether the host may bring the player to
+	its own and go to them (players.c's players_coop_host_can_teleport) */
+	boolean coop;
+	boolean bring;
+	boolean go_to;
+};
+
+/* whose pause menu it is, for its rows */
+struct host_controls_pause_view
+{
+	/* this machine runs the game's server (a network game's, or one of this
+	machine alone), or administers a dedicated server's (network_admin.c) */
+	boolean host;
+	/* a network co-op game's campaign pause menu */
+	boolean coop;
+	/* the game is of this machine alone (split screen, bots) */
+	boolean local;
+	/* Basic Training is played */
+	boolean training;
+	/* the menus have Host Controls' and Basic Training's screens */
+	boolean host_controls_screen;
+	boolean training_screen;
 };
 
 /* what a game is, for moving its players between teams */
@@ -181,6 +222,8 @@ short network_host_controls_restart_step(short stage, struct host_controls_resta
 short network_host_controls_maximum_step(short const *values, short count, short current, short present,
 	short step);
 boolean network_host_controls_ban_parse(char const *line, struct host_controls_ban *ban);
+/* the rows the pause menu gets (_host_controls_pause_*: a bit each) */
+unsigned long network_host_controls_pause_rows_for(struct host_controls_pause_view const *view);
 /* BOTS stepped (no wrapping round): no fewer than none, no more than
 BOTS_MAXIMUM or than the game holds (most_players) beside its players; the
 count left once the host takes out a bot of those playing (one fewer than
@@ -228,6 +271,12 @@ game's OpenH1 machines alone hear it (network_host_controls_team_moves) */
 boolean network_host_controls_move_team(long player_index);
 /* whether teams may move in this game */
 boolean network_host_controls_team_moves(void);
+/* (the co-op host) the player brought beside the host's player (go_to
+FALSE), or the host's player to them (TRUE), as a BSP switch moves the
+players (players.c's players_coop_host_teleport); the player's machine
+told, an OpenH1 one (_distributed_message_host_teleport): the brought
+player turned the host's way and both told on their screens */
+boolean network_host_controls_teleport(long player_index, boolean go_to);
 
 /* (the host) the players' own team changes in the lobby refused (but the
 host machine's) */

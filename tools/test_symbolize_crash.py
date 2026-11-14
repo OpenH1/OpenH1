@@ -259,7 +259,7 @@ def test_the_release_s_symbols_are_named(text, hint):
     if hint is None:
         assert found is None
     else:
-        assert hint in found and "https://github.com/OpenH1/OpenH1/releases/tag/build-" in found
+        assert hint in found and "https://github.com/OpenH1/goath1/releases/tag/build-" in found
 
 
 def test_every_report_platform_has_its_symbols():

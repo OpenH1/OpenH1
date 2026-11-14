@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run
 
-CASES = ['client', 'host', 'local', 'playback']
+CASES = ['client', 'host', 'local', 'playback', 'simulation-fixes']
 # (faults, and the case that must catch each)
 CONTROLS = [
     # (a client's own setting, as before: its host and it posed that player otherwise)
@@ -23,6 +23,12 @@ CONTROLS = [
      'playback'),
     ('if (demo_playback_rules(&rules))\n\t\t\treturn TEST_FLAG(rules, _demo_rule_turns_with_aim_bit);', '',
      'playback'),
+    # (OpenH1's fixes of the simulation in a Legacy game, which OpenCE's machines play otherwise)
+    ('return network_standard_globals.hosting;', 'return TRUE;', 'simulation-fixes'),
+    ('return network_standard_globals.joined;', 'return TRUE;', 'simulation-fixes'),
+    # (a playback by this machine's game, not its recording's)
+    ('if (demo_playback_rules(&rules))\n\t\treturn TEST_FLAG(rules, _demo_rule_simulation_fixes_bit);', '',
+     'simulation-fixes'),
 ]
 
 
@@ -34,7 +40,8 @@ def generated(fault=None):
         enum_with(read('port/linux/game/demo.h'), '_demo_rule_enhanced_animations_bit'),
     ]) + '\n'
     code = function(standard, 'network_standard_turns_with_aim') + '\n' + \
-        function(standard, 'network_standard_enhanced_animations')
+        function(standard, 'network_standard_enhanced_animations') + '\n' + \
+        function(standard, 'network_standard_simulation_fixes')
     if fault:
         code = mutated(code, *fault)
     return (('config.inc', config), ('under_test.inc', code))

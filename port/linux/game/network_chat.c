@@ -2,10 +2,14 @@
 NETWORK_CHAT.C
 
 The text chat of network games (port/linux/NETCODE.md), as the PC version
-had it: T (controls.chat) starts a line to everyone, Y (controls.team_chat)
-one to the player's team; Tab, while typing, turns it to everyone, the team
-or the vehicle in turn; Enter sends it, Escape lets it go. A controller's
-D-pad Up (the touch controls' too) opens an on-screen keyboard instead,
+had it: T (controls.chat) starts a line to the channel its player chose
+last (network.chat_channels, each local player's: everyone at first; a
+team's in a game without teams, a vehicle's on foot, the team's or
+everyone's instead), Y (controls.team_chat) one to the player's team; Tab,
+while typing, turns it to everyone, the team or the vehicle in turn; Enter
+sends it, Escape lets it go. A controller's D-pad Up (controls.chat's button,
+the touch controls' too) opens an on-screen keyboard instead, on the channel
+chosen last as T does (the team and vehicle chat buttons on their own),
 whose keys the stick moves through and A types, a tap types (the
 touchscreen), and the controller then drives nothing else (xinput_sdl.c's
 halo_chat_pad_buttons, halo_chat_taps). The lines are
@@ -37,6 +41,25 @@ connection's stream, which no other machine can send as the host. A build
 without the chat drops the three kinds as unknown: its players neither send
 nor see lines.
 
+The lobby has a chat of its own (the hand-written lobby's chat area:
+docs/menu_screens.md), before a game and between games, on the same
+messages, rate, refusals, filter and mutes: a line of the lobby's is marked
+(_chat_line_lobby_bit), and goes to everyone in the lobby (it has one
+channel: its teams are not yet the game's, and anyone may change theirs),
+its sender a player of the network game's record (the lobby has no game's
+players: their slot in the record), its name and team the record's. The
+lobby's lines are kept apart from a game's: a game's HUD shows none of them,
+and the lobby none of a game's. The host has it on or off
+(network.lobby_text_chat, Host Controls' LOBBY TEXT CHAT: _chat_config_lobby_bit,
+which the host sends in the lobby too); a client that has heard no host's
+settings (a host without it: OpenCE's, an older OpenH1's) has none. The host
+sends a lobby's line on to OpenH1's machines alone: an OpenCE machine (in a
+Legacy game, or one an OpenH1 game lets in) is sent none, and its players
+can neither see nor send one (OpenCE's lobby has no chat). In the lobby, T
+(and Y: the one channel) starts a line, as does a controller's RB, or A on
+the chat area (the on-screen keyboard, D-pad Up being the lobby's focus's),
+and a tap on it.
+
 The host's settings (network.text_chat: on, links allowed, or off, listed
 in the server browser or not) go to every client
 (_distributed_message_chat_config). A line they refuse is refused by its
@@ -51,8 +74,9 @@ by the player's name, in either case (the host keeps players' names apart
 in either case), which then sends no line further than the host till
 the minutes are up (or the host unmutes it) and is told for how long; every
 machine is told of each mute and unmute, a line of the host's alone in the
-chat (_chat_line_notice_bit). A client's /mute is not sent: only the host
-mutes. The host's welcome to OpenCE players is a notice too
+chat (_chat_line_notice_bit). The mute silences the player's voice too
+(network_voice.c) and their pings (network_markers.c). A client's /mute is
+not sent: only the host mutes. The host's welcome to OpenCE players is a notice too
 (network_welcome.c), which an OpenH1 machine does not show.
 */
 
@@ -85,6 +109,10 @@ mutes. The host's welcome to OpenCE players is a notice too
 #include "halo_keyboard.h"
 #include "server_director.h"
 #include "network_host_game.h"
+#include "network_standard.h"
+#include "networking/network_game_globals.h"
+#include "networking/network_game_manager.h"
+#include "networking/network_client_manager.h"
 #include "../src/report.h" /* port: port/linux/src/report.c */
 
 #include <stdio.h>
@@ -96,6 +124,7 @@ int platform_clipboard_get(char *text, int size);
 int config_boolean(const char *name);
 const char *config_string(const char *name);
 unsigned long config_changes(void);
+int config_write(const char *name, const char *value);
 /* server_mode.c's: a dedicated server (halo --server) */
 int halo_server_mode(void);
 void platform_log(char const *format, ...);
@@ -108,6 +137,9 @@ enum
 	CHAT_TEXT_SIZE = 64,
 	/* a player's name, with its end */
 	CHAT_NAME_SIZE = 12,
+	/* network.chat_channels's words, with its end: a channel's for each
+	local player ("vehicle," four times) */
+	CHAT_CHANNELS_TEXT_SIZE = 32,
 	/* the lines kept, and the rows of them shown at once (a line wraps) */
 	CHAT_MAXIMUM_LINES = 8,
 	CHAT_LINES_SHOWN = 6,
@@ -185,6 +217,9 @@ enum
 	_chat_line_vehicle_bit,
 	/* the host's notice (a mute's): its text alone, from no player */
 	_chat_line_notice_bit,
+	/* the lobby's (its player the network game record's slot), never a
+	game's */
+	_chat_line_lobby_bit,
 };
 
 /* the host's chat settings' flags (_distributed_message_chat_config) */
@@ -194,6 +229,15 @@ enum
 	_chat_config_allowed_bit,
 	/* their lines may have links */
 	_chat_config_links_bit,
+	/* the lobby has its chat (network.lobby_text_chat) */
+	_chat_config_lobby_bit,
+};
+
+/* network_client_manager.c's client states (its enum is its own) */
+enum
+{
+	_chat_client_state_pregame = 2,
+	_chat_client_state_ingame = 3,
 };
 
 /* who a line is to (network_chat.h's _chat_channel_*) */
@@ -288,6 +332,15 @@ static struct chat_line chat_lines[CHAT_MAXIMUM_LINES];
 static short chat_line_count;
 static short chat_newest_line;
 
+/* the lobby's lines, the newest at chat_lobby_newest (let go as this
+machine leaves the network game), and (system_milliseconds) when the
+lobby's chat area was last shown (network_chat_lobby_frame) */
+static struct network_chat_lobby_line chat_lobby_lines[NETWORK_CHAT_LOBBY_LINES];
+static short chat_lobby_line_count;
+static short chat_lobby_newest;
+static unsigned long chat_lobby_shown_at;
+static boolean chat_lobby_shown_ever;
+
 /* the line typed */
 static struct
 {
@@ -295,9 +348,15 @@ static struct
 	short channel, controller;
 	long player;
 	boolean physical;
+	/* the channel chosen, by the key that opened the line or by changing it,
+	and so remembered (network.chat_channels) when the line closes */
+	boolean chosen;
 	/* a report's note (port/linux/src/report.c): in any game, network or
 	not, sent to the report, not the players */
 	boolean report;
+	/* the lobby's line: its sender the game record's slot (lobby_slot) */
+	boolean lobby;
+	short lobby_slot;
 	char text[CHAT_TEXT_SIZE];
 } chat_input;
 
@@ -486,6 +545,105 @@ static byte chat_channel_flags(
 	if (channel == _chat_channel_vehicle)
 		return (byte)FLAG(_chat_line_vehicle_bit);
 	return channel == _chat_channel_team ? (byte)FLAG(_chat_line_team_bit) : 0;
+}
+
+/* the channels' words in network.chat_channels, in _chat_channel_* order */
+static char const *const chat_channel_words[NUMBER_OF_CHAT_CHANNELS] = { "all", "team", "vehicle" };
+
+/* the channel a local player chose last, from network.chat_channels's words
+(a word for each local player in turn, separated by commas): everyone for
+a player past the list's end or a word not known */
+static short chat_channel_remembered(
+	char const *list,
+	short local_player_index)
+{
+	short index = 0;
+	short channel;
+	short length;
+
+	while (list && *list)
+	{
+		for (length = 0; list[length] && list[length] != ','; length++)
+			;
+		if (index == local_player_index)
+		{
+			for (channel = 0; channel < NUMBER_OF_CHAT_CHANNELS; channel++)
+			{
+				if ((short)csstrlen(chat_channel_words[channel]) == length &&
+					!csstrncmp(list, chat_channel_words[channel], length))
+				{
+					return channel;
+				}
+			}
+			break;
+		}
+		list += length;
+		if (*list == ',')
+			list++;
+		index++;
+	}
+	return _chat_channel_everyone;
+}
+
+/* network.chat_channels's words with a local player's set to a channel and
+the others' kept (everyone's for those the list lacked, a word not known
+everyone's), without the "all"s at its end but the first: FALSE where a
+player or a channel is not one */
+static boolean chat_channel_list_set(
+	char *list,
+	short size,
+	char const *old_list,
+	short local_player_index,
+	short channel)
+{
+	short index;
+	short players = 1;
+	short length = 0;
+	short word;
+
+	if (local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS || channel < 0 ||
+		channel >= NUMBER_OF_CHAT_CHANNELS || size < 1)
+	{
+		return FALSE;
+	}
+	*list = 0;
+	for (index = 0; index < MAXIMUM_LOCAL_PLAYERS; index++)
+	{
+		word = index == local_player_index ? channel : chat_channel_remembered(old_list, index);
+		if (word != _chat_channel_everyone)
+			players = (short)(index + 1);
+	}
+	for (index = 0; index < players; index++)
+	{
+		char const *text;
+
+		word = index == local_player_index ? channel : chat_channel_remembered(old_list, index);
+		text = chat_channel_words[word];
+		if (length + (index ? 1 : 0) + (short)csstrlen(text) >= size)
+			return FALSE;
+		if (index)
+			list[length++] = ',';
+		while (*text)
+			list[length++] = *text++;
+		list[length] = 0;
+	}
+	return TRUE;
+}
+
+/* the channel a line opens on when its key chooses none (controls.chat, a
+controller's D-pad Up): the one the player chose last, where someone else
+hears it; a team's in a game without teams, and a vehicle's on foot, the
+team's (with teams) or everyone's instead */
+static short chat_channel_opened(
+	short remembered,
+	boolean has_teams,
+	boolean in_vehicle)
+{
+	if (remembered == _chat_channel_vehicle && !in_vehicle)
+		remembered = _chat_channel_team;
+	if (remembered == _chat_channel_team && !has_teams)
+		remembered = _chat_channel_everyone;
+	return remembered >= 0 && remembered < NUMBER_OF_CHAT_CHANNELS ? remembered : _chat_channel_everyone;
 }
 
 /* how much of a line shows at its age (milliseconds): all of it for a while,
@@ -941,15 +1099,27 @@ static boolean chat_host(
 static byte chat_host_config_flags(
 	void)
 {
-	char const *setting = config_string("network.text_chat");
-	byte flags = 0;
+	/* (read again as the settings change: config_changes) */
+	static unsigned long read_at = (unsigned long)-1;
+	static byte flags;
 
-	/* (in either case: HALO_NET_TEXT_CHAT=OFF is off) */
-	if (setting && !chat_names_equal(setting, "off"))
+	if (read_at != config_changes())
 	{
-		flags |= (byte)FLAG(_chat_config_allowed_bit);
-		if (chat_names_equal(setting, "links"))
-			flags |= (byte)FLAG(_chat_config_links_bit);
+		char const *setting;
+
+		read_at = config_changes();
+		setting = config_string("network.text_chat");
+		flags = 0;
+		/* (in either case: HALO_NET_TEXT_CHAT=OFF is off) */
+		if (setting && !chat_names_equal(setting, "off"))
+		{
+			flags |= (byte)FLAG(_chat_config_allowed_bit);
+			if (chat_names_equal(setting, "links"))
+				flags |= (byte)FLAG(_chat_config_links_bit);
+		}
+		/* (the lobby's chat, on or off of itself: Host Controls') */
+		if (config_boolean("network.lobby_text_chat"))
+			flags |= (byte)FLAG(_chat_config_lobby_bit);
 	}
 	return flags;
 }
@@ -1647,6 +1817,497 @@ void network_chat_handle_down(
 	chat_add_line(line.player_index, chat_channel_from_flags(line.flags), text);
 }
 
+/* ---------- the lobby's chat */
+
+static void chat_keyboard_draw_in(long font_index, rectangle2d const *area, short line_height);
+/* where the on-screen keyboard's keys were last drawn (the window's units,
+or the lobby's screen's) */
+static rectangle2d chat_keyboard_keys;
+
+/* whether this machine is in a network game's lobby: its client before a
+game (or between two), the menus' own game running meanwhile */
+static boolean chat_lobby(
+	void)
+{
+	struct network_game_client *client = global_network_game_client_get();
+	short state_data;
+
+	return client && network_game_client_get_state(client, &state_data) == _chat_client_state_pregame;
+}
+
+static boolean chat_lobby_host(
+	void)
+{
+	return global_network_game_server_get() != NULL;
+}
+
+/* the lobby's game record: this machine's client's (the host's own client's
+too, the server's as it sent it) */
+static struct network_game *chat_lobby_game(
+	void)
+{
+	struct network_game_client *client = global_network_game_client_get();
+
+	return client ? network_game_client_get_game(client) : NULL;
+}
+
+/* the host's settings for the lobby's lines (chat_refused's): the lobby's
+chat on or off as the chat is, its links as the game's */
+static byte chat_lobby_flags(
+	void)
+{
+	byte flags = chat_lobby_host() ? chat_host_config_flags() : chat_config.known ? chat_config.flags : 0;
+
+	return (byte)((flags & FLAG(_chat_config_links_bit)) |
+		(TEST_FLAG(flags, _chat_config_lobby_bit) ? FLAG(_chat_config_allowed_bit) : 0));
+}
+
+static boolean chat_lobby_allowed(
+	void)
+{
+	return chat_lobby() && TEST_FLAG(chat_lobby_flags(), _chat_config_allowed_bit);
+}
+
+/* whether a lobby's line may be typed now: the lobby's chat area shown
+(network_chat_lobby_frame), its chat on, display.text_chat */
+static boolean chat_lobby_typing_allowed(
+	void)
+{
+	return chat_lobby_shown_ever && system_milliseconds() - chat_lobby_shown_at < 250 && chat_lobby_allowed() &&
+		chat_shown();
+}
+
+/* this machine's player of a controller in the lobby's record (its first
+when that controller has none), NONE for none */
+static short chat_lobby_slot(
+	short controller)
+{
+	struct network_game *game = chat_lobby_game();
+	long machine = network_game_client_get_local_machine_index();
+	short index, first = NONE;
+
+	for (index = 0; game && index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS; index++)
+	{
+		struct network_player const *player = &game->players[index];
+
+		if (!network_player_is_valid(player) || player->machine_index != machine)
+			continue;
+		if (controller >= 0 && player->controller_index == controller)
+			return index;
+		if (first == NONE)
+			first = index;
+	}
+	return first;
+}
+
+/* a lobby's line shown here: a player's (its slot in the record: their
+name, their team's colour in a team game; none of a machine this player
+muted), or the host's notice */
+static void chat_lobby_add(
+	short slot,
+	char const *text,
+	boolean notice)
+{
+	struct network_game *game = chat_lobby_game();
+	struct network_player const *player = NULL;
+	struct network_chat_lobby_line *line;
+	char name[CHAT_NAME_SIZE];
+	short index;
+
+	if (!notice)
+	{
+		if (!game || slot < 0 || slot >= HALO_PORT_MAXIMUM_NETWORK_PLAYERS ||
+			!network_player_is_valid(&game->players[slot]))
+		{
+			return;
+		}
+		player = &game->players[slot];
+		if (network_voice_machine_muted(player->machine_index))
+			return;
+	}
+	chat_lobby_newest = (short)((chat_lobby_newest + 1) % NETWORK_CHAT_LOBBY_LINES);
+	if (chat_lobby_line_count < NETWORK_CHAT_LOBBY_LINES)
+		chat_lobby_line_count++;
+	line = &chat_lobby_lines[chat_lobby_newest];
+	csmemset(line, 0, sizeof(*line));
+	csstrncpy(line->text, text, CHAT_TEXT_SIZE - 1);
+	line->time = system_milliseconds();
+	line->machine = NONE;
+	line->color = _chat_color_notice;
+	name[0] = 0;
+	if (player)
+	{
+		for (index = 0; index < CHAT_NAME_SIZE - 1 && index < (short)NUMBEROF(player->name) && player->name[index];
+			index++)
+		{
+			line->name[index] = player->name[index];
+			name[index] = player_name_character_ascii(player->name[index]);
+		}
+		name[index] = 0;
+		line->machine = player->machine_index;
+		line->color = game->variant.universal_variant.teams && player->team_index == 0 ? _chat_color_red : _chat_color_blue;
+	}
+	error(_error_log, "chat (lobby)%s%s: %s", notice ? " notice" : "", name, line->text);
+}
+
+/* (the host) a lobby's message to the OpenH1 machines (machine_index NONE:
+every one; an OpenCE machine's lobby has no chat), reliably */
+static void chat_lobby_send_to(
+	long machine_index,
+	void *message,
+	byte type,
+	word size)
+{
+	long machine_indices[MAXIMUM_CHAT_MACHINES];
+	short count = distributed_client_machines(machine_indices, MAXIMUM_CHAT_MACHINES);
+	short index;
+
+	for (index = 0; index < count; index++)
+	{
+		if ((machine_index == NONE || machine_indices[index] == machine_index) &&
+			network_standard_machine_is_openh1(machine_indices[index]))
+		{
+			distributed_send_to_machine_reliably(machine_indices[index], message, type, 1, size);
+		}
+	}
+}
+
+/* (the host) its settings sent in the lobby as they change, and each
+CHAT_CONFIG_MILLISECONDS: the lobby's chat on or off reaches every OpenH1
+machine there */
+static void chat_lobby_update_config(
+	void)
+{
+	byte flags = chat_host_config_flags();
+	unsigned long now = system_milliseconds();
+	struct
+	{
+		struct distributed_message_header header;
+		struct distributed_chat_config config;
+	} message;
+
+	if (chat_config.known && flags == chat_config.flags && now - chat_config.sent < CHAT_CONFIG_MILLISECONDS)
+		return;
+	chat_config.known = TRUE;
+	chat_config.flags = flags;
+	chat_config.sent = now;
+	csmemset(&message, 0, sizeof(message));
+	message.config.flags = flags;
+	chat_lobby_send_to(NONE, &message, _distributed_message_chat_config, (word)sizeof(message));
+}
+
+/* (the host) a lobby's notice to a machine (NONE: every one, and here) */
+static void chat_lobby_notice(
+	long machine_index,
+	char const *text)
+{
+	struct chat_message message;
+
+	chat_message_new(&message, NONE, (byte)(FLAG(_chat_line_notice_bit) | FLAG(_chat_line_lobby_bit)), text);
+	chat_lobby_send_to(machine_index, &message, _distributed_message_chat_down, (word)sizeof(message));
+	if (machine_index == NONE || machine_index == network_game_client_get_local_machine_index())
+		chat_lobby_add(NONE, text, TRUE);
+}
+
+/* (the host) a lobby's line of a player's (its slot) sent on to every
+OpenH1 machine, and shown here */
+static void chat_lobby_host_send(
+	short slot,
+	char const *text)
+{
+	struct chat_message message;
+
+	chat_message_new(&message, NONE, (byte)FLAG(_chat_line_lobby_bit), text);
+	message.line.player_index = (byte)slot;
+	chat_lobby_send_to(NONE, &message, _distributed_message_chat_down, (word)sizeof(message));
+	chat_lobby_add(slot, text, FALSE);
+}
+
+/* (the host) whether a lobby's line goes further: one of the machine's own
+players', within its rate, of a player not muted, the lobby's chat on, the
+host's settings' and its filter's (starred, or refused); the machine told
+why where it does not. Its text as sent on */
+static boolean chat_lobby_host_takes(
+	long machine_index,
+	short slot,
+	char const *sent,
+	char *text)
+{
+	struct network_game *game = chat_lobby_game();
+	struct network_player const *player;
+	struct chat_mute *mute;
+	char name[CHAT_NAME_SIZE];
+	char const *refused;
+	unsigned long now = system_milliseconds();
+	short index;
+
+	if (!game || slot < 0 || slot >= HALO_PORT_MAXIMUM_NETWORK_PLAYERS || machine_index < 0 ||
+		machine_index >= MAXIMUM_CHAT_MACHINES)
+	{
+		return FALSE;
+	}
+	player = &game->players[slot];
+	if (!network_player_is_valid(player) || player->machine_index != machine_index ||
+		!chat_rate_take(&chat_rates[machine_index], now) || !chat_text_clean(text, sent, CHAT_TEXT_SIZE))
+	{
+		return FALSE;
+	}
+	for (index = 0; index < CHAT_NAME_SIZE - 1 && index < (short)NUMBEROF(player->name) && player->name[index]; index++)
+		name[index] = player_name_character_ascii(player->name[index]);
+	name[index] = 0;
+	if ((mute = chat_mute_find(chat_mutes, NUMBEROF(chat_mutes), name, now)) != NULL)
+	{
+		short minutes = chat_mute_minutes_left(mute, now);
+		char notice[CHAT_TEXT_SIZE];
+
+		snprintf(notice, sizeof(notice), "You are muted for %d more minute%s", minutes, chat_minutes_plural(minutes));
+		chat_lobby_notice(machine_index, notice);
+		return FALSE;
+	}
+	if ((refused = chat_refused(chat_lobby_flags(), text)) != NULL)
+	{
+		chat_lobby_notice(machine_index, TEST_FLAG(chat_lobby_flags(), _chat_config_allowed_bit) ? refused :
+			"Text chat is off in this lobby");
+		return FALSE;
+	}
+	{
+		short mode = chat_filter_mode_now();
+		unsigned char marked[CHAT_TEXT_SIZE];
+
+		if (mode != _chat_filter_off && chat_filter_marks(text, marked) > 0)
+		{
+			if (mode == _chat_filter_block)
+			{
+				chat_lobby_notice(machine_index, "Your line was not sent: it has words this server does not allow");
+				return FALSE;
+			}
+			chat_filter_star(text, marked, CHAT_TEXT_SIZE);
+		}
+	}
+	return TRUE;
+}
+
+/* a lobby's line typed sent: the host's on at once, a client's to the
+host (refused here as the host would refuse it) */
+static void chat_lobby_send(
+	short slot,
+	char const *typed)
+{
+	char text[CHAT_TEXT_SIZE];
+	char const *refused;
+	char name[CHAT_TEXT_SIZE];
+	short minutes;
+
+	if (slot == NONE || !chat_text_clean(text, typed, CHAT_TEXT_SIZE))
+		return;
+	/* (the game's commands and votes are a game's: the lobby's mutes are its
+	players' cards' and Host Controls') */
+	if (text[0] == '!' || chat_command_parse(text, name, sizeof(name), &minutes) != _chat_command_none)
+	{
+		chat_lobby_add(NONE, "In the lobby, mute a player from their card", TRUE);
+		return;
+	}
+	if ((refused = chat_refused(chat_lobby_flags(), text)) != NULL)
+	{
+		chat_lobby_add(NONE, TEST_FLAG(chat_lobby_flags(), _chat_config_allowed_bit) ? refused :
+			"Text chat is off in this lobby", TRUE);
+		return;
+	}
+	if (chat_lobby_host())
+	{
+		char taken[CHAT_TEXT_SIZE];
+
+		if (chat_lobby_host_takes(network_game_client_get_local_machine_index(), slot, text, taken))
+			chat_lobby_host_send(slot, taken);
+	}
+	else
+	{
+		struct chat_message message;
+
+		chat_message_new(&message, NONE, (byte)FLAG(_chat_line_lobby_bit), text);
+		message.line.player_index = (byte)slot;
+		distributed_send(&message, _distributed_message_chat_up, 1, (word)sizeof(message),
+			_distributed_to_host_reliably);
+	}
+}
+
+/* a lobby's line begun by a controller (NONE: the keyboard's, the first
+player's), with the on-screen keyboard (keyboard: a controller's, a tap's) */
+static void chat_lobby_input_begin(
+	short controller,
+	boolean keyboard)
+{
+	struct key_stroke key;
+	short slot = chat_lobby_slot(controller);
+
+	if (slot == NONE || !chat_lobby_typing_allowed())
+		return;
+	csmemset(&chat_input, 0, sizeof(chat_input));
+	chat_input.active = TRUE;
+	chat_input.lobby = TRUE;
+	chat_input.lobby_slot = slot;
+	chat_input.controller = (short)(controller >= 0 ? controller : 0);
+	chat_input.channel = _chat_channel_everyone;
+	chat_input.player = NONE;
+	/* (a controller that is there: one gone ends the line, as a game's) */
+	chat_input.physical = keyboard && controller >= 0 && controller_remap_connected(controller);
+	while (input_get_key(&key))
+		;
+	if (keyboard)
+	{
+		chat_keyboard.opening_buttons = controller >= 0 ? halo_chat_pad_buttons_for_port(controller) :
+			halo_chat_pad_buttons();
+		chat_keyboard.held = 0;
+		chat_keyboard.open = TRUE;
+		chat_keyboard.row = 1;
+		chat_keyboard.column = 0;
+		chat_keyboard.shift = FALSE;
+		chat_keyboard.symbols = FALSE;
+		chat_keyboard.repeat_at = 0;
+		chat_keyboard.drawn = FALSE;
+		error(_error_log, "chat (lobby): the on-screen keyboard opened");
+	}
+}
+
+/* a lobby's message (a line of the lobby's, or the host's settings while in
+the lobby): the host's from a client's stream, a client's from the host's */
+boolean network_chat_handles_lobby_message(
+	word const *message,
+	word size)
+{
+	struct distributed_message_header header;
+	struct distributed_chat_line line;
+
+	if (size < sizeof(header))
+		return FALSE;
+	csmemcpy(&header, message, sizeof(header));
+	if (header.type == _distributed_message_chat_config)
+		return chat_lobby() && header.count >= 1 && size >= sizeof(header) + sizeof(struct distributed_chat_config);
+	if ((header.type != _distributed_message_chat_up && header.type != _distributed_message_chat_down) ||
+		header.count < 1 || size < sizeof(header) + sizeof(line))
+	{
+		return FALSE;
+	}
+	csmemcpy(&line, (byte const *)message + sizeof(header), sizeof(line));
+	return TEST_FLAG(line.flags, _chat_line_lobby_bit);
+}
+
+void network_chat_handle_lobby_message(
+	long machine_index,
+	word const *message,
+	word size,
+	boolean from_stream)
+{
+	struct distributed_message_header header;
+	byte const *entries = (byte const *)message + sizeof(header);
+	struct distributed_chat_line line;
+	char text[CHAT_TEXT_SIZE];
+
+	if (!network_chat_handles_lobby_message(message, size) || !from_stream)
+		return;
+	csmemcpy(&header, message, sizeof(header));
+	if (header.type == _distributed_message_chat_config)
+	{
+		struct distributed_chat_config config;
+
+		if (machine_index != NONE || chat_lobby_host())
+			return;
+		csmemcpy(&config, entries, sizeof(config));
+		chat_config.known = TRUE;
+		chat_config.flags = config.flags;
+		return;
+	}
+	csmemcpy(&line, entries, sizeof(line));
+	/* (a line of the lobby's never in a game's chat, nor one of a game's in
+	the lobby's: a client's to the host, the host's to a client) */
+	if (header.type == _distributed_message_chat_up)
+	{
+		if (machine_index != NONE && chat_lobby_host() && chat_lobby() &&
+			chat_lobby_host_takes(machine_index, line.player_index, line.text, text))
+		{
+			chat_lobby_host_send(line.player_index, text);
+		}
+		return;
+	}
+	if (machine_index != NONE || chat_lobby_host() || !chat_text_clean(text, line.text, CHAT_TEXT_SIZE))
+		return;
+	if (TEST_FLAG(line.flags, _chat_line_notice_bit))
+		chat_lobby_add(NONE, text, TRUE);
+	else
+		chat_lobby_add(line.player_index, text, FALSE);
+}
+
+void network_chat_lobby_frame(
+	void)
+{
+	chat_lobby_shown_at = system_milliseconds();
+	chat_lobby_shown_ever = TRUE;
+}
+
+boolean network_chat_lobby_on(
+	void)
+{
+	return chat_lobby_allowed() && chat_shown();
+}
+
+short network_chat_lobby_lines(
+	struct network_chat_lobby_line *lines,
+	short maximum)
+{
+	short count = (short)MIN(chat_lobby_line_count, maximum);
+	short index;
+
+	/* (the oldest first) */
+	for (index = 0; index < count; index++)
+		lines[index] = chat_lobby_lines[(chat_lobby_newest - count + 1 + index + NETWORK_CHAT_LOBBY_LINES) %
+			NETWORK_CHAT_LOBBY_LINES];
+	return count;
+}
+
+char const *network_chat_lobby_typed(
+	boolean *keyboard)
+{
+	if (keyboard)
+		*keyboard = chat_input.active && chat_input.lobby && chat_keyboard.open;
+	return chat_input.active && chat_input.lobby ? chat_input.text : NULL;
+}
+
+boolean network_chat_lobby_begin(
+	short controller,
+	boolean keyboard)
+{
+	if (chat_input.active || !chat_lobby())
+		return FALSE;
+	chat_lobby_input_begin(controller, keyboard);
+	return chat_input.active;
+}
+
+void network_chat_lobby_draw_keyboard(
+	long font_index,
+	short x0,
+	short y0,
+	short x1,
+	short y1,
+	short screen_width,
+	short screen_height)
+{
+	rectangle2d area;
+
+	if (!chat_input.active || !chat_input.lobby || !chat_keyboard.open || screen_width <= 0 || screen_height <= 0)
+		return;
+	area.x0 = x0;
+	area.y0 = y0;
+	area.x1 = x1;
+	area.y1 = y1;
+	chat_keyboard_draw_in(font_index, &area, (short)(screen_height / 30));
+	/* (a tap's place: the menus' 640 in the middle of the screen's width) */
+	chat_keyboard.drawn = TRUE;
+	chat_keyboard.left = (short)((chat_keyboard_keys.x0 + (screen_width - 640) / 2) * 1000 / screen_width);
+	chat_keyboard.right = (short)((chat_keyboard_keys.x1 + (screen_width - 640) / 2) * 1000 / screen_width);
+	chat_keyboard.top = (short)(chat_keyboard_keys.y0 * 1000 / screen_height);
+	chat_keyboard.bottom = (short)(chat_keyboard_keys.y1 * 1000 / screen_height);
+}
+
 /* ---------- typing */
 
 /* The editor's owner, or the first local player for direct commands; NONE. */
@@ -1660,6 +2321,8 @@ static short chat_speaker(
 
 	return player_index != NONE ? (short)DATUM_INDEX_TO_ABSOLUTE_INDEX(player_index) : NONE;
 }
+
+static void chat_lobby_send(short slot, char const *typed);
 
 /* a line said; checked: refused here as the host would refuse it (a test's
 client sends one unchecked, as a changed build could, for the host to refuse) */
@@ -1675,6 +2338,12 @@ static void chat_send(
 	short player_index = chat_speaker(from_editor);
 	char const *refused;
 
+	/* (a line of the lobby's: its own way) */
+	if (from_editor && chat_input.lobby)
+	{
+		chat_lobby_send(chat_input.lobby_slot, typed);
+		return;
+	}
 	if (player_index == NONE || !chat_text_clean(text, typed, CHAT_TEXT_SIZE))
 		return;
 	/* (the votes' words, not said: "!endgame" starts a vote to end the game,
@@ -1774,6 +2443,25 @@ void network_chat_say_unchecked(
 		chat_send(channel, text, FALSE, FALSE);
 }
 
+/* a local player's channel chosen, for the next line whose key chooses none
+(network.chat_channels: config.toml written only when it changes) */
+static void chat_channel_remember(
+	short local_player_index,
+	short channel)
+{
+	char const *old_list = config_string("network.chat_channels");
+	char list[CHAT_CHANNELS_TEXT_SIZE];
+
+	if (chat_channel_list_set(list, sizeof(list), old_list, local_player_index, channel) &&
+		csstrcmp(list, old_list ? old_list : ""))
+	{
+		config_write("network.chat_channels", list);
+	}
+}
+
+/* a line begun by a controller (NONE: the keyboard's, the first local
+player's) to a channel, or (NONE) to the one its player chose last
+(chat_channel_opened) */
 static void chat_input_begin(
 	short channel, short controller, boolean physical)
 {
@@ -1784,8 +2472,11 @@ static void chat_input_begin(
 
 	csmemset(&chat_input, 0, sizeof(chat_input));
 	chat_input.active = TRUE;
-	chat_input.channel = channel;
 	chat_input.controller = player_get(player)->local_player_index;
+	chat_input.chosen = channel != NONE;
+	chat_input.channel = channel != NONE ? channel :
+		chat_channel_opened(chat_channel_remembered(config_string("network.chat_channels"), chat_input.controller),
+			game_engine_has_teams(), chat_player_vehicle(player_get(player)) != NONE);
 	chat_input.player = player;
 	chat_input.physical = physical;
 	/* (the keys pressed before) */
@@ -1796,7 +2487,11 @@ static void chat_input_begin(
 static void chat_input_end(
 	void)
 {
+	if (chat_input.active && chat_input.chosen && !chat_input.report)
+		chat_channel_remember(chat_input.controller, chat_input.channel);
 	chat_input.active = FALSE;
+	chat_input.chosen = FALSE;
+	chat_input.lobby = FALSE;
 	/* (a report's note's line is shown whatever display.text_chat says:
 	the next lines, the chat's, are not) */
 	chat_input.report = FALSE;
@@ -1878,9 +2573,15 @@ static void chat_keyboard_update(
 		return;
 	}
 	if (TEST_FLAG(pressed, HALO_CHAT_PAD_UP))
+	{
 		chat_input.channel = (short)((chat_input.channel + NUMBER_OF_CHAT_CHANNELS - 1) % NUMBER_OF_CHAT_CHANNELS);
+		chat_input.chosen = TRUE;
+	}
 	if (TEST_FLAG(pressed, HALO_CHAT_PAD_DOWN))
+	{
 		chat_input.channel = (short)((chat_input.channel + 1) % NUMBER_OF_CHAT_CHANNELS);
+		chat_input.chosen = TRUE;
+	}
 	/* (a direction pressed moves the key at once, held, again after a while
 	and then quickly) */
 	if (TEST_FLAG(held, HALO_CHAT_PAD_STICK_UP))
@@ -2056,7 +2757,7 @@ void network_chat_update(
 	unsigned long pad = chat_keyboard_buttons(halo_chat_pad_buttons());
 	unsigned long pad_pressed = pad & ~chat_keyboard.held;
 	unsigned long now = system_milliseconds();
-	short port, requested_port = NONE, requested_channel = _chat_channel_everyone;
+	short port, requested_port = NONE, requested_channel = NONE;
 	unsigned int chat_mask = (1u << PAD_CHAT) | (1u << PAD_TEAM_CHAT) | (1u << PAD_VEHICLE_CHAT);
 	struct key_stroke key;
 
@@ -2068,7 +2769,8 @@ void network_chat_update(
 		if (actions && requested_port == NONE)
 		{
 			requested_port = port;
-			requested_channel = actions & (1u << PAD_CHAT) ? _chat_channel_everyone :
+			/* (controls.chat's button: the channel chosen last) */
+			requested_channel = actions & (1u << PAD_CHAT) ? NONE :
 				actions & (1u << PAD_TEAM_CHAT) ? _chat_channel_team : _chat_channel_vehicle;
 		}
 	}
@@ -2078,7 +2780,9 @@ void network_chat_update(
 	and the last game's lines and counts let go as the next starts) */
 	if (!chat_network_game() || !game_in_progress())
 	{
-		chat_config.known = FALSE;
+		/* (the lobby's: as the host sends them there too) */
+		if (!chat_lobby())
+			chat_config.known = FALSE;
 		chat_in_game = FALSE;
 	}
 	else
@@ -2126,7 +2830,32 @@ void network_chat_update(
 		chat_report_update();
 		return;
 	}
-	if (!chat_network_game() || !game_in_progress() || chat_speaker(TRUE) == NONE || !chat_shown() || chat_hidden() ||
+	/* (the lobby's: its keys while its chat area is shown, network_chat_lobby_frame) */
+	if (!global_network_game_client_get())
+		chat_lobby_line_count = 0;
+	if (chat_lobby())
+	{
+		if (chat_lobby_host() && chat_lobby_shown_ever)
+			chat_lobby_update_config();
+		if (!chat_lobby_typing_allowed() || (chat_input.active && !chat_input.lobby) ||
+			(chat_input.active && chat_input.physical && !controller_remap_connected(chat_input.controller)))
+		{
+			chat_input_end();
+			chat_actions_held = 0;
+			return;
+		}
+		if (!chat_input.active)
+		{
+			held = halo_keyboard_actions(0) & (FLAG(HALO_KEYBOARD_CHAT) | FLAG(HALO_KEYBOARD_TEAM_CHAT));
+			pressed = held & ~chat_actions_held;
+			chat_actions_held = held;
+			if (pressed && !console_is_active())
+				chat_lobby_input_begin(NONE, FALSE);
+			return;
+		}
+	}
+	else if (!chat_network_game() || !game_in_progress() || chat_speaker(TRUE) == NONE || !chat_shown() ||
+		chat_hidden() || chat_input.lobby ||
 		(chat_input.active && chat_input.physical && !controller_remap_connected(chat_input.controller)))
 	{
 		chat_input_end();
@@ -2155,7 +2884,7 @@ void network_chat_update(
 				}
 			}
 			else if (pressed)
-				chat_input_begin(TEST_FLAG(pressed, HALO_KEYBOARD_CHAT) ? _chat_channel_everyone : _chat_channel_team, NONE, FALSE);
+				chat_input_begin(TEST_FLAG(pressed, HALO_KEYBOARD_CHAT) ? NONE : _chat_channel_team, NONE, FALSE);
 			else
 			{
 				chat_input_begin(requested_channel, requested_port, requested_port != NONE);
@@ -2192,9 +2921,12 @@ void network_chat_update(
 			chat_send(chat_input.channel, chat_input.text, TRUE, TRUE);
 			chat_input_end();
 			break;
-		/* (to everyone, the team, the vehicle, in turn) */
+		/* (to everyone, the team, the vehicle, in turn; the lobby's one) */
 		case _key_tab:
+			if (chat_input.lobby)
+				break;
 			chat_input.channel = (short)((chat_input.channel + 1) % NUMBER_OF_CHAT_CHANNELS);
+			chat_input.chosen = TRUE;
 			break;
 		case _key_backspace:
 			chat_input_delete();
@@ -2598,30 +3330,20 @@ static void chat_line_name(
 /* the on-screen keyboard, at the window's bottom right (with the touch
 controls in the middle, between them: chat_touch_layout), the key picked
 lit; where its keys are kept, for taps */
-static void chat_keyboard_draw(
+/* the on-screen keyboard's keys drawn in keys (CHAT_KEYBOARD_COLUMNS by
+CHAT_KEYBOARD_ROWS of them), its panel round them, the key picked lit */
+static void chat_keyboard_draw_keys(
 	long font_index,
-	rectangle2d const *window,
+	rectangle2d const *keys,
 	short line_height)
 {
-	short percent = chat_touch_layout() ? CHAT_KEYBOARD_WIDTH_PERCENT_ANDROID : CHAT_KEYBOARD_WIDTH_PERCENT;
-	short window_width = (short)(window->x1 - window->x0);
-	short window_height = (short)(window->y1 - window->y0);
-	short key_width = (short)(window_width * percent / 100 / CHAT_KEYBOARD_COLUMNS);
-	short key_height = (short)MAX(key_width * 3 / 4, line_height + 4);
-	rectangle2d keys;
+	short key_width = (short)((keys->x1 - keys->x0) / CHAT_KEYBOARD_COLUMNS);
+	short key_height = (short)((keys->y1 - keys->y0) / CHAT_KEYBOARD_ROWS);
 	rectangle2d panel;
 	short row;
 
-	if (window_width <= 0 || window_height <= 0 || key_width <= 4)
-		return;
-	if (chat_touch_layout())
-		keys.x0 = (short)((window->x0 + window->x1 - key_width * CHAT_KEYBOARD_COLUMNS) / 2);
-	else
-		keys.x0 = (short)(window->x1 - window_width / 25 - key_width * CHAT_KEYBOARD_COLUMNS);
-	keys.x1 = (short)(keys.x0 + key_width * CHAT_KEYBOARD_COLUMNS);
-	keys.y1 = (short)(window->y1 - line_height);
-	keys.y0 = (short)(keys.y1 - key_height * CHAT_KEYBOARD_ROWS);
-	panel = keys;
+	chat_keyboard_keys = *keys;
+	panel = *keys;
 	panel.x0 -= 4;
 	panel.y0 -= 4;
 	panel.x1 += 4;
@@ -2641,10 +3363,10 @@ static void chat_keyboard_draw(
 			rectangle2d bounds;
 			wchar_t label[8] = { 0 };
 
-			key.x0 = (short)(keys.x0 + column * key_width + 2);
-			key.x1 = (short)(keys.x0 + (column + span) * key_width - 2);
-			key.y0 = (short)(keys.y0 + row * key_height + 2);
-			key.y1 = (short)(keys.y0 + (row + 1) * key_height - 2);
+			key.x0 = (short)(keys->x0 + column * key_width + 2);
+			key.x1 = (short)(keys->x0 + (column + span) * key_width - 2);
+			key.y0 = (short)(keys->y0 + row * key_height + 2);
+			key.y1 = (short)(keys->y0 + (row + 1) * key_height - 2);
 			draw_quad(&key, picked ? 0xF05682DC : lit ? 0xC0406090 : 0x90283848);
 			if (row < CHAT_KEYBOARD_ROWS - 1)
 			{
@@ -2669,6 +3391,32 @@ static void chat_keyboard_draw(
 			rasterizer_draw_unicode_string(&bounds, NULL, NULL, 0, label);
 		}
 	}
+}
+
+/* ... in a game's view: at the bottom right of the window (with the touch
+controls, at the bottom in the middle), its keys' place noted for taps */
+static void chat_keyboard_draw(
+	long font_index,
+	rectangle2d const *window,
+	short line_height)
+{
+	short percent = chat_touch_layout() ? CHAT_KEYBOARD_WIDTH_PERCENT_ANDROID : CHAT_KEYBOARD_WIDTH_PERCENT;
+	short window_width = (short)(window->x1 - window->x0);
+	short window_height = (short)(window->y1 - window->y0);
+	short key_width = (short)(window_width * percent / 100 / CHAT_KEYBOARD_COLUMNS);
+	short key_height = (short)MAX(key_width * 3 / 4, line_height + 4);
+	rectangle2d keys;
+
+	if (window_width <= 0 || window_height <= 0 || key_width <= 4)
+		return;
+	if (chat_touch_layout())
+		keys.x0 = (short)((window->x0 + window->x1 - key_width * CHAT_KEYBOARD_COLUMNS) / 2);
+	else
+		keys.x0 = (short)(window->x1 - window_width / 25 - key_width * CHAT_KEYBOARD_COLUMNS);
+	keys.x1 = (short)(keys.x0 + key_width * CHAT_KEYBOARD_COLUMNS);
+	keys.y1 = (short)(window->y1 - line_height);
+	keys.y0 = (short)(keys.y1 - key_height * CHAT_KEYBOARD_ROWS);
+	chat_keyboard_draw_keys(font_index, &keys, line_height);
 	/* (in thousandths of the viewport, which fills the screen as a tap's
 	place is of it: the window inside it can be smaller, as on Android; the
 	keys are drawn from the viewport's top left) */
@@ -2684,6 +3432,15 @@ static void chat_keyboard_draw(
 		chat_keyboard.top = (short)(keys.y0 * 1000 / viewport_height);
 		chat_keyboard.bottom = (short)(keys.y1 * 1000 / viewport_height);
 	}
+}
+
+/* (the lobby's: in its area, the menus' screen's units) */
+static void chat_keyboard_draw_in(
+	long font_index,
+	rectangle2d const *area,
+	short line_height)
+{
+	chat_keyboard_draw_keys(font_index, area, line_height);
 }
 
 void network_chat_draw(

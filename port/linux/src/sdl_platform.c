@@ -158,11 +158,21 @@ void halo_loading_screen_progress(float progress, char const *caption)
 	if (strncmp(caption, loading_screen_caption, sizeof(loading_screen_caption) - 1))
 	{
 		int width = 0, height = 0;
-		/* (in the menus' font, Cyborg Interface Gothic, its capitals ten of
-		the 480 lines tall, set at LOADING_PRESENTATION_CAPTION_SCALE times
-		their size: the presenter draws it at the screen's pixels) */
-		unsigned char *coverage = caption[0] ? text_hires_line("ui\\large_ui", caption,
-			10.0f * LOADING_PRESENTATION_CAPTION_SCALE, &width, &height) : NULL;
+		char capitals[sizeof(loading_screen_caption)];
+		unsigned char *coverage;
+		size_t index;
+
+		/* (lettered as the words over it are, "LOADING...": in capitals, in
+		the menus' titles' face, OpenCE, the words' own (the menus' heading
+		font, pc\heading), its capitals 15 of the 480 lines tall, theirs 22,
+		set at LOADING_PRESENTATION_CAPTION_SCALE times their size: the
+		presenter draws it at the screen's pixels, lit as the words are) */
+		snprintf(capitals, sizeof(capitals), "%s", caption);
+		for (index = 0; capitals[index]; index++)
+			if (capitals[index] >= 'a' && capitals[index] <= 'z')
+				capitals[index] = (char)(capitals[index] - 'a' + 'A');
+		coverage = capitals[0] ? text_hires_line("pc\\heading", capitals,
+			15.0f * LOADING_PRESENTATION_CAPTION_SCALE, &width, &height) : NULL;
 
 		snprintf(loading_screen_caption, sizeof(loading_screen_caption), "%s", caption);
 		xgpu_backend_loading_caption(coverage, (unsigned long)width, (unsigned long)height);
@@ -519,7 +529,7 @@ static void assets_check(void)
 		return;
 	snprintf(message, sizeof(message),
 		"The game's own files are incomplete: %s.\n\nIt holds the menus, the high-res HUD and the text. "
-		"Reinstall or update OpenH1 so that the " EMBEDDED_ASSETS_FILE " that came with this version is "
+		"Reinstall or update GOAT H1 so that the " EMBEDDED_ASSETS_FILE " that came with this version is "
 		"beside it.", problem);
 	platform_log("assets: %s: quitting", problem);
 	if (!quiet)
@@ -582,6 +592,13 @@ BOOL platform_sdl_initialize(void)
 		SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
 		flags = SDL_INIT_EVENTS;
 	}
+#endif
+#ifdef HALO_MACOS
+	/* a run nobody watches (debug.hidden_window): a background process,
+	with no Dock icon, that never takes the focus from the person at the
+	computer as it starts */
+	if (config_boolean("debug.hidden_window"))
+		SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
 #endif
 	if (!SDL_Init(flags))
 	{
@@ -730,7 +747,7 @@ static BOOL data_extract(const char *image, const char *destination, BOOL instal
 	/* (waited for through extraction.finished; the Windows port's threads
 	cannot be joined) */
 	pthread_detach(thread);
-	window = SDL_CreateWindow("Halo", 640, 150, 0);
+	window = SDL_CreateWindow("GOAT H1", 640, 150, 0);
 	if (window)
 	{
 		renderer = SDL_CreateRenderer(window, NULL);
@@ -1085,8 +1102,21 @@ static BOOL platform_size_parse(const char *text, long *width, long *height)
 as for one the game cannot draw at */
 static void platform_resolution_setting(long *width, long *height)
 {
-	if (!platform_size_parse(config_string("display.resolution"), width, height))
-		*width = *height = 0;
+	/* (read again as the settings change: config_changes; the screen's
+	mode asks every frame) */
+	static unsigned long read_at = (unsigned long)-1;
+	static long setting_width, setting_height;
+
+	if (read_at != config_changes())
+	{
+		unsigned long changes = config_changes();
+
+		if (!platform_size_parse(config_string("display.resolution"), &setting_width, &setting_height))
+			setting_width = setting_height = 0;
+		read_at = changes;
+	}
+	*width = setting_width;
+	*height = setting_height;
 }
 
 /* the window's size (display.window_size), else the Xbox's 640x480 times
@@ -1235,10 +1265,21 @@ BOOL platform_screen_mode(long *width, long *height)
 {
 	/* (the size last given, for a window that has none: minimized) */
 	static long last_width, last_height;
+	/* (display.resolution_scaling, read again as the settings change:
+	config_changes) */
+	static unsigned long scaling_read_at = (unsigned long)-1;
+	static BOOL original;
 	long resolution_width, resolution_height;
 	BOOL fullscreen;
 
-	if (!strcmp(config_string("display.resolution_scaling"), "original"))
+	if (scaling_read_at != config_changes())
+	{
+		unsigned long changes = config_changes();
+
+		original = !strcmp(config_string("display.resolution_scaling"), "original");
+		scaling_read_at = changes;
+	}
+	if (original)
 		return FALSE;
 	if (platform_window)
 	{
@@ -1816,7 +1857,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		(void)width;
 		(void)height;
 		platform_screen_mode(&pixel_width, &pixel_height);
-		platform_window = SDL_CreateWindow("Halo", (int)pixel_width, (int)pixel_height,
+		platform_window = SDL_CreateWindow("GOAT H1", (int)pixel_width, (int)pixel_height,
 			PLATFORM_WINDOW_DRAWING | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 	}
 #else
@@ -1834,12 +1875,12 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	game (vr.c) */
 	if (halo_vr_enabled() && host_vr_probe() != VR_BINDING_NONE)
 	{
-		platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
+		platform_window = SDL_CreateWindow("GOAT H1", (int)platform_window_width, (int)platform_window_height,
 			PLATFORM_WINDOW_DRAWING | SDL_WINDOW_HIDDEN);
 	}
 	else
 #endif
-	platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
+	platform_window = SDL_CreateWindow("GOAT H1", (int)platform_window_width, (int)platform_window_height,
 		PLATFORM_WINDOW_DRAWING | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
 		(config_boolean("debug.hidden_window") ? SDL_WINDOW_HIDDEN : 0) |
 		(platform_fullscreen_setting() ? SDL_WINDOW_FULLSCREEN : 0));
@@ -1850,7 +1891,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	if (!platform_window)
 	{
 		platform_log("SDL_CreateWindow with Vulkan failed (%s): the frames are drawn and not shown", SDL_GetError());
-		platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
+		platform_window = SDL_CreateWindow("GOAT H1", (int)platform_window_width, (int)platform_window_height,
 			SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
 			(config_boolean("debug.hidden_window") ? SDL_WINDOW_HIDDEN : 0) |
 			(platform_fullscreen_setting() ? SDL_WINDOW_FULLSCREEN : 0));
@@ -2040,14 +2081,17 @@ static BOOL platform_vrr(void)
 	static int on = -1;
 	static char reason[160];
 	static float logged_margin;
+	/* (display.vrr is "auto": asked again every VRR_ASK_MS) */
+	static int automatic;
 	char why[160];
 	const char *mode;
 	int now_on, detected;
 	Uint64 now = SDL_GetTicks();
 
-	mode = config_string("display.vrr");
-	if (on >= 0 && read_at == config_changes() && (strcmp(mode, "auto") || now - asked_at < VRR_ASK_MS))
+	if (on >= 0 && read_at == config_changes() && (!automatic || now - asked_at < VRR_ASK_MS))
 		return on;
+	mode = config_string("display.vrr");
+	automatic = !strcmp(mode, "auto");
 	read_at = config_changes();
 	asked_at = now;
 	if (!strcmp(mode, "on"))
@@ -2692,12 +2736,29 @@ static void test_menu_mouse(void)
 	platform_log("test input: wheel turned %g in %d events", wheel, events);
 }
 
-/* whether a mouse's event is left out of a scripted run of the menus
-(debug.test_input "menu:..."), which takes its presses alone: any mouse's
-but its own (test_menu_mouse) */
+/* whether this is a scripted run of the menus (debug.test_input
+"menu:..."), read again as the settings change (config_changes): the
+pointer is read every frame */
+static BOOL test_menu_run(void)
+{
+	static unsigned long read_at = (unsigned long)-1;
+	static BOOL menu;
+
+	if (read_at != config_changes())
+	{
+		unsigned long changes = config_changes();
+
+		menu = !strncmp(config_string("debug.test_input"), "menu:", 5);
+		read_at = changes;
+	}
+	return menu;
+}
+
+/* whether a mouse's event is left out of a scripted run of the menus,
+which takes its presses alone: any mouse's but its own (test_menu_mouse) */
 static BOOL test_menu_mouse_ignored(SDL_MouseID which)
 {
-	return which != TEST_MENU_MOUSE_ID && !strncmp(config_string("debug.test_input"), "menu:", 5);
+	return which != TEST_MENU_MOUSE_ID && test_menu_run();
 }
 #endif
 
@@ -2773,9 +2834,19 @@ the machine of someone at work on it, the game puts no invite on it and
 joins none found there */
 static BOOL platform_clipboard_left_alone(void)
 {
-	return config_boolean("debug.no_clipboard") || config_boolean("debug.null_renderer") ||
-		config_string("debug.test_input")[0] || config_boolean("debug.fixed_step") ||
-		config_string("debug.network_test")[0] || config_real("debug.exit_after") > 0.0;
+	/* (read again as the settings change: config_changes; the events'
+	pump asks every frame) */
+	static unsigned long read_at;
+	static int alone = -1;
+
+	if (alone < 0 || read_at != config_changes())
+	{
+		read_at = config_changes();
+		alone = config_boolean("debug.no_clipboard") || config_boolean("debug.null_renderer") ||
+			config_string("debug.test_input")[0] || config_boolean("debug.fixed_step") ||
+			config_string("debug.network_test")[0] || config_real("debug.exit_after") > 0.0;
+	}
+	return alone;
 }
 
 /* whether the clipboard has an invite link on it (the multiplayer menu's
@@ -3095,6 +3166,27 @@ int platform_menu_studio_keys(void)
 	return keys;
 }
 
+/* debug.crash_after (seconds) crashes the game that long after the window
+opens (without one, after the first frame), by a write to address 0 on the
+game's thread: the crash report and the next start's question to test
+(report.c, the hosts' crash records) */
+static void crash_after_check(void)
+{
+	static Uint64 crash_ticks = (Uint64)-1;
+
+	if (crash_ticks == (Uint64)-1)
+	{
+		double seconds = config_real("debug.crash_after");
+
+		crash_ticks = seconds > 0.0 ? SDL_GetTicks() + (Uint64)(seconds * 1000.0) : 0;
+	}
+	if (crash_ticks && SDL_GetTicks() >= crash_ticks)
+	{
+		platform_log("crashing after debug.crash_after");
+		*(volatile int *)0 = 0;
+	}
+}
+
 /* debug.exit_after (seconds) ends the game that long after the window
 opens (without one, after the first frame), as closing it does
 (tools/pgo_train.py, net_compare.py) */
@@ -3117,6 +3209,7 @@ static void exit_after_check(void)
 		platform_log("exiting after debug.exit_after");
 		exit(EXIT_SUCCESS);
 	}
+	crash_after_check();
 }
 
 /* the events without a window (debug.null_renderer, or no display): on the
@@ -3340,6 +3433,18 @@ void platform_pump_events(void)
 #endif
 	static int null_renderer = -1;
 
+	{
+		static BOOL trace_at_exit;
+
+		/* (debug.input_trace: and as the game ends, a game without a window
+		too) */
+		if (!trace_at_exit)
+		{
+			trace_at_exit = TRUE;
+			if (config_boolean("debug.input_trace"))
+				atexit(input_trace_at_exit);
+		}
+	}
 	if (!platform_window)
 	{
 		if (null_renderer < 0)
@@ -3367,17 +3472,6 @@ void platform_pump_events(void)
 #ifndef HALO_ANDROID
 	test_menu_mouse();
 #endif
-	{
-		static BOOL trace_at_exit;
-
-		/* (debug.input_trace: and as the game ends) */
-		if (!trace_at_exit)
-		{
-			trace_at_exit = TRUE;
-			if (config_boolean("debug.input_trace"))
-				atexit(input_trace_at_exit);
-		}
-	}
 	pthread_mutex_lock(&input_lock);
 #ifndef HALO_ANDROID
 	/* (the scoreboard closed, or no longer offering it: the pointer goes) */
@@ -4018,15 +4112,16 @@ BOOL platform_ui_pointer_read(struct platform_ui_pointer *pointer)
 	pthread_mutex_unlock(&input_lock);
 	/* (a scripted run of the menus, debug.test_input = "menu:...", takes its
 	presses alone: the mouse of whoever is at the computer moves no focus) */
-	if (!strncmp(config_string("debug.test_input"), "menu:", 5))
+	if (test_menu_run())
 	{
-		/* (but its own clicks: "click:<x>:<y>", platform_test_menu_click;
+		/* (but its own clicks and moves: "click:<x>:<y>" and "point:<x>:<y>",
+		platform_test_menu_click;
 		and its own mouse's wheel, the others' events left out:
 		test_menu_mouse_ignored) */
 		float x, y;
 		int width, height;
 		int wheel_steps = pointer->wheel_steps;
-		BOOL clicked = active && platform_test_menu_click(&x, &y);
+		int clicked = active ? platform_test_menu_click(&x, &y) : 0;
 
 		if (!active || (!clicked && !wheel_steps))
 			return FALSE;
@@ -4038,7 +4133,7 @@ BOOL platform_ui_pointer_read(struct platform_ui_pointer *pointer)
 		pointer->x = pointer->click_x = x * width;
 		pointer->y = pointer->click_y = y * height;
 		pointer->moved = TRUE;
-		pointer->left_clicks = 1;
+		pointer->left_clicks = clicked == 1;
 		return TRUE;
 	}
 	return active;
@@ -4170,7 +4265,19 @@ void platform_input_read(struct platform_input_state *state, BOOL consume_motion
 CPU clocks are -1, never an apparent zero cost. No clocks read when disabled. */
 int halo_load_trace_enabled(void)
 {
-	return config_boolean("debug.load_trace");
+	/* (read again as the settings change: config_changes; asked every
+	frame and every file read) */
+	static unsigned long read_at = (unsigned long)-1;
+	static int enabled;
+
+	if (read_at != config_changes())
+	{
+		unsigned long changes = config_changes();
+
+		enabled = config_boolean("debug.load_trace");
+		read_at = changes;
+	}
+	return enabled;
 }
 
 void halo_load_trace(char const *phase, char const *detail)
@@ -4178,7 +4285,7 @@ void halo_load_trace(char const *phase, char const *detail)
 	struct timespec now;
 	double wall = -1.0, thread = -1.0, process = -1.0;
 
-	if (!config_boolean("debug.load_trace"))
+	if (!halo_load_trace_enabled())
 		return;
 	if (clock_gettime(CLOCK_MONOTONIC, &now) == 0)
 		wall = (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
@@ -4206,7 +4313,7 @@ void halo_load_trace_frame(void)
 	double wall;
 	char detail[32];
 
-	if (!config_boolean("debug.load_trace") || clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+	if (!halo_load_trace_enabled() || clock_gettime(CLOCK_MONOTONIC, &now) != 0)
 		return;
 	wall = (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
 	if (previous > 0.0 && wall - previous > LONG_FRAME_SECONDS)

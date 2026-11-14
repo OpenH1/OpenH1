@@ -2012,12 +2012,12 @@ static pixel32 scoreboard_faded(
 (halo_scoreboard_pointer_update: a right click frees it), and with the
 controller and keyboard (scoreboard_pad_update): a player's name
 picked opens a menu of what may be done to them, the players' vote to kick
-them (network_votekick.c), muting their voice and text chat on this
-machine (network_voice.c, network_chat.c); for an OpenH1 player, their
-party: Invite to party, Join their party, and their invite accepted
-(network_party.c), and Add friend (port/linux/src/p2p_friends.c); then the
-host's, those Host Controls offers for the
-player (network_host_controls.c: none for the host's own players but Move,
+them (network_votekick.c), muting their voice, text chat and pings on this
+machine (network_voice.c, network_chat.c, network_markers.c); for an OpenH1
+player, their party: Invite to party, Join their party, and their invite
+accepted (network_party.c), and Add friend (port/linux/src/p2p_friends.c);
+then the host's, those Host Controls offers for the player
+(network_host_controls.c: none for the host's own players but Move,
 no Ban or Mute for a bot): Mute for everyone (network_chat.c), Kick, Ban
 (picked twice), Move to the other team, and Host controls..., which opens
 Host Controls with the player chosen */
@@ -2093,7 +2093,8 @@ static void scoreboard_menu_items(
 	{
 		usprintf(labels[_scoreboard_item_vote], L"Start a vote to kick");
 	}
-	/* (its machine's voice and text chat lines: this machine's own choice) */
+	/* (its machine's voice, text chat lines and pings: this machine's own
+	choice) */
 	{
 		struct player_datum *player = player_try_and_get(scoreboard_menu->player_index);
 
@@ -2101,8 +2102,8 @@ static void scoreboard_menu_items(
 		{
 			offered[_scoreboard_item_mute] = TRUE;
 			usprintf(labels[_scoreboard_item_mute],
-				network_voice_machine_muted(player->network_player_data.machine_index) ? L"Unmute voice and chat" :
-					L"Mute voice and chat");
+				network_voice_machine_muted(player->network_player_data.machine_index) ? L"Unmute voice, chat and pings" :
+					L"Mute voice, chat and pings");
 		}
 	}
 	/* (their party: network_party.c) */
@@ -2127,7 +2128,7 @@ static void scoreboard_menu_items(
 		unsigned long actions = network_host_controls_player_actions(scoreboard_menu->player_index);
 		struct player_datum *player = player_try_and_get(scoreboard_menu->player_index);
 
-		/* (the host's mute of their voice and lines, for every machine:
+		/* (the host's mute of their voice, lines and pings, for every machine:
 		network_chat.c) */
 		offered[_scoreboard_item_host_mute] = TEST_FLAG(actions, _host_controls_mute);
 		usprintf(labels[_scoreboard_item_host_mute],

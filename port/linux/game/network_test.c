@@ -133,6 +133,11 @@ Called from the main loop every frame (main.c).
 
 /* the platform layer's (port/linux/src/port_config.c) */
 const char *config_string(char const *name);
+/* a player profile's own settings (port_config.h; player_settings.c) */
+int config_profile_write(char const *folder, char const *name, char const *value);
+int config_profile_viewmodel_weapon_write(char const *folder, char const *path, double const values[6]);
+int player_settings_profile_folder(long profile_index, char *folder, unsigned long size);
+void player_settings_update(void);
 int config_boolean(char const *name);
 double config_real(char const *name);
 long config_integer(char const *name);
@@ -185,6 +190,7 @@ enum
 	_network_test_follow,
 	_network_test_log,
 	_network_test_probe,
+	_network_test_campaign,
 };
 
 static struct
@@ -223,7 +229,13 @@ static struct
 	real vehicle_time;
 	real hitch_seconds;
 	real pickup_time;
+	/* debug.network_test_camouflage's */
+	real camouflage_time;
 	char pickup_weapon[64];
+	/* debug.network_test_place's: where and which way, and when */
+	boolean place;
+	real_point3d place_position;
+	real place_yaw, place_pitch, place_time;
 	/* debug.network_test_elevator's: when, which elevator, and the one
 	chosen (NONE before), when its riders stood on it and it last stopped */
 	real elevator_time;
@@ -329,6 +341,14 @@ static void network_test_read_settings(
 			snprintf(network_test.variant_name, sizeof(network_test.variant_name), "%s", colon + 1);
 		}
 	}
+	/* "campaign:<level>": the campaign on this machine alone, its
+	debug.network_test_players players in split screen (2: Multiplayer's
+	SPLIT-SCREEN CO-OP, the Xbox's Cooperative Play) */
+	else if (!strncmp(setting, "campaign:", 9) && setting[9])
+	{
+		network_test.mode = _network_test_campaign;
+		snprintf(network_test.map_name, sizeof(network_test.map_name), "%s", setting + 9);
+	}
 	else if (!strcmp(setting, "join"))
 	{
 		network_test.mode = _network_test_join;
@@ -357,6 +377,7 @@ static void network_test_read_settings(
 	network_test.vehicle_time = (real)config_real("debug.network_test_vehicle");
 	network_test.hitch_seconds = (real)config_real("debug.network_test_hitch");
 	network_test.pickup_time = (real)config_real("debug.network_test_pickup");
+	network_test.camouflage_time = (real)config_real("debug.network_test_camouflage");
 	network_test.elevator_time = (real)config_real("debug.network_test_elevator");
 	network_test.elevator_choice = config_integer("debug.network_test_elevator_index");
 	network_test.elevator_index = NONE;
@@ -366,6 +387,19 @@ static void network_test_read_settings(
 	network_test.ping_time = (real)config_real("debug.network_test_ping");
 	snprintf(network_test.pickup_weapon, sizeof(network_test.pickup_weapon), "%s",
 		config_string("debug.network_test_pickup_weapon"));
+	{
+		char const *place = config_string("debug.network_test_place");
+		char const *at = strchr(place, '@');
+		float x, y, z, yaw, pitch;
+
+		network_test.place = sscanf(place, "%f %f %f %f %f", &x, &y, &z, &yaw, &pitch) == 5;
+		network_test.place_position.x = x;
+		network_test.place_position.y = y;
+		network_test.place_position.z = z;
+		network_test.place_yaw = yaw;
+		network_test.place_pitch = pitch;
+		network_test.place_time = at ? (real)atof(at + 1) : 1.0f;
+	}
 	{
 		char const *seat = config_string("debug.network_test_vehicle_seat");
 		char const *colon = strchr(seat, ':');
@@ -1136,6 +1170,90 @@ static void network_test_vehicle(
 	}
 }
 
+/* debug.network_test_profiles: each local player named plays with a profile
+of their own ("Player <n>", made if they have none or a default one) with
+the values given in it, as Settings sets them; "<player>:<setting>=<value>,
+...;..." */
+static void network_test_profiles(
+	void)
+{
+	char const *cursor = config_string("debug.network_test_profiles");
+
+	while (cursor && *cursor)
+	{
+		char entry[512], folder[1024];
+		size_t length = strcspn(cursor, ";");
+		short local_player_index;
+		long profile_index;
+		struct player_profile profile;
+		char *setting, *next;
+
+		snprintf(entry, sizeof(entry), "%.*s", (int)MIN(length, sizeof(entry) - 1), cursor);
+		cursor += length + (cursor[length] == ';');
+		local_player_index = (short)(atoi(entry) - 1);
+		setting = strchr(entry, ':');
+		if (local_player_index < 0 || local_player_index >= MAXIMUM_NUMBER_OF_LOCAL_PLAYERS || !setting)
+		{
+			platform_log("network test: debug.network_test_profiles' %s names no player 1 to 4", entry);
+			continue;
+		}
+		profile_index = player_ui_get_active_player_profile_index(local_player_index);
+		if (!player_settings_profile_folder(profile_index, folder, sizeof(folder)))
+		{
+			wchar_t name[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = L"Player 1";
+
+			name[7] = (wchar_t)(L'1' + local_player_index);
+			profile_index = player_profile_new(local_player_index, name);
+			if (profile_index == NONE || !player_profile_get(profile_index, &profile) ||
+				!player_settings_profile_folder(profile_index, folder, sizeof(folder)))
+			{
+				platform_log("network test: player %d's profile cannot be made", local_player_index + 1);
+				continue;
+			}
+			player_ui_set_active_player_profile(local_player_index, profile_index, &profile);
+		}
+		for (setting++; *setting; setting = next)
+		{
+			char *equals;
+
+			next = setting + strcspn(setting, ",");
+			if (*next)
+				*next++ = 0;
+			equals = strchr(setting, '=');
+			if (!equals)
+				continue;
+			*equals = 0;
+			/* (a weapon's own offsets: display.viewmodel_weapon.<tag path>=x|y|z|pitch|yaw|roll) */
+			if (!strncmp(setting, "display.viewmodel_weapon.", 25))
+			{
+				double values[6] = { 0 };
+				char *value = equals + 1;
+				short index;
+
+				for (index = 0; index < 6 && *value; index++)
+				{
+					values[index] = atof(value);
+					value += strcspn(value, "|");
+					value += *value == '|';
+				}
+				if (config_profile_viewmodel_weapon_write(folder, setting + 25, values))
+					platform_log("network test: player %d's profile has %s's offsets %s", local_player_index + 1,
+						setting + 25, equals + 1);
+				else
+					platform_log("network test: player %d's profile cannot have %s's offsets", local_player_index + 1,
+						setting + 25);
+			}
+			else if (config_profile_write(folder, setting, equals + 1))
+				platform_log("network test: player %d's profile has %s = %s", local_player_index + 1, setting,
+					equals + 1);
+			else
+				platform_log("network test: player %d's profile cannot have %s", local_player_index + 1, setting);
+		}
+	}
+	/* (each player's folder named at once, before they join) */
+	player_settings_update();
+}
+
 /* debug.network_test_name: the name the machine's first player takes (its
 profile's, which it joins with), in ASCII */
 static void network_test_set_name(
@@ -1159,7 +1277,38 @@ static void network_test_set_name(
 at that many seconds in, the same again 3 seconds on (taking it away), and
 again 3 more on; a client then sends one as another machine's player's (the
 host refuses it), and 3 seconds on each sends 6 at once (the host takes
-MARKER_BURST); the pings each machine shows logged a second after each */
+MARKER_BURST); then the last player's machine mutes an ally's machine for
+itself (the scoreboard's mute) as the other machines ping twice, 3 seconds
+apart (it shows the ally's neither time), and unmutes it as the host mutes
+the last player for everyone, and 3 seconds on that machine pings (the host
+refuses it), and the host unmutes them 3 more on; the pings each machine
+shows logged a second after each */
+static short network_test_last_player_index(void);
+static boolean network_test_last_player_local(void);
+
+/* the machine of the first player of another machine who sees the first
+local player's pings (their team; anyone in co-op), NONE for none */
+static long network_test_ally_machine(
+	void)
+{
+	short local_player_index = local_player_get_next(NONE);
+	long viewer_index = local_player_index != NONE ? local_player_get_player_index(local_player_index) : NONE;
+	struct player_datum *viewer = viewer_index != NONE ? player_get(viewer_index) : NULL;
+	struct data_iterator iterator;
+	struct player_datum *player;
+
+	data_iterator_new(&iterator, player_data);
+	while (viewer && (player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
+	{
+		if (player->local_player_index == NONE &&
+			(!game_engine_running() || (game_engine_has_teams() && player->team_index == viewer->team_index)))
+		{
+			return player->network_player_data.machine_index;
+		}
+	}
+	return NONE;
+}
+
 static void network_test_pings(
 	void)
 {
@@ -1186,7 +1335,7 @@ static void network_test_pings(
 		network_test.ping_steps++;
 		return;
 	}
-	if (step % 2 != 0 || step >= 10 || now < start + (step / 2) * 3 * TICKS_PER_SECOND)
+	if (step % 2 != 0 || step >= 20 || now < start + (step / 2) * 3 * TICKS_PER_SECOND)
 		return;
 	switch (step / 2)
 	{
@@ -1199,8 +1348,41 @@ static void network_test_pings(
 		if (network_test.mode != _network_test_host)
 			platform_log("network test: a forged ping %s", network_markers_ping_forged() ? "sent" : "not sent");
 		break;
-	default:
+	case 4:
 		platform_log("network test: a burst of pings, %d sent", network_markers_ping_burst(6));
+		break;
+	case 5:
+	case 6:
+		if (!network_test_last_player_local())
+		{
+			platform_log("network test: ping %d %s", step / 2, network_markers_ping_aimed() ? "sent" : "not sent");
+		}
+		else if (step / 2 == 5)
+		{
+			long ally = network_test_ally_machine();
+
+			network_voice_mute_machine(ally, TRUE);
+			platform_log("network test: machine %ld muted here", ally);
+		}
+		break;
+	case 7:
+		if (network_test.mode == _network_test_host)
+			network_chat_host_mute(network_test_last_player_index(), TRUE);
+		if (network_test_last_player_local())
+		{
+			long ally = network_test_ally_machine();
+
+			network_voice_mute_machine(ally, FALSE);
+			platform_log("network test: machine %ld unmuted here", ally);
+		}
+		break;
+	case 8:
+		if (network_test_last_player_local())
+			platform_log("network test: ping %d %s", step / 2, network_markers_ping_aimed() ? "sent" : "not sent");
+		break;
+	default:
+		if (network_test.mode == _network_test_host)
+			network_chat_host_mute(network_test_last_player_index(), FALSE);
 		break;
 	}
 	network_test.ping_steps++;
@@ -1545,12 +1727,17 @@ static void network_test_run_lobby_cues(
 
 /* debug.network_test_cues: from the first tick every player waited for has a
 unit (logged, cues or not: where a test's seconds start), each line at its
-tick (the host's, or a game of one machine: a client runs none) */
+tick (the host's, or a game of one machine: a client runs none). A joining
+machine's seconds start so too, for its scripted player (debug.test_input's
+"script:", which plays on them: sim_trace.c's scenario clock) */
 static void network_test_run_cues(
 	void)
 {
-	if (network_test.mode != _network_test_host && network_test.mode != _network_test_log)
+	if (network_test.mode != _network_test_host && network_test.mode != _network_test_log &&
+		network_test.mode != _network_test_join)
+	{
 		return;
+	}
 	/* (between two ticks, as a frame of a game at 30 always is: not between
 	two sub-steps of an open tick, game.sim_rate's spread over the frames,
 	whose time is still the tick's: sim_rate.h) */
@@ -1570,6 +1757,8 @@ static void network_test_run_cues(
 		network_test.cues_start = game_time_get();
 		platform_log("network test: cues from tick %ld", network_test.cues_start);
 	}
+	if (network_test.mode == _network_test_join)
+		return;
 	while (network_test.next_cue < network_test.cue_count &&
 		game_time_get() >= network_test.cues_start + network_test.cues[network_test.next_cue].tick)
 	{
@@ -1636,6 +1825,40 @@ static void network_test_pickup(
 		platform_log("network test: the last player stands on weapon %lx (%lx)", nearest_index,
 			object_get(nearest_index)->definition_index);
 	}
+}
+
+/* debug.network_test_place: the first local player's unit put at a point,
+facing (yaw, pitch in degrees) that way, as the debug camera's numbers give
+them, once, for pictures of one place; whether it was */
+static boolean network_test_place(
+	void)
+{
+	long player_index = local_player_get_player_index(0);
+	struct player_datum *player;
+	struct unit_datum *unit;
+	real_euler_angles2d angles;
+	real_vector3d facing, forward;
+
+	if (player_index == NONE)
+		return FALSE;
+	player = player_get(player_index);
+	if (player->unit_index == NONE)
+		return FALSE;
+	angles.yaw = DEGREES_TO_RADIANS(network_test.place_yaw);
+	angles.pitch = DEGREES_TO_RADIANS(network_test.place_pitch);
+	vector3d_from_euler_angles2d(&facing, &angles);
+	forward = facing;
+	forward.k = 0.0f;
+	normalize3d(&forward);
+	object_set_position(player->unit_index, &network_test.place_position, &forward, NULL);
+	unit = unit_get(player->unit_index);
+	unit->unit.desired_facing_vector = forward;
+	unit->unit.desired_aiming_vector = facing;
+	unit->unit.desired_looking_vector = facing;
+	player_control_set_facing(0, &facing);
+	platform_log("network test: placed at %.3f %.3f %.3f, yaw %.1f pitch %.1f", network_test.place_position.x,
+		network_test.place_position.y, network_test.place_position.z, network_test.place_yaw, network_test.place_pitch);
+	return TRUE;
 }
 
 /* debug.network_test_elevator: the level's elevators (machines that carry
@@ -1977,6 +2200,22 @@ void network_test_update(
 	if (network_test.mode == _network_test_off)
 		return;
 
+	/* (and in the lobby, a client's player whose lobby's on-screen keyboard
+	is open, as A on its chat's line opens it: "gg ez" typed on it and sent,
+	network_chat.c's lobby chat) */
+	if (network_test.chat_time > 0.0f && network_test.mode != _network_test_host)
+	{
+		static long lobby_frames;
+		boolean keyboard = FALSE;
+
+		if (network_chat_lobby_typed(&keyboard) && keyboard)
+			network_test_keyboard_line(++lobby_frames);
+		else if (lobby_frames)
+		{
+			lobby_frames = 0;
+			network_test_keyboard_line(0);
+		}
+	}
 	/* debug.network_test_chat: each client's player types "gg ez" on the
 	text chat's on-screen keyboard 32 seconds on, as a controller does, and
 	sends it to the team (each frame, not each second, as the rest) */
@@ -2021,6 +2260,33 @@ void network_test_update(
 			long vehicle_time = (long)(network_test.vehicle_time * TICKS_PER_SECOND);
 
 			network_test_gather(network_test.vehicle_time > 0.0f && game_time_get() >= vehicle_time - 2 * TICKS_PER_SECOND);
+		}
+		if (network_test.camouflage_time > 0.0f && network_test.mode == _network_test_host)
+		{
+			long camouflage_time = (long)(network_test.camouflage_time * TICKS_PER_SECOND);
+
+			/* debug.network_test_camouflage: every player camouflaged, as the
+			powerup does (through a second: a slow frame steps several
+			ticks) */
+			if (game_time_get() >= camouflage_time && game_time_get() - camouflage_time < TICKS_PER_SECOND)
+			{
+				struct data_iterator players;
+				struct player_datum *player;
+
+				data_iterator_new(&players, player_data);
+				while ((player = (struct player_datum *)data_iterator_next(&players)) != NULL)
+				{
+					player_handle_powerup(DATUM_INDEX_NEW(player - (struct player_datum *)player_data->data,
+						player->identifier), _player_powerup_active_camouflage, 20 * TICKS_PER_SECOND);
+				}
+				platform_log("network test: every player camouflaged");
+			}
+		}
+		/* (at the first frame from then: a slow frame steps several ticks) */
+		if (network_test.place && game_time_get() >= (long)(network_test.place_time * TICKS_PER_SECOND) &&
+			network_test_place())
+		{
+			network_test.place = FALSE;
 		}
 		if (network_test.pickup_time > 0.0f)
 		{
@@ -2541,6 +2807,7 @@ void network_test_update(
 			}
 			if (!network_test.player_added && network_test.setup_seconds >= 2.0f && global_network_game_client_get())
 			{
+				network_test_profiles();
 				network_test_set_name();
 				network_test.player_added = network_game_client_add_player(global_network_game_client_get(), 0);
 				/* (a local game's others: split screen) */
@@ -2561,6 +2828,27 @@ void network_test_update(
 				network_game_client_request_immediate_start();
 				platform_log("network test: starting the game");
 			}
+		}
+		break;
+	case _network_test_campaign:
+		/* as SPLIT-SCREEN CO-OP and New Game start it, at Normal (menu_functions.c's
+		coop_begin, coop_player2_choose and campaign_start): a local game whose
+		players are the first controllers, each its own */
+		if (!network_test.set_up)
+		{
+			short local_player_index;
+
+			network_test.set_up = TRUE;
+			player_spawn_count = network_test.local_players;
+			player_ui_reset_single_player_local_player_controllers();
+			for (local_player_index = 0; local_player_index < network_test.local_players; local_player_index++)
+				player_ui_set_single_player_local_player_controller(local_player_index, local_player_index);
+			main_set_map_name(network_test.map_name);
+			main_set_difficulty(_game_difficulty_level_normal);
+			game_connection_set(_game_connection_local);
+			main_menu_switch_to_single_player();
+			platform_log("network test: the campaign's %s, %d players", network_test.map_name,
+				network_test.local_players);
 		}
 		break;
 	case _network_test_probe:

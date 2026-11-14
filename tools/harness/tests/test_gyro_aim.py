@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from harness import CHECK_FAILED, build, mutated, read, run  # noqa: E402
+from harness import CHECK_FAILED, build, function, mutated, read, run  # noqa: E402
 
 AIM_CONTROLS = [
     # no automatic calibration: the bias drifts the view
@@ -92,10 +92,11 @@ ASSIST_CONTROLS = [
 
 
 def assist_generated(fault=None):
-    block = camera_block(read("source/game/player_control.c"))
+    source = read("source/game/player_control.c")
+    block = camera_block(source)
     if fault:
         block = mutated(block, *fault)
-    text = ("static void camera_turn(struct game_globals_player_control *constants, struct game_input_state "
+    text = (function(source, "player_control_look_acceleration") + "\n" + "static void camera_turn(struct game_globals_player_control *constants, struct game_input_state "
             "*input_state, struct player_control *control, struct player_datum *player, struct input_blob *input, "
             "real clamped_yaw, real clamped_pitch, real look_yaw_rate, real look_pitch_rate, real time_delta_sec, "
             "short gamepad_index, short local_player_index)\n" + block + "\n")

@@ -15684,8 +15684,8 @@ static boolean hs_compile_and_evaluate_command(
 	}
 	/* port: the host's Host Controls ("host_controls", or with the tab:
 	"host_controls game", "bans", "players <player name>"), as its pause
-	menu opens it, and its "end", "restart" and "unban <player>"
-	(network_host_controls.c) */
+	menu opens it, and its "end", "restart", "unban <player>" and co-op's
+	"bring <player>" and "goto <player>" (network_host_controls.c) */
 	{
 		char const *text = hs_host_player_command(expression, "host_controls");
 

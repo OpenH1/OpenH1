@@ -38,6 +38,8 @@ that draw the first-person weapon (rasterizer and render sources).
 #include "panini_projection.h"
 #include "passenger_camera.h"
 #include "zoom_fov.h"
+#include "network_standard.h"
+#include "player_settings.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -49,14 +51,11 @@ enum
 	_rasterizer_target_render_primary = 0
 };
 
-double config_real(const char *name);
-int config_boolean(const char *name);
-unsigned long config_changes(void);
-char const *config_string(char const *name);
 unsigned long system_milliseconds(void);
-/* each weapon's own offsets (port/linux/src/port_config.h) */
+void platform_log(char const *format, ...);
+/* each weapon's own offsets, as a local player sees them (port/linux/src/port_config.h) */
 #define CONFIG_WEAPON_VALUES 6
-int config_viewmodel_weapon(const char *path, double values[CONFIG_WEAPON_VALUES]);
+int config_player_viewmodel_weapon(int local_player, const char *path, double values[CONFIG_WEAPON_VALUES]);
 
 /* ---------- the world's field of view */
 
@@ -88,48 +87,75 @@ static struct
 	unsigned long start;
 } vehicle_blends[MAXIMUM_LOCAL_PLAYERS];
 
+/* the widest field of view a Pro 2v2 game draws (network_standard_pro_game),
+in display.fov's degrees across at 16:9: its vertical angle, the one every
+shape of window keeps, so a 4:3 view is about 94 degrees across, 16:10's 104
+and 21:9's 124, as at display.fov 110 outside one. The setting stays as it is */
+#define PRO_FIELD_OF_VIEW 110.0
+
 /* an angle in degrees across at 16:9 as the tangent of half the vertical
-angle, or 0 (the stock view) outside 20 to 160; above 150 only while
-display.panini is on, 150 otherwise (panini_projection.h's
+angle, or 0 (the stock view) outside 20 to 160; above 150 only while the
+local player's display.panini is on, 150 otherwise (panini_projection.h's
 panini_field_of_view: why 160) */
-static real fov_tangent(double degrees)
+static real fov_tangent(short local_player_index, double degrees)
 {
-	degrees = panini_field_of_view(degrees, panini_strength());
+	degrees = panini_field_of_view(degrees, panini_strength(local_player_index));
 	return degrees ? (real)(tan(degrees * _pi / 360.0) * (9.0 / 16.0)) : 0.0f;
 }
 
-/* display.fov's and display.vehicle_fov's tangents (0: the stock view):
-the vehicle's "default" is the stock view, "match" display.fov's, and a
-number an angle as display.fov's is; and display.scale_scoped_fov */
-static void fov_requested_tangents(real *on_foot, real *seated, boolean *scale_scoped)
+/* a field of view's tangent at most PRO_FIELD_OF_VIEW's */
+static real fov_pro_capped(real tangent)
 {
-	static boolean initialized, scaled;
-	static unsigned long read_at;
-	static real foot_tangent, vehicle_tangent;
+	real cap = (real)(tan(PRO_FIELD_OF_VIEW * _pi / 360.0) * (9.0 / 16.0));
+
+	return tangent > cap ? cap : tangent;
+}
+
+/* the local player's display.fov's and display.vehicle_fov's tangents (0:
+the stock view): the vehicle's "default" is the stock view, "match"
+display.fov's, and a number an angle as display.fov's is; and
+display.scale_scoped_fov; each local player's own (their profile's:
+player_settings.c), read again as the settings change */
+static void fov_requested_tangents(short local_player_index, real *on_foot, real *seated, boolean *scale_scoped)
+{
+	static struct
+	{
+		boolean initialized, scaled;
+		unsigned long read_at;
+		real foot_tangent, vehicle_tangent;
+		double foot_degrees;
+	} players[PLAYER_SETTINGS_SLOTS];
+	short slot = PLAYER_SETTINGS_SLOT(local_player_index);
 	unsigned long changes = config_changes();
 
-	if (!initialized || read_at != changes)
+	if (!players[slot].initialized || players[slot].read_at != changes)
 	{
-		char const *vehicle = config_string("display.vehicle_fov");
+		char const *vehicle = config_player_string(local_player_index, "display.vehicle_fov");
 		char *end;
 		double degrees = strtod(vehicle, &end);
+		double foot = config_player_real(local_player_index, "display.fov");
+		boolean first = !players[slot].initialized;
 
-		initialized = TRUE;
-		read_at = changes;
-		foot_tangent = fov_tangent(config_real("display.fov"));
-		scaled = config_boolean("display.scale_scoped_fov") ? TRUE : FALSE;
+		players[slot].initialized = TRUE;
+		players[slot].read_at = changes;
+		/* (a local player's own, in the log as it changes) */
+		if (slot < PLAYER_SETTINGS_SLOTS - 1 && (first ? foot != 0.0 : foot != players[slot].foot_degrees))
+			platform_log("view: player %d's field of view %g, in a vehicle %s", slot + 1, foot, vehicle);
+		players[slot].foot_degrees = foot;
+		players[slot].foot_tangent = fov_tangent(local_player_index, foot);
+		players[slot].scaled = config_player_boolean(local_player_index, "display.scale_scoped_fov") ? TRUE : FALSE;
 		while (end != vehicle && (*end == ' ' || *end == '\t'))
 			end++;
 		if (!_stricmp(vehicle, "match"))
-			vehicle_tangent = foot_tangent;
+			players[slot].vehicle_tangent = players[slot].foot_tangent;
 		else if (end != vehicle && !*end)
-			vehicle_tangent = fov_tangent(degrees);
+			players[slot].vehicle_tangent = fov_tangent(local_player_index, degrees);
 		else
-			vehicle_tangent = 0.0f;
+			players[slot].vehicle_tangent = 0.0f;
 	}
-	*on_foot = foot_tangent;
-	*seated = vehicle_tangent;
-	*scale_scoped = scaled;
+	*on_foot = players[slot].foot_tangent;
+	*seated = players[slot].vehicle_tangent;
+	*scale_scoped = players[slot].scaled;
 }
 
 /* the local player's unit, when its view is one the fields of view widen:
@@ -268,7 +294,7 @@ static real render_fov_adjust(short local_player_index, real native_vertical_fie
 
 	*reticle_size = 1.0f;
 	*unzoomed_drawn_tangent = 0.0f;
-	fov_requested_tangents(&foot_tangent, &vehicle_tangent, &scale_scoped);
+	fov_requested_tangents(local_player_index, &foot_tangent, &vehicle_tangent, &scale_scoped);
 	if (local_player_index >= 0 && local_player_index < MAXIMUM_LOCAL_PLAYERS)
 		scaled_scopes[local_player_index] = scale_scoped && (foot_tangent || vehicle_tangent);
 	if (!foot_tangent && !vehicle_tangent)
@@ -295,6 +321,9 @@ static real render_fov_adjust(short local_player_index, real native_vertical_fie
 		requested_tangent = vehicle_tangent;
 	else
 		requested_tangent = foot_tangent + (vehicle_tangent - foot_tangent) * vehicle_weight;
+	/* (a Pro 2v2 game's at most PRO_FIELD_OF_VIEW, on foot and seated) */
+	if (network_standard_pro_game())
+		requested_tangent = fov_pro_capped(requested_tangent);
 	/* (the unzoomed view's scale of the reticle: a zoom leaves it as it is,
 	as the stock game draws its reticle one size at every zoom) */
 	if (requested_tangent > 0.0f)
@@ -458,7 +487,8 @@ real mouse_zoom_look_scale(short local_player_index, long unit_index, short zoom
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
-		mode = strcmp(config_string("input.zoom_sensitivity"), "halo") ? _mouse_zoom_cs2 : _mouse_zoom_halo;
+		/* (the mouse's player's, player 1's: their profile's) */
+		mode = strcmp(config_player_string(0, "input.zoom_sensitivity"), "halo") ? _mouse_zoom_cs2 : _mouse_zoom_halo;
 	}
 	magnification = unit_get_zoom_magnification(unit_index, zoom_level);
 	unit = unit_try_and_get(unit_index);
@@ -498,23 +528,28 @@ static real projection_stock_vertical;
 frame (display.viewmodel_offset_z and the weapon's own; world units) */
 static real applied_forwards[MAXIMUM_LOCAL_PLAYERS];
 
-static real viewmodel_vertical(void)
+/* the local player's display.viewmodel_fov as a vertical angle, 0 for none */
+static real viewmodel_vertical(short local_player_index)
 {
-	static boolean initialized;
-	static unsigned long read_at;
-	static real angle;
+	static struct
+	{
+		boolean initialized;
+		unsigned long read_at;
+		real angle;
+	} players[PLAYER_SETTINGS_SLOTS];
+	short slot = PLAYER_SETTINGS_SLOT(local_player_index);
 	unsigned long changes = config_changes();
 
-	if (!initialized || read_at != changes)
+	if (!players[slot].initialized || players[slot].read_at != changes)
 	{
-		double degrees = config_real("display.viewmodel_fov");
+		double degrees = config_player_real(local_player_index, "display.viewmodel_fov");
 
-		angle = degrees >= 20.0 && degrees <= 150.0 ?
+		players[slot].angle = degrees >= 20.0 && degrees <= 150.0 ?
 			(real)(2.0 * atan(tan(degrees * _pi / 360.0) * (9.0 / 16.0))) : 0.0f;
-		initialized = TRUE;
-		read_at = changes;
+		players[slot].initialized = TRUE;
+		players[slot].read_at = changes;
 	}
-	return angle;
+	return players[slot].angle;
 }
 
 /* whether the local player's view draws the weapon with its own projection:
@@ -541,7 +576,7 @@ static boolean viewmodel_angles(short local_player_index, real *drawn, real *sto
 	struct unit_datum *unit;
 	real unzoomed;
 
-	*drawn = viewmodel_vertical();
+	*drawn = viewmodel_vertical(local_player_index);
 	if (!*drawn || !viewmodel_projection_view(local_player_index))
 		return FALSE;
 	unit_index = player_control_get_unit_index(local_player_index);
@@ -566,7 +601,7 @@ void viewmodel_projection_begin(void)
 	/* (display.viewmodel_fov's angle; by default the view's own, from before
 	display.fov widened it: arms and a gun right against the camera stretch
 	at a wide angle) */
-	angle = viewmodel_vertical();
+	angle = viewmodel_vertical(render.local_player_index);
 	if (!angle)
 		angle = render_fov_authored_vertical(render.local_player_index);
 	/* (display.panini draws the view's middle larger: the weapon's view as
@@ -704,15 +739,16 @@ static double viewmodel_offset_held(double value, double maximum)
 	return value;
 }
 
-static real viewmodel_offset_axis(char const *name)
+static real viewmodel_offset_axis(short local_player_index, char const *name)
 {
-	return (real)(viewmodel_offset_held(config_real(name), VIEWMODEL_OFFSET_MAXIMUM_CENTIMETERS) /
-		CENTIMETERS_PER_WORLD_UNIT);
+	return (real)(viewmodel_offset_held(config_player_real(local_player_index, name),
+		VIEWMODEL_OFFSET_MAXIMUM_CENTIMETERS) / CENTIMETERS_PER_WORLD_UNIT);
 }
 
-static real viewmodel_rotation_axis(char const *name)
+static real viewmodel_rotation_axis(short local_player_index, char const *name)
 {
-	return (real)(viewmodel_offset_held(config_real(name), VIEWMODEL_ROTATION_MAXIMUM_DEGREES) * (_pi / 180.0));
+	return (real)(viewmodel_offset_held(config_player_real(local_player_index, name),
+		VIEWMODEL_ROTATION_MAXIMUM_DEGREES) * (_pi / 180.0));
 }
 
 static boolean viewmodel_offset_any(struct viewmodel_offset const *offset)
@@ -721,50 +757,61 @@ static boolean viewmodel_offset_any(struct viewmodel_offset const *offset)
 		offset->pitch != 0.0f || offset->yaw != 0.0f || offset->roll != 0.0f;
 }
 
-/* every weapon's offset (display.viewmodel_offset_x, _y and _z, along the
-view's right, up and forward, in world units; display.viewmodel_pitch, _yaw
-and _roll, in radians) */
-static void viewmodel_offset_global(struct viewmodel_offset *offset)
+/* the local player's offset of every weapon (display.viewmodel_offset_x, _y
+and _z, along the view's right, up and forward, in world units;
+display.viewmodel_pitch, _yaw and _roll, in radians) */
+static void viewmodel_offset_global(short local_player_index, struct viewmodel_offset *offset)
 {
-	static boolean initialized;
-	static unsigned long read_at;
-	static struct viewmodel_offset global;
+	static struct
+	{
+		boolean initialized;
+		unsigned long read_at;
+		struct viewmodel_offset global;
+	} players[PLAYER_SETTINGS_SLOTS];
+	short slot = PLAYER_SETTINGS_SLOT(local_player_index);
 	unsigned long changes = config_changes();
 
-	if (!initialized || read_at != changes)
+	if (!players[slot].initialized || players[slot].read_at != changes)
 	{
-		global.right = viewmodel_offset_axis("display.viewmodel_offset_x");
-		global.up = viewmodel_offset_axis("display.viewmodel_offset_y");
-		global.forward = viewmodel_offset_axis("display.viewmodel_offset_z");
-		global.pitch = viewmodel_rotation_axis("display.viewmodel_pitch");
-		global.yaw = viewmodel_rotation_axis("display.viewmodel_yaw");
-		global.roll = viewmodel_rotation_axis("display.viewmodel_roll");
-		initialized = TRUE;
-		read_at = changes;
+		players[slot].global.right = viewmodel_offset_axis(local_player_index, "display.viewmodel_offset_x");
+		players[slot].global.up = viewmodel_offset_axis(local_player_index, "display.viewmodel_offset_y");
+		players[slot].global.forward = viewmodel_offset_axis(local_player_index, "display.viewmodel_offset_z");
+		players[slot].global.pitch = viewmodel_rotation_axis(local_player_index, "display.viewmodel_pitch");
+		players[slot].global.yaw = viewmodel_rotation_axis(local_player_index, "display.viewmodel_yaw");
+		players[slot].global.roll = viewmodel_rotation_axis(local_player_index, "display.viewmodel_roll");
+		players[slot].initialized = TRUE;
+		players[slot].read_at = changes;
 	}
-	*offset = global;
+	*offset = players[slot].global;
 }
 
-boolean viewmodel_offset(long weapon_index, struct viewmodel_offset *offset)
+boolean viewmodel_offset(short local_player_index, long weapon_index, struct viewmodel_offset *offset)
 {
-	/* (the last weapon's, until the weapon or a setting changes: a lookup
-	by its tag's path) */
-	static long cached_definition = NONE;
-	static unsigned long cached_at;
-	static double own[CONFIG_WEAPON_VALUES];
+	/* (each local player's last weapon's, until the weapon or a setting
+	changes: a lookup by its tag's path, their profile's) */
+	static struct
+	{
+		boolean valid;
+		long definition;
+		unsigned long at;
+		double own[CONFIG_WEAPON_VALUES];
+	} cached[PLAYER_SETTINGS_SLOTS];
+	short slot = PLAYER_SETTINGS_SLOT(local_player_index);
+	double const *own = cached[slot].own;
 	long definition_index = viewmodel_weapon_definition(weapon_index);
 	unsigned long changes = config_changes();
 	double total[CONFIG_WEAPON_VALUES];
 	short value;
 
-	viewmodel_offset_global(offset);
+	viewmodel_offset_global(local_player_index, offset);
 	if (definition_index == NONE)
 		return viewmodel_offset_any(offset);
-	if (definition_index != cached_definition || cached_at != changes)
+	if (!cached[slot].valid || definition_index != cached[slot].definition || cached[slot].at != changes)
 	{
-		config_viewmodel_weapon(viewmodel_weapon_path(definition_index), own);
-		cached_definition = definition_index;
-		cached_at = changes;
+		cached[slot].valid = TRUE;
+		config_player_viewmodel_weapon(local_player_index, viewmodel_weapon_path(definition_index), cached[slot].own);
+		cached[slot].definition = definition_index;
+		cached[slot].at = changes;
 	}
 	/* (the weapon's own added to the global, the sum held at the range) */
 	total[0] = offset->right * CENTIMETERS_PER_WORLD_UNIT + own[0];
@@ -858,7 +905,7 @@ void viewmodel_offset_apply(short local_player_index, long weapon_index, struct 
 
 	if (local_player_index >= 0 && local_player_index < MAXIMUM_LOCAL_PLAYERS)
 		applied_forwards[local_player_index] = 0.0f;
-	if (!node_matrices || node_count <= 0 || !viewmodel_offset(weapon_index, &offset))
+	if (!node_matrices || node_count <= 0 || !viewmodel_offset(local_player_index, weapon_index, &offset))
 		return;
 	/* (its move toward the eye, for the weapon's near plane:
 	viewmodel_near_clip_distance) */
@@ -921,36 +968,48 @@ void viewmodel_offset_apply(short local_player_index, long weapon_index, struct 
 
 /* ---------- whether the first-person weapon is drawn */
 
+/* (the local player's of the view drawn now: render.local_player_index) */
 boolean viewmodel_is_visible(void)
 {
-	static boolean initialized, visible;
-	static unsigned long read_at;
+	static struct
+	{
+		boolean initialized, visible;
+		unsigned long read_at;
+	} players[PLAYER_SETTINGS_SLOTS];
+	short local_player_index = render.local_player_index;
+	short slot = PLAYER_SETTINGS_SLOT(local_player_index);
 	unsigned long changes = config_changes();
 
-	if (!initialized || read_at != changes)
+	if (!players[slot].initialized || players[slot].read_at != changes)
 	{
-		visible = config_boolean("display.viewmodel_visible") != 0;
-		initialized = TRUE;
-		read_at = changes;
+		players[slot].visible = config_player_boolean(local_player_index, "display.viewmodel_visible") != 0;
+		players[slot].initialized = TRUE;
+		players[slot].read_at = changes;
 	}
-	return visible;
+	return players[slot].visible;
 }
 
 /* ---------- whether the energy shield's flare is drawn on the arms */
 
+/* (the local player's of the view drawn now: render.local_player_index) */
 boolean viewmodel_shield_is_visible(void)
 {
-	static boolean initialized, visible;
-	static unsigned long read_at;
+	static struct
+	{
+		boolean initialized, visible;
+		unsigned long read_at;
+	} players[PLAYER_SETTINGS_SLOTS];
+	short local_player_index = render.local_player_index;
+	short slot = PLAYER_SETTINGS_SLOT(local_player_index);
 	unsigned long changes = config_changes();
 
-	if (!initialized || read_at != changes)
+	if (!players[slot].initialized || players[slot].read_at != changes)
 	{
-		visible = config_boolean("display.viewmodel_shield") != 0;
-		initialized = TRUE;
-		read_at = changes;
+		players[slot].visible = config_player_boolean(local_player_index, "display.viewmodel_shield") != 0;
+		players[slot].initialized = TRUE;
+		players[slot].read_at = changes;
 	}
-	return visible;
+	return players[slot].visible;
 }
 
 boolean viewmodel_draws_geometry(boolean first_person)

@@ -807,20 +807,14 @@ uint32_t xgpu_vulkan_textures_thickness_epoch(void)
 
 /* ---------- images */
 
-/* XGPU_IMAGE_* (xgpu_images.h) */
-enum
-{
-	_image_rgba,
-	_image_coverage,
-};
-
 static struct xgpu_vulkan_image *image_get(const struct xgpu_stream_texture_stage *stage)
 {
 	struct entry **bucket = &cache.buckets[bucket_index(stage->resource, 0, 1)];
 	struct entry *entry;
 	const void *pixels = host_pointer(stage->data);
 	uint32_t width = stage->width, height = stage->height;
-	uint32_t texel = stage->resource_format == _image_coverage ? 1 : 4;
+	/* (XGPU_IMAGE_RGBA, xgpu_images.h: 4 bytes a pixel) */
+	uint32_t texel = 4;
 
 	if (!pixels || !width || !height || width > 16384 || height > 16384 || !readable(stage->data, width * height * texel))
 		return NULL;
@@ -853,7 +847,7 @@ static struct xgpu_vulkan_image *image_get(const struct xgpu_stream_texture_stag
 			xgpu_vulkan_image_destroy(entry->image);
 		memset(&made, 0, sizeof(made));
 		made.type = XGPU_VULKAN_IMAGE_2D;
-		made.format = stage->resource_format == _image_coverage ? XGPU_VULKAN_FORMAT_COVERAGE : XGPU_VULKAN_FORMAT_RGBA8;
+		made.format = XGPU_VULKAN_FORMAT_RGBA8;
 		made.usage = XGPU_VULKAN_USAGE_SAMPLED;
 		made.width = width;
 		made.height = height;

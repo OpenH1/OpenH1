@@ -316,7 +316,7 @@ def default_settings():
     port_config.c's order), as GET /api/settings sends them: typed values,
     and choices, min and max where they are known (null otherwise)"""
     return [
-        _setting("network.allow_opence", "boolean", True, "Hosting an OpenH1 game: let OpenCE players join it too, "
+        _setting("network.allow_opence", "boolean", False, "Hosting an OpenH1 game: let OpenCE players join it too, "
                  "at 30 ticks a second.", "HALO_NET_ALLOW_OPENCE"),
         _setting("network.shield_effects", "string", "stock", "Host: the shield effects every player of a network "
                  "game sees, whatever their own.", "HALO_NET_SHIELD_EFFECTS",
@@ -990,7 +990,7 @@ class Sim:
         mode = self.value("server.game_mode")
         opence = mode == "legacy" or bool(self.value("network.allow_opence"))
         mode_name = "Legacy" if mode == "legacy" else \
-            f"OpenH1 {GAME_MODES.get(mode, 30)} Tick" + (", OpenCE can join" if opence else "")
+            f"GOAT H1 {GAME_MODES.get(mode, 30)} Tick" + (", OpenCE can join" if opence else "")
         return {
             "ok": True, "time": now_ms(), "name": self.value("server.name"), "state": self.state,
             "build": BUILD, "network_version": NETWORK_VERSION, "openh1_version": OPENH1_VERSION,

@@ -197,7 +197,7 @@ int main(int argc, char **argv)
 
 		CHECK(report_issue_url("Problem report (macOS, build-1)", "# Hi\n- a&b=c\n", url, sizeof(url)), "it fits");
 		printf("%s\n", url);
-		CHECK(!strcmp(url, "https://github.com/OpenH1/OpenH1/issues/new?title=Problem%20report%20%28macOS%2C%20build-1"
+		CHECK(!strcmp(url, "https://github.com/OpenH1/goath1/issues/new?title=Problem%20report%20%28macOS%2C%20build-1"
 			"%29&body=%23%20Hi%0A-%20a%26b%3Dc%0A"), "the address");
 		/* (a long body cut at a line's end) */
 		for (index = 0; index < 20; index++)
@@ -431,7 +431,7 @@ int main(int argc, char **argv)
 		printf("%s", text);
 		CHECK(strstr(text, "- Game: levels\\test\\bloodgulch\\bloodgulch (Slayer)\n"), "a multiplayer game");
 		CHECK(strstr(text, "- Player: dead\n") && !strstr(text, "- Player: at"), "a dead player's place");
-		CHECK(strstr(text, "- Network: hosting, OpenH1 60 Tick, 4 players, ping 48 ms (the slowest client's)\n"),
+		CHECK(strstr(text, "- Network: hosting, GOAT H1 60 Tick, 4 players, ping 48 ms (the slowest client's)\n"),
 			"the network game");
 		CHECK(strstr(text, "- Other machines' builds: build-812 x2, a local build, OpenCE, 1 not told\n"), "the builds");
 		CHECK(!strstr(text, "game_difficulty_set"), "a difficulty for a multiplayer game");

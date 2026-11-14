@@ -1,6 +1,6 @@
 """The real hit sounds (hit_sounds.c) and network_standard.c's rule of the host's: a beep for damage this machine's
 player dealt another player, none for themselves, for no damage, for a bot's or another machine's player, with
-audio.hit_sounds off, or where the host forbids them (network.allow_hit_sounds false, which an OpenH1 game's record
+the attacker's own audio.hit_sounds off, or where the host forbids them (network.allow_hit_sounds false, which an OpenH1 game's record
 carries to its OpenH1 clients, read in the lobby; never in an OpenCE machine's copy, nor a Legacy host's record);
 hits closer together than the spacing beep once."""
 
@@ -28,10 +28,14 @@ NEGATIVE_CONTROLS = {
     # (no kill outright)
     "no-kill": (("TEST_FLAG(being_damaged_flags, _object_being_damaged_body_depleted_bit)))", "FALSE))"), "local"),
     # (the host's rule not asked)
-    "rule-ignored": (("|| !network_standard_hit_sounds_allowed())", ")"), "client"),
+    "rule-ignored": (("if (!hit_sounds.on[slot] || !network_standard_hit_sounds_allowed())",
+                      "if (!hit_sounds.on[slot])"), "client"),
     # (the setting read once, never again)
-    "read-once": (("if (hit_sounds.read_at != config_changes())", "if (hit_sounds.read_at == (unsigned long)-1)"),
-                  "setting"),
+    "read-once": (("if (!hit_sounds.read[slot] || hit_sounds.read_at[slot] != config_changes())",
+                   "if (!hit_sounds.read[slot])"), "setting"),
+    # (one setting for every local player, not the attacker's own)
+    "machine-setting": (("config_player_boolean(attacker->local_player_index, \"audio.hit_sounds\")",
+                         "config_player_boolean(0, \"audio.hit_sounds\")"), "setting"),
     # (no spacing: a shotgun's pellets beep each)
     "no-spacing": (("if (hit_sounds.played && now - hit_sounds.played_at < HIT_SOUND_SPACING_MILLISECONDS)",
                     "if (FALSE)"), "spacing"),

@@ -4,7 +4,7 @@ may have done to them (the host's own players and the bots are never kicked, ban
 kicked as anyone), Kick and Ban by the console's own kick and ban, Move team only in an OpenH1 game without OpenCE's
 machines (the unit killed without statistics, every OpenH1 machine told, a client taking it from the host's stream
 alone), Lock teams, End game now and Restart round (the scores, then the lobby and its countdown), Max players and
-bans.txt's lines; and the menus: the pause menu's HOST CONTROLS the network game's host's alone, the scoreboard's player
+bans.txt's lines; and the menus: the pause menu's HOST CONTROLS the network game's host's alone (co-op's too), the scoreboard's player
 menu offering what Host Controls offers, the lobby's team changes kept by the lock, and the screen's file the
 generator's."""
 
@@ -16,10 +16,10 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from harness import enum_with, CHECK_FAILED, ROOT, build, constant, mutated, read, run  # noqa: E402
+from harness import enum_with, CHECK_FAILED, ROOT, build, constant, function, mutated, read, run  # noqa: E402
 
 CASES = ["seats", "actions", "team_moves", "kick", "move", "lock", "end", "next", "same", "maximum", "bans",
-         "players", "bots", "bots_tab", "bot_count", "bot_skill", "bot_choices"]
+         "players", "bots", "bots_tab", "bot_count", "bot_skill", "bot_choices", "pause", "teleports"]
 
 # a fault in network_host_controls.c, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -111,6 +111,25 @@ NEGATIVE_CONTROLS = {
                              "return player && !player->quit_out_of_game &&"), "bots"),
     "balance-row-always": (("if (row == _host_bot_row_balance && !network_host_game_teams_arrangeable())",
                             "if (0)"), "bots"),
+    # (the maintainer's report: a co-op host's pause menu had no HOST CONTROLS)
+    "coop-host-without-them": (("\telse if (!view->local && view->host_controls_screen)",
+                                "\telse if (!view->coop && !view->local && view->host_controls_screen)"), "pause"),
+    "coop-client-has-them": (("\tif (!view->host)\n\t\treturn rows;", ""), "pause"),
+    "coop-end-game": (("\telse if (!view->coop)\n", "\telse\n"), "pause"),
+    "coop-no-friendly-fire": (("\tif (view->coop)\n\t\tSET_FLAG(rows, _host_controls_pause_friendly_fire, TRUE);",
+                               ""), "pause"),
+    # (co-op's BRING TO ME and GO TO)
+    "teleports-in-versus": (("\tif (view->coop)\n\t{\n\t\tSET_FLAG(actions, _host_controls_bring",
+                             "\tif (1)\n\t{\n\t\tSET_FLAG(actions, _host_controls_bring"), "teleports"),
+    "teleports-of-own": (("\tif (view->own)\n\t\treturn actions;", "\tif (0)\n\t\treturn actions;"), "teleports"),
+    "teleport-not-told": (("\tdistributed_send_to_machine_reliably(machine_index, &message, "
+                           "_distributed_message_host_teleport, 1,", "\tif (0) distributed_send_to_machine_reliably("
+                           "machine_index, &message, _distributed_message_host_teleport, 1,"), "teleports"),
+    "teleport-from-client": (("\t\tif (machine_index == NONE && from_stream && game_connection() == "
+                              "_game_connection_network_client &&", "\t\tif (from_stream && game_connection() == "
+                              "_game_connection_network_client &&"), "teleports"),
+    "teleport-not-turned": (("\t\t\tplayer_control_set_facing(player->local_player_index, &facing);", "\t\t\t;"),
+                            "teleports"),
     "legacy-told-apart": (("\t\telse if (network_standard_machine_is_openh1(machine_index))\n"
                            "\t\t\tentry->tag = _host_controls_tag_openh1;", ""), "players"),
 }
@@ -123,6 +142,8 @@ def generated(fault=None):
         "HALO_PORT_MAXIMUM_NETWORK_MACHINES", "HALO_PORT_MAXIMUM_NETWORK_PLAYERS"))
     value = re.search(r"\b_distributed_message_host_team = (\d+)", distributed).group(1)
     config += f"#define _distributed_message_host_team {value}\n"
+    value = re.search(r"\b_distributed_message_host_teleport = (\d+)", distributed).group(1)
+    config += f"#define _distributed_message_host_teleport {value}\n"
     config += enum_with(read("port/linux/game/network_admin.h"), "_network_admin_lists,") + "\n"
     header = read("port/linux/game/network_host_controls.h")
     # (the constants, structures and prototypes: the code's functions call each other in any order)
@@ -153,9 +174,18 @@ def test_pause_menu_is_the_network_hosts():
     and opens Host Controls' screen; its function fails for anyone else."""
     tags = read("port/linux/game/menu_tags.c")
     patch = tags[tags.index("static long pause_list_patch("):tags.index("/* the Xbox's own box")]
-    assert "host && !network_game_is_splitscreen_local() && host_controls_widget != NONE" in patch
+    assert "rows = network_host_controls_pause_rows_for(&view);" in patch
+    assert "view.local = network_game_is_splitscreen_local();" in patch
+    assert "view.host_controls_screen = host_controls_widget != NONE;" in patch
     assert '"HOST CONTROLS"' in patch and 'function_index("port host open"' in patch
     assert "build.widget_tags[host_controls_widget]" in patch
+    # (the tags kept for the buttons: each a widget and its text, as many as the list adds at most)
+    most = int(re.search(r"char const \*names\[(\d+)\];", patch).group(1))
+    assert int(re.search(r"#define PAUSE_PATCH_TAGS (\d+)", tags).group(1)) >= 2 * most
+    # (network co-op's campaign pause menu: its host's too)
+    campaign = tags[tags.index("static void pause_campaign_patch("):]
+    campaign = campaign[:campaign.index("\n}\n")]
+    assert "pause_list_patch(instances, list, revert, build.coop && global_network_game_server_get() != NULL," in campaign
     menu = read("port/linux/game/host_controls_menu.inc")
     opened = menu[menu.index("static boolean host_controls_open(void)"):]
     opened = opened[:opened.index("\n}\n")]
@@ -211,3 +241,37 @@ def test_files_are_the_generators():
     assert f"ce/{name}" in listed and f"ce/port/{title}.png" in listed
     assert f'<bitmap name="{title}">' in (ce / "bitmaps.xml").read_text()
     assert port_settings.TITLES[title] == "HOST CONTROLS"
+
+
+# Host Controls' PLAYLIST (host_controls_menu.inc): the playlist and its next, the host's own or, for a dedicated
+# server's admin, the server's; each once ended in itself, and a host's PLAYLIST tab hung the game
+PLAYLIST_NEGATIVE_CONTROLS = {
+    "playlist-ends-in-itself": (("return host_remote() ? network_admin_rotation() : network_host_game_playlist();",
+                                 "return host_remote() ? network_admin_rotation() : host_playlist();"), "host"),
+    "index-ends-in-itself": (("\treturn network_host_game_playlist_index();", "\treturn host_playlist_index();"),
+                             "host"),
+    "admin-sees-the-hosts": (("return host_remote() ? network_admin_rotation() : network_host_game_playlist();",
+                              "return network_host_game_playlist();"), "admin"),
+}
+
+
+def playlist_generated(fault=None):
+    menu = read("port/linux/game/host_controls_menu.inc")
+    code = function(menu, "host_playlist") + "\n\n" + function(menu, "host_playlist_index") + "\n"
+    if fault:
+        code = mutated(code, *fault)
+    return (("under_test.inc", code),)
+
+
+@pytest.mark.parametrize("case", ["host", "admin"])
+def test_playlist(case):
+    status, output = run(build("host_controls_playlist", playlist_generated()), case)
+    assert status == 0, output
+
+
+@pytest.mark.parametrize("control", PLAYLIST_NEGATIVE_CONTROLS)
+def test_playlist_negative_control(control):
+    fault, case = PLAYLIST_NEGATIVE_CONTROLS[control]
+    status, output = run(build("host_controls_playlist", playlist_generated(fault)), case)
+    assert status == CHECK_FAILED, f"host_controls_menu.inc with a fault ({control}) passed '{case}': " \
+        "the test cannot see it"

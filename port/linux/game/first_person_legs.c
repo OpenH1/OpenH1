@@ -11,7 +11,7 @@ Only the drawing is changed, from a copy of the body's pose; the body itself,
 its hit boxes and markers, are the game's as ever. The legs are drawn in the
 world with the world's camera, so they keep their place and size at any field
 of view. How the copy relates to the eye, each frame, is fixed by these rules,
-none of which depends on where the view looks, nor on the frames before:
+none of which depends on where the view looks but for the aim's heading:
 
 - The pose is the body's own, as it is drawn now, placed about the view drawn
   as the first-person weapon is (render_interpolation_view_body): at its eye
@@ -21,21 +21,32 @@ none of which depends on where the view looks, nor on the frames before:
   on and aimed in the frame (#697); and the body faces the aim only once the
   aim has turned far enough from it, then turns after it a tick at a time,
   which swung the legs away from the view and back with a jerk each tick as
-  the view turned (#826). So the legs stay under the view as it turns, and
-  move as smoothly as the frames draw it, at any frame rate and any number of
-  ticks a second, only as the body's animation moves them.
-- The body stands FIRST_PERSON_LEGS_BACK behind the eye along that heading:
-  the game's eye is over the middle of the body, its spine, where looking
-  down shows only the top of the hips, and a person's eyes are ahead of their
-  chest, where looking down shows the belly, the legs and the feet. The
-  heading is level, so the feet stay put however the view tilts (#724).
+  the view turned (#826).
+- From there its lower body is turned about the eye to a heading of its own
+  (first_person_legs_lower_get), on this screen alone: planted while the aim
+  turns within a dead zone, turning after it beyond, and walking at an angle,
+  facing the way it walks; where the game plays another walk than the one
+  that heading walks (a sideways walk at an angle), the walk it walks
+  (first_person_legs_moving_pose). Turned to the view's heading, the legs
+  swung with every turn of the view, their feet sliding, and walking at an
+  angle they faced the aim (#772). It turns by the frames' time, as smoothly
+  at any frame rate and any number of ticks a second.
+- The eye is over the front of its hips and belly at rest, along that
+  heading (first_person_legs_front): the game's eye is over the middle of the
+  body, its spine, where looking down showed the top of the hips and the
+  belly before the eye, and the armour's belly is deep; a person's eyes are
+  over the front of their belly. (Set back 37 cm, the thighs reached forward
+  under the eye from behind it, #772.) The heading is level, so the feet stay
+  put however the view tilts (#724).
 - Its chest and all above it (the neck, the head, the arms: the first-person
-  arms are the weapon's) are folded into the chest's joint, which closes the
-  body at its belly. The eye is then never inside the body nor near enough
-  for the near plane (0.0625 world units, about 19 cm, before the eye) to cut
-  it, standing, walking or crouching: the chest's armour, which reached up
-  to the eye and 23 cm before it, was what the near plane cut, showing it
-  hollow and the open collar.
+  arms are the weapon's) are folded into the chest's joint, and its belly,
+  closed so, is flattened onto its joint's height, a lid over the hips. The
+  eye is then never inside the body nor near enough for the near plane
+  (0.0625 world units, about 19 cm, before the eye) to cut it, standing,
+  walking or crouching: the chest's armour, which reached up to the eye and
+  23 cm before it, was what the near plane cut, showing it hollow and the
+  open collar; and looking down shows the belly as a lid, not a dark cone of
+  it rising toward the eye.
 - The game's eye is just above the joint of the body's head, 10 to 11 cm
   below the eye standing, walking and crouching. Only where the eye is lower
   in the body than that (a crouch jump: the eye comes down to crouching
@@ -52,8 +63,8 @@ came back from frame to frame, so the legs shook and flickered looking down,
 the skin between the hips and a chest leant back as far as 86 degrees
 stretched, and the parts folded showed as slivers (#772).
 
-The body's shadow is drawn too, set back and lowered as the legs are, but
-whole (first_person_legs_shadow_node_matrices): its legs stand on their own
+The body's shadow is drawn too, placed as the legs are, but whole
+(first_person_legs_shadow_node_matrices): its legs stand on their own
 shadow.
 
 In the VR mode the whole body is drawn but its head and arms (the arms are
@@ -93,7 +104,12 @@ body, what others see, is as ever: nothing of the unit changes.
 #include "real_math.h"
 #include "objects/objects.h"
 #include "models/model_definitions.h"
+#include "models/model_animation_definitions.h"
+#include "game/game.h"
+#include "game/players.h"
 #include "units/units.h"
+#include "units/bipeds.h"
+#include "units/biped_definitions.h"
 #include "render/render.h"
 #include "rasterizer/rasterizer.h"
 #include <xtl.h>
@@ -115,10 +131,11 @@ boolean vr_render_body_seat(long object_index, struct vr_body_seat *seat);
 #endif
 
 /* port/linux/src/port_config.c */
-int config_boolean(const char *name);
-unsigned long config_changes(void);
+#include "player_settings.h"
 /* port/linux/game/render_interpolation.c */
 boolean render_interpolation_view_body(long unit_index, real_matrix4x3 *move, real_vector3d *heading);
+real render_interpolation_game_time_sec(long ticks);
+real render_interpolation_ticks_behind(void);
 #ifdef HALO_VR
 /* port/linux/src/vr.c */
 int halo_vr_running(void);
@@ -134,15 +151,36 @@ into the chest's joint; in the VR mode, the head and arms, folded into the
 neck and shoulders) */
 #define FIRST_PERSON_LEGS_FOLDED 0.001f
 
-/* the flat screen's body (first_person_legs_place): set back this far behind
-the eye along its heading (world units: about 37 cm; the Master Chief's chest
-reaches 23 cm before the eye, his belly 18 cm), so that the eye is before its
-belly, as a person's eyes are before their chest; and lowered where its head
+/* the flat screen's body (first_person_legs_place): lowered where its head
 would be less than this below the eye (world units: about 8 cm; the Master
 Chief's head's joint is 10 to 11 cm below it standing, walking and
 crouching) */
-#define FIRST_PERSON_LEGS_BACK 0.12f
 #define FIRST_PERSON_LEGS_HEAD_BELOW 0.025f
+/* ... its belly flattened onto the top of its hips to this of its height, a
+lid over them (first_person_legs_node_matrices) */
+#define FIRST_PERSON_LEGS_LID 0.05f
+
+/* the flat screen's lower body's heading (first_person_legs_lower_turn),
+radians and per second: standing, it stays planted until the aim is more than
+FIRST_PERSON_LEGS_DEAD_ZONE from it, then turns after it until within
+FIRST_PERSON_LEGS_SETTLED; moving (a throttle of more than
+FIRST_PERSON_LEGS_MOVING), it walks the unit's walk (forward, backward, left
+or right of its heading) nearest the way it moves, keeping the one it walks
+until the way is more than FIRST_PERSON_LEGS_WALK_KEEP past halfway to
+another, and turns so that the walk goes the way it moves. It turns as a
+spring critically damped, of FIRST_PERSON_LEGS_TURN_RATE (its natural
+frequency: nine tenths of the way in about a quarter of a second, the turn
+starting and ending smoothly, the same at any frame rate), never more than
+FIRST_PERSON_LEGS_TWIST_MOST from the aim. A walk of its own
+(first_person_legs_moving_pose) comes in and goes in FIRST_PERSON_LEGS_SWAP_
+SECONDS, eased in and out */
+#define FIRST_PERSON_LEGS_DEAD_ZONE 1.0471976f
+#define FIRST_PERSON_LEGS_SETTLED 0.05f
+#define FIRST_PERSON_LEGS_MOVING 0.1f
+#define FIRST_PERSON_LEGS_WALK_KEEP 0.17453293f
+#define FIRST_PERSON_LEGS_TURN_RATE 15.0f
+#define FIRST_PERSON_LEGS_TWIST_MOST 1.5707963f
+#define FIRST_PERSON_LEGS_SWAP_SECONDS 0.2f
 
 #ifdef HALO_VR
 /* the VR mode's body's upper body leant back from its eyes
@@ -209,18 +247,42 @@ static struct
 #endif
 
 static real_matrix4x3 first_person_legs_matrices[FIRST_PERSON_LEGS_MAXIMUM_NODES];
-static boolean first_person_legs_enabled(
-	void)
+/* the local player whose unit it is (NONE: no local player's) */
+static short first_person_legs_local_player(
+	long object_index)
 {
-	static unsigned long changes = (unsigned long)-1;
-	static boolean enabled = FALSE;
+	short local_player_index;
 
-	if (changes != config_changes())
+	for (local_player_index = 0; local_player_index < MAXIMUM_LOCAL_PLAYERS; local_player_index++)
 	{
-		changes = config_changes();
-		enabled = config_boolean("display.first_person_legs") != 0;
+		long player_index = local_player_get_player_index(local_player_index);
+
+		if (player_index != NONE && player_get(player_index)->unit_index == object_index)
+			return local_player_index;
 	}
-	return enabled;
+	return NONE;
+}
+
+/* display.first_person_legs, the unit's local player's own (their
+profile's: player_settings.c) */
+static boolean first_person_legs_enabled(
+	long object_index)
+{
+	static struct
+	{
+		unsigned long changes;
+		boolean read, enabled;
+	} players[PLAYER_SETTINGS_SLOTS];
+	short local_player_index = first_person_legs_local_player(object_index);
+	short slot = PLAYER_SETTINGS_SLOT(local_player_index);
+
+	if (!players[slot].read || players[slot].changes != config_changes())
+	{
+		players[slot].read = TRUE;
+		players[slot].changes = config_changes();
+		players[slot].enabled = config_player_boolean(local_player_index, "display.first_person_legs") != 0;
+	}
+	return players[slot].enabled;
 }
 
 /* the player's own unit, seen from inside it: its legs drawn (on foot,
@@ -231,7 +293,7 @@ boolean first_person_legs_wanted(
 {
 	struct object_datum *object = object_try_and_get(object_index);
 
-	if (!first_person_legs_enabled() || !object || object->object.type != _object_type_biped ||
+	if (!first_person_legs_enabled(object_index) || !object || object->object.type != _object_type_biped ||
 		TEST_FLAG(object->object.damage_flags, _object_dead_bit) ||
 		TEST_FLAG(object->object.flags, _object_invisible_bit))
 	{
@@ -1173,15 +1235,430 @@ static boolean first_person_legs_model(
 	return *model && *count > 0 && *count <= FIRST_PERSON_LEGS_MAXIMUM_NODES && (*model)->nodes.count >= *count;
 }
 
+/* ---------- the lower body's heading (the flat screen's) */
+
+/* The game turns the whole body: standing, it faces the aim only once the aim
+has turned far enough from it, and moving it faces the aim, its legs walking
+forward, backward or sideways from it. Drawn under the view, turned with it
+(render_interpolation_view_body), the legs swung with every turn of the view,
+their feet sliding over the ground, and walking at an angle they faced the aim
+and stepped forward or sideways (#772). Drawn here, the lower body has a
+heading of its own, the local player's own and only on their screen: nothing
+of the unit, the network or the simulation changes. Standing, it stays planted
+until the aim is FIRST_PERSON_LEGS_DEAD_ZONE from it, then turns after it.
+Moving, it turns toward the way it moves: walking at an angle, it faces the
+way it goes and walks forward or backward (never facing behind the aim), as
+far as halfway to a sideways walk, which goes the way it goes square to the
+aim; where the game plays another walk than the one it walks, it is drawn
+walking its own (first_person_legs_moving_pose). Each walk goes the way its
+heading and the body move, so its feet stay where they step (turned 60
+degrees toward a sideways way and walking forward, the feet slid sideways a
+third of the body's speed). Turned by each frame's time, it
+moves as smoothly at any frame rate and number of ticks a second. */
+struct first_person_legs_lower
+{
+	/* NONE: none */
+	long unit_index;
+	/* the game's time of the frame it was turned for (seconds) */
+	real time;
+	/* its heading (radians, in the world), and how fast it turns (radians a
+	second) */
+	real yaw;
+	real turning;
+	/* standing: turning after the aim */
+	boolean catching;
+	/* moving: the walk it walks (the unit's states' order from
+	_unit_state_move_front: forward, backward, left, right), NONE standing */
+	short walk;
+	/* how far the walk of its own has come in (0 to 1: drawn eased, swap's),
+	and that walk's pose (the model's frame: first_person_legs_moving_pose),
+	the last one made */
+	real swapping;
+	real swap;
+	boolean swap_posed;
+	real_matrix4x3 swap_pose[FIRST_PERSON_LEGS_MAXIMUM_NODES];
+};
+
+/* an angle (radians) between -pi and pi */
+static real first_person_legs_angle(
+	real angle)
+{
+	while (angle > _pi)
+		angle -= 2.0f * _pi;
+	while (angle <= -_pi)
+		angle += 2.0f * _pi;
+	return angle;
+}
+
+/* the lower body's heading turned over seconds, for the aim's heading
+(radians) and the way the player moves (the unit's throttle: forward and to
+the left of the aim), as the notes above say */
+static void first_person_legs_lower_turn(
+	struct first_person_legs_lower *lower,
+	real aim,
+	real throttle_forward,
+	real throttle_left,
+	real seconds)
+{
+	real off = first_person_legs_angle(lower->yaw - aim);
+	real target = off;
+
+	if (throttle_forward * throttle_forward + throttle_left * throttle_left >
+		FIRST_PERSON_LEGS_MOVING * FIRST_PERSON_LEGS_MOVING)
+	{
+		/* (each walk's way from the heading: forward, backward, left, right) */
+		static real const walks[4] = { 0.0f, _pi, 0.5f * _pi, -0.5f * _pi };
+		real way = (real)atan2(throttle_left, throttle_forward);
+		short walk;
+
+		lower->catching = FALSE;
+		if (lower->walk < 0 || lower->walk >= 4 ||
+			(real)fabs(first_person_legs_angle(way - walks[lower->walk])) > 0.25f * _pi + FIRST_PERSON_LEGS_WALK_KEEP)
+		{
+			/* (the nearest; halfway, forward or backward, as the game) */
+			for (lower->walk = 0, walk = 1; walk < 4; walk++)
+			{
+				real by = (real)fabs(first_person_legs_angle(way - walks[walk]));
+				real best = (real)fabs(first_person_legs_angle(way - walks[lower->walk]));
+
+				if (by < best - (walk >= 2 ? 1e-4f : 0.0f))
+					lower->walk = walk;
+			}
+		}
+		target = first_person_legs_angle(way - walks[lower->walk]);
+	}
+	else
+	{
+		lower->walk = NONE;
+		if ((real)fabs(off) > FIRST_PERSON_LEGS_DEAD_ZONE)
+			lower->catching = TRUE;
+		if (lower->catching)
+			target = 0.0f;
+	}
+	if (target == off)
+	{
+		/* (planted, where it stands) */
+		lower->turning = 0.0f;
+		return;
+	}
+	{
+		/* (x(t) = (x + (v + w x) t) e^-wt, v(t) = (v - w (v + w x) t) e^-wt) */
+		real w = FIRST_PERSON_LEGS_TURN_RATE, x = off - target, v = lower->turning;
+		real decay = (real)exp(-w * seconds);
+
+		off = target + (x + (v + w * x) * seconds) * decay;
+		lower->turning = (v - w * (v + w * x) * seconds) * decay;
+	}
+	if (lower->catching && (real)fabs(off) < FIRST_PERSON_LEGS_SETTLED)
+	{
+		lower->catching = FALSE;
+		lower->turning = 0.0f;
+	}
+	off = PIN(off, -FIRST_PERSON_LEGS_TWIST_MOST, FIRST_PERSON_LEGS_TWIST_MOST);
+	lower->yaw = first_person_legs_angle(aim + off);
+}
+
+/* the walk the lower body walks (walk: the unit's states' order from
+_unit_state_move_front), where the game plays another: the unit's walk, as
+the game would pose it now (the same frame of it, as far through
+it as the game's own walk is, between the ticks; blended from where the game
+began its walk as the game blends it), in the model's frame (its origin at
+the unit's, facing forward), into pose. FALSE: none (the game plays that walk,
+or no walk, or the graph has none) */
+static boolean first_person_legs_moving_pose(
+	long unit_index,
+	struct model const *model,
+	long count,
+	short walk,
+	real_matrix4x3 *pose)
+{
+	static real_orientation drawn[FIRST_PERSON_LEGS_MAXIMUM_NODES], next[FIRST_PERSON_LEGS_MAXIMUM_NODES];
+	struct biped_datum *biped = biped_try_and_get(unit_index);
+	struct animation_graph *graph;
+	struct animation_graph_unit_seat *seat;
+	struct animation_graph_weapon_class *weapon_class;
+	struct animation const *playing, *walking;
+	short state, base, walk_index, next_frame, node;
+	real behind = render_interpolation_ticks_behind(), phase, frame, part;
+
+	if (!biped || biped->object.animation.animation_graph_index == NONE)
+		return FALSE;
+	state = biped->unit.animation.state;
+	if (state >= _unit_state_move_front && state <= _unit_state_move_right)
+		base = _unit_state_move_front;
+	else if (state >= _unit_state_stunned_move_front && state <= _unit_state_stunned_move_right)
+		base = _unit_state_stunned_move_front;
+	else
+		return FALSE;
+	if (walk < 0 || walk >= 4 || state == base + walk)
+		return FALSE;
+
+	/* (the walk, as unit_animation_set_state finds it: its seat's, its
+	weapon's class's) */
+	graph = animation_graph_definition_get(biped->object.animation.animation_graph_index);
+	if (!graph || !VALID_INDEX(biped->unit.animation.seat_index, graph->unit_seats.count))
+		return FALSE;
+	seat = TAG_BLOCK_GET_ELEMENT(&graph->unit_seats, biped->unit.animation.seat_index, struct animation_graph_unit_seat);
+	if (!VALID_INDEX(biped->unit.animation.weapon_index, seat->weapon_classes.count))
+		return FALSE;
+	weapon_class = TAG_BLOCK_GET_ELEMENT(&seat->weapon_classes, biped->unit.animation.weapon_index,
+		struct animation_graph_weapon_class);
+	walk_index = (short)((base == _unit_state_move_front ? _unit_weapon_class_animation_moving_front :
+		_unit_weapon_class_animation_moving_wounded_front) + walk);
+	if (!VALID_INDEX(walk_index, weapon_class->animations.count))
+		return FALSE;
+	walk_index = animation_graph_animation_index_get(&weapon_class->animations)[walk_index].animation_index;
+	if (!VALID_INDEX(walk_index, graph->animations.count) ||
+		!VALID_INDEX(biped->object.animation.state.index, graph->animations.count))
+	{
+		return FALSE;
+	}
+	playing = TAG_BLOCK_GET_ELEMENT(&graph->animations, biped->object.animation.state.index, struct animation);
+	walking = TAG_BLOCK_GET_ELEMENT(&graph->animations, walk_index, struct animation);
+	if (playing->frame_count <= 0 || walking->frame_count <= 0 || walking->node_count != count ||
+		model->nodes.count != count || graph->nodes.count != count)
+	{
+		return FALSE;
+	}
+
+	/* (as far through it as the game's walk is through its own, drawn a
+	tick behind as the body is: between its frame and the one after) */
+	phase = ((real)biped->object.animation.state.frame_index - behind) / (real)playing->frame_count;
+	phase -= (real)floor(phase);
+	frame = phase * (real)walking->frame_count;
+	part = frame - (real)floor(frame);
+	next_frame = (short)PIN((long)frame, 0, walking->frame_count - 1);
+	animation_get_node_orientations(model, walking, next_frame, drawn);
+	animation_get_node_orientations(model, walking, (short)((next_frame + 1) % walking->frame_count), next);
+	for (node = 0; node < count; node++)
+	{
+		quaternions_interpolate_and_normalize(&drawn[node].rotation, &next[node].rotation, part, &drawn[node].rotation);
+		drawn[node].translation.x += (next[node].translation.x - drawn[node].translation.x) * part;
+		drawn[node].translation.y += (next[node].translation.y - drawn[node].translation.y) * part;
+		drawn[node].translation.z += (next[node].translation.z - drawn[node].translation.z) * part;
+		drawn[node].scale += (next[node].scale - drawn[node].scale) * part;
+	}
+	/* (blended from the pose the game began its walk from, as far as the
+	game has blended, between the ticks) */
+	if (biped->object.animation.interpolation_frame_count > 0)
+	{
+		real_orientation const *original = (real_orientation const *)object_header_block_get(unit_index,
+			&biped->object.original_node_orientations);
+		real blend = ((real)biped->object.animation.interpolation_frame_index + 1.0f - behind) /
+			(real)biped->object.animation.interpolation_frame_count;
+
+		blend = PIN(blend, 0.0f, 1.0f);
+		for (node = 0; original && node < count; node++)
+		{
+			quaternions_interpolate_and_normalize(&original[node].rotation, &drawn[node].rotation, blend,
+				&drawn[node].rotation);
+			drawn[node].translation.x = original[node].translation.x + (drawn[node].translation.x - original[node].translation.x) * blend;
+			drawn[node].translation.y = original[node].translation.y + (drawn[node].translation.y - original[node].translation.y) * blend;
+			drawn[node].translation.z = original[node].translation.z + (drawn[node].translation.z - original[node].translation.z) * blend;
+			drawn[node].scale = original[node].scale + (drawn[node].scale - original[node].scale) * blend;
+		}
+	}
+	if (biped->object.scale > 0.0f)
+	{
+		drawn[0].scale *= biped->object.scale;
+		drawn[0].translation.x *= biped->object.scale;
+		drawn[0].translation.y *= biped->object.scale;
+		drawn[0].translation.z *= biped->object.scale;
+	}
+	animation_graph_node_matrices_from_orientations(biped->object.animation.animation_graph_index, pose, drawn,
+		global_origin3d, global_forward3d, global_up3d);
+	return TRUE;
+}
+
+/* the lower body of the unit (of a local player, seen in the first person,
+facing aim: radians), turned for this frame: once a frame, however many times
+it is drawn (its shadow, its legs), by the game's time, which stops while the
+game is paused */
+static struct first_person_legs_lower *first_person_legs_lower_get(
+	long unit_index,
+	struct model const *model,
+	long count,
+	real aim)
+{
+	static struct first_person_legs_lower lowers[MAXIMUM_LOCAL_PLAYERS];
+	static boolean begun = FALSE;
+	struct unit_datum *unit = unit_get(unit_index);
+	struct first_person_legs_lower *lower = &lowers[0];
+	real now = render_interpolation_game_time_sec(game_time_get()), seconds;
+	short index;
+
+	if (!begun)
+	{
+		for (index = 0; index < MAXIMUM_LOCAL_PLAYERS; index++)
+			lowers[index].unit_index = NONE;
+		begun = TRUE;
+	}
+	/* (its own, or the one turned longest ago) */
+	for (index = 0; index < MAXIMUM_LOCAL_PLAYERS; index++)
+	{
+		if (lowers[index].unit_index == unit_index)
+		{
+			lower = &lowers[index];
+			break;
+		}
+		if (lowers[index].unit_index == NONE || lowers[index].time < lower->time)
+			lower = &lowers[index];
+	}
+	seconds = now - lower->time;
+	if (lower->unit_index != unit_index || seconds < 0.0f || seconds > 0.5f)
+	{
+		/* (a new unit, a new game, or a long pause: facing the aim) */
+		lower->unit_index = unit_index;
+		lower->time = now;
+		lower->yaw = aim;
+		lower->turning = 0.0f;
+		lower->catching = FALSE;
+		lower->walk = NONE;
+		lower->swapping = 0.0f;
+		lower->swap = 0.0f;
+		lower->swap_posed = FALSE;
+		seconds = 0.0f;
+	}
+	else if (seconds == 0.0f)
+	{
+		return lower;
+	}
+	lower->time = now;
+	first_person_legs_lower_turn(lower, aim, unit->unit.throttle.i, unit->unit.throttle.j, seconds);
+	{
+		boolean posed = first_person_legs_moving_pose(unit_index, model, count, lower->walk, lower->swap_pose);
+		real wanted = posed ? 1.0f : 0.0f;
+
+		if (posed)
+			lower->swap_posed = TRUE;
+		if (lower->swapping < wanted)
+			lower->swapping = MIN(lower->swapping + seconds / FIRST_PERSON_LEGS_SWAP_SECONDS, wanted);
+		else
+			lower->swapping = MAX(lower->swapping - seconds / FIRST_PERSON_LEGS_SWAP_SECONDS, wanted);
+		if (!lower->swap_posed)
+			lower->swapping = 0.0f;
+		lower->swap = lower->swapping * lower->swapping * (3.0f - 2.0f * lower->swapping);
+	}
+	return lower;
+}
+
+/* a node's matrix moved toward another by part (0 to 1), its axes kept at
+right angles */
+static void first_person_legs_blend(
+	real_matrix4x3 *matrix,
+	real_matrix4x3 const *toward,
+	real part)
+{
+	real along;
+
+	matrix->scale += (toward->scale - matrix->scale) * part;
+	matrix->position.x += (toward->position.x - matrix->position.x) * part;
+	matrix->position.y += (toward->position.y - matrix->position.y) * part;
+	matrix->position.z += (toward->position.z - matrix->position.z) * part;
+	matrix->forward.i += (toward->forward.i - matrix->forward.i) * part;
+	matrix->forward.j += (toward->forward.j - matrix->forward.j) * part;
+	matrix->forward.k += (toward->forward.k - matrix->forward.k) * part;
+	matrix->left.i += (toward->left.i - matrix->left.i) * part;
+	matrix->left.j += (toward->left.j - matrix->left.j) * part;
+	matrix->left.k += (toward->left.k - matrix->left.k) * part;
+	if (normalize3d(&matrix->forward) <= 0.0f)
+	{
+		*matrix = *toward;
+		return;
+	}
+	along = dot_product3d(&matrix->forward, &matrix->left);
+	matrix->left.i -= matrix->forward.i * along;
+	matrix->left.j -= matrix->forward.j * along;
+	matrix->left.k -= matrix->forward.k * along;
+	if (normalize3d(&matrix->left) <= 0.0f)
+	{
+		*matrix = *toward;
+		return;
+	}
+	cross_product3d(&matrix->forward, &matrix->left, &matrix->up);
+}
+
+/* a node's matrix turned about the vertical through pivot (by the angle of
+cosine c, sine s) */
+static void first_person_legs_yaw(
+	real_matrix4x3 *matrix,
+	real_point3d const *pivot,
+	real c,
+	real s)
+{
+	real_vector3d *axes[3];
+	real x = matrix->position.x - pivot->x, y = matrix->position.y - pivot->y, i;
+	short axis;
+
+	axes[0] = &matrix->forward;
+	axes[1] = &matrix->left;
+	axes[2] = &matrix->up;
+	for (axis = 0; axis < 3; axis++)
+	{
+		i = axes[axis]->i;
+		axes[axis]->i = c * i - s * axes[axis]->j;
+		axes[axis]->j = s * i + c * axes[axis]->j;
+	}
+	matrix->position.x = pivot->x + c * x - s * y;
+	matrix->position.y = pivot->y + s * x + c * y;
+}
+
+/* where the eye is over, in the model's frame (forward, left: its origin, the
+unit's, is under the game's eye): before the hips' joint at rest (the root's,
+pelvis), as far forward as the front of the hips and belly at rest (the
+surface on the pelvis and belly, belly: the model's own, object_mesh), as a
+person's eyes are over the front of their belly. The Master Chief's armour
+reaches about 20 cm before his hips' joint: over the joint, looking down showed
+the hips and belly before the eye, filling the view under it; set back farther
+(37 cm, before #772's second report), the thighs reached forward under the
+eye from behind it. Worked out once for each model */
+static void first_person_legs_front(
+	struct object_datum const *object,
+	struct model const *model,
+	long count,
+	short pelvis,
+	short belly,
+	real_point3d *front)
+{
+	static long model_index = NONE;
+	static real_point3d found;
+	struct object_definition *definition = object_definition_get(object->definition_index);
+	struct model_node const *root = TAG_BLOCK_GET_ELEMENT(&model->nodes, pelvis, struct model_node);
+
+	if (definition->object.model.index != model_index)
+	{
+		struct object_mesh const *mesh = object_mesh_get_model(definition->object.model.index);
+		long index;
+
+		model_index = definition->object.model.index;
+		found.x = root->parent_node_index == NONE ? root->default_translation.x : 0.f;
+		found.y = root->parent_node_index == NONE ? root->default_translation.y : 0.f;
+		found.z = 0.f;
+		for (index = 0; mesh && index < mesh->vertex_count; index++)
+		{
+			struct object_mesh_vertex const *vertex = &mesh->vertices[index];
+			short node = vertex->weight >= 16384 ? vertex->nodes[0] : vertex->nodes[1];
+
+			if (node < count && (node == pelvis || node == belly) && vertex->position.x > found.x)
+				found.x = vertex->position.x;
+		}
+	}
+	*front = found;
+}
+
 /* the body's pose placed for the flat screen's eye, into placed: the body's
 own as it is drawn now, turned to the view drawn's heading and moved to its
-eye (render_interpolation_view_body), set back FIRST_PERSON_LEGS_BACK along
-that heading, and lowered where its head is less than FIRST_PERSON_LEGS_HEAD_BELOW
-below the eye (first_person_legs.c's notes at the top); *chest: the neck's
-parent, the Master Chief's "bip01 spine1". The same for any
-view, pitch and frame: nothing is weighed against the view but the eye's
-height. FALSE: none (in the VR mode's eye pass, or a body without named
-hips, thighs and neck) */
+eye (render_interpolation_view_body); its lower body turned from there to its
+own heading (first_person_legs_lower_get), about the eye, the walk of its own
+blended in as far as it is drawn; moved along that heading so that the eye is
+over the front of its hips and belly at rest (first_person_legs_front: the
+game's eye is over the unit's origin); and lowered where its head is less than
+FIRST_PERSON_LEGS_HEAD_BELOW below the eye (first_person_legs.c's notes at the
+top). *chest: the neck's parent, the Master Chief's "bip01 spine1"; *belly:
+the chest's parent, below it ("bip01 spine"), or the chest. The same for any
+view and pitch: nothing is weighed against the view but the eye's height and
+the aim's heading. FALSE: none (in the VR mode's eye pass, or a body without
+named hips, thighs and neck) */
 static boolean first_person_legs_place(
 	long object_index,
 	struct object_datum const *object,
@@ -1189,7 +1666,8 @@ static boolean first_person_legs_place(
 	long count,
 	real_matrix4x3 const *nodes,
 	real_matrix4x3 *placed,
-	short *chest)
+	short *chest,
+	short *belly)
 {
 	short pelvis = NONE, neck = NONE, head = NONE, thighs = 0;
 	short index;
@@ -1222,6 +1700,9 @@ static boolean first_person_legs_place(
 	*chest = TAG_BLOCK_GET_ELEMENT(&model->nodes, neck, struct model_node)->parent_node_index;
 	if (*chest == NONE || *chest == pelvis)
 		*chest = neck;
+	*belly = TAG_BLOCK_GET_ELEMENT(&model->nodes, *chest, struct model_node)->parent_node_index;
+	if (*belly == NONE || *belly == pelvis)
+		*belly = *chest;
 
 	/* (the body, between the ticks, turned to the view drawn's heading and
 	moved to its eye: that is the newest step's, a tick's motion on, aimed in
@@ -1236,14 +1717,60 @@ static boolean first_person_legs_place(
 		else
 			placed[index] = nodes[index];
 	}
-	/* (set back along its heading, level: the view drawn's) */
 	forward.k = 0.f;
-	if (normalize3d(&forward) > 0.f)
+	if (normalize3d(&forward) <= 0.f)
+		forward = *global_forward3d;
+	/* (its lower body turned from the aim's heading to its own, about the
+	eye, with the walk of its own blended in: placed as the game's pose is, at
+	the unit's origin under the eye, facing the aim) */
+	if (moved)
 	{
+		real_point3d const *eye = &global_window_parameters.camera.position;
+		real aim = (real)atan2(forward.j, forward.i);
+		struct first_person_legs_lower const *lower = first_person_legs_lower_get(object_index, model, count, aim);
+		real c, s;
+
+		if (lower->swap > 0.f)
+		{
+			struct biped_datum *biped = biped_try_and_get(object_index);
+			struct biped_definition const *definition = biped ? biped_definition_get(biped->definition_index) : NULL;
+			real_matrix4x3 origin, swapped;
+
+			if (definition)
+			{
+				origin.scale = 1.f;
+				origin.forward = forward;
+				origin.left.i = -forward.j;
+				origin.left.j = forward.i;
+				origin.left.k = 0.f;
+				origin.up = *global_up3d;
+				origin.position = *eye;
+				origin.position.z -= (1.f - biped->biped.crouch) * definition->biped.standing_camera_height +
+					biped->biped.crouch * definition->biped.crouching_camera_height;
+				for (index = 0; index < count; index++)
+				{
+					matrix4x3_multiply(&origin, &lower->swap_pose[index], &swapped);
+					first_person_legs_blend(&placed[index], &swapped, lower->swap);
+				}
+			}
+		}
+		c = (real)cos(lower->yaw - aim);
+		s = (real)sin(lower->yaw - aim);
+		for (index = 0; index < count; index++)
+			first_person_legs_yaw(&placed[index], eye, c, s);
+		forward.i = (real)cos(lower->yaw);
+		forward.j = (real)sin(lower->yaw);
+	}
+	/* (the eye over the front of the hips and belly at rest, along that
+	heading) */
+	{
+		real_point3d front;
+
+		first_person_legs_front(object, model, count, pelvis, *belly, &front);
 		for (index = 0; index < count; index++)
 		{
-			placed[index].position.x -= forward.i * FIRST_PERSON_LEGS_BACK;
-			placed[index].position.y -= forward.j * FIRST_PERSON_LEGS_BACK;
+			placed[index].position.x -= forward.i * front.x - forward.j * front.y;
+			placed[index].position.y -= forward.j * front.x + forward.i * front.y;
 		}
 	}
 	/* (lowered where the eye is lower in it than its head: a crouch
@@ -1260,8 +1787,11 @@ static boolean first_person_legs_place(
 /* the pose to draw the body with: in the VR mode, the VR mode's
 (first_person_legs_vr_body, first_person_legs_vr_seated); on the flat
 screen, the body placed for the eye (first_person_legs_place), its chest and
-all above it folded into the chest's joint, closing it at its belly. NULL:
-none (a body without named legs and neck) */
+all above it folded into the chest's joint, and its belly, closed so, flattened
+onto the top of its hips, a lid over them (FIRST_PERSON_LEGS_LID): looking
+straight down from over the hips, the belly as a person sees theirs, not
+into the hips, nor a dark cone of it toward the eye. NULL: none (a body
+without named legs and neck) */
 real_matrix4x3 const *first_person_legs_node_matrices(
 	long object_index,
 	real_matrix4x3 const *nodes)
@@ -1269,8 +1799,9 @@ real_matrix4x3 const *first_person_legs_node_matrices(
 	struct object_datum *object = object_try_and_get(object_index);
 	struct model const *model;
 	long count;
-	short chest;
+	short chest, belly;
 	short index;
+	real lid;
 
 	if (!object || !nodes || !first_person_legs_model(object, &model, &count))
 		return NULL;
@@ -1285,7 +1816,7 @@ real_matrix4x3 const *first_person_legs_node_matrices(
 			return body;
 	}
 #endif
-	if (!first_person_legs_place(object_index, object, model, count, nodes, first_person_legs_matrices, &chest))
+	if (!first_person_legs_place(object_index, object, model, count, nodes, first_person_legs_matrices, &chest, &belly))
 		return NULL;
 	for (index = 0; index < count; index++)
 	{
@@ -1293,6 +1824,18 @@ real_matrix4x3 const *first_person_legs_node_matrices(
 		{
 			first_person_legs_matrices[index].position = first_person_legs_matrices[chest].position;
 			first_person_legs_matrices[index].scale = FIRST_PERSON_LEGS_FOLDED;
+		}
+	}
+	lid = first_person_legs_matrices[belly].position.z;
+	for (index = 0; index < count; index++)
+	{
+		if (first_person_legs_below(model, index, belly))
+		{
+			first_person_legs_matrices[index].forward.k *= FIRST_PERSON_LEGS_LID;
+			first_person_legs_matrices[index].left.k *= FIRST_PERSON_LEGS_LID;
+			first_person_legs_matrices[index].up.k *= FIRST_PERSON_LEGS_LID;
+			first_person_legs_matrices[index].position.z = lid +
+				(first_person_legs_matrices[index].position.z - lid) * FIRST_PERSON_LEGS_LID;
 		}
 	}
 	return first_person_legs_matrices;
@@ -1310,11 +1853,11 @@ real_matrix4x3 const *first_person_legs_shadow_node_matrices(
 	struct object_datum *object = object_try_and_get(object_index);
 	struct model const *model;
 	long count;
-	short chest;
+	short chest, belly;
 
 	if (!object || !nodes || object->object.parent_object_index != NONE ||
 		!first_person_legs_model(object, &model, &count) ||
-		!first_person_legs_place(object_index, object, model, count, nodes, shadow, &chest))
+		!first_person_legs_place(object_index, object, model, count, nodes, shadow, &chest, &belly))
 	{
 		return NULL;
 	}

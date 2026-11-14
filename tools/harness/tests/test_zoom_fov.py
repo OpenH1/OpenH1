@@ -28,7 +28,7 @@ def test_zoom():
     code = read("port/linux/game/view_fov.c")
     assert "adjusted_tangent = zoom_fov_tangent(native_tangent, unzoomed_tangent, requested_tangent, scoped_tangent,\n" \
         "\t\tscale_scoped);" in code
-    assert 'config_boolean("display.scale_scoped_fov")' in code
+    assert 'config_player_boolean(local_player_index, "display.scale_scoped_fov")' in code
     assert '{ "display.scale_scoped_fov", _config_boolean, "false", "HALO_SCALE_SCOPED_FOV",' in \
         read("port/linux/src/port_config.c")
 

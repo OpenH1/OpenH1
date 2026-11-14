@@ -71,7 +71,7 @@ SPARKLE_URL = (f"https://github.com/sparkle-project/Sparkle/releases/download/{S
 # and the public half of the key its disk images are signed with (EdDSA:
 # tools/setup_sparkle_key.sh), from the SPARKLE_PUBLIC_KEY environment
 # variable (CI's repository variable); an app without both never looks
-SPARKLE_FEED = "https://github.com/OpenH1/OpenH1/releases/latest/download/appcast.xml"
+SPARKLE_FEED = "https://github.com/OpenH1/goath1/releases/latest/download/appcast.xml"
 
 # the guest's code paths beside the architecture's: the Mac's (the base
 # register is added by generate_guest_image); Apple's clang otherwise notes
@@ -611,5 +611,7 @@ def _generate_macos_app(n: Writer, sln: Any, built: Dict[str, Any]) -> None:
     replay = BUILD / "halo_replay"
     n.build(outputs=replay, rule="macos_host_link", inputs=[replay_obj, *replay_host, *metal_objects, *shared_objects],
             implicit=[libsdl])
-    n.build(outputs="macos_replay", rule="phony", inputs=[replay, staged_sdl])
+    # (and the shaders' library it plays with, as the app does: halo_replay copies the one beside it into the app
+    # it runs, and one left from an older build drew the high-res text's distance fields as colours)
+    n.build(outputs="macos_replay", rule="phony", inputs=[replay, staged_sdl, library])
     n.newline()

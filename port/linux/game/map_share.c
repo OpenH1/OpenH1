@@ -84,6 +84,7 @@ network_server_manager.c's, cseries_windows.c's */
 int config_boolean(const char *name);
 long config_integer(const char *name);
 const char *config_string(const char *name);
+unsigned long config_changes(void);
 boolean network_distributed_client_send_reliably(void *message, word size);
 boolean network_distributed_server_send_to_machine_reliably(long machine_index, void *message, word size);
 unsigned long network_game_server_machine_address(long machine_index);
@@ -667,9 +668,19 @@ static unsigned long map_share_host_address(
 static long upload_limit(
 	void)
 {
+	/* (read again as the settings change: config_changes) */
+	static unsigned long read_at = (unsigned long)-1;
+	static long host_kilobytes, seed_kilobytes;
 	boolean host = map_share_host();
-	long kilobytes = host ? config_integer("network.map_share_upload") : config_integer("network.map_seed_upload");
+	long kilobytes;
 
+	if (read_at != config_changes())
+	{
+		read_at = config_changes();
+		host_kilobytes = config_integer("network.map_share_upload");
+		seed_kilobytes = config_integer("network.map_seed_upload");
+	}
+	kilobytes = host ? host_kilobytes : seed_kilobytes;
 	return PIN(kilobytes, MINIMUM_UPLOAD_KILOBYTES, host ? MAXIMUM_HOST_UPLOAD_KILOBYTES : MAXIMUM_SEED_UPLOAD_KILOBYTES) *
 		1024;
 }

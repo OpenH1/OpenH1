@@ -1177,7 +1177,7 @@ boolean cache_files_map_present(
 		if (custom_edition_map_file_present(name))
 		{
 			snprintf(message, sizeof(message),
-				"The host's map %.64s needs a different version of OpenH1. Update both games to the latest "
+				"The host's map %.64s needs a different version of GOAT H1. Update both games to the latest "
 				"version.", name);
 		}
 		else

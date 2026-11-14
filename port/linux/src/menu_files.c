@@ -427,11 +427,41 @@ apps, or debug.touch_menus): the menus' "touch" platform, the others'
 #define MENU_TOUCH config_boolean("debug.touch_menus")
 #endif
 
+/* whether a platform of the menus' is this one (1, 0; -1 not a platform's
+name): "vr" the VR build, playing in the headset; "hdr" a renderer that
+draws display.hdr: xgpu_backend.h; "touch" the touchscreen's builds,
+"pointer" the rest: MENU_TOUCH; "computer" the desktop's builds but iOS's,
+whose phone has no window to size nor mouse */
+int halo_menus_platform(const char *name, unsigned long length)
+{
+	if ((length != 7 || strncmp(name, "desktop", 7)) && (length != 7 || strncmp(name, "android", 7)) &&
+		(length != 2 || strncmp(name, "vr", 2)) && (length != 3 || strncmp(name, "hdr", 3)) &&
+		(length != 5 || strncmp(name, "touch", 5)) && (length != 7 || strncmp(name, "pointer", 7)) &&
+		(length != 8 || strncmp(name, "computer", 8)))
+	{
+		return -1;
+	}
+#if !defined(HALO_ANDROID) && !defined(HALO_IOS)
+	if (length == 8 && !strncmp(name, "computer", 8))
+		return 1;
+#endif
+	if (length == 5 && !strncmp(name, "touch", 5) && MENU_TOUCH)
+		return 1;
+	if (length == 7 && !strncmp(name, "pointer", 7) && !MENU_TOUCH)
+		return 1;
+	if (length == 3 && !strncmp(name, "hdr", 3) && xgpu_backend_capabilities.hdr)
+		return 1;
+	if (length == strlen(MENU_PLATFORM) && !strncmp(name, MENU_PLATFORM, length))
+		return 1;
+#ifdef HALO_VR
+	if (length == 2 && !strncmp(name, "vr", 2) && halo_vr_running())
+		return 1;
+#endif
+	return 0;
+}
+
 /* whether the element is for this platform (its platform attribute: the
-platforms it is for, separated by spaces; "vr" the VR build, playing in the
-headset; "hdr" a renderer that draws display.hdr: xgpu_backend.h; "touch"
-the touchscreen's builds, "pointer" the rest: MENU_TOUCH; "computer" the
-desktop's builds but iOS's, whose phone has no window to size nor mouse) */
+platforms it is for, separated by spaces) */
 static int for_this_platform(struct reader *reader, const XML_Char **attributes)
 {
 	int index;
@@ -449,31 +479,16 @@ static int for_this_platform(struct reader *reader, const XML_Char **attributes)
 
 				if (length)
 				{
-					if ((length != 7 || strncmp(name, "desktop", 7)) && (length != 7 || strncmp(name, "android", 7)) &&
-						(length != 2 || strncmp(name, "vr", 2)) && (length != 3 || strncmp(name, "hdr", 3)) &&
-						(length != 5 || strncmp(name, "touch", 5)) && (length != 7 || strncmp(name, "pointer", 7)) &&
-						(length != 8 || strncmp(name, "computer", 8)))
+					int platform = halo_menus_platform(name, length);
+
+					if (platform < 0)
 					{
 						reader_error(reader, "platform=\"%s\" names one that is not desktop, android, vr, hdr, "
 							"touch, pointer or computer", attributes[index + 1]);
 						return 1;
 					}
-#if !defined(HALO_ANDROID) && !defined(HALO_IOS)
-					if (length == 8 && !strncmp(name, "computer", 8))
+					if (platform)
 						found = 1;
-#endif
-					if (length == 5 && !strncmp(name, "touch", 5) && MENU_TOUCH)
-						found = 1;
-					if (length == 7 && !strncmp(name, "pointer", 7) && !MENU_TOUCH)
-						found = 1;
-					if (length == 3 && !strncmp(name, "hdr", 3) && xgpu_backend_capabilities.hdr)
-						found = 1;
-					if (length == strlen(MENU_PLATFORM) && !strncmp(name, MENU_PLATFORM, length))
-						found = 1;
-#ifdef HALO_VR
-					if (length == 2 && !strncmp(name, "vr", 2) && halo_vr_running())
-						found = 1;
-#endif
 				}
 				name += length;
 				while (*name == ' ')
@@ -1025,7 +1040,12 @@ static void menus_files_read(void)
 	{
 		size_t length = strlen(files[index].path);
 
-		if (length > 4 && !strcmp(files[index].path + length - 4, ".xml"))
+		/* (but the menu engine's model, menu_model.c, and the hand-written
+		screens, menu_screens.c: their building blocks' widgets are read
+		here) */
+		if (length > 4 && !strcmp(files[index].path + length - 4, ".xml") &&
+			strncmp(files[index].path, HALO_MENU_MODEL_FOLDER, strlen(HALO_MENU_MODEL_FOLDER)) &&
+			(strncmp(files[index].path, "screens/", 8) || !strcmp(files[index].path, "screens/blocks.xml")))
 			read_file(&reader, &files[index]);
 	}
 	free(reader.last_child);
@@ -1070,6 +1090,18 @@ struct halo_menus const *halo_menus_load(void)
 	return menus_succeeded ? &menus : NULL;
 }
 
+/* a file gathered (halo_menus_load's): its path and data, FALSE past the
+last (the menu engine's model: menu_model.c) */
+int halo_menus_file_at(long index, char const **path, unsigned char const **data, unsigned long *size)
+{
+	if (index < 0 || index >= file_count)
+		return 0;
+	*path = files[index].path;
+	*data = files[index].data;
+	*size = files[index].size;
+	return 1;
+}
+
 /* the files read again by the next halo_menus_load (the menu studio's
 reload: port/linux/game/menu_studio.c, after the menus' tags are let go).
 What the last reading made is kept, not freed: the description points into
@@ -1086,6 +1118,7 @@ void halo_menus_reload(void)
 	memset(&menus, 0, sizeof(menus));
 	menus_succeeded = 0;
 	menus_read = 0;
+	halo_menus_model_forget();
 }
 
 /* the menu studio's notes file and pictures' folder (debug.menu_notes, else
@@ -1327,6 +1360,7 @@ void halo_menus_art_register(void const *texture, char const *png)
 	memset(&art[index], 0, sizeof(art[index]));
 	art[index].data = data;
 	art[index].png = strdup(png);
+	xgpu_texture_replacements_changed();
 }
 
 void halo_menus_art_forget(void)
@@ -1348,6 +1382,7 @@ void halo_menus_art_forget(void)
 	art_count = 0;
 	memset(art_lookup, 0, sizeof(art_lookup));
 	memset(art_lookup_data, 0, sizeof(art_lookup_data));
+	xgpu_texture_replacements_changed();
 }
 
 /* a decoding thread: each PNG queued in turn, until none is */

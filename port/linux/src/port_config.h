@@ -92,6 +92,43 @@ config_changes moves with a write */
 int config_viewmodel_weapon(const char *path, double values[CONFIG_WEAPON_VALUES]);
 int config_viewmodel_weapon_write(const char *path, const double values[CONFIG_WEAPON_VALUES]);
 
+/* each local player's own settings (port_config.c's table marks them
+_scope_player: the field of view, the first-person view's): a player
+profile's own values, in its folder's settings.toml, else config.toml's.
+config_player_profile says which profile's folder (a path of this machine;
+NULL or "": none) local player 0 to 3 plays with (port/linux/game/
+player_settings.c); config_player_boolean and the rest read a setting as
+that player sees it (config.toml's for a local player out of range, a
+setting that is the machine's, one its environment variable sets, or the
+menus' pictures' stock view). config_profile_text gives a profile's own
+value (0: it has none, so config.toml's is its), config_profile_write sets
+it, for now and in the file. config_changes moves with each */
+int config_per_player(const char *name);
+void config_player_profile(int local_player, const char *folder);
+int config_player_boolean(int local_player, const char *name);
+long config_player_integer(int local_player, const char *name);
+double config_player_real(int local_player, const char *name);
+/* never NULL */
+const char *config_player_string(int local_player, const char *name);
+int config_profile_text(const char *folder, const char *name, char *text, size_t size);
+int config_profile_write(const char *folder, const char *name, const char *value);
+/* whether local player 0 to 3's profile has a value of its own of the
+setting (not one its environment variable sets); and whether a setting's
+environment variable sets it for this run */
+int config_player_has(int local_player, const char *name);
+int config_pinned_by_environment(const char *name);
+/* whether a setting is each player's of the keyboard and mouse, which only
+player 1 plays with: player 1's profile's */
+int config_keyboard_setting(const char *name);
+/* each weapon's own offsets (config_viewmodel_weapon's, below) as a local
+player sees them: their profile's table of the weapon, else config.toml's;
+a profile's own (0: it has none), and set in it (its 0s kept, in place of
+config.toml's) */
+int config_player_viewmodel_weapon(int local_player, const char *path, double values[CONFIG_WEAPON_VALUES]);
+int config_profile_viewmodel_weapon(const char *folder, const char *path, double values[CONFIG_WEAPON_VALUES]);
+int config_profile_viewmodel_weapon_write(const char *folder, const char *path,
+	const double values[CONFIG_WEAPON_VALUES]);
+
 /* the settings whose names begin with prefix ("server.") read from
 config.toml again, but for those their environment variables set; 1 on
 success (a file that cannot be read leaves them as they were) */

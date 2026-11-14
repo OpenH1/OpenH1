@@ -476,6 +476,7 @@ struct xgpu_texture_description
 	BOOL hires;         /* a high-res HUD texture drawn in the texture's place (hud_hires.h) */
 	BOOL hires_coverage; /* ... whose green is its coverage (a meter's) */
 	BOOL hires_point_threshold; /* ... whose red holds discrete segment data */
+	BOOL hires_msdf;    /* the high-res text's distance fields (XGPU_ADDRESS_MSDF) */
 };
 
 /* (xbox_texture_decode.c) */

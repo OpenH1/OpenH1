@@ -774,8 +774,8 @@ masks and meters: xbox_textures.c).
 
 A stage may instead draw an image (XGPU_STREAM_SOURCE_IMAGE: a high-res
 replacement for the Xbox texture, xgpu_images.h): resource is its number,
-resource_format its pixels' kind (XGPU_IMAGE_*: RGBA, 4 bytes each, or a
-byte of a white pixel's coverage each), resource_size a serial that
+resource_format its pixels' kind (XGPU_IMAGE_*: RGBA, 4 bytes each),
+resource_size a serial that
 changes with its pixels (no two images have the same), data its first
 level's pixels, width by height, rows from the first; the host makes its
 levels (levels of them) from the first. */

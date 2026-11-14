@@ -91,6 +91,7 @@ jobs:
     outputs:
       build: ${{ steps.diff.outputs.build }}
       ios: ${{ steps.diff.outputs.ios }}
+      macos: ${{ steps.diff.outputs.macos }}
     steps:
       # (the history's commits and trees, without their files' contents,
       # and one file checked out: seconds)
@@ -106,18 +107,21 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           build=true
           ios=true
+          macos=true
           base=
           if [ "$EVENT" = push ]; then
-            if [ "$GITHUB_REF" = refs/heads/master ]; then
-              # (all zeros: master's first push)
+            if [ "$GITHUB_REF" = refs/heads/master ] || [ "$GITHUB_REF" = refs/heads/dev ]; then
+              # (all zeros: the branch's first push)
               if [ -n "${BEFORE//0/}" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
                 base="$BEFORE"
               fi
             else
-              base="$(git merge-base origin/master "$GITHUB_SHA" 2>/dev/null)" || base=
+              # (a branch is compared with dev, where pull requests merge)
+              base="$(git merge-base origin/dev "$GITHUB_SHA" 2>/dev/null)" || base=
             fi
           fi
           if [ -n "$base" ] && files="$(git -c core.quotePath=false diff --name-only --no-renames "$base" "$GITHUB_SHA")"; then
@@ -136,12 +140,27 @@ jobs:
                 -e '^\.github/' -e '[Tt]ouch' > /dev/null; then
               ios=false
             fi
+            # (a branch builds macOS only when it changes what the macOS
+            # app builds beyond the arm64_32 guest, which linux-arm64 and
+            # Android build: the hosts' and the presenters' code, the Apple
+            # and Metal files, the build's tools; or when its newest commit
+            # asks with [mac]. dev and master always build it, so a merge
+            # that breaks the app shows on dev's run)
+            if [ "$GITHUB_REF" != refs/heads/master ] && [ "$GITHUB_REF" != refs/heads/dev ] &&
+                ! printf '%s\n' "$HEAD_MESSAGE" | grep -F '[mac]' > /dev/null &&
+                ! printf '%s\n' "$files" | grep -E \
+                -e '^port/(ios|macos|third_party|linux/src|linux/host|linux/include|android/host)/' \
+                -e '^tools/(ios_|macos_|build_common|ci_build|embed_assets|render_manifest)' -e '^configure\.py$' \
+                -e '^\.github/' -e '\.(m|mm|metal)$' -e '[Mm]etal' -e 'xgpu' > /dev/null; then
+              macos=false
+            fi
           else
             echo "No base to compare with (event $EVENT): building"
           fi
-          echo "build: $build, ios: $ios"
+          echo "build: $build, ios: $ios, macos: $macos"
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "ios=$ios" >> "$GITHUB_OUTPUT"
+          echo "macos=$macos" >> "$GITHUB_OUTPUT"
 
   linux-arm64:
     needs: changes
@@ -551,7 +570,7 @@ jobs:
       - name: Test
         run: |
           PATH="$(python3 tools/guest_toolchain.py --cache "$CI_GUEST_LLVM_CACHE"):$PATH"
-          files="$(python3 tools/ci_test_shards.py ${{ matrix.shard }} 4 tools/test_host_units.py tools/test_host_pages.py tools/test_android_elf_alignment.py tools/test_guest_image_check.py tools/test_check_host_imports.py tools/test_host_syscall.py tools/test_guest_layout.py tools/test_linux_guest_build.py tools/test_build_errors.py tools/test_guest_toolchain.py tools/test_linux_port.py tools/test_join_page.py tools/test_linux_package.py tools/test_install_layout.py tools/test_android_asm_convert.py tools/test_guest_asm_cache.py tools/test_guest_branch_relax.py tools/test_host_watch_hash.py tools/test_touch_menu.py tools/harness tools/test_controller_remap.py tools/test_controller_remap_context.py tools/test_net_compare.py tools/test_loading_ring.py tools/test_preparation.py tools/test_progress_ownership.py tools/test_ci_test_shards.py tools/test_supersampling.py tools/test_android_resolution.py tools/test_screen_passes_samples.py tools/test_notes.py)"
+          files="$(python3 tools/ci_test_shards.py ${{ matrix.shard }} 4 tools/test_host_units.py tools/test_host_pages.py tools/test_android_elf_alignment.py tools/test_guest_image_check.py tools/test_check_host_imports.py tools/test_host_syscall.py tools/test_guest_layout.py tools/test_linux_guest_build.py tools/test_build_errors.py tools/test_guest_toolchain.py tools/test_linux_port.py tools/test_join_page.py tools/test_linux_package.py tools/test_install_layout.py tools/test_android_asm_convert.py tools/test_guest_asm_cache.py tools/test_guest_branch_relax.py tools/test_host_watch_hash.py tools/test_touch_menu.py tools/harness tools/test_controller_remap.py tools/test_controller_remap_context.py tools/test_net_compare.py tools/test_loading_ring.py tools/test_preparation.py tools/test_progress_ownership.py tools/test_ci_test_shards.py tools/test_supersampling.py tools/test_android_resolution.py tools/test_screen_passes_samples.py tools/test_notes.py tools/test_menu_look.py)"
           python3 -m pytest -q -rs -n auto --dist loadfile --durations=10 -o junit_family=xunit1 --junitxml "$RUNNER_TEMP/junit.xml" $files
 
       - uses: actions/upload-artifact@v4
@@ -865,7 +884,7 @@ jobs:
 
   macos:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' && needs.changes.outputs.macos != 'false' }}
     # The runner image has Xcode (clang, the Metal compiler), Python and
     # CMake; the guest's compiler is the pinned LLVM configure.py downloads.
     # The app is signed ad hoc (tools/macos_app.py), and the release on
@@ -1447,7 +1466,7 @@ jobs:
               *) echo "➖ Skipped" ;;
             esac
           }
-          if [ "$LINUX_X86_64" = success ] && [ "$TESTS" = success ] && [ "$LINUX_ARM64" = success ] && [ "$ANDROID" = success ] && [ "$WINDOWS" = success ] && [ "$MACOS" = success ]; then
+          if [ "$LINUX_X86_64" = success ] && [ "$TESTS" = success ] && [ "$LINUX_ARM64" = success ] && [ "$ANDROID" = success ] && [ "$WINDOWS" = success ] && { [ "$MACOS" = success ] || [ "$MACOS" = skipped ]; }; then
             title="Build succeeded"; color=5763719
           else
             title="Build failed"; color=15548997

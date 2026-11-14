@@ -70,6 +70,7 @@ enum _distributed_infection_role_zombie 2
 enum _distributed_infection_waiting 0
 enum _distributed_message_actor_damage 73
 enum _distributed_message_actor_states 64
+enum _distributed_message_actor_states_compact 142
 enum _distributed_message_admin_down 137
 enum _distributed_message_admin_up 138
 enum _distributed_message_aim_assist_policy 90
@@ -101,6 +102,7 @@ enum _distributed_message_game_state 7
 enum _distributed_message_hit_reports 11
 enum _distributed_message_host_rules 134
 enum _distributed_message_host_team 126
+enum _distributed_message_host_teleport 143
 enum _distributed_message_inventories 4
 enum _distributed_message_map_share_offer 84
 enum _distributed_message_map_share_progress 86
@@ -132,6 +134,7 @@ enum _distributed_message_relayed_substeps 121
 enum _distributed_message_shield_effects 91
 enum _distributed_message_structure_bsp 65
 enum _distributed_message_substep_states 136
+enum _distributed_message_unit_state_differences 141
 enum _distributed_message_unit_states 2
 enum _distributed_message_vehicle_prediction 12
 enum _distributed_message_voice_config 82
@@ -320,6 +323,7 @@ struct distributed_friend_players_message 481fa2c84002
 struct distributed_hit_report 9a44ca43a88b
 struct distributed_hit_report_message 37279f2addca
 struct distributed_host_team f1d7a205a4b0
+struct distributed_host_teleport a8aea7ff5adc
 struct distributed_infection_player d8b98eecf26b
 struct distributed_infection_state 8a01c46945ad
 struct distributed_inventory 05a279a76ba5

@@ -287,6 +287,10 @@ void rasterizer_active_camouflage_cache_primary_render_target(
 	{
 		real screen_projection[5][4];
 		rectangle2d bounds;
+		/* port: the depth range the primary target is drawn in, which
+		rasterizer_set_target resets (a camouflaged first-person weapon's,
+		rasterizer_transparent_geometry.c, #875) */
+		float depth_range[2];
 
 		match_assert(
 			"c:\\halo\\SOURCE\\rasterizer\\xbox\\rasterizer_xbox_active_camouflage.c",
@@ -399,6 +403,8 @@ void rasterizer_active_camouflage_cache_primary_render_target(
 			PS_REGISTER_T0);
 		rasterizer_set_pixel_shader(&pixel_shader);
 
+		/* port: (depth_range) */
+		d3d8_viewport_depth_range(0.0f, 1.0f, depth_range);
 		rasterizer_set_target(
 			_rasterizer_target_render_secondary,
 			0,
@@ -456,6 +462,8 @@ void rasterizer_active_camouflage_cache_primary_render_target(
 			0,
 			FALSE,
 			TRUE);
+		/* port: (depth_range) */
+		d3d8_viewport_depth_range(depth_range[0], depth_range[1], NULL);
 		rasterizer_set_stencil_mode(RASTERIZER_STENCIL_MODE_REJECT);
 
 		bounds.x0 = 512;

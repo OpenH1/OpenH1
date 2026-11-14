@@ -59,7 +59,11 @@ take (`source/math/random_math.c`) and the players' input of each tick
   struck. When the game state was rewritten as a whole (a checkpoint
   reverted to, a saved game or core loaded, the map started over), or the
   game's code made or deleted an object outside the ticks, the whole game
-  state is recorded instead, as at the start.
+  state is recorded instead, as at the start. Each is taken, however often
+  (the playback stays exact), but past four one after another and one more
+  each `demo.snapshot_seconds` the recording warns in the log, once a
+  minute at most: a game whose code does that every tick takes a whole game
+  state a tick, about 1 MB packed each (below, "Sizes and cost").
 - **What the ticks read of the frames.** Each of this machine's players'
   camera (`observer_get_camera`) as the tick begins, which the material
   effects test by distance and a player without a unit sees the level from,
@@ -72,6 +76,13 @@ take (`source/math/random_math.c`) and the players' input of each tick
   (`network_distributed.c`): what that changed is recorded, and the
   choices it makes by which machines are there (a client's hits are its
   report's to deal: `network_damage.c`).
+- **What the netcode put in after a tick.** The predictions of the clients
+  whose units a host moves once the tick has ended (an OpenCE machine's in
+  a mixed game, every client's in a Legacy game: `distributed_apply_predictions`
+  in `network_distributed_tick`) are recorded as the bytes they changed
+  (`demo_netcode_begin`, `demo_netcode_end`: an `M` before the next tick),
+  as the predictions taken at a tick's start are, and the playback writes
+  them in there.
 - **What the netcode does outside the ticks, as events.** A client's hit
   that the host deals as its report comes (`network_damage.c`, between two
   ticks or two sub-steps of an open tick) is recorded as the hit dealt, with
@@ -90,9 +101,21 @@ take (`source/math/random_math.c`) and the players' input of each tick
   the game began with, five or more taking fewer grenades from a map's
   places; the goals, the vehicles' homes, the friendly fire penalties, each
   game type's state, its scores), the speakers' mouths
-  (`game_sound_port_demo_state`) and the wind (`wind_port_demo_state`: its
+  (`game_sound_port_demo_state`), the wind (`wind_port_demo_state`: its
   random walk, which the ticks step and an antenna's and a flag's points are
-  blown by), whole with each snapshot and wherever it changed outside the
+  blown by) and, in a mixed game, which players are OpenCE machines'
+  (`network_standard_port_demo_state`: their units, shots and grenades move
+  once a tick, `object_get_lane`), what the ticks asked of the main loop
+  with its timers (`main_port_demo_state`: a respawn, a lost level's
+  revert), and, a co-op host's, the network game
+  (its players, its co-op switches) and what the host's co-op code keeps
+  (`network_coop_port_demo_state`: its choices of EXTRA ENEMIES, pickups
+  and vehicles as the game began, the extra enemies waiting and the
+  vehicles' homes, the players' respawn and loading-zone timers and their
+  places at the last checkpoint, the scripts' vitality for every player,
+  each player's friendly fire and whether they are away, each client's
+  structure BSP, a dedicated server's loading-zone rules), whole with each
+  snapshot and, as the bytes that changed, wherever it changed outside the
   ticks; the playback puts it back as it was.
 - **The frames' choices a tick takes**: whether a particle waits for a
   later frame (`render_interpolation.c`), which decides whether the tick's
@@ -122,7 +145,22 @@ ticks keep is put back as the tick before left it, and what the recording
 had from outside the ticks is written in; a whole game state recorded is
 taken as a saved game is (`game_state.c`: the loading's procedures before
 and after, the game state checked between them, then written again over
-what the procedures changed).
+what the procedures changed). The playback reverts to no checkpoint of its
+own (`game_state_revert`): what the recording's revert gave comes whole
+with the next tick, and a playback that seeks has taken none.
+
+A co-op game this machine hosted plays its ticks as the host's
+(`demo_playback_connection`, `demo_playback_network_game`): inside them
+the connection is the host's and the network game is the recording's, so
+the host's co-op code there (its players spawning beside a teammate, the
+extra enemies by the network game's players, the respawns, the loading
+zones) runs as it ran; outside them (the frames, the menus) the playback is
+a game of this machine's own. Before format 4 the ticks of such a playback
+ran as the campaign's, a game of one machine: its other players spawned at
+once at the level's start, and the playback parted from the recording at
+its first ticks, then stopped at a record that no longer fit its game
+state. A multiplayer game's ticks run as this machine's, as they always
+did: what its host decided by its machines there is recorded (`D`, `F`).
 
 While a demo plays, the keyboard's own controls drive the playback, not a
 player: the flashlight's key and the action's (Q, E) seek 10 seconds back
@@ -142,7 +180,7 @@ object's place with another's cluster references).
 
 ## The file
 
-A header of 512 bytes (`OH1DEMO`, the format's version (3), the build, the
+A header of 512 bytes (`OH1DEMO`, the format's version (4), the build, the
 network version, the game state's allocations' checksum, the connection,
 the rate, the difficulty, the game's rules, the map), then blocks, each packed with zlib on a
 thread of its own as the game plays (`demo_writer_*`): a second of records
@@ -155,7 +193,7 @@ its bytes:
 | `T` | a tick begins: its number, its rate |
 | `K` | the game state: each allocation's part in use, and the seeds |
 | `P` | what changed in the game state since the tick before ended |
-| `M` | the same, before a sub-step of a tick left open across frames (of sub-step 0: before a tick, ahead of an `X`) |
+| `M` | the same, before a sub-step of a tick left open across frames (of sub-step 0: before a tick, ahead of an `X`, or what a host's netcode put in after the tick before) |
 | `C` | the player control globals, whole |
 | `S` | the seeds |
 | `A` | the tick's players' actions (`struct player_action`) |
@@ -164,7 +202,7 @@ its bytes:
 | `D` | a choice the netcode made |
 | `X` | a hit the host dealt outside the ticks (a client's reported, the network test's): the seeds, then the hit as dealt |
 | `Y` | a kill the host made for a player outside the ticks (the network test's): the seeds, the unit, the player |
-| `G` | what the game keeps outside the game state (the game engine's, the speakers' mouths, the wind), where it changed outside the ticks (whole with a snapshot) |
+| `G` | what the game keeps outside the game state (the game engine's, the speakers' mouths, the wind, a mixed game's OpenCE players, a co-op host's network game and co-op state), where it changed outside the ticks: its size, then each run of bytes that changed (its offset, its size, its bytes; one run of it all with a snapshot) |
 | `L` | whether a tick's particle waited for a later frame |
 | `O` | a local player's camera as the tick begins (and before a later sub-step or an event, where the frames moved it) |
 | `I` | a unit's illumination as its update took it |
@@ -189,8 +227,9 @@ of its own are in the header, and the playback plays by them, not by the
 settings of the machine it plays on: the players' animation enhancements
 (`game.enhanced_animations`, which `display.graphics` chooses), their
 turning with the aim, and their way of picking up a second weapon
-(`game.auto_pickup`), as the recorded game had them (`network_standard.c`'s
-`network_standard_demo_rules`). Nothing a machine's drawing settings
+(`game.auto_pickup`), and whether it played OpenH1's fixes of the
+original's simulation (a Legacy game plays the original's), as the recorded
+game had them (`network_standard.c`'s `network_standard_demo_rules`). Nothing a machine's drawing settings
 choose (the graphics preset's drawing, the first-person legs, the field of
 view) reaches the game state.
 
@@ -228,12 +267,20 @@ Measured on the Linux x86-64 build (`tools/demo_info.py`):
 | Blood Gulch Slayer, a player and 3 bots, 120 Hz | 0.8 |
 | Blood Gulch Slayer, a player and 7 bots, 120 Hz | 1.1 |
 | Blood Gulch Slayer hosted, a client, 120 Hz | 1.6 |
+| Blood Gulch Slayer hosted, an OpenH1 and an OpenCE client (`debug.join_legacy`), 3 bots, 120 Hz | 2.5 |
+| The Truth and Reconciliation (b40) co-op hosted, 2 OpenH1 and 4 OpenCE clients, `network.coop_enemies` 100, 120 Hz | 6.7 |
 
 Most of it is the snapshots for seeking (about 150 KB packed each in the
 campaign) and the whole game states of reloads (a revert's). Recording
 takes 0.05 to 0.1 ms of the game's thread a tick (the comparison of the
 allocations the ticks keep, about 1 MB, with what the tick before left),
-and packing and writing are on a thread of their own.
+and packing and writing are on a thread of their own; the co-op game above
+took 0.28 ms a tick.
+
+Before the host's predictions after a tick were recorded as their bytes, a
+mixed game took a whole game state for each tick an OpenCE player moved in:
+that co-op game made 220 to 240 MB a minute (0.48 ms a tick), and the
+maintainer's, with four OpenCE players over 30 minutes, 27 GB.
 
 ## What is checked
 
@@ -416,11 +463,14 @@ not the machine's setting.
   in real time.
 - **The problem report** does not attach the last 30 seconds yet: a demo
   holds the players' names (the game state's), which a public issue must not.
-- **A seek back** can part from the recording (the AI's actors, the
-  objects): what the game keeps outside its game state (the checkpoints'
-  timers, the main loop's) is where the playback was, not where it goes.
-  A seek on plays on as recorded (checked in the campaign: every hash after
-  one).
+- **A seek** can part from the recording where the game keeps something
+  outside its game state that the demo does not record: that is where the
+  playback was, not where it goes. What `G` holds is the recording's from
+  the seek's tick (before format 4 a seek left it as the playback had it:
+  a co-op host's demo parted within ticks of one, by the speakers' mouths,
+  and a seek back could respawn the host's player early and crash the
+  camera on the unit it then lost). Checked in hosted co-op games: every
+  hash after seeks on and back.
 - **OpenCE's game types** (Infection, Gun Game: `infection.c`,
   `gun_game.c`) keep their players' roles and levels outside the game state
   too, and the demo does not record them yet: a playback of one parts where

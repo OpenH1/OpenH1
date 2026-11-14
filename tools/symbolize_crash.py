@@ -100,7 +100,7 @@ PLATFORMS = {
     "Linux arm64": "linux-arm64",
     "Linux arm64, VR": "steam-frame-vr",
 }
-RELEASES = "https://github.com/OpenH1/OpenH1/releases/tag"
+RELEASES = "https://github.com/OpenH1/goath1/releases/tag"
 
 
 class SymbolizeError(Exception):

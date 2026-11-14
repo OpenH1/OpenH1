@@ -109,6 +109,7 @@ symbols in this file:
 #include "tag_files/tag_files.h"
 #include "text/draw_string.h"
 #include "coop_spectate.h" /* port: port/linux/game/coop_spectate.c */
+#include "dead_spectate.h" /* port: port/linux/game/dead_spectate.c */
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
 #include "network_party.h" /* port: port/linux/game/network_party.c */
@@ -1050,7 +1051,9 @@ static void hud_draw_players(
 		{
 			if (player_index != iterator.datum_index &&
 				team_index == player->team_index &&
-				player->unit_index != NONE)
+				player->unit_index != NONE &&
+				/* port: nor the teammate a dead player looks out of */
+				player->unit_index != dead_spectate_eyes_unit(render.local_player_index))
 			{
 				/* never write past the buffer, whatever the player data holds */
 				if (teammate_count < (long)NUMBEROF(teammate_indices))
@@ -1346,8 +1349,12 @@ static void hud_draw_player_names(
 		/* (allies as the game's triangles tell them: the same team) */
 		boolean ally = player->team_index == team_index;
 
-		if (iterator.datum_index == player_index || player->unit_index == NONE)
+		/* port: (nor the teammate a dead player looks out of) */
+		if (iterator.datum_index == player_index || player->unit_index == NONE ||
+			player->unit_index == dead_spectate_eyes_unit(render.local_player_index))
+		{
 			continue;
+		}
 		if ((ally && setting == _player_names_enemies) || (!ally && setting == _player_names_allies) ||
 			!game_engine_draw_object_in_motion_sensor(player->unit_index))
 		{
@@ -1592,8 +1599,14 @@ void hud_draw_screen(
 #ifdef HALO_VR
 		halo_vr_hud_group(HALO_VR_HUD_GROUP_CENTRE);
 #endif
-		/* port: who a dead network co-op player is watching */
-		if (player->unit_index == NONE && coop_spectating() && !cinematic_in_progress())
+		/* port: who a dead player is watching through their eyes
+		(game.spectate_on_death), or a dead network co-op player from behind */
+		if (player->unit_index == NONE && !cinematic_in_progress() &&
+			dead_spectate_eyes_unit(render.local_player_index) != NONE)
+		{
+			dead_spectate_draw(render.local_player_index);
+		}
+		else if (player->unit_index == NONE && coop_spectating() && !cinematic_in_progress())
 			coop_spectate_draw(render.local_player_index);
 		/* port: the network co-op vote to skip a cinematic */
 		if (cinematic_in_progress())

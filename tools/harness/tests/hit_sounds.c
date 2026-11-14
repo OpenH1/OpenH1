@@ -93,12 +93,22 @@ static int bots_player_is_bot(long index) { return index == BOT; }
 static unsigned long now = 1000;
 static unsigned long system_milliseconds(void) { return now; }
 static boolean hit_sounds_setting = TRUE;
+/* (the second split screen player's own audio.hit_sounds) */
+static boolean hit_sounds_setting_2 = TRUE;
 static boolean allow_setting = TRUE;
 static unsigned long changes = 1;
+/* player_settings.h's: a reader's slots, a local player's own setting */
+#define PLAYER_SETTINGS_SLOTS 5
+#define PLAYER_SETTINGS_SLOT(local_player_index) \
+	((local_player_index) >= 0 && (local_player_index) < PLAYER_SETTINGS_SLOTS - 1 ? \
+		(local_player_index) : PLAYER_SETTINGS_SLOTS - 1)
+static int config_player_boolean(int local_player, char const *name)
+{
+	CHECK(!strcmp(name, "audio.hit_sounds"), "an unexpected player's setting %s", name);
+	return local_player == 1 ? hit_sounds_setting_2 : hit_sounds_setting;
+}
 static int config_boolean(char const *name)
 {
-	if (!strcmp(name, "audio.hit_sounds"))
-		return hit_sounds_setting;
 	if (!strcmp(name, "network.allow_hit_sounds"))
 		return allow_setting;
 	if (!strcmp(name, "game.auto_pickup") || !strcmp(name, "game.enhanced_animations"))
@@ -124,6 +134,7 @@ static struct
 	boolean hosting_hold_to_pick_up;
 	boolean hosting_classic_turning;
 	boolean hosting_no_hit_sounds;
+	boolean hosting_no_direct_camera;
 	boolean joined;
 } network_standard_globals;
 static struct network_game record;
@@ -131,6 +142,8 @@ static short game_connection(void) { return connection; }
 static struct network_game *network_game_get_game(void) { return &record; }
 static long network_standard_server_rate(boolean in_lobby) { return network_standard_globals.hosting ? 60 : 0; }
 static boolean network_standard_hit_sounds_allowed(void);
+/* (no Pro 2v2 game: test_pro_rules.py's) */
+static boolean network_standard_pro_hosting(void) { return FALSE; }
 
 #include "config.inc"
 #include "under_test.inc"
@@ -183,6 +196,11 @@ int main(int argc, char **argv)
 		hit_sounds_setting = TRUE;
 		changes++;
 		CHECK(hit(LOCAL, REMOTE, 0.2f, 0.f, 0) == 1, "no beep once audio.hit_sounds is on");
+		/* (each split screen player's own) */
+		hit_sounds_setting_2 = FALSE;
+		changes++;
+		CHECK(hit(LOCAL_2, REMOTE, 0.2f, 0.f, 0) == 0, "a beep for a player whose audio.hit_sounds is off");
+		CHECK(hit(LOCAL, REMOTE, 0.2f, 0.f, 0) == 1, "no beep for a player whose audio.hit_sounds is on");
 		CHECK(buffers_made == HIT_SOUND_BUFFERS, "the buffers were not made once (%d)", buffers_made);
 		return 0;
 	}

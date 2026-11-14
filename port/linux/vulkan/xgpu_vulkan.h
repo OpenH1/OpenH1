@@ -38,7 +38,10 @@ The core:
   attachment where it is drawn (VK_KHR_dynamic_rendering_local_read), in
   rasterization order where the device has it
   (VK_EXT_rasterization_order_attachment_access) or after a
-  framebuffer-local barrier before each such draw; and the frame is
+  framebuffer-local barrier before each such draw, their own triangles
+  over the same pixel ordered by the fragment shader interlock where the
+  device has it (VK_EXT_fragment_shader_interlock: the target read and
+  written as a storage image); and the frame is
   presented through an HDR swapchain (VK_EXT_swapchain_colorspace: scRGB
   or HDR10's PQ) where the frames are HDR and the window's display shows
   HDR, encoded by the options' encode, with VK_EXT_hdr_metadata's metadata
@@ -185,6 +188,13 @@ struct xgpu_vulkan_capabilities
 	is ordered after the ones before it by a barrier (two of its own
 	triangles over the same pixel, unordered) */
 	int color_read, raster_order;
+	/* display.hdr, where the reads are not in rasterization order: the
+	device's fragment shader interlock (VK_EXT_fragment_shader_interlock)
+	orders a draw's own triangles over the same pixel, the pixel's
+	(pixel_interlock) or each sample's (sample_interlock), each reading and
+	writing the target as a storage image (xgpu_spirv_options interlock;
+	the half floats as storage images, multisampled ones too) */
+	int pixel_interlock, sample_interlock;
 	/* pixel shaders have the subgroups' bitwise operations (Vulkan 1.1's
 	subgroup arithmetic in the fragment stage): xgpu_spirv_options
 	subgroups */
@@ -328,6 +338,12 @@ enum
 enum
 {
 	XGPU_VULKAN_ADDRESS_WRAP, XGPU_VULKAN_ADDRESS_MIRROR, XGPU_VULKAN_ADDRESS_CLAMP, XGPU_VULKAN_ADDRESS_BORDER,
+	/* XGPU_ADDRESS_REGION: the shader's (xgpu_vulkan_stream.c's
+	border_axes), clamped to the edge here */
+	XGPU_VULKAN_ADDRESS_REGION = 5,
+	/* XGPU_ADDRESS_MSDF (on w): the shader's (xgpu_vulkan_stream.c's
+	border_axes), repeated here */
+	XGPU_VULKAN_ADDRESS_MSDF = 6,
 };
 
 /* zeroed before it is filled (it is compared whole) */
@@ -408,6 +424,9 @@ struct xgpu_vulkan_pipeline_description
 	itself (display.hdr: capabilities color_read): the blend's fields are
 	not the pipeline's */
 	uint8_t color_read;
+	/* and, interlocked (capabilities pixel_interlock), reads and writes it
+	as a storage image: the pipeline writes no colour */
+	uint8_t color_store;
 };
 
 /* the pipeline of a description, made the first time; VK_NULL_HANDLE if it
@@ -541,6 +560,9 @@ struct xgpu_vulkan_draw
 	attachment bound as its input, the draw ordered after the pass's
 	draws before it */
 	uint8_t reads_color;
+	/* its pipeline writes it as a storage image (color_store): the draw
+	ordered after the pass's draws before it and before those after it */
+	uint8_t stores_color;
 	/* HALO_VULKAN_DRAW_TIMES (measuring): the game's draw's kind, its
 	pixel key's ambient_occlusion, its pipeline key's lighting and its
 	per_pixel_lighting, and XGPU_VULKAN_DRAW_GAME; zeros the backend's own */
@@ -567,6 +589,11 @@ field, its atlas of bricks (a 3D image of signed bytes, linear, clamped to
 its edge) and its table of cells (a 3D RGBA8 image, read by texel), each a
 1x1x1 far-outside stand-in where the field is not whole, and the window's
 block (a uniform buffer) */
+/* display.hdr's input set's binding of the colour target as a storage
+image, for the interlocked draws (xgpu_spirv.h's XGPU_SPIRV_BINDING_STORE;
+the input attachment is binding 0) */
+#define XGPU_VULKAN_BINDING_STORE 1
+
 #define XGPU_VULKAN_SET_OCCLUSION 3
 #define XGPU_VULKAN_BINDING_WORLD_SDF 1
 #define XGPU_VULKAN_BINDING_WORLD_AO 2
@@ -792,6 +819,9 @@ struct xgpu_vulkan_statistics
 	/* display.hdr's draws that read their colour attachment after a
 	barrier (none where the device orders the reads itself) */
 	uint32_t local_reads;
+	/* (of them, the interlocked draws': each one's writes seen after it
+	through a second barrier) */
+	uint32_t color_stores;
 	/* HALO_VULKAN_DISCARDS (xgpu_vulkan.c): aspects of attachments not
 	stored (those at frames' ends among them), multisampled images
 	resolved in the pass that drew them, and resolves of samples resolved

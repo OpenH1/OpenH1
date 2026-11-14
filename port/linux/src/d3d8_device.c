@@ -162,9 +162,16 @@ static void anti_aliasing_prepare(void);
 /* display.anti_aliasing's value (none of them: the first, off) */
 static void anti_aliasing_read(void)
 {
-	const char *setting = config_string("display.anti_aliasing");
+	/* (read again as the settings change: config_changes) */
+	static unsigned long read_at = (unsigned long)-1;
+	unsigned long changes = config_changes();
+	const char *setting;
 	int value;
 
+	if (anti_aliasing_value >= 0 && read_at == changes)
+		return;
+	read_at = changes;
+	setting = config_string("display.anti_aliasing");
 	for (value = NUMBER_OF_ANTI_ALIASING_VALUES - 1;
 		value > 0 && strcmp(setting, anti_aliasing_values[value].name);
 		value--)
@@ -630,13 +637,16 @@ middle (port/linux/include/panini_projection.h): by its magnification there,
 middle keeps its sharpness, the screen is supersampled by as much, as
 display.supersampling supersamples it (the display blit scales it down), at
 most twice the pixels each way: the magnification at the widest of
-display.fov's and display.vehicle_fov's views on the display's shape, or
-display.supersampling's where that is more. Not on Android, Metal (the Mac
+display.fov's and display.vehicle_fov's views on the display's shape (of
+any local player's, each their profile's), or display.supersampling's where
+that is more. Not on Android, Metal (the Mac
 and iOS) or VR, which draw only the supersampling the player chooses (the
 Mac's: display.supersampling) or none; there the middle is drawn from the
 pixels the view has. */
 
 #define PANINI_SUPERSAMPLING_MOST 2.0f
+/* (split screen's players, each of whose settings may be their own) */
+#define PANINI_LOCAL_PLAYERS 4
 
 /* a field of view in degrees across 16:9 as the tangent of half the
 vertical (view_fov.c's fov_tangent), or the stock view's (the cyborg's 70
@@ -657,33 +667,51 @@ static float panini_supersampling(long display_width, long display_height)
 	(void)display_height;
 	return 1.0f;
 #else
+	/* (each local player's own settings, their profile's: the most any of
+	them needs, the screen being one target for every view of a split
+	screen) */
 	static long read_at = -1;
-	static float strength, tangent;
-	float factor;
+	static float strengths[PANINI_LOCAL_PLAYERS], tangents[PANINI_LOCAL_PLAYERS];
+	float most = 1.0f;
+	int player;
 
 	if (read_at != (long)config_changes())
 	{
 		read_at = (long)config_changes();
-		strength = (float)config_real("display.panini");
-		if (strength > 0.0f)
+		for (player = 0; player < PANINI_LOCAL_PLAYERS; player++)
 		{
-			const char *vehicle = config_string("display.vehicle_fov");
-			double foot = config_real("display.fov");
-			char *end;
-			double degrees = strtod(vehicle, &end);
-			float seated;
+			strengths[player] = (float)config_player_real(player, "display.panini");
+			if (strengths[player] > 0.0f)
+			{
+				const char *vehicle = config_player_string(player, "display.vehicle_fov");
+				double foot = config_player_real(player, "display.fov");
+				char *end;
+				double degrees = strtod(vehicle, &end);
+				float seated;
 
-			tangent = panini_vertical_tangent(foot);
-			/* ("default": the stock view; "match": display.fov's) */
-			seated = !strcmp(vehicle, "match") ? tangent : panini_vertical_tangent(end != vehicle ? degrees : 0.0);
-			if (seated > tangent)
-				tangent = seated;
+				tangents[player] = panini_vertical_tangent(foot);
+				/* ("default": the stock view; "match": display.fov's) */
+				seated = !strcmp(vehicle, "match") ? tangents[player] :
+					panini_vertical_tangent(end != vehicle ? degrees : 0.0);
+				if (seated > tangents[player])
+					tangents[player] = seated;
+			}
 		}
 	}
-	if (!(strength > 0.0f) || display_height <= 0)
+	if (display_height <= 0)
 		return 1.0f;
-	factor = panini_projection_scale(strength, tangent * (float)display_width / (float)display_height);
-	return factor < PANINI_SUPERSAMPLING_MOST ? factor : PANINI_SUPERSAMPLING_MOST;
+	for (player = 0; player < PANINI_LOCAL_PLAYERS; player++)
+	{
+		float factor;
+
+		if (!(strengths[player] > 0.0f))
+			continue;
+		factor = panini_projection_scale(strengths[player], tangents[player] * (float)display_width /
+			(float)display_height);
+		if (factor > most)
+			most = factor;
+	}
+	return most < PANINI_SUPERSAMPLING_MOST ? most : PANINI_SUPERSAMPLING_MOST;
 #endif
 }
 
@@ -939,6 +967,32 @@ void halo_screen_ui_offset(unsigned char centered)
 {
 	ui_offset = centered ? (halo_screen_width() - 640) / 2 : 0;
 }
+
+/* the menus' centring offset while a split screen's view draws a screen in
+it (port/linux/game/menu_view.c: its canvas's left, at its scale) */
+void halo_screen_ui_offset_to(long offset)
+{
+	ui_offset = offset;
+}
+
+/* where the first player's menus were drawn last, for the pointer
+(ui_point_from_window_on): in a split screen's view (set), the view's
+origin, the scale the menus were drawn at and the canvas's left of the
+menus' 0 (port/linux/game/menu_view.c); else centred on the whole screen */
+static struct
+{
+	int set;
+	float x0, y0, scale, left;
+} ui_pointer_view;
+
+void halo_screen_ui_pointer_view(int set, float x0, float y0, float scale, float left)
+{
+	ui_pointer_view.set = set && scale > 0.0f;
+	ui_pointer_view.x0 = x0;
+	ui_pointer_view.y0 = y0;
+	ui_pointer_view.scale = scale;
+	ui_pointer_view.left = left;
+}
 /* ---------- state the XDK header's inline functions read and write */
 
 DWORD D3D__RenderState[D3DRS_MAX];
@@ -1032,6 +1086,9 @@ struct render_target_entry
 	multisampled with multisampling (render_target_multisample) */
 	BOOL screen_buffer;
 	enum render_target_kind kind;
+	/* a screen's target's view: 0 the screen's own, else an extra view's
+	(halo_view_begin), whose targets are its own */
+	int view;
 };
 
 /* every draw looks up its targets and whether its textures are render
@@ -1051,6 +1108,33 @@ static xgpu_target next_target_number = 1;
 
 static void render_targets_evict(void);
 
+/* ---------- extra views
+
+A view drawn into images of its own rather than the screen: a teammate's
+feed in the HUD's Spartan link (port/linux/game/spartan_link.c). Between
+halo_view_begin and halo_view_end the screen's targets (the back buffer,
+its depth buffer, the secondary target) are the view's: entries of their
+own, at the screen's scale, the back buffer and its depth buffer only the
+view's size (its units from the screen's top left corner, where its window
+is drawn). They are drawn without multisampling, the anti-aliasing pass or
+the world's ambient occlusion, and kept from frame to frame, so that the
+view need not be drawn every frame; the HUD draws the view's image
+(halo_view_sample). Nothing on the backends is new: a view's images are
+render targets as any other. */
+#define HALO_VIEW_COUNT 17
+
+static struct
+{
+	/* its size in the screen's units (0: none) */
+	unsigned long width, height;
+} views[HALO_VIEW_COUNT];
+/* the view the screen's targets are now (0: the screen's own), and the
+view whose image stage 0 samples (0: none) */
+static int screen_view;
+static int sampled_view;
+/* views' images no longer drawn, freed between frames (halo_screen_commit) */
+static BOOL views_released;
+
 /* the target that holds the Xbox surface at this physical address (the
 latest drawn into, of the pass drawing now), or NULL */
 struct xgpu_render_target *xgpu_render_target_find(unsigned long data);
@@ -1068,6 +1152,10 @@ struct d3d8_device
 	D3DMATRIX transforms[D3DTS_MAX];
 	D3DBaseTexture *textures[D3DTSS_MAXSTAGES];
 	D3DPalette *palettes[D3DTSS_MAXSTAGES];
+	/* the region of its texture each stage samples, as a texture of its own
+	with its border beyond it (d3d8_texture_region: its size and origin, in
+	the texture's coordinates; size 0: the whole texture) */
+	float texture_regions[D3DTSS_MAXSTAGES][4];
 	D3DSHADERCONSTANTMODE shader_constant_mode;
 
 	struct vertex_shader_object *vertex_shader;
@@ -1617,6 +1705,7 @@ static struct
 	DWORD data, format, size;
 	long screen_width;
 	float scale[2];
+	int view;
 	struct render_target_entry *entry;
 } recent_render_targets[RECENT_RENDER_TARGET_COUNT];
 static unsigned long recent_render_target_next;
@@ -1632,6 +1721,7 @@ static struct render_target_entry *render_target_remember(const D3DSurface *surf
 	recent_render_targets[slot].screen_width = screen;
 	recent_render_targets[slot].scale[0] = screen_scale[0];
 	recent_render_targets[slot].scale[1] = screen_scale[1];
+	recent_render_targets[slot].view = screen_view;
 	recent_render_targets[slot].entry = entry;
 	return entry;
 }
@@ -1668,7 +1758,7 @@ static struct render_target_entry *render_target_get(const D3DSurface *surface)
 		if (recent_render_targets[slot].entry && recent_render_targets[slot].data == surface->Data &&
 			recent_render_targets[slot].format == surface->Format && recent_render_targets[slot].size == surface->Size &&
 			recent_render_targets[slot].screen_width == screen && recent_render_targets[slot].scale[0] == screen_scale[0] &&
-			recent_render_targets[slot].scale[1] == screen_scale[1])
+			recent_render_targets[slot].scale[1] == screen_scale[1] && recent_render_targets[slot].view == screen_view)
 		{
 			return recent_render_targets[slot].entry;
 		}
@@ -1685,6 +1775,12 @@ static struct render_target_entry *render_target_get(const D3DSurface *surface)
 		scale[0] = screen_scale[0];
 		scale[1] = screen_scale[1];
 		kind = _render_target_screen;
+		/* (an extra view's: the back buffer and its depth buffer its size) */
+		if (screen_view && height == SCREEN_HEIGHT)
+		{
+			width = views[screen_view].width;
+			height = views[screen_view].height;
+		}
 #ifdef HALO_VR
 		/* in the eye pass the back buffer is the eyes' swapchain image, and
 		the screen's other targets have a layer for each eye (foveated, two:
@@ -1708,7 +1804,7 @@ static struct render_target_entry *render_target_get(const D3DSurface *surface)
 		if (entry->target.data == surface->Data && entry->target.width == width &&
 			entry->target.height == height && entry->target.depth == depth &&
 			entry->target.scale[0] == scale[0] && entry->target.scale[1] == scale[1] &&
-			entry->target.layers == layers)
+			entry->target.layers == layers && entry->view == (kind == _render_target_screen ? screen_view : 0))
 		{
 			return render_target_remember(surface, screen, entry);
 		}
@@ -1722,6 +1818,7 @@ static struct render_target_entry *render_target_get(const D3DSurface *surface)
 	entry->target.scale[0] = scale[0];
 	entry->target.scale[1] = scale[1];
 	entry->kind = kind;
+	entry->view = kind == _render_target_screen ? screen_view : 0;
 	entry->target.pixel_width = (unsigned long)(width * scale[0] + 0.5f);
 	entry->target.pixel_height = (unsigned long)(height * scale[1] + 0.5f);
 	entry->target.layers = layers;
@@ -1751,6 +1848,10 @@ struct xgpu_render_target *xgpu_render_target_find(unsigned long data)
 #endif
 	for (entry = *render_target_bucket(data); entry; entry = entry->next_in_bucket)
 	{
+		/* (an extra view's screen targets in its own pass alone, and the
+		screen's outside them: halo_view_begin) */
+		if (entry->kind == _render_target_screen && entry->view != screen_view)
+			continue;
 		/* (in a VR pass, the screen's targets of its own pass: the eyes' have
 		a layer for each eye, the HUD's and the scope's one, each at its
 		pass's scale) */
@@ -1893,6 +1994,12 @@ static BOOL bind_targets(BOOL *has_depth)
 	samples = anti_aliasing() == _anti_aliasing_msaa ? anti_aliasing_samples : 0;
 	if (samples && !target_multisampled)
 		samples = 0;
+	/* (not an extra view's: a few hundred pixels, drawn now and then) */
+	if (screen_view)
+	{
+		samples = 0;
+		target_multisampled = FALSE;
+	}
 #ifdef HALO_VR
 	/* (not in the VR mode's passes: the eyes' targets have a layer for each
 	eye, and the HUD and its groups are layers of their own) */
@@ -2213,10 +2320,13 @@ static void gamma_send(void)
 {
 #ifndef HALO_VR
 	static float sent;
+	/* (read again as the settings change: config_changes) */
+	static unsigned long read_at = (unsigned long)-1;
 	float gamma;
 
-	if (!device.gl_ready)
+	if (!device.gl_ready || read_at == config_changes())
 		return;
+	read_at = config_changes();
 	gamma = (float)config_real("display.gamma");
 	gamma = !(gamma > 0.0f) ? 1.0f : gamma < GAMMA_LEAST ? GAMMA_LEAST : gamma > GAMMA_MOST ? GAMMA_MOST : gamma;
 	if (gamma != sent)
@@ -2260,6 +2370,14 @@ static void ui_point_from_window_on(float window_x, float window_y, int centered
 	top = top < 0 ? (pixel_height - height) / 2 : top < pixel_height - height ? top : pixel_height - height;
 	screen_x = (window_x * pixel_width / window_width - left) * (float)back_buffer->target.width / (float)width;
 	screen_y = (window_y * pixel_height / window_height - top) * (float)back_buffer->target.height / (float)height;
+	if (centered && ui_pointer_view.set)
+	{
+		/* (the first player's view in split screen, its menus scaled into
+		it: port/linux/game/menu_view.c) */
+		*x = (short)floorf((screen_x - ui_pointer_view.x0) / ui_pointer_view.scale - ui_pointer_view.left);
+		*y = (short)floorf((screen_y - ui_pointer_view.y0) / ui_pointer_view.scale);
+		return;
+	}
 	*x = (short)floorf(screen_x - (centered ? (float)(halo_screen_width() - 640) / 2.0f : 0.0f));
 	*y = (short)floorf(screen_y);
 }
@@ -2339,14 +2457,29 @@ static BOOL hdr_display_text(int kind, char *text, unsigned int size)
 they are now; the back buffer made again if the frame is drawn otherwise */
 static void hdr_read(void)
 {
+	/* (the settings, read again as they change: config_changes; the
+	display is asked every frame) */
+	static unsigned long read_at = (unsigned long)-1;
+	static int setting_read, paper_white_read, paper_white_nits_read, ui_nits_read, mode_read;
 	float headroom = 1.0f;
 	BOOL display = FALSE, active = FALSE;
-	int setting = hdr_setting(), paper_white = (int)config_integer("display.hdr_paper_white");
-	int paper_white_nits = (int)config_integer("display.hdr_paper_white_nits");
-	int ui_nits = (int)config_integer("display.hdr_ui_nits");
-	int mode = config_string("display.hdr_mode") && !strcmp(config_string("display.hdr_mode"), "punchy") ?
-		XGPU_HDR_MODE_PUNCHY : XGPU_HDR_MODE_FAITHFUL;
+	int setting, paper_white, paper_white_nits, ui_nits, mode;
 
+	if (read_at != config_changes())
+	{
+		read_at = config_changes();
+		setting_read = hdr_setting();
+		paper_white_read = (int)config_integer("display.hdr_paper_white");
+		paper_white_nits_read = (int)config_integer("display.hdr_paper_white_nits");
+		ui_nits_read = (int)config_integer("display.hdr_ui_nits");
+		mode_read = config_string("display.hdr_mode") && !strcmp(config_string("display.hdr_mode"), "punchy") ?
+			XGPU_HDR_MODE_PUNCHY : XGPU_HDR_MODE_FAITHFUL;
+	}
+	setting = setting_read;
+	paper_white = paper_white_read;
+	paper_white_nits = paper_white_nits_read;
+	ui_nits = ui_nits_read;
+	mode = mode_read;
 	if (!device.gl_ready)
 		return;
 	if (xgpu_backend_capabilities.hdr)
@@ -2468,6 +2601,12 @@ long halo_screen_commit(void)
 			render_targets_evict();
 		}
 	}
+	/* (the extra views' images no longer drawn: halo_view_release) */
+	if (views_released)
+	{
+		views_released = FALSE;
+		render_targets_evict();
+	}
 	if (!screen_width)
 		return halo_screen_width();
 	screen_mode_choose(&width, scale);
@@ -2581,6 +2720,16 @@ void d3d8_viewport_depth_range(float minimum, float maximum, float previous[2])
 	device.viewport.MinZ = minimum;
 	device.viewport.MaxZ = maximum;
 	viewport_update_constants();
+}
+
+void d3d8_texture_region(unsigned long stage, const float *region)
+{
+	if (stage >= D3DTSS_MAXSTAGES)
+		return;
+	if (region && region[0] > 0.0f && region[1] > 0.0f)
+		memcpy(device.texture_regions[stage], region, sizeof(device.texture_regions[stage]));
+	else
+		memset(device.texture_regions[stage], 0, sizeof(device.texture_regions[stage]));
 }
 
 void WINAPI D3DDevice_SetTransform(D3DTRANSFORMSTATETYPE state, CONST D3DMATRIX *matrix)
@@ -3168,6 +3317,8 @@ static void sampler_describe(int stage, BOOL mipmapped, BOOL hires, BOOL rendere
 	sampler->magnify = sampler_filter(hires ? D3DTEXF_LINEAR : state[D3DTSS_MAGFILTER]);
 	sampler->address[0] = sampler_address(state[D3DTSS_ADDRESSU]);
 	sampler->address[1] = sampler_address(state[D3DTSS_ADDRESSV]);
+	if (device.texture_regions[stage][0] > 0.0f)
+		sampler->address[0] = sampler->address[1] = XGPU_ADDRESS_REGION;
 	sampler->address[2] = sampler_address(state[D3DTSS_ADDRESSW]);
 	sampler->lod_bias = hires ? 0.0f : dword_to_float(state[D3DTSS_MIPMAPLODBIAS]);
 	sampler->first_level = hires ? 0 : state[D3DTSS_MAXMIPLEVEL];
@@ -3185,8 +3336,15 @@ static BOOL render_target_stale(const struct render_target_entry *entry)
 	switch (entry->kind)
 	{
 	case _render_target_screen:
+		/* (an extra view's: gone, or of another size) */
+		if (entry->view && entry->screen_buffer && (entry->target.width != views[entry->view].width ||
+				entry->target.height != views[entry->view].height))
+			return TRUE;
+		if (entry->view && !views[entry->view].width)
+			return TRUE;
 		return entry->target.scale[0] != screen_scale[0] || entry->target.scale[1] != screen_scale[1] ||
-			(entry->target.height == SCREEN_HEIGHT && entry->target.width != (unsigned long)halo_screen_width()) ||
+			(!entry->view && entry->target.height == SCREEN_HEIGHT &&
+				entry->target.width != (unsigned long)halo_screen_width()) ||
 			(render_target_screen_colour(entry) && entry->target.format != hdr_back_buffer_format());
 	case _render_target_shadow_map:
 		return entry->target.scale[0] != (float)halo_shadow_map_scale();
@@ -3277,6 +3435,18 @@ static void bind_textures(struct nv2a_pixel_shader_key *key, float texture_scale
 			continue;
 		}
 		target = xgpu_render_target_find(texture->Data);
+		/* (an extra view's image in stage 0's place: halo_view_sample) */
+		if (stage == 0 && sampled_view)
+		{
+			struct render_target_entry *view;
+
+			target = NULL;
+			for (view = render_targets; view; view = view->next)
+			{
+				if (view->view == sampled_view && view->screen_buffer && !view->target.depth)
+					target = &view->target;
+			}
+		}
 		if (target)
 		{
 			xgpu_texture_describe(texture->Format, texture->Size, &description);
@@ -3347,6 +3517,14 @@ static void bind_textures(struct nv2a_pixel_shader_key *key, float texture_scale
 			}
 		}
 		sampler_describe(stage, description.levels > 1, description.hires, target != NULL, &source->sampler);
+		if (device.texture_regions[stage][0] > 0.0f)
+			memcpy(texture_scale[stage], device.texture_regions[stage], sizeof(texture_scale[stage]));
+		/* (the high-res text's distance fields: text_hires.c) */
+		if (description.hires_msdf)
+		{
+			source->sampler.address[0] = source->sampler.address[1] = XGPU_ADDRESS_CLAMP;
+			source->sampler.address[2] = XGPU_ADDRESS_MSDF;
+		}
 		if (stage == 0)
 		{
 			key->coverage_alpha = description.hires_coverage != FALSE;
@@ -3682,6 +3860,10 @@ static struct
 	BOOL read;
 	unsigned long read_at;
 	BOOL enhanced;
+	/* whether the game played lets them be enhanced, as then (a Pro 2v2
+	game's do not: port/linux/game/network_standard.c's
+	network_standard_enhanced_lights_allowed) */
+	BOOL allowed;
 	/* the look: [0] the lights' brightness, the core (1 / (1 + core x^2)),
 	the spill past white, the models' wrap; [1] the glow's size (of the
 	light's radius), brightness, softness against what it meets (world
@@ -3704,20 +3886,27 @@ static struct
 	struct xgpu_dynamic_lights_halos halos;
 } dynamic_lights;
 
+/* port/linux/game/network_standard.c's: whether the game played lets the
+dynamic lights be enhanced (a Pro 2v2 game's: classic for every player,
+whatever their display.dynamic_lights) */
+int network_standard_enhanced_lights_allowed(void);
+
 static void dynamic_lights_read_settings(void)
 {
 	static const float defaults[2][4] = { { 1.7f, 12.0f, 0.18f, 0.25f }, { 0.22f, 1.2f, 0.12f, 0.035f } };
 	const char *look;
+	BOOL allowed = network_standard_enhanced_lights_allowed() != 0;
 
 	/* (as the front end took the settings up between frames, not as the
 	menus write them: the draws' pipelines change at the frame that
 	prepares the map again under them, render_enumerate.c's
 	enumerated_derivation_check) */
-	if (dynamic_lights.read && dynamic_lights.read_at == halo_gpu_settings_taken())
+	if (dynamic_lights.read && dynamic_lights.read_at == halo_gpu_settings_taken() && dynamic_lights.allowed == allowed)
 		return;
 	dynamic_lights.read = TRUE;
 	dynamic_lights.read_at = halo_gpu_settings_taken();
-	dynamic_lights.enhanced = !strcmp(config_string("display.dynamic_lights"), "enhanced");
+	dynamic_lights.allowed = allowed;
+	dynamic_lights.enhanced = !strcmp(config_string("display.dynamic_lights"), "enhanced") && allowed;
 	memcpy(dynamic_lights.look, defaults, sizeof(defaults));
 	look = config_string("debug.dynamic_lights_look");
 	if (look && *look)
@@ -4120,26 +4309,55 @@ static void unread_stage_fields_clear(DWORD *state, DWORD texture_modes)
 }
 
 /* the combiners' part of a draw's pixel shader key, from the render states
-and the texture modes: most draws share them with the draw before, and so
-share the key's part (the same inputs, the same part) */
+(less the constants, which are uniforms) and the texture modes: a frame's
+draws use a few dozen pixel shaders, interleaved, so the parts already made
+are kept, each under its inputs (the same inputs, the same part) */
+#define COMBINER_PARTS 128
+
+static struct combiner_part
+{
+	BOOL made;
+	DWORD texture_modes;
+	DWORD inputs[D3DRS_PS_MAX];
+	DWORD state[D3DRS_PS_MAX];
+} combiner_parts[COMBINER_PARTS];
+
+static BOOL combiner_part_found(const struct combiner_part *part, const DWORD *inputs, DWORD texture_modes)
+{
+	return part->made && part->texture_modes == texture_modes && words_equal(part->inputs, inputs, sizeof(part->inputs));
+}
+
 static void combiner_state_describe(DWORD *state, DWORD texture_modes)
 {
-	static DWORD last_inputs[D3DRS_PS_MAX], last_state[D3DRS_PS_MAX];
-	static DWORD last_texture_modes;
-	static BOOL described;
-	int stage;
+	static struct combiner_part *last;
+	struct combiner_part *part;
+	DWORD hash = texture_modes;
+	int stage, index;
 
-	if (described && texture_modes == last_texture_modes &&
-		words_equal(D3D__RenderState, last_inputs, sizeof(last_inputs)))
-	{
-		memcpy(state, last_state, sizeof(last_state));
-		return;
-	}
 	memcpy(state, D3D__RenderState, D3DRS_PS_MAX * sizeof(DWORD));
 	/* constants are uniforms, not part of the program */
 	memset(&state[D3DRS_PSCONSTANT0_0], 0, 16 * sizeof(DWORD));
 	state[D3DRS_PSFINALCOMBINERCONSTANT0] = 0;
 	state[D3DRS_PSFINALCOMBINERCONSTANT1] = 0;
+	/* (most often the draw before's; else found by a sum of the inputs,
+	each word weighted apart, which the compiler sums several at once) */
+	if (last && combiner_part_found(last, state, texture_modes))
+	{
+		memcpy(state, last->state, sizeof(last->state));
+		return;
+	}
+	for (index = 0; index < D3DRS_PS_MAX; index++)
+		hash += state[index] * (2u * (DWORD)index + 0x9e3779b1u);
+	part = &combiner_parts[(hash ^ (hash >> 15) ^ (hash >> 23)) % COMBINER_PARTS];
+	last = part;
+	if (combiner_part_found(part, state, texture_modes))
+	{
+		memcpy(state, part->state, sizeof(part->state));
+		return;
+	}
+	part->made = TRUE;
+	part->texture_modes = texture_modes;
+	memcpy(part->inputs, state, sizeof(part->inputs));
 	/* nor are the stages past the combiner count (what earlier draws left
 	in them): one program, one key */
 	for (stage = (int)(D3D__RenderState[D3DRS_PSCOMBINERCOUNT] & 0xff); stage < 8; stage++)
@@ -4151,10 +4369,7 @@ static void combiner_state_describe(DWORD *state, DWORD texture_modes)
 	}
 	dead_portions_clear(state);
 	unread_stage_fields_clear(state, texture_modes);
-	memcpy(last_inputs, D3D__RenderState, sizeof(last_inputs));
-	memcpy(last_state, state, sizeof(last_state));
-	last_texture_modes = texture_modes;
-	described = TRUE;
+	memcpy(part->state, state, sizeof(part->state));
 }
 
 /* what the settings make of a draw's pipeline (xgpu_draw_derive), in it */
@@ -5395,7 +5610,7 @@ void halo_screen_anti_alias(short x0, short y0, short x1, short y1)
 
 		journal_operation(JOURNAL_ANTI_ALIAS, arguments, sizeof(arguments));
 	}
-	if (!device.gl_ready || (mode != _anti_aliasing_fxaa && mode != _anti_aliasing_smaa))
+	if (!device.gl_ready || (mode != _anti_aliasing_fxaa && mode != _anti_aliasing_smaa) || screen_view)
 		return;
 	/* (the primary target's view: the back buffer's) */
 	target = render_target_get(&device.back_buffer);
@@ -5431,7 +5646,7 @@ int halo_world_ao_prepass_begin(void)
 {
 	struct render_target_entry *target;
 
-	if (!device.gl_ready || !world_ao.active || world_ao.failed || device.render_target != &device.back_buffer ||
+	if (!device.gl_ready || !world_ao.active || world_ao.failed || screen_view || device.render_target != &device.back_buffer ||
 		device.depth_stencil != &device.depth_buffer || !(target = render_target_get(&device.back_buffer)))
 		return FALSE;
 	world_ao.prepass = world_ao.sampled = TRUE;
@@ -5516,7 +5731,7 @@ void halo_screen_panini(short x0, short y0, short x1, short y1, const float proj
 	}
 	/* (no projection: the setting off, the pass only journaled, for a load
 	with it on: port/linux/game/panini.c) */
-	if (!device.gl_ready || !projection)
+	if (!device.gl_ready || !projection || screen_view)
 		return;
 	target = render_target_get(&device.back_buffer);
 	if (!target)
@@ -5528,6 +5743,14 @@ void halo_screen_panini(short x0, short y0, short x1, short y1, const float proj
 	frame's resolve would put that over the pass) */
 	view_corners(target, x0, y0, x1, y1, corners);
 	xgpu_backend_panini(target->target.number, corners, projection);
+}
+
+/* display.hdr: the draws from now on the HUD's and the menus' again, after
+a view of the world's drawn among them (the menus' Spartan's own view:
+port/linux/game/menu_spartan.c), whose models' draws were the 3D view's */
+void halo_hdr_interface(void)
+{
+	hdr.view = FALSE;
 }
 
 /* display.hdr's tone map of a window's 3D view (source/render/render.c),
@@ -5555,6 +5778,85 @@ void halo_screen_tone_map(short x0, short y0, short x1, short y1)
 	corners[2] = scaled_pixel(x1, target->target.scale[0]);
 	corners[3] = scaled_pixel(y1, target->target.scale[1]);
 	xgpu_backend_tone_map(target->target.number, corners);
+}
+
+/* ---------- extra views (above, "extra views") */
+
+/* the screen's targets are the view's from now on (1 to HALO_VIEW_COUNT - 1),
+its back buffer and depth buffer width by height of the screen's units */
+void halo_view_begin(int view, unsigned long width, unsigned long height)
+{
+	if (view <= 0 || view >= HALO_VIEW_COUNT || !width || !height)
+		return;
+	if (width > (unsigned long)halo_screen_width())
+		width = (unsigned long)halo_screen_width();
+	if (height > SCREEN_HEIGHT)
+		height = SCREEN_HEIGHT;
+	/* (its images of another size freed between frames) */
+	if (views[view].width && (views[view].width != width || views[view].height != height))
+		views_released = TRUE;
+	views[view].width = width;
+	views[view].height = height;
+	screen_view = view;
+}
+
+/* ... and the screen's own again: the view's image made opaque (its alpha,
+which its draws leave as they please, 1), as the HUD draws it */
+void halo_view_end(void)
+{
+	struct render_target_entry *target;
+
+	if (!screen_view)
+		return;
+	target = device.gl_ready ? render_target_get(&device.back_buffer) : NULL;
+	if (target)
+	{
+		static const float opaque[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+		long rectangle[1][4];
+
+		rectangle[0][0] = 0;
+		rectangle[0][1] = 0;
+		rectangle[0][2] = (long)target->target.pixel_width;
+		rectangle[0][3] = (long)target->target.pixel_height;
+		xgpu_backend_set_targets(target->target.number, -1, 0, 1, 0, 0);
+		xgpu_backend_clear(XGPU_CLEAR_COLOR | XGPU_CLEAR_ALPHA, opaque, 1.0f, 0, (const long (*)[4])rectangle, 1);
+		target->target.written = ++render_target_write_serial;
+		target->last_rendered = device.frame + 1;
+	}
+	screen_view = 0;
+}
+
+/* whether the view's image is there to be drawn: drawn since its targets
+were made (a change of the screen's resolution or format makes them again) */
+int halo_view_drawn(int view)
+{
+	struct render_target_entry *entry;
+
+	if (view <= 0 || view >= HALO_VIEW_COUNT || !views[view].width)
+		return FALSE;
+	for (entry = render_targets; entry; entry = entry->next)
+	{
+		if (entry->view == view && entry->screen_buffer && !entry->target.depth && entry->last_rendered &&
+			!render_target_stale(entry))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/* the draws from now on sample the view's image in stage 0 in place of its
+texture (0: their textures again): its pixels across the texture's
+coordinates 0 to 1, the view's width and height */
+void halo_view_sample(int view)
+{
+	sampled_view = view > 0 && view < HALO_VIEW_COUNT ? view : 0;
+}
+
+void halo_view_release(int view)
+{
+	if (view <= 0 || view >= HALO_VIEW_COUNT || !views[view].width)
+		return;
+	views[view].width = views[view].height = 0;
+	views_released = TRUE;
 }
 
 /* display.overshield_effect's rise (rasterizer_xbox_plasma_energy.c,

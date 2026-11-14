@@ -58,6 +58,9 @@ The conventions (SPIR-V 1.3, Vulkan 1.1):
 XGPU_HDR_SHADER_BLENDS, xgpu_hdr.h), the colour attachment read as input
 attachment 0 at binding 0 (VK_KHR_dynamic_rendering_local_read) */
 #define XGPU_SPIRV_SET_INPUT 2
+/* (its binding of the colour target as a storage image, for the draws the
+interlock orders: xgpu_spirv_options interlock) */
+#define XGPU_SPIRV_BINDING_STORE 1
 /* display.ambient_occlusion "world" (xgpu_stream.h): in a set of its own
 (binding 0 unused), the structure's distance field, its atlas of bricks (a
 combined image sampler, 3D, linear, clamped to its edge) and its table of
@@ -192,6 +195,8 @@ struct xgpu_spirv_uniforms
   correction's rows) and add the uniforms' depth_bias, a z-sprite writes
   its depth reversed, the glows and the VR mode's effects read the scene's
   depth and their own reversed (their unprojections stay the game's). */
+enum { XGPU_SPIRV_INTERLOCK_NONE, XGPU_SPIRV_INTERLOCK_PIXEL, XGPU_SPIRV_INTERLOCK_SAMPLE };
+
 struct xgpu_spirv_options
 {
 	BOOL count_samples;
@@ -201,6 +206,18 @@ struct xgpu_spirv_options
 	BOOL foveated;
 	int effect, effect_fade;
 	int input_samples;
+	/* how a display.hdr draw that blends in its shader is ordered with the
+	draw's own triangles over the same pixel (XGPU_SPIRV_INTERLOCK_*): by
+	the device's fragment shader interlock (SPV_EXT_fragment_shader_
+	interlock), the pixel's (PIXEL) or, with sample shading, each sample's
+	(SAMPLE): the target read and written as a storage image
+	(XGPU_SPIRV_BINDING_STORE) in the triangles' order, the channels of
+	interlock_mask (the pipeline's colour mask, bit n channel n) written,
+	the depth and stencil tests early (the draw must write neither, nor
+	replace its depth), and the pipeline writing no colour itself; NONE as
+	an input attachment, where the device orders the reads itself
+	(rasterization order) or cannot */
+	int interlock, interlock_mask;
 	BOOL reversed_depth;
 	/* the device's subgroups have their bitwise operations in pixel shaders
 	(Vulkan 1.1's subgroup arithmetic in the fragment stage):
@@ -273,11 +290,14 @@ struct xgpu_pixel_program;
 /* the program can be drawn as an effect (above) */
 BOOL xgpu_spirv_effect_possible(const struct xgpu_pixel_program *program);
 
-/* a module's words (SPIR-V's own: 32 bits each), malloc'd, count of them */
+/* a module's words (SPIR-V's own: 32 bits each), malloc'd, count of them;
+the vertex constants it reads (bit n of word n / 64: c[n], counted from
+c[-96]), every one where it indexes them with a0 */
 struct xgpu_spirv_module
 {
 	unsigned int *words;
 	unsigned long count;
+	unsigned long long constants_read[3];
 };
 
 /* the vertex program (xgpu_shader.h) as a vertex shader, entry point

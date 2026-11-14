@@ -5,8 +5,14 @@ This repository ports the Halo: Combat Evolved decompilation (Xbox build
 sources are the decompilation; the port adds a platform layer that
 implements the Xbox APIs the game calls, and features the Xbox game did not
 have (a new netcode, internet play, the PC version's menus, Custom Edition
-maps, touch controls). The project is published as OpenH1, a fork of OpenCE
-(OpenCommunityEdition/OpenCE), whose netcode it keeps compatible.
+maps, touch controls). The project is published as GOAT H1 (formerly
+OpenH1; goath1.com), a fork of OpenCE (OpenCommunityEdition/OpenCE), whose
+netcode it keeps compatible. The repository is `OpenH1/goath1` on GitHub
+(renamed from `OpenH1/OpenH1`, whose addresses GitHub redirects: released
+builds' self-updaters still ask for them). The rename is under way: the game,
+its files and its release names still say OpenH1. Do not rename a release's
+files (`tools/release_names.py`) or anything the self-updaters of released
+builds ask for without publishing the old names beside the new.
 
 Start with [README.md](README.md). The other documents are listed at the
 end.
@@ -175,7 +181,7 @@ python tools/ci_build.py linux_x86_64 release   # what CI builds
 | `HALO_GUEST_MACHO` | Android, Linux arm64, macOS, iOS | The guest is compiled for clang's Darwin target (`arm64_32`), whose Mach-O objects are converted afterwards |
 | `HALO_ARM64_GUEST` | Android, Linux arm64, macOS, iOS | `HALO_GUEST` on AArch64 (its name before); new code tests `HALO_GUEST` or `__aarch64__` |
 | `HALO_GUEST_BASE` | macOS, iOS, `--guest-base` | The guest's memory at a base register (`tools/guest_base_register.py`): host addresses are base plus offset (`port/android/host/host.h`) |
-| `HALO_MACOS` | macOS, iOS (the guests) | The macOS app: its folders (config.toml in the app's settings folder, not the Linux release's layout) and no self-updater; the host tests `__APPLE__` |
+| `HALO_MACOS` | macOS, iOS (the guests) | The macOS app: its folders (config.toml in the app's settings folder, not the Linux release's layout) and its self-updater, Sparkle's (`port/macos/README.md`, "Updates"), not `updater.c`'s; the host tests `__APPLE__` |
 | `HALO_IOS` | iOS (the guest) | The iOS app, with `HALO_MACOS`; the host tests `TARGET_OS_IPHONE` |
 | `HALO_WINDOWS` | Windows (the guest, `tools/windows_build.py`) | The Windows build: with `HALO_GUEST`, the platform layer's `_WIN32` choices that are behaviour, not Windows's API (the folders, config.toml's place, the self-updater's release); the game's sources' Windows choices (socket buffers, the build's label) |
 | `HALO_RELEASE` | `--release` | No assertions checked |
@@ -203,6 +209,8 @@ python -m pytest -q tools/test_screenshot_key.py            # the Screenshot key
 python -m pytest -q tools/test_map_name.py                  # a map that cannot be loaded refused, the game usable (a build, assets/maps)
 python -m pytest -q tools/test_cache_file_formats.py tools/test_bmp_files.py tools/test_profile.py
 python -m pytest -q tools/test_xiso.py tools/test_port_settings.py  # the disc image's maps and movies extracted; the settings pages' rows fit
+python -m pytest -q tools/test_menu_look.py                 # the menu engine's model of the widgets' look: what tools/menu_look.py writes
+python -m pytest -q tools/test_menu_nodes.py                # the setup screens' nodes in the menu engine's model: what tools/menu_nodes.py writes
 python -m pytest -q tools/test_cabinet.py                   # Custom Edition's installer and Halo PC's CD read (made-up cabinets; cabextract checks them)
 python -m pytest -q tools/test_demo_files.py                # the demos' files: written and read back, a damaged block refused, retention
 python -m pytest -q tools/test_render_manifest.py tools/test_render_stream.py  # the renderer's manifest, the command stream
@@ -222,6 +230,7 @@ python -m pytest -q tools/test_host_pages.py tools/test_android_elf_alignment.py
 python -m pytest -q tools/test_guest_branch_relax.py       # the guests' conditional branches relaxed once the base register puts them out of reach
 python -m pytest -q tools/test_macos_metal.py               # the Metal backend (ninja macos_metal_test first)
 python -m pytest -q tools/test_metal_post_shaders.py        # the Metal backend's anti-aliasing passes (tools/metal_post_shaders.py)
+python -m pytest -q tools/test_text_msdf.py                 # the high-res text's distance fields: the atlas the fonts make, the glyphs laid out as rasterized, the backends' fields on a Mac's GPU
 python -m pytest -q tools/test_hdr.py                       # display.hdr's contract: the draws' classification, the reference curves (docs/hdr.md)
 python -m pytest -q tools/test_hdr_backends.py              # display.hdr across the backends: Vulkan's shaders (via SPIRV-Cross) on a Mac's GPU against the reference and Metal's
 python -m pytest -q tools/test_macos_app.py                 # the macOS app's Info.plist, entitlements, signature
@@ -377,6 +386,25 @@ read `xbox/include`. To add a name, follow `port/include/xdk/README.md`.
   by hand: change the generator and run it (the command is in
   `port/assets/menus/README.md`, "Writing them again"), then check that
   `git status` shows only the screens meant to change.
+- The new menu engine (`display.menu_engine = "new"`, the default) draws
+  some screens from hand-written files instead: `port/assets/menus/screens/`
+  (`docs/menu_screens.md`): the main menu, Campaign (Solo, Co-op), the
+  in-game pause menu, and,
+  in the tall layout, Choose Mission and Choose Difficulty. Edit those files
+  by hand; `debug.menu_screens` (`HALO_MENU_SCREENS=<tree>/port/assets/menus/screens`)
+  reloads them within a second. Their actions and bindings are C
+  (`port/linux/game/menu_screen.c`). Parts of Choose Mission and Choose
+  Difficulty (the cards, CONTINUE, the difficulty icons) are still the
+  generators' (`tools/port_settings.py`'s tall layout, `menu_functions.c`'s
+  campaign cards): change the generator for those. Move a screen to a
+  hand-written file rather than growing the generators for the new engine.
+  The classic engine (`"classic"`) keeps the PC version's screens: change
+  it only to fix it.
+- The new engine's look follows the original Xbox version's menus, not the
+  PC version's: compare with them (`display.menus = "xbox"` draws them).
+  The tall layout's screens put BACK at the bottom left and the action at
+  the bottom right; the mouse's hover gives the focus, as the keys and
+  sticks do, and a click is A.
 - Functions the menus call but the port has not wired are listed in
   `port/assets/menus/UNWIRED.md`.
 
@@ -422,7 +450,11 @@ environment variable and a comment that `config.toml` gets. Document it in
 the settings table of `port/linux/README.md` (and the Android README for an
 Android-only one). A departure from the stock game's look or behaviour
 should be a setting, off or stock by default, unless the project decides
-otherwise.
+otherwise. A fix for what the original got wrong only because of its time's
+limits (bodies and objects clipping through walls, glitches the developers
+plainly did not intend) is not such a departure: fix it, on by default, with
+no setting, and say so in a `port:` comment. Network games must still agree:
+raise `HALO_PORT_NETWORK_VERSION` when the fix changes the simulation.
 
 ### Third-party code and licences
 
@@ -440,6 +472,11 @@ The decompilation's upstream, punpckhdq/halo, is AGPL 3.0 from 17 October
 2026; bnunu/halo-1 is CC0.
 
 ### Commits and pull requests
+
+- Pull requests target `dev`, the default branch. `master` is what ships:
+  every push to it publishes a release that the self-updaters install, so
+  it changes only when `dev` is merged into it, a release, when the
+  maintainers choose.
 
 - Commit subjects are plain sentences saying what changed; the body says
   why and what was checked.
@@ -463,6 +500,8 @@ The decompilation's upstream, punpckhdq/halo, is AGPL 3.0 from 17 October
 | [port/ios/README.md](port/ios/README.md) | The iOS and iPadOS build, its signing and provisioning, the guest's code in the signed executable, the app, the Simulator |
 | [port/include/xdk/README.md](port/include/xdk/README.md) | How the SDK declarations were written and are checked |
 | [docs/custom_edition_caches.md](docs/custom_edition_caches.md) | Loading and converting Custom Edition maps, and the evidence for each layout |
+| [docs/menu_engine.md](docs/menu_engine.md) | The menu engine (`display.menu_engine`): the generators' model drawn with Halo's primitives, the parity checks |
+| [docs/menu_screens.md](docs/menu_screens.md) | The hand-written menu screens: the format, the building blocks, actions, bindings, hot reload, adding a screen |
 | [docs/hdr.md](docs/hdr.md) | HDR (`display.hdr`): the shared contract the renderers implement, which draws go past paper white, the tone map and the encodings, the tests |
 | [docs/demos.md](docs/demos.md) | Demos: every game recorded tick by tick, what a demo holds and why, its playback, the file, sizes, what is not deterministic yet |
 | [docs/dedicated_server.md](docs/dedicated_server.md) | The dedicated server: its command line, exit codes, commands, HTTP API, RCON, events and files |

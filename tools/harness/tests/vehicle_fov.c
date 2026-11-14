@@ -98,12 +98,27 @@ static real fake_scoped_angle;
 static real fake_panini;
 
 static unsigned long config_changes(void) { return fake_changes; }
-static double config_real(const char *name) { (void)name; return fake_fov; }
-static char const *config_string(const char *name) { (void)name; return fake_vehicle_fov; }
+/* each local player's display.fov (their profile's), 0 for none: config.toml's */
+static double fake_player_fov[MAXIMUM_LOCAL_PLAYERS];
+static double config_player_real(int local_player, const char *name)
+{
+	(void)name;
+	return local_player >= 0 && local_player < MAXIMUM_LOCAL_PLAYERS && fake_player_fov[local_player] ?
+		fake_player_fov[local_player] : fake_fov;
+}
+static char const *config_player_string(int local_player, const char *name)
+{
+	(void)local_player;
+	(void)name;
+	return fake_vehicle_fov;
+}
 /* (display.scale_scoped_fov: off, the Xbox's zoom levels) */
-static int config_boolean(const char *name) { (void)name; return 0; }
+static int config_player_boolean(int local_player, const char *name) { (void)local_player; (void)name; return 0; }
+static void platform_log(char const *format, ...) { (void)format; }
 static unsigned long system_milliseconds(void) { return fake_now; }
 static boolean cinematic_in_progress(void) { return FALSE; }
+/* (no Pro 2v2 game: its cap is test_pro_rules.py's) */
+static boolean network_standard_pro_game(void) { return FALSE; }
 static director_perspective director_get_perspective(short local_player_index)
 {
 	(void)local_player_index;
@@ -125,7 +140,7 @@ static struct unit_definition *unit_definition_get(long index)
 	return index == 1 || index == 2 ? &fake_vehicle_definitions[index - 1] : &fake_definition;
 }
 static long unit_inventory_get_weapon(long unit_index, short index) { (void)unit_index; return index == NONE ? NONE : 3; }
-static real panini_strength(void) { return fake_panini; }
+static real panini_strength(short local_player_index) { (void)local_player_index; return fake_panini; }
 /* (the projection's magnification: none here, test_panini.py has it) */
 static real panini_center_scale(void) { return 1.f; }
 static real fake_widening;
@@ -404,6 +419,26 @@ int main(int argc, char **argv)
 			"the passenger: %f (scale %f), on foot %f", drawn, render_fov_reticle_scale(0), foot);
 		CHECK(second == native && render_fov_reticle_scale(1) == 1.f, "the driver: %f (scale %f), the game's %f",
 			second, render_fov_reticle_scale(1), native);
+	}
+	CASE("players")
+	{
+		/* two local players on foot, player 2 with a field of view of their
+		profile's own, player 1 with config.toml's: each view its own */
+		real narrow_scale, narrow = on_foot(60.0, &narrow_scale);
+		real second;
+
+		foot = on_foot(110.0, &foot_scale);
+		fake_units[1] = fake_units[0];
+		fake_player_fov[1] = 60.0;
+		fake_changes++;
+		render_fov_vertical(1, native);
+		drawn = render_fov_vertical(0, native);
+		second = render_fov_vertical(1, native);
+		CHECK(SAME(drawn, foot) && SAME(render_fov_reticle_scale(0), foot_scale), "player 1: %f, config.toml's %f",
+			drawn, foot);
+		CHECK(SAME(second, narrow) && SAME(render_fov_reticle_scale(1), narrow_scale), "player 2: %f, their own %f",
+			second, narrow);
+		fake_player_fov[1] = 0.0;
 	}
 	CASE("leaving_third_person")
 	{

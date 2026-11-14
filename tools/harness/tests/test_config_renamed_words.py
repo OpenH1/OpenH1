@@ -15,7 +15,8 @@ from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run
 CASES = ["file", "kept", "read"]
 NAMES = ["config_name_hash", "config_setting_walk", "config_index_make", "config_setting_index", "config_append",
          "config_copy", "config_append_setting", "config_line_key",
-         "config_line_section", "config_find_line", "config_line_commented_default", "config_replace_setting",
+         "config_line_section", "config_find_line", "config_line_commented_default", "config_comment_start",
+         "config_replace_setting",
          "config_word_is", "config_renamed_word", "config_migrate_words", "config_check_words"]
 
 # a fault in the code, the function it is in, and the case that must catch it
@@ -48,7 +49,7 @@ def generated(fault=None, faulty_function=None):
     types = "\n\n".join([
         "#include <stdarg.h>", "#include \"tomlc17.h\"",
         enum_with(source, "_config_boolean,"), enum_with(source, "_environment_set_is_true,"),
-        enum_with(source, "_platform_desktop = 1"), structure(source, "config_setting"),
+        enum_with(source, "_platform_desktop = 1"), enum_with(source, "\t_scope_player"), structure(source, "config_setting"),
         structure(source, "config_value"), structure(source, "config_text"),
     ]) + "\n"
     words = table(source, "config_words") + "\n#define NUMBER_OF_CONFIG_WORDS (sizeof(config_words) / sizeof(config_words[0]))\n"

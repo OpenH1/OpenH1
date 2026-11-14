@@ -194,7 +194,7 @@ the game's console commands of those names.
 | `sv_vpn` | viewer | The VPN policy, the netlist held (its masters, serial, ranges, age) and the joins refused for it ("VPNs and linked Discord accounts") |
 | `sv_vpn_check <address>` | moderator | Whether an IPv4 address is refused as a VPN's, and by what (`netlist`, `vpn_block.txt`, `vpn_allow.txt`) |
 | `sv_vpn_fetch` | admin | Fetches the masters' netlists now |
-| `mute <player> [<minutes>]`, `unmute <player>` | moderator | The host's mute of a player's chat and voice for everyone |
+| `mute <player> [<minutes>]`, `unmute <player>` | moderator | The host's mute of a player's chat, voice and pings for everyone |
 | `sv_map <map> [<gametype>]`, `sv_map <entry>` | moderator | Plays that game (or a rotation entry, `map:gametype+rule=value`; a co-op one too), below |
 | `sv_map_next` (`sv_next`) | moderator | Ends the game without its scores and plays the rotation's next |
 | `sv_end_game` | moderator | Ends the game: its scores, then the next |
@@ -423,7 +423,7 @@ new.
 
 | Value | The games |
 | --- | --- |
-| `openh1_120` (the default), `openh1_60` | An OpenH1 game at 120 or 60 ticks a second: each OpenH1 player's sub-steps go between the machines, and OpenCE players join it too, at 30, while `network.allow_opence` is on (the default) |
+| `openh1_120` (the default), `openh1_60` | An OpenH1 game at 120 or 60 ticks a second: each OpenH1 player's sub-steps go between the machines, and OpenCE players join it too, at 30, when `network.allow_opence` is on (it is off by default) |
 | `openh1_30` | An OpenH1 game at 30, as a player's Server Setup offers it |
 | `legacy` | OpenCE's netcode at 30 ticks a second, which OpenCE's players and OpenH1's join alike |
 
@@ -434,7 +434,7 @@ players their sub-steps as they came and send them on to the other
 clients, and it sends no live controls of its own. Its LAN advertisement
 and listing are an OpenH1 game's (OpenCE's network version with the rate
 and the OpenH1 protocol version beside it, which the server browser's
-OpenH1 tab lists as "OpenH1 120 Tick, OpenCE can join"; with
+OpenH1 tab lists as "GOAT H1 120 Tick, OpenCE can join"; with
 `network.allow_opence` off, the OpenH1 protocol version alone, which OpenCE
 does not list), with the dedicated flag as ever. Every rotation entry,
 gametype file, vote and the map vote play as in a Legacy game; a co-op
@@ -451,7 +451,7 @@ waits), and an OpenH1 game's rate changes from the next game, as a player's
 host changes it. `network.allow_opence` is taken at once: an OpenH1 game
 closed to OpenCE players keeps those in it. The status's `game_mode`,
 `game_mode_name`, `tick_rate` and `opence`, the lobby's log line
-(`lobby: hosting: OpenH1 120 Tick, OpenCE can join (server.game_mode)`) and
+(`lobby: hosting: GOAT H1 120 Tick, OpenCE can join (server.game_mode)`) and
 the `game_started` and `game_ended` events say what is hosted.
 
 A server takes nothing of a player's host's `network.game_mode` and
@@ -776,7 +776,7 @@ events) before they were asked for.
 ```json
 {"ok":true,"time":1760900000123,"name":"OpenCE Server","state":"playing",
  "build":"build-206","network_version":38,"openh1_version":11,"game_mode":"openh1_120",
- "game_mode_name":"OpenH1 120 Tick, OpenCE can join","tick_rate":120,"opence":true,
+ "game_mode_name":"GOAT H1 120 Tick, OpenCE can join","tick_rate":120,"opence":true,
  "uptime":3600,"games_hosted":4,
  "map":"bloodgulch","level":"levels\\test\\bloodgulch\\bloodgulch","gametype":"ctf","variant":"CTF","teams":true,
  "players":5,"max_players":16,"machines":5,"countdown":-1,"game_seconds":312,"team_scores":[2,1],
@@ -799,7 +799,7 @@ and the mean frame of the last minute (`tick_ms_avg` is the mean again, for
 older readers). `game_mode` is the kind of game hosted, as `server.game_mode`
 spells it (a change of the setting waits for the server to be empty: "OpenH1
 games"; before the server hosts, what the setting says), `game_mode_name`
-its name as the server browser says it (`Legacy`, `OpenH1 120 Tick, OpenCE
+its name as the server browser says it (`Legacy`, `GOAT H1 120 Tick, OpenCE
 can join`), `tick_rate` its tick rate (30 for a Legacy game), `opence` whether
 OpenCE players join it now, and `openh1_version` the build's OpenH1 protocol
 version (`network_version` its network version). `invite` is given to
@@ -1114,8 +1114,9 @@ a direct connection has failed.
   of kilobytes a second.
 - **Where players learn of relays**: `relays.txt` beside `masters.txt`
   (`network.relays_file`; a dedicated server's own, `server.relays_file`,
-  which it offers its joiners and tells its players of), none by default;
-  and what the dedicated server of their game tells them.
+  which it offers its joiners and tells its players of): the project's
+  own, `net.goath1.com:2302` (`deploy/net`), by default and when there is no
+  file (an empty one names none); and what the dedicated server of their game tells them.
 - **Limits** (both): `server.relay_pairs` (64) pairs at once, 8 for each
   address; `server.relay_upload` (8192 KB/s) in all, 256 KB/s for each pair
   and 1 MB/s for each address; binds answered 20 times a second for each
@@ -1230,8 +1231,8 @@ the server takes FROM only from its front's address with its session.
 | `gametypes/<name>.toml` | Gametype files: the `gametypes` folder beside `config.toml` if there is one, else the data root's |
 | `gametypes/<name>.gametype` | Gametypes saved by a player's game (`file=<name>` in the rotation): the same `gametypes` folder |
 | `publisher.key` | The publisher key for the master servers (beside `config.toml`). On Windows, a server's `config.toml` and `publisher.key` are given an access list of their owner alone (the entries inherited for Administrators and SYSTEM taken out) |
-| `masters.txt` | The master servers (`server.masters_file`: beside `config.toml`, else beside the executable); one that names none leaves the official master, built in |
-| `relays.txt` | The relays the server offers players who cannot reach it, and tells its players of (`server.relays_file`, found as `masters.txt` is): `host[:port]` on each line; none by default ("Relays") |
+| `masters.txt` | The master servers (`server.masters_file`: beside `config.toml`, else beside the executable); the release's names the project's master and OpenCE's, which are also built in for one that names none |
+| `relays.txt` | The relays the server offers players who cannot reach it, and tells its players of (`server.relays_file`, found as `masters.txt` is): `host[:port]` on each line; the project's, `net.goath1.com:2302`, by default ("Relays") |
 | `bans.txt`, `cheaters.txt`, `debug.txt` | In `paths.logs`, else the data root |
 | `admins.txt`, `admin_id.txt` | Beside `bans.txt`: the players' keys (or key ids) who are admins in the game, and the server's id their keys for it are made from ("Admins in the game") |
 | `vpn_allow.txt`, `vpn_block.txt`, `netlist-<master key id>.bin` | Beside `bans.txt`: ranges never refused as a VPN's, ranges refused besides, and the masters' netlists held ("VPNs and linked Discord accounts") |

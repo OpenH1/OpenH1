@@ -45,7 +45,8 @@ typedef word message_header;
 /* ---------- the fake world */
 
 /* the record's pickup bit (network_game_manager.h) */
-enum { _network_game_hold_to_pick_up_bit = 3, _network_game_classic_turning_bit = 4, _network_game_no_hit_sounds_bit = 5 };
+enum { _network_game_hold_to_pick_up_bit = 3, _network_game_classic_turning_bit = 4,
+	_network_game_no_direct_camera_bit = 5, _network_game_pro_rules_bit = 6, _network_game_no_hit_sounds_bit = 7 };
 #define SET_FLAG(f, b, v) ((v) ? ((f) |= (unsigned)FLAG(b)) : ((f) &= (unsigned)~FLAG(b)))
 
 struct network_game
@@ -151,6 +152,11 @@ static long demo_playback_sim_rate(void)
 {
 	return 0;
 }
+
+static boolean demo_playing(void)
+{
+	return FALSE;
+}
 void network_standard_new_game(void);
 
 static long config_integer(char const *name)
@@ -166,9 +172,15 @@ static int config_boolean(char const *name)
 	return !strcmp(name, "network.allow_opence") && allow_opence;
 }
 
+/* (moves as the settings change, as config.toml's count does) */
 static unsigned long config_changes(void)
 {
-	return 1;
+	unsigned long changes = (unsigned long)network_rate * 2 + (allow_opence ? 1 : 0);
+	char const *text;
+
+	for (text = game_mode ? game_mode : ""; *text; text++)
+		changes = changes * 31 + (unsigned char)*text;
+	return changes;
 }
 
 static char const *config_string(char const *name)

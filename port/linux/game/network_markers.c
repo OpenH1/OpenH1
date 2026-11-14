@@ -37,6 +37,15 @@ Server Setup's PINGS) goes to its clients with it each MARKER_CONFIG_MILLISECOND
 and as it changes; a client without it (a host before pings) sends none.
 Each machine plays the UI's cursor sound as a ping its players see comes.
 
+Mutes, as the text chat's and the voice's: a player this machine muted (the
+scoreboard's Mute voice, chat and pings: network_voice_machine_muted) has
+their pings neither drawn nor heard here, which no one else is told
+(markers_shown_to; the host still sends them). The host's mute for everyone
+(the chat's /mute, the scoreboard's Mute for everyone, Host Controls' MUTE:
+network_chat_host_mute_minutes) refuses the muted player's pings, as it
+relays none of their voice and takes none of their lines: no machine shows
+them, their own neither.
+
 Nothing of it is the simulation's: the pings are kept by the machine's
 clock, not the game's ticks, and the recorded and replayed game is the same
 without them. The pure parts (network_markers_point_valid,
@@ -77,6 +86,7 @@ tools/harness/tests/test_markers.py's; the name over the arrow
 #include "network_standard.h"
 #include "network_coop.h"
 #include "network_chat.h"
+#include "network_voice.h"
 #include "network_markers.h"
 
 /* the platform layer's */
@@ -336,6 +346,25 @@ static boolean markers_sees(
 	return game_engine_has_teams() && pinger->team_index == viewer->team_index;
 }
 
+/* whether this machine muted the pinger's machine (the scoreboard's mute,
+network_voice.c, which mutes their voice and text chat too), in a network
+game */
+static boolean markers_muted_here(
+	struct player_datum const *pinger)
+{
+	return pinger && markers_network_game() && network_voice_machine_muted(pinger->network_player_data.machine_index);
+}
+
+/* whether the viewer, on this machine, is shown the pinger's pings: those
+markers_sees gives them, but none of a player this machine muted (their own
+always) */
+static boolean markers_shown_to(
+	struct player_datum const *pinger,
+	struct player_datum const *viewer)
+{
+	return markers_sees(pinger, viewer) && (pinger == viewer || !markers_muted_here(pinger));
+}
+
 /* a player's colour: their team's in a game with teams, else their own
 (the profile's colour, as a free-for-all game draws their armor) */
 static void markers_player_color(
@@ -488,6 +517,7 @@ static void markers_show(
 	struct player_datum *pinger = distributed_player(player_index);
 	short local_player_index;
 	boolean seen = FALSE;
+	boolean muted = FALSE;
 
 	if (kind == _marker_kind_clear)
 	{
@@ -506,12 +536,16 @@ static void markers_show(
 	{
 		long viewer_index = local_player_get_player_index(local_player_index);
 
-		if (viewer_index != NONE && markers_sees(pinger, player_get(viewer_index)))
+		if (viewer_index == NONE)
+			continue;
+		if (markers_shown_to(pinger, player_get(viewer_index)))
 			seen = TRUE;
+		else if (markers_sees(pinger, player_get(viewer_index)))
+			muted = TRUE;
 	}
 	platform_log("pings: player %d pinged %s %d at %.2f %.2f %.2f%s", player_index,
 		kind == _marker_kind_object ? "object" : "point", kind == _marker_kind_object ? (int)object_index : -1,
-		point->x, point->y, point->z, seen ? "" : " (not seen here)");
+		point->x, point->y, point->z, seen ? "" : muted ? " (muted here)" : " (not seen here)");
 	markers_look_up();
 	if (seen && markers_globals.sound_index != NONE)
 		unspatialized_impulse_sound_new(markers_globals.sound_index, 1.0f);
@@ -596,6 +630,12 @@ static void markers_host_take(
 		!network_markers_point_valid(point->x, point->y, point->z))
 	{
 		markers_refused(player_index, "not a ping of the game");
+		return;
+	}
+	/* (a player the host muted for everyone: network_chat.c) */
+	if (markers_network_game() && network_chat_host_mute_minutes(player_index) > 0)
+	{
+		markers_refused(player_index, "muted by the host");
 		return;
 	}
 	/* (a player with a living unit, near enough the point) */
@@ -991,7 +1031,7 @@ void network_markers_render(
 			marker->active = FALSE;
 			continue;
 		}
-		if (!markers_sees(pinger, viewer))
+		if (!markers_shown_to(pinger, viewer))
 			continue;
 		/* (over its object as drawn, while it is there; then where it was) */
 		if (marker->kind == _marker_kind_object && object_try_and_get_and_verify_type(marker->object_index,
@@ -1075,8 +1115,11 @@ short network_markers_shown(
 	{
 		struct marker const *marker = &markers_globals.markers[player_index];
 
-		if (marker->active && now - marker->shown_at < MARKER_SHOWN_MILLISECONDS + MARKER_FADE_MILLISECONDS)
+		if (marker->active && now - marker->shown_at < MARKER_SHOWN_MILLISECONDS + MARKER_FADE_MILLISECONDS &&
+			!markers_muted_here(distributed_player(player_index)))
+		{
 			player_indices[count++] = player_index;
+		}
 	}
 	return count;
 }

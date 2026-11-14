@@ -21,7 +21,10 @@ from the report the player sends (F8: input.txt, report.c) or the log
     pad, the keyboard's actions, the mouse's motion), and a sub-step's
     reading where it differs from the frame's;
   - the player's move and look as the game reads them (input_abstraction.c),
-    each frame and sub-step.
+    each frame and sub-step;
+  - the look stick's acceleration as the game takes it (player_control.c,
+    by the aim style, input.aim_style): whether it accelerates and how long
+    it has.
 
 A record is written where it differs from the last of its kind, into a
 fixed ring (no allocation, a lock no other thread waits on long); the text
@@ -62,7 +65,8 @@ enum
 	_trace_pad_sticks,
 	_trace_look,
 	_trace_player,
-	_trace_player_look
+	_trace_player_look,
+	_trace_aim
 };
 
 /* a record: when (ms since SDL started), how long before that the event
@@ -84,7 +88,7 @@ static unsigned long trace_count;
 /* the last of each kind written where only a change is (the pad's and the
 player's for the frame and the sub-step apart) */
 static struct input_trace_record last_reading, last_pad[2], last_sticks[2], last_player[2][4],
-	last_player_look[2][4];
+	last_player_look[2][4], last_aim[4];
 static unsigned long readings_unchanged;
 static struct
 {
@@ -260,6 +264,14 @@ void input_trace_player(int controller, int substep, float forward, float strafe
 		(int)lrintf(forward * 1000.0f), (int)lrintf(strafe * 1000.0f));
 	trace_put_changed(&last_player_look[substep][controller], _trace_player_look, controller, substep,
 		(int)lrintf(yaw * 1000.0f), (int)lrintf(pitch * 1000.0f));
+}
+
+void input_trace_aim(int controller, int modern, int accelerating, float acceleration_seconds)
+{
+	if (controller < 0 || controller >= 4)
+		return;
+	trace_put_changed(&last_aim[controller], _trace_aim, controller, (modern != 0) | (accelerating != 0) << 1,
+		(int)lrintf(acceleration_seconds * 1000.0f), 0);
 }
 
 /* ---------- the text */
@@ -446,6 +458,11 @@ static void text_record(struct trace_text *text, const struct input_trace_record
 		text_fraction(text, record->c, 1000);
 		text_add(text, ", pitch ");
 		text_fraction(text, record->d, 1000);
+		break;
+	case _trace_aim:
+		text_add(text, "player %d: %s aim, %s, acceleration time ", record->a, record->b & 1 ? "modern" : "classic",
+			record->b & 2 ? "accelerating" : "not accelerating");
+		text_fraction(text, record->c, 1000);
 		break;
 	default:
 		text_add(text, "?");

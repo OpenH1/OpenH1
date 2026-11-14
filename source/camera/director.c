@@ -123,6 +123,7 @@ symbols in this file:
 #include "camera_scripting.h"
 #include "dead_camera.h"
 #include "coop_spectate.h" /* port: port/linux/game/coop_spectate.c */
+#include "dead_spectate.h" /* port: port/linux/game/dead_spectate.c */
 #include "editor_flying_camera.h"
 #include "first_person_camera.h"
 #include "flying_camera.h"
@@ -615,6 +616,22 @@ static void director_rotate_cameras(
 	return;
 }
 
+/* port: a local player's camera data, if its camera is camera_proc, else
+NULL (port/linux/game/dead_spectate.c) */
+void *director_port_camera_data(
+	short local_player_index,
+	void *camera_proc)
+{
+	struct director *director;
+
+	if (local_player_index < 0 || local_player_index >= MAXIMUM_NUMBER_OF_LOCAL_PLAYERS)
+		return NULL;
+	director = director_get(local_player_index);
+	if ((void *)director->camera_proc != camera_proc)
+		return NULL;
+	return director->camera_data;
+}
+
 #ifdef HALO_VR
 /* port: the first player's camera, if it is the dead's (watching its body,
 or a teammate network co-op's spectating follows), else NULL: the VR mode's
@@ -744,6 +761,10 @@ static void director_choose_camera_game(
 		the level's first checkpoint, watches too */
 		boolean use_dead_camera = player->unit_index == NONE &&
 			(player->statistics.deaths > 0 || players_coop_waiting_to_start(player_index));
+		/* port: the living teammate a dead player watches (port/linux/game/
+		dead_spectate.c), read every frame, alive too, so that a press of its
+		button is counted once */
+		long watched_unit_index = dead_spectate_unit(local_player_index);
 
 		/* (port: not a client in another's game, the host's rules: a flying
 		camera would see all of it, and one behind the player round its
@@ -753,12 +774,32 @@ static void director_choose_camera_game(
 		if (!*director_camera_scripted)
 		{
 			director_choose_game_perspective(local_player_index, initialize);
-			if (use_dead_camera)
+			/* port: through the teammate's eyes (game.spectate_on_death) */
+			if (use_dead_camera && dead_spectate_through_eyes(watched_unit_index))
+			{
+				if (director->camera_proc != (director_camera_update_proc)dead_spectate_camera_update ||
+					dead_spectate_camera_unit(director->camera_data) != watched_unit_index)
+				{
+					dead_spectate_camera_new(director->camera_data, local_player_index, watched_unit_index);
+					director_set_camera(
+						local_player_index,
+						(director_camera_update_proc)dead_spectate_camera_update,
+						FALSE);
+					/* (the view in the teammate's eye at once, not eased there) */
+					observer_obsolete_position(local_player_index);
+				}
+			}
+			else if (use_dead_camera)
 			{
 				/* port: a dead network co-op player watches a living teammate
-				(port/linux/game/coop_spectate.c), or its own body if nobody is alive */
-				long watched_unit_index = coop_spectating() ? coop_spectate_unit(local_player_index) : NONE;
-
+				(port/linux/game/coop_spectate.c), or its own body if nobody is
+				alive; with game.spectate_on_death, a dead player in co-op or a
+				team game too, from behind where it sees no eyes' view */
+				if (director->camera_proc == (director_camera_update_proc)dead_spectate_camera_update)
+				{
+					/* (from a teammate's eyes, cut to the camera, not eased) */
+					observer_obsolete_position(local_player_index);
+				}
 				if (director->camera_proc != (director_camera_update_proc)dead_camera_update ||
 					(watched_unit_index != NONE &&
 						((struct dead_camera *)director->camera_data)->unit_index != watched_unit_index))
@@ -775,7 +816,8 @@ static void director_choose_camera_game(
 				if (watched_unit_index != NONE)
 					coop_spectate_camera((struct dead_camera *)director->camera_data);
 			}
-			else if (director->camera_proc == (director_camera_update_proc)dead_camera_update)
+			else if (director->camera_proc == (director_camera_update_proc)dead_camera_update ||
+				director->camera_proc == (director_camera_update_proc)dead_spectate_camera_update)
 			{
 				director_choose_game_perspective(local_player_index, TRUE);
 				/* port: respawned, the view is in the new unit's eye at once, not

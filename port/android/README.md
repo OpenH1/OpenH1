@@ -25,7 +25,7 @@ F12 still toggles the capture by hand.
 
 Each release has the app as an APK: `OpenH1-Android.apk` (and
 `OpenH1-Android-debug.apk`, the debug build), at
-<https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Android.apk>.
+<https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Android.apk>.
 The APK carries the licences of OpenH1 and of what it includes (its
 `assets/licenses` folder).
 

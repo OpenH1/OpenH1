@@ -12,6 +12,7 @@ controller, the keyboard and the mouse, on every port.
 | `ce/shell/...png` | The pictures, drawn from the high-res redraws in `svg/` (up to 4x), else a placeholder |
 | `NON_HANDDRAWN.md` | The pictures that are not redraws: those drawn from the Xbox's map (the player's own), and the placeholders, to be redrawn |
 | `UNWIRED.md` | The menus' functions that do nothing yet: the lists they fill are empty, and the settings they change do not change |
+| `model/` | The menu engine's model of the generated screens (`docs/menu_engine.md`): `settings.xml`, the settings screens' rows and geometries (`tools/port_settings.py`), `look/`, every widget's look (`tools/menu_look.py`; Settings' in its tall layout), `behaviour/`, every widget's behaviour (`tools/menu_behaviour.py`), and `nodes.xml`, the setup screens' nodes and their rows' conditions (`tools/menu_nodes.py`) |
 | `menus.json` | The files the game embeds |
 
 `tools/ce_menus.py` writes all of them from the PC version's tags and the
@@ -176,7 +177,12 @@ touchscreen's wide screens (where the menus are laid out for touch: the
 `anchor_right` move the widget (and what is in it) to the screen's left or
 right edge, by as much as the screen is wider than the menus' 640 on that
 side; `stretch` draws its picture wider by both sides' width, from its left
-(a panel that reaches from the menus' middle to the right edge). And
+(a panel that reaches from the menus' middle to the right edge); `foot` moves
+the widget (and what is in it) up by the tall layout's footer's lift (16
+units, `tools/port_settings.py`'s `TALL_FOOT_LIFT`), above a phone's safe area
+at the screen's foot, and `above_foot` makes it that much shorter (a panel that
+reaches down to the footer; its picture there the menus' `<picture>_touch`,
+which a look's picture is on a touchscreen wherever the menus have one). And
 everywhere, `keep_ends`: the widget's picture drawn at the widget's width
 with its ends as they are, its middle stretched or shortened (a tab laid out
 narrower than its picture).
@@ -189,12 +195,22 @@ extra width on a narrower one (16:10's 128 of 212), none at 4:3. A move
 carries what is in the widget, as an anchor does; a widened picture keeps
 its ends and stretches its middle. `-106 0` keeps a widget as far from the
 screen's left edge as the 640 have it from theirs, `106 0` from the right;
-`-106 212` stretches it across. `tools/port_settings.py`'s `wide`,
+`-106 212` stretches it across (each of dx and dw within -424 to 424: a
+widget may grow by more than the extra width, Settings' rows by what the
+panel beside them gives up). `tools/port_settings.py`'s `wide`,
 `WIDE_LEFT`, `WIDE_RIGHT` and `wide_spread` (tabs) write them, and
 `tools/harness/menu_layout.py` lays a screen out at a width for its tests.
 Their rows, panels, tabs and buttons keep `WIDE_MARGIN` (24 units) from the
 screen's edges at every width. Widgets anchored on a touchscreen keep their anchors; the game's own menus
 have no `wide`, and stay in the middle 640.
+
+The menu engine (`display.menu_engine = "new"`) draws Settings' tabs and
+pages in a tall layout of their own, full screen and edge to edge past 16:9,
+which these files do not have: `tools/port_settings.py` writes their widgets
+a second time in it (`tall_widgets`), and `tools/menu_look.py` writes the
+looks in `model/look` from those. Its looks may have a `past` ("dx dw" at
+21:9 past 16:9's) and a text `scale`; `docs/menu_engine.md` ("The tall
+layout") says how another screen opts in.
 
 On a touchscreen a tap on an item of a list with an extended description
 (the Multiplayer menu, the settings) chooses it, showing what the

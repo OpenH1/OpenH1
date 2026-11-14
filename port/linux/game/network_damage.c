@@ -70,6 +70,7 @@ being hit looks and feels like on the clients).
 #include "network_distributed.h"
 #include "network_standard.h"
 #include "hit_sounds.h"
+#include <stdio.h>
 #include "demo.h"
 
 #include <math.h>
@@ -2662,6 +2663,66 @@ static boolean distributed_report_line_of_sight(
 	return FALSE;
 }
 
+/* why the host refused clients' hits, since the start (distributed_log_reports
+says them with the counts, so a report of "my shots don't register" says
+which check it was): the checks of distributed_report_valid in its order,
+and the oldest refused report's age in the host's ticks since last logged */
+enum
+{
+	_report_refused_player,
+	_report_refused_object,
+	_report_refused_target,
+	_report_refused_numbers,
+	_report_refused_age,
+	_report_refused_weapon,
+	_report_refused_shape,
+	_report_refused_scale,
+	_report_refused_origin,
+	_report_refused_grenade,
+	_report_refused_rate,
+	_report_refused_melee,
+	_report_refused_zombie,
+	_report_refused_collision,
+	_report_refused_reach,
+	_report_refused_history,
+	_report_refused_position,
+	_report_refused_sight,
+	_report_refused_damage,
+	NUMBER_OF_REPORT_REFUSALS
+};
+static char const *const report_refusal_names[NUMBER_OF_REPORT_REFUSALS] =
+{
+	"player",
+	"object",
+	"target",
+	"numbers",
+	"age",
+	"weapon",
+	"shape",
+	"scale",
+	"origin",
+	"grenade",
+	"rate",
+	"melee",
+	"zombie",
+	"collision",
+	"reach",
+	"history",
+	"position",
+	"sight",
+	"damage",
+};
+static long damage_refusals[NUMBER_OF_REPORT_REFUSALS];
+static long damage_refused_oldest;
+#define REFUSE(reason) \
+	do \
+	{ \
+		damage_refusals[reason]++; \
+		if (report->host_time != NONE && now - report->host_time > damage_refused_oldest) \
+			damage_refused_oldest = now - report->host_time; \
+		return FALSE; \
+	} while (0)
+
 /* whether the host takes the report, which it makes the damage as the
 host deals it (the cheaper checks first, and the report paid for before the
 history is looked through: a flood of reports costs its sender no more than
@@ -2703,18 +2764,18 @@ static boolean distributed_report_valid(
 	if (player_index == NO_PLAYER || player_index >= MAXIMUM_TRACKED_PLAYERS ||
 		!(player = distributed_player(player_index)) || !distributed_machine_has_player(machine_index, player_index))
 	{
-		return FALSE;
+		REFUSE(_report_refused_player);
 	}
 	/* one of the host's objects (the index whole: identifier 0 is any
 	object at the index) */
 	if (!distributed_object_index_valid(report->object_index))
-		return FALSE;
+		REFUSE(_report_refused_object);
 	target = (struct object_datum *)object_try_and_get_and_verify_type(report->object_index,
 		_object_mask_biped | _object_mask_vehicle | _object_mask_weapon | _object_mask_equipment);
 	if (!target && static_target(report->object_index))
 		target = object_get(report->object_index);
 	if (!target || !tag_index_is_group(report->damage.definition_index, DAMAGE_EFFECT_DEFINITION_TAG))
-		return FALSE;
+		REFUSE(_report_refused_target);
 	/* numbers the game can take */
 	if (!distributed_damage_numbers_valid(&report->damage) ||
 		!distributed_point_valid(&report->target_position, REPORT_WORLD_BOUND) ||
@@ -2722,20 +2783,20 @@ static boolean distributed_report_valid(
 		!distributed_damage_indices_valid(report->object_index, report->node_index, report->region_index,
 			report->material_index))
 	{
-		return FALSE;
+		REFUSE(_report_refused_numbers);
 	}
 	/* made at a tick of the host's not later than now nor long before (one
 	held back is refused, as a burst after the network was lost is), and
 	looked back over from then: however long it took to come (sent again,
 	reliably), where the shooter saw the target */
 	if (report->host_time == NONE || report->host_time > now || now - report->host_time > REPORT_MAXIMUM_AGE_TICKS)
-		return FALSE;
+		REFUSE(_report_refused_age);
 	ticks = MIN(now - report->host_time + TARGET_HISTORY_SLACK_TICKS, TARGET_HISTORY_TICKS - 1);
 	/* damage that player could deal, and how they deal it */
 	rate = distributed_player_deals(player_index, report->damage.definition_index, &kinds, &fired_reach,
 		&grenade_type);
 	if (rate <= 0.0f)
-		return FALSE;
+		REFUSE(_report_refused_weapon);
 	/* ... of its shape: at a point, else a melee blow, else a collision; and
 	area damage as the game deals it (the report's only when the damage is
 	dealt both ways) */
@@ -2762,19 +2823,19 @@ static boolean distributed_report_valid(
 	}
 	else
 	{
-		return FALSE;
+		REFUSE(_report_refused_shape);
 	}
 	/* ... no harder than it can be (all of it, but an airborne melee
 	blow's) */
 	if (!(report->damage.scale >= 0.0f && report->damage.scale <= (melee ? REPORT_MAXIMUM_MELEE_SCALE : 1.0f)))
-		return FALSE;
+		REFUSE(_report_refused_scale);
 	/* the origin at the target (an explosion's within its reach) */
 	definition = damage_effect_definition_get(report->damage.definition_index);
 	reach = target->object.bounding_sphere_radius + REPORT_IMPACT_TOLERANCE;
 	if (area)
 		reach += definition->cutoff_radius;
 	if (!(distributed_distance_squared(&report->damage.origin, &report->target_position) <= reach * reach))
-		return FALSE;
+		REFUSE(_report_refused_origin);
 	/* what only a grenade of theirs deals, from one the host saw them throw
 	that has not gone off: its explosion once (the explosion's other objects
 	that tick come free, distributed_report_paid, and its other damage takes
@@ -2784,13 +2845,13 @@ static boolean distributed_report_valid(
 	{
 		throw_index = distributed_grenade_throw(player_index, grenade_type);
 		if (throw_index == NONE)
-			return FALSE;
+			REFUSE(_report_refused_grenade);
 	}
 	/* no more than the weapon fires */
 	if (!distributed_report_paid(player_index, report, rate, area && !melee && !collision,
 		definition->cutoff_radius > 0.0f))
 	{
-		return FALSE;
+		REFUSE(_report_refused_rate);
 	}
 	/* (the grenade gone off: its throw spent) */
 	if (throw_index != NONE && area && !melee && !collision)
@@ -2801,7 +2862,7 @@ static boolean distributed_report_valid(
 	if (melee && (!distributed_player_was_near(player_index, &report->damage.epicenter, ticks) ||
 		!distributed_player_was_near(player_index, &report->damage.origin, ticks)))
 	{
-		return FALSE;
+		REFUSE(_report_refused_melee);
 	}
 	/* an Infection zombie's blow at a rider (not the vehicle, as the game's
 	melee has it) only past the host's own line to them (infection.c) */
@@ -2809,12 +2870,12 @@ static boolean distributed_report_valid(
 		target->object.parent_object_index != NONE &&
 		!infection_melee_rider_visible(distributed_living_unit(player), report->object_index, &report->damage.direction))
 	{
-		return FALSE;
+		REFUSE(_report_refused_zombie);
 	}
 	if (collision && !distributed_player_drove_into(player_index, &report->damage.epicenter, &report->target_position,
 		target->object.bounding_sphere_radius, ticks))
 	{
-		return FALSE;
+		REFUSE(_report_refused_collision);
 	}
 	/* what hits at a point (a shot, an explosion) within its reach of where
 	the host had the player since it was fired, where the tags bound that */
@@ -2822,14 +2883,14 @@ static boolean distributed_report_valid(
 		!distributed_player_could_fire(machine_index, player_index, &report->damage.origin, &fired_reach,
 			report->host_time))
 	{
-		return FALSE;
+		REFUSE(_report_refused_reach);
 	}
 	/* the target about where the host had it when the shooter saw it: a
 	player's unit or vehicle as far back as the report was made, else (what
 	no player has) about where it is */
 	seen = distributed_target_seen(report->object_index, &report->target_position, ticks, &seen_position);
 	if (seen == FALSE)
-		return FALSE;
+		REFUSE(_report_refused_history);
 	if (seen == NONE)
 	{
 		real_point3d origin;
@@ -2842,7 +2903,7 @@ static boolean distributed_report_valid(
 		tolerance = REPORT_TARGET_TOLERANCE + REPORT_TARGET_LEAD_TICKS *
 			(real)sqrt(velocity.i * velocity.i + velocity.j * velocity.j + velocity.k * velocity.k);
 		if (!(distributed_distance_squared(&report->target_position, &origin) <= tolerance * tolerance))
-			return FALSE;
+			REFUSE(_report_refused_position);
 		seen_position = origin;
 	}
 	/* a point hit needs a line to the target, unless it is the detonation of
@@ -2860,13 +2921,13 @@ static boolean distributed_report_valid(
 		if (!distributed_report_line_of_sight(machine_index, player_index, &report->damage.origin, &centre,
 			target->object.bounding_sphere_radius, &fired_reach, report->host_time))
 		{
-			return FALSE;
+			REFUSE(_report_refused_sight);
 		}
 	}
 	/* the damage as the host deals it: what a client's hit can be, from the
 	player's own */
 	if (!distributed_damage_to_data(&report->damage, damage))
-		return FALSE;
+		REFUSE(_report_refused_damage);
 	damage->flags &= REPORT_DAMAGE_FLAGS;
 	SET_FLAG(damage->flags, _damage_area_of_effect_bit, area);
 	/* ... an explosion's direction and scale as the game gives them
@@ -3140,10 +3201,35 @@ static void distributed_log_reports(
 	{
 		return;
 	}
-	error(_error_silent, "damage: clients' hits in the last %d seconds: %ld dealt, %ld refused, "
-		"%ld seen only from a hand its client said (network.fire_origins)",
-		REPORT_LOG_TICKS / TICKS_PER_SECOND, damage_dealt_reports - logged_dealt,
-		damage_rejected_reports - logged_rejected, damage_hand_reports - logged_hand);
+	{
+		static long logged_refusals[NUMBER_OF_REPORT_REFUSALS];
+		char reasons[256];
+		long used = 0;
+		short reason;
+
+		/* (each check's refusals since last logged, those of none left out) */
+		reasons[0] = 0;
+		for (reason = 0; reason < NUMBER_OF_REPORT_REFUSALS; reason++)
+		{
+			if (damage_refusals[reason] != logged_refusals[reason] && used < (long)sizeof(reasons) - 24)
+			{
+				used += snprintf(reasons + used, sizeof(reasons) - (size_t)used, " %s %ld", report_refusal_names[reason],
+					damage_refusals[reason] - logged_refusals[reason]);
+			}
+			logged_refusals[reason] = damage_refusals[reason];
+		}
+		error(_error_silent, "damage: clients' hits in the last %d seconds: %ld dealt, %ld refused, "
+			"%ld seen only from a hand its client said (network.fire_origins)%s%s",
+			REPORT_LOG_TICKS / TICKS_PER_SECOND, damage_dealt_reports - logged_dealt,
+			damage_rejected_reports - logged_rejected, damage_hand_reports - logged_hand,
+			reasons[0] ? "; refused for:" : "", reasons);
+		if (damage_rejected_reports != logged_rejected)
+		{
+			error(_error_silent, "damage: the oldest refused hit was made %ld ticks before it was checked",
+				damage_refused_oldest);
+		}
+		damage_refused_oldest = 0;
+	}
 	logged_dealt = damage_dealt_reports;
 	logged_rejected = damage_rejected_reports;
 	logged_hand = damage_hand_reports;

@@ -68,6 +68,9 @@ static unsigned long config_changes(void) { return 0; }
 static long shadow_scale_choose(void) { return 1; }
 #define SHADOW_MAP_SIZE 128
 static void render_targets_evict(void) { evicted++; }
+/* (no extra view's images let go of: d3d8_device.c's halo_view_release) */
+#define FALSE 0
+static BOOL views_released;
 static void platform_log(const char *format, ...) { (void)format; }
 static void d3d8_surface_resize(int *surface, int format, unsigned long width, unsigned long height)
 {

@@ -58,6 +58,14 @@ enum halo_keyboard_action
 	/* (a ping's, which the game itself does not read: what the player aims
 	at marked for their allies, port/linux/game/network_markers.c) */
 	HALO_KEYBOARD_PING,
+	/* (walking's: while it is held (or toggled on, input.walk), the movement
+	keys push the player a part of the way, as a stick pushed a little does,
+	slowly enough by default to stay off the enemies' motion trackers:
+	source/input/input_abstraction.c, port/linux/game/keyboard_walk.c) */
+	HALO_KEYBOARD_WALK,
+	/* (the HUD's Spartan link's, which the game itself does not read: the
+	teammates' feeds shown or hidden, port/linux/game/spartan_link.c) */
+	HALO_KEYBOARD_SPARTAN_LINK,
 	NUMBER_OF_HALO_KEYBOARD_ACTIONS
 };
 
@@ -83,6 +91,13 @@ delete) as well as RB. Whether they are, for the keys and their prompts
 (source/interface/ui_widget.c) */
 void halo_keyboard_browser_keys(void);
 int halo_keyboard_browser_keys_active(void);
+/* a Settings screen's keys, the menu engine's (menu_functions.c says, each
+frame one is shown, that one is; search: the search's own screen): W, A, S,
+D, F, R and L type into its search (settings_search_keys), not the left
+stick, Y and the triggers, and on the search's screen Backspace takes a
+letter off, not Esc. Whether they are (for the keys) */
+void halo_keyboard_settings_keys(int search);
+int halo_keyboard_settings_keys_active(void);
 
 /* the first controller's buttons (with the touch controls'), as the text
 chat's on-screen keyboard reads them: a bit for each (port/linux/game/

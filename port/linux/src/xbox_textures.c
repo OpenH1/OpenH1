@@ -21,6 +21,7 @@ Edition channel orders, which the command stream hands the host.
 */
 
 #include "xgpu_images.h"
+#include "port_config.h"
 #include "hud_hires.h"
 #include "menu_files.h"
 #include "menu_pictures.h"
@@ -170,7 +171,9 @@ for each texture by its Data, Format and Size. */
 picture, a difficulty's badge) is upscaled on a thread of its own, the
 original drawn until it is: upscaling one (256x128 to 1024x512) took a few
 milliseconds of the frame that first drew it, four of them as Choose
-Mission opened. */
+Mission opened. Where the frames' time is fixed (debug.frame_time:
+port/linux/game/frames_clock.c) the frame that asks for it waits for it, so
+that two runs draw the same frames (tools/menu_parity.py). */
 struct upscale_job
 {
 	struct upscale_job *next;
@@ -186,9 +189,14 @@ static struct
 {
 	pthread_mutex_t lock;
 	pthread_cond_t work;
+	/* (a job done: upscale_take's wait) */
+	pthread_cond_t finished;
 	int running;
 	struct upscale_job *queue;
-} upscaler = { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER };
+} upscaler = { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, PTHREAD_COND_INITIALIZER };
+
+/* frames_clock.c */
+int frames_clock(unsigned long *milliseconds);
 
 static void *upscaler_thread(void *unused)
 {
@@ -217,6 +225,7 @@ static void *upscaler_thread(void *unused)
 		}
 		job->pixels = pixels;
 		job->done = 1;
+		pthread_cond_broadcast(&upscaler.finished);
 	}
 	return NULL;
 }
@@ -267,6 +276,9 @@ static unsigned int upscale_take(struct upscale_job **job, unsigned long *levels
 	unsigned long width, height;
 
 	pthread_mutex_lock(&upscaler.lock);
+	/* (waited for where the frames' time is fixed) */
+	while (!(*job)->done && frames_clock(NULL))
+		pthread_cond_wait(&upscaler.finished, &upscaler.lock);
 	if (!(*job)->done)
 	{
 		pthread_mutex_unlock(&upscaler.lock);
@@ -322,6 +334,41 @@ none, -2 not yet looked for */
 static struct replacement_entry *replacement_buckets[REPLACEMENT_BUCKET_COUNT];
 static unsigned long replacement_frame;
 
+/* Each texture's choice, kept for its next binds (a frame binds a texture
+many times, and each texture of the frame about 1,400 times in all): what
+was drawn in its place, for its Data, Format and Size, while nothing it was
+chosen from has changed since. That is the replacements' epoch, moved as a
+replacement may change (a map's HUD placeholders and text atlas registered,
+the menus' art registered or let go, an entry found again or freed); the
+memory watch's serial, as a texture's pixels are written; and the settings
+(config_changes: display.high_res_hud and display.high_res_text). The text
+atlas, a menu's picture and a picture being upscaled are chosen at every
+bind, as their images change as they are drawn. */
+#define REPLACEMENT_CHOICE_COUNT 2048
+
+struct replacement_choice
+{
+	DWORD data, format_word, size_word;
+	unsigned long epoch, watched_serial, settings;
+	/* its entry (NULL: one the replacements do not keep), whose last use
+	is moved at its first bind of each frame (used_frame) */
+	struct replacement_entry *entry;
+	unsigned long used_frame;
+	unsigned int image;
+	unsigned long levels;
+	unsigned char kept;
+	/* a high-res HUD texture's (its coverage and point threshold) */
+	unsigned char override, coverage, point_threshold;
+};
+
+static struct replacement_choice replacement_choices[REPLACEMENT_CHOICE_COUNT];
+static unsigned long replacement_epoch;
+
+void xgpu_texture_replacements_changed(void)
+{
+	__atomic_fetch_add(&replacement_epoch, 1, __ATOMIC_RELEASE);
+}
+
 void xgpu_texture_cache_begin_frame(void)
 {
 	unsigned long changed = hud_hires_settings_changed();
@@ -342,6 +389,8 @@ void xgpu_texture_cache_begin_frame(void)
 
 			if (replacement_frame - entry->last_used_frame > REPLACEMENT_IDLE_FRAMES)
 			{
+				/* (no choice kept points at it after) */
+				xgpu_texture_replacements_changed();
 				*link = entry->next;
 				xgpu_image_delete(entry->hud_upscale);
 				upscale_drop(&entry->upscale_job);
@@ -357,6 +406,7 @@ void xgpu_texture_cache_begin_frame(void)
 					changed. Keep the images used by frames still in flight. */
 					entry->generation = 0;
 					entry->watched_serial = 0;
+					xgpu_texture_replacements_changed();
 				}
 			}
 			link = &entry->next;
@@ -364,17 +414,29 @@ void xgpu_texture_cache_begin_frame(void)
 	}
 }
 
+/* the hash of a texture's Data, Format and Size */
+static unsigned long replacement_hash(DWORD data, DWORD format_word, DWORD size_word)
+{
+	return ((unsigned long)data * 2654435761UL ^ (unsigned long)format_word * 2246822519UL ^
+		(unsigned long)size_word * 3266489917UL) >> 20;
+}
+
+/* whether the replacements keep an entry for a texture of this kind */
+static BOOL replacement_supported(const struct xgpu_texture_description *description)
+{
+	return !(description->format == 0x0b || description->cube_map || description->depth > 1 ||
+		!xgpu_texture_size_supported(description));
+}
+
 static struct replacement_entry *replacement_get(const DWORD *resource, const struct xgpu_texture_description *description)
 {
 	DWORD data = resource[1], format_word = resource[3], size_word = resource[4];
-	unsigned long hash = ((unsigned long)data * 2654435761UL ^ (unsigned long)format_word * 2246822519UL ^
-		(unsigned long)size_word * 3266489917UL) >> 20;
-	struct replacement_entry **bucket = &replacement_buckets[hash % REPLACEMENT_BUCKET_COUNT];
+	struct replacement_entry **bucket = &replacement_buckets[replacement_hash(data, format_word, size_word) %
+		REPLACEMENT_BUCKET_COUNT];
 	struct replacement_entry *entry;
 	unsigned long address, size, generation, watch_serial = memory_watch_serial();
 
-	if (description->format == 0x0b || description->cube_map || description->depth > 1 ||
-		!xgpu_texture_size_supported(description))
+	if (!replacement_supported(description))
 		return NULL;
 	for (entry = *bucket; entry; entry = entry->next)
 	{
@@ -423,7 +485,11 @@ static struct replacement_entry *replacement_get(const DWORD *resource, const st
 	return entry;
 }
 
-unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_description *description)
+/* the image drawn in the texture's place (xgpu_texture_replacement), its
+entry (*kept_entry), whether it is a high-res HUD texture (*overridden), and
+whether the choice may be kept for its next binds (*keep) */
+static unsigned int replacement_choose(DWORD resource, struct xgpu_texture_description *description,
+	struct replacement_entry **kept_entry, BOOL *overridden, BOOL *keep)
 {
 	const DWORD *header = (const DWORD *)resource;
 	unsigned long levels;
@@ -431,10 +497,16 @@ unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_descri
 	long override;
 	struct replacement_entry *entry;
 
-	/* (the high-res text's atlas, for its placeholder bitmap: text_hires.h) */
+	*kept_entry = NULL;
+	*overridden = FALSE;
+	*keep = !text_hires_atlas_placeholder(header[1]);
+	/* (the high-res text's atlas, for its placeholder bitmap: text_hires.h;
+	its distance fields filtered as a high-res picture's) */
 	if ((image = text_hires_atlas_texture(header[1])) != 0)
 	{
 		description->levels = 1;
+		description->hires = TRUE;
+		description->hires_msdf = TRUE;
 		return image;
 	}
 	/* (a menu's bitmap: menu_files.h) */
@@ -454,7 +526,13 @@ unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_descri
 	}
 	entry = replacement_get(header, description);
 	if (!entry)
+	{
+		/* (out of memory: chosen again) */
+		if (replacement_supported(description))
+			*keep = FALSE;
 		return 0;
+	}
+	*kept_entry = entry;
 	/* (a menu's picture of a mission or a map, drawn again from the
 player's map: menu_pictures.c) */
 	if (entry->picture == -2)
@@ -464,6 +542,9 @@ player's map: menu_pictures.c) */
 			menu_picture_at((unsigned long)PLATFORM_PHYSICAL_TO_VIRTUAL(header[1]), (long)description->width,
 				(long)description->height) : -1;
 	}
+	/* (its picture is made on a thread, and made again larger) */
+	if (entry->picture >= 0)
+		*keep = FALSE;
 	if (entry->picture >= 0 && (image = menu_pictures_texture(entry->picture, &levels)) != 0)
 	{
 		description->levels = levels;
@@ -477,6 +558,7 @@ player's map: menu_pictures.c) */
 		description->hires = TRUE;
 		description->hires_coverage = hud_hires_override_coverage(override);
 		description->hires_point_threshold = hud_hires_override_point_threshold(override);
+		*overridden = TRUE;
 		return image;
 	}
 	if (hud_hires_enabled())
@@ -527,6 +609,9 @@ player's map: menu_pictures.c) */
 		}
 		if (entry->upscale_job)
 			entry->hud_upscale = upscale_take(&entry->upscale_job, &entry->hud_upscale_levels);
+		/* (until the thread has upscaled it) */
+		if (entry->upscale_job)
+			*keep = FALSE;
 		if (entry->hud_upscale)
 		{
 			description->hires = TRUE;
@@ -535,4 +620,58 @@ player's map: menu_pictures.c) */
 		}
 	}
 	return 0;
+}
+
+unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_description *description)
+{
+	const DWORD *header = (const DWORD *)resource;
+	DWORD data = header[1], format_word = header[3], size_word = header[4];
+	struct replacement_choice *choice = &replacement_choices[replacement_hash(data, format_word, size_word) %
+		REPLACEMENT_CHOICE_COUNT];
+	unsigned long epoch = __atomic_load_n(&replacement_epoch, __ATOMIC_ACQUIRE);
+	unsigned long watched_serial = memory_watch_serial(), settings = config_changes();
+	struct replacement_entry *entry;
+	unsigned int image;
+	BOOL overridden, keep;
+
+	if (choice->kept && choice->data == data && choice->format_word == format_word &&
+		choice->size_word == size_word && choice->epoch == epoch && choice->watched_serial == watched_serial &&
+		choice->settings == settings)
+	{
+		if (choice->entry && choice->used_frame != replacement_frame)
+		{
+			choice->entry->last_used_frame = replacement_frame;
+			choice->used_frame = replacement_frame;
+		}
+		if (choice->image)
+		{
+			description->levels = choice->levels;
+			description->hires = TRUE;
+			if (choice->override)
+			{
+				description->hires_coverage = choice->coverage;
+				description->hires_point_threshold = choice->point_threshold;
+			}
+		}
+		return choice->image;
+	}
+	image = replacement_choose(resource, description, &entry, &overridden, &keep);
+	choice->kept = keep;
+	if (keep)
+	{
+		choice->data = data;
+		choice->format_word = format_word;
+		choice->size_word = size_word;
+		choice->epoch = epoch;
+		choice->watched_serial = watched_serial;
+		choice->settings = settings;
+		choice->entry = entry;
+		choice->used_frame = replacement_frame;
+		choice->image = image;
+		choice->levels = description->levels;
+		choice->override = overridden != 0;
+		choice->coverage = description->hires_coverage != 0;
+		choice->point_threshold = description->hires_point_threshold != 0;
+	}
+	return image;
 }

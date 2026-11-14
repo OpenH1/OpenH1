@@ -1,5 +1,6 @@
-/* The hit sounds (audio.hit_sounds, off by default): a short beep as this
-machine's player damages another player, as Halo PC played one. Only damage
+/* The hit sounds (audio.hit_sounds, each player's own, off by default): a
+short beep as this machine's player damages another player, as Halo PC
+played one, if that player's setting is on. Only damage
 that was dealt sounds, as the machine that decides it dealt it: the host's
 (and a game of this machine's own) as object_cause_damage deals it
 (network_damage_aftermath), a client's as the host's damage of the hit comes
@@ -27,14 +28,13 @@ that one does not cut the last short. */
 #include "bots.h"
 #include "hit_sounds.h"
 #include "network_standard.h"
+#include "player_settings.h"
 
 #include <xtl.h>
 
 #include "hit_sound_pcm.inc"
 
 /* the platform layer's (port/linux/src/port_config.c) */
-int config_boolean(char const *name);
-unsigned long config_changes(void);
 unsigned long system_milliseconds(void);
 /* (network_test.c: a line of debug.network_test's log) */
 void network_test_note_hit_sound(long attacker_player_index, long victim_player_index);
@@ -53,10 +53,12 @@ static struct
 	short next;
 	unsigned long played_at;
 	boolean played;
-	/* audio.hit_sounds, read again as the settings change */
-	unsigned long read_at;
-	boolean on;
-} hit_sounds = { FALSE, FALSE, { NULL }, 0, 0, FALSE, (unsigned long)-1, FALSE };
+	/* audio.hit_sounds, each local player's own (player_settings.h's
+	slots), read again as the settings change */
+	boolean read[PLAYER_SETTINGS_SLOTS];
+	unsigned long read_at[PLAYER_SETTINGS_SLOTS];
+	boolean on[PLAYER_SETTINGS_SLOTS];
+} hit_sounds = { FALSE, FALSE, { NULL }, 0, 0, FALSE, { FALSE }, { 0 }, { FALSE } };
 
 /* the buffers, made once, with the beep in them */
 static boolean hit_sounds_make(
@@ -120,13 +122,9 @@ void hit_sounds_note_damage(
 	unsigned long being_damaged_flags)
 {
 	struct player_datum *attacker;
+	short slot;
 
-	if (hit_sounds.read_at != config_changes())
-	{
-		hit_sounds.read_at = config_changes();
-		hit_sounds.on = config_boolean("audio.hit_sounds") != 0;
-	}
-	if (!hit_sounds.on || attacker_player_index == NONE || victim_player_index == NONE ||
+	if (attacker_player_index == NONE || victim_player_index == NONE ||
 		attacker_player_index == victim_player_index)
 	{
 		return;
@@ -139,10 +137,20 @@ void hit_sounds_note_damage(
 	}
 	attacker = player_try_and_get(attacker_player_index);
 	if (!attacker || attacker->local_player_index == NONE || bots_player_is_bot(attacker_player_index) ||
-		!player_try_and_get(victim_player_index) || !network_standard_hit_sounds_allowed())
+		!player_try_and_get(victim_player_index))
 	{
 		return;
 	}
+	/* (the attacker's own setting: a split screen's players each have theirs) */
+	slot = PLAYER_SETTINGS_SLOT(attacker->local_player_index);
+	if (!hit_sounds.read[slot] || hit_sounds.read_at[slot] != config_changes())
+	{
+		hit_sounds.read[slot] = TRUE;
+		hit_sounds.read_at[slot] = config_changes();
+		hit_sounds.on[slot] = config_player_boolean(attacker->local_player_index, "audio.hit_sounds") != 0;
+	}
+	if (!hit_sounds.on[slot] || !network_standard_hit_sounds_allowed())
+		return;
 	network_test_note_hit_sound(attacker_player_index, victim_player_index);
 	hit_sounds_play();
 }

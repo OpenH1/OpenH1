@@ -106,6 +106,14 @@ in the tick), and how far the frame is past that, in ticks: -1 for a view
 drawn between the ticks (render_interpolation.c) */
 void render_interpolation_first_person_updated(void);
 float render_interpolation_first_person_phase(short local_player_index);
+/* ... and how far the step running now ends past it, the same way (0 to 1),
+for a state changed in it (first_person_weapon_start_interpolation) */
+float render_interpolation_first_person_step_phase(void);
+/* ... and a Spartan link feed's weapon (first_person_weapons.c's feeds'
+slots), sampled at the frame's time as the player's own view drawn from
+the newest step is (render_interpolation_first_person_phase): -1 with the
+frames' interpolation off */
+float render_interpolation_first_person_feed_phase(void);
 void render_interpolation_first_person(short local_player_index, struct real_matrix4x3 *node_matrices,
 	short node_count, struct render_camera const *camera);
 float render_interpolation_game_time_sec(long ticks);
@@ -227,6 +235,11 @@ short ui_widget_port_anchor_extra(void);
 the Android and iOS apps, or debug.touch_menus): their buttons then name no
 controller's key (port/linux/game/menu_tags.c) */
 int ui_widget_port_touch_menus(void);
+/* the tall layout's footer on a touchscreen, raised above a phone's safe
+area at the screen's foot: how far (0 elsewhere), and a widget's move up by
+it (its port flag foot) as it is drawn (port/linux/game/menu_tags.c) */
+short ui_widget_port_foot_lift(void);
+short ui_widget_port_foot_offset(long flags);
 /* the wide layout of the port's own screens (their widgets' wide attribute:
 port/linux/game/menu_tags.c): the extra width past the menus' 640 a view
 this wide lays them out in (to 16:9's), and a value's part of it; the
@@ -238,6 +251,11 @@ void ui_widget_port_wide_layout(long width);
 short ui_widget_port_wide_extra(void);
 short ui_widget_port_wide_offset(long definition_index);
 short ui_widget_port_wide_stretch(long definition_index);
+/* the width past 16:9's the menu engine's widgets laid out past it (a look's
+past: port/linux/game/menu_tags.c) are laid out for now, half of it each
+side, and a past attribute's value's part of a width past 16:9 */
+short ui_widget_port_past_extra(void);
+short ui_widget_port_past_scale(short value, short past);
 /* whether a widget's picture keeps its ends at the widget's width (its port
 flag keep_ends) */
 unsigned char ui_widget_port_keep_ends(long flags);
@@ -255,6 +273,12 @@ it kept, and the range it had in previous (NULL: not wanted): a range in
 the last step before 1 draws behind everything drawn, still clipped at the
 far plane (port/linux/src/d3d8_device.c) */
 void d3d8_viewport_depth_range(float minimum, float maximum, float previous[2]);
+/* the stage samples a region of its texture as a texture of the region's
+alone, addressed by its border beyond it (D3DTADDRESS_BORDER, whatever the
+stage's address modes): region its width and height, then its left and top,
+in the texture's coordinates (0 to 1); NULL: the whole texture, as the
+stage's address modes have it (port/linux/src/d3d8_device.c) */
+void d3d8_texture_region(unsigned long stage, const float *region);
 /* takes up a new width between frames (F11); returns the width */
 long halo_screen_commit(void);
 /* the shadow maps' pixels for each of their 128 texels each way, a power of
@@ -298,6 +322,9 @@ _end), and what the code drawing knows of them (HALO_HDR_KIND_*, 0 none) */
 void halo_screen_tone_map(short x0, short y0, short x1, short y1);
 void halo_hdr_category(int category);
 void halo_hdr_draw_kind(int kind);
+/* ... and the draws from now on the HUD's and menus' again, after a view of
+the world's drawn among them (port/linux/game/menu_spartan.c) */
+void halo_hdr_interface(void);
 /* debug.render_marks: what the draws that follow belong to, for the
 inspector's replay (port/linux/game/render_marks.c) */
 #include "render_marks.h"
@@ -323,6 +350,10 @@ int halo_frames_unseen(void);
 void unseen_frame_wait(void);
 /* network.client_timeout_seconds, in milliseconds (port/linux/src/port_config.c) */
 unsigned long network_client_timeout_milliseconds(void);
+/* a co-op level won: the level the host asked for after it (Host Controls),
+at its difficulty, else campaign_next, at the game's (difficulty NONE)
+(port/linux/game/network_host_game.c) */
+char const *network_host_game_cooperative_won(char const *campaign_next, short *difficulty);
 /* the game halted on a fatal error, its report offered at the next start
 as a crash's (port/linux/src/report.c: main.c) */
 void report_session_halted(char const *reason);
@@ -396,13 +427,17 @@ once a frame (main_loop) */
 void map_cache_prefill_update(void);
 /* (port/linux/game/menu_pictures_render.c) the menus' pictures' pass runs */
 int menu_pictures_preparing(void);
-/* the deflection of a stick (0 the left, 1 the right) read as none, of
-32767: input.left_stick_dead_zone and input.right_stick_dead_zone, else the
-game's own (port/linux/src/xinput_sdl.c) */
-short halo_stick_dead_range(short stick);
-/* whether a controller's look turns the other way side to side:
+/* the deflection of a gamepad's stick (0 the left, 1 the right) read as
+none, of 32767: its player's input.left_stick_dead_zone and
+input.right_stick_dead_zone, else the game's own (port/linux/src/xinput_sdl.c) */
+short halo_stick_dead_range(short gamepad, short stick);
+/* whether a gamepad's look turns the other way side to side: its player's
 input.invert_look_horizontal (port/linux/src/xinput_sdl.c) */
-int halo_look_horizontal_inverted(void);
+int halo_look_horizontal_inverted(short gamepad);
+/* whether a local player's controller aims as Modern does (input.aim_style,
+the player's own), and Modern's acceleration angle, as its tangent, and the
+push that accelerates, or -1 for the game's own (source/game/player_control.c) */
+int player_control_aim_modern(short local_player_index, float *acceleration_tangent, float *acceleration_threshold);
 /* ... and whether a controller's right stick is the flick stick
 (input.flick_stick) */
 int halo_linux_flick_stick(void);
@@ -413,7 +448,14 @@ int platform_movie_skip_pressed(void);
 /* the player's move and look as the game read them, for the input trace
 (port/linux/src/input_trace.c): a frame's, or a sub-step's */
 void input_trace_player(int controller, int substep, float forward, float strafe, float yaw, float pitch);
+/* ... and the look stick's acceleration a tick (source/game/player_control.c) */
+void input_trace_aim(int controller, int modern, int accelerating, float acceleration_seconds);
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
+
+/* replaces the file at to with the one at from, at once (a rename: on POSIX
+rename(2), on Windows MoveFileEx's replace), both Xbox paths; FALSE if it
+could not (port/linux/src/xbox_files.c) */
+int platform_replace_file(const char *from, const char *to);
 
 #endif

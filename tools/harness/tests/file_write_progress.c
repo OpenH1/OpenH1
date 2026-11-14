@@ -59,6 +59,7 @@ static ssize_t fake_pwrite(int descriptor, const void *buffer, size_t count, off
 #define pwrite fake_pwrite
 
 static int config_boolean(const char *name) { (void)name; return 0; }
+static int halo_load_trace_enabled(void) { return 0; }
 static double load_io_now(void) { return 0.0; }
 static void load_trace_log(const char *format, ...) { (void)format; }
 static void platform_set_last_error_from_errno(int error) { last_error = error; }

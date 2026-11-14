@@ -33,7 +33,7 @@ NEGATIVE_CONTROLS = {
                                  ""), "record"),
     "openh1-messages-to-opence": (("return type < FIRST_OPENH1_DISTRIBUTED_MESSAGE || "
                                    "!network_standard_machine_is_opence(machine_index);", "return TRUE;"), "messages"),
-    "opence-players-unknown": (("network_standard_globals.opence_players[absolute_index] = TRUE;", ";"), "players"),
+    "opence-players-unknown": (("opence_players[absolute_index] = TRUE;", ";"), "players"),
     "players-told-to-opence": (("if (network_standard_machine_is_openh1(machine_indices[index]))", "if (1)"),
                                "players"),
     "players-never-told-again": (("game_time_get() - network_standard_globals.opence_players_sent_time < "
