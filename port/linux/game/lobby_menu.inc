@@ -2053,6 +2053,10 @@ void pc_menu_lobby_frame(struct widget_instance *screen)
 	lobby_screen_model();
 	/* (its chat's keys, T and Y, while it is shown) */
 	network_chat_lobby_frame();
+	/* (the keyboard's keys the tall screens draw, the browsers': X as Tab
+	(ADD PLAYER), Y as F (COPY LINK), RB as E (INVITE FRIENDS), each its own
+	key; elsewhere E is both X and RB: xinput_sdl.c's keyboard_gamepad) */
+	halo_keyboard_browser_keys();
 }
 
 /* ---- the lobby's chat (<chat source="lobby.chat">: network_chat.c's lobby

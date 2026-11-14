@@ -8542,9 +8542,9 @@ static wchar_t const *browser_group_heading(short group)
 	case _browser_group_hosted:
 		return L"Hosted Servers";
 	case _browser_group_friends:
-		return L"Your Friends' Games";
+		return L"YOUR FRIENDS' GAMES";
 	case _browser_group_public:
-		return L"Public Co-op Games";
+		return L"PUBLIC CO-OP GAMES";
 	default:
 		return L"Legacy (Slow) Servers";
 	}

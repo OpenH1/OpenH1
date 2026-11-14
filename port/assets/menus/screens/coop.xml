@@ -12,7 +12,7 @@ hub's split-screen co-op. -->
 	<space/>
 	<cards focus="host">
 		<card id="host" title="HOST" subtitle="Start a game your friends can join" picture="main_menu/campaign/art_146x119" frame="2" do="coop host"/>
-		<card id="join" title="JOIN" subtitle="Your friends' games, then everyone's" picture="main_menu/campaign/art_146x119" frame="5" do="coop join"/>
+		<card id="join" title="JOIN" subtitle="Find a game to join" picture="main_menu/campaign/art_146x119" frame="5" do="coop join"/>
 		<card id="split" title="SPLIT SCREEN" subtitle="Two players on this computer" picture="main_menu/campaign/art_146x119" frame="7" do="coop split"/>
 	</cards>
 	<space/>
