@@ -346,8 +346,13 @@ picture, the line, the words for no rows) -->
 	<!-- the screens a pop-up of its own opens as (menu_screen.c's screen_places): over the menus' scene, as
 	Quit's question is -->
 	<widget name="screens/save_changes" width="640" height="480" flags="pass_unhandled_to_focused_child"/>
-	<widget name="screens/dialog" width="280" height="160" flags="keep_ends" bitmap="bitmaps/alert_bkd"/>
-	<widget name="screens/dialog_title" type="text" width="256" height="20" font="ui\large_ui" color="#FF2896FF" text_flags="no_focus_test"/>
+	<!-- the screen it was opened from, behind it (an editor's), dimmed -->
+	<widget name="screens/dialog_dim" width="640" height="480" bitmap="ui\shell\bitmaps\semi_transparent_grey"/>
+	<!-- the box, cut above its bottom band (as tall as its words need), and its foot, that band (tools/port_settings.py's
+	dialog_foot_svg, from alert_bkd's) -->
+	<widget name="screens/dialog" width="280" height="128" flags="keep_ends" bitmap="bitmaps/alert_bkd"/>
+	<widget name="screens/dialog_foot" width="280" height="32" flags="keep_ends" bitmap="dialog/dialog_foot"/>
+	<widget name="screens/dialog_title" type="text" width="245" height="20" font="ui\large_ui" color="#FF2896FF" text_flags="no_focus_test"/>
 	<widget name="screens/dialog_text" type="text" width="245" height="94" font="ui\large_ui" color="#FFCCCCCC" align="center" text_flags="no_focus_test wrap"/>
 	<!-- its choices: left and right step them, the pointer over one gives it the focus; A, Start, a click or a
 	tap does its do -->

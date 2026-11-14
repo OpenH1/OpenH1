@@ -90,11 +90,16 @@ frame.
 
 A screen with a `<dialog>` is a question in a box in the middle of the
 screen, drawn as the Quit question is (the PC version's `quit_screen`: its
-`alert_bkd` box with its blue border and bands, over the menus' scene): its
-title in the box's top band, its words under it, and its `<list>`'s items its
-choices, side by side in the box's bottom band, each a button of Quit's OK
-and BACK. The box is Quit's width, or wider for three or four choices (its
-picture's ends kept). Left and right (the d-pad, the stick, the arrow keys)
+`alert_bkd` box with its blue border and bands): its title in the box's top
+band, its words under it, and its `<list>`'s items its choices, side by side
+in the box's bottom band, each a button of Quit's OK and BACK. The box is
+Quit's width, or wider for three or four choices (its picture's ends kept),
+and as tall as its words' lines need (up to 4): the box's picture cut above
+its bottom band, and that band drawn under the cut (`dialog/dialog_foot`,
+`tools/port_settings.py`'s `dialog_foot_svg`). Behind it is the screen it was
+opened from, as it was, dimmed and taking no input (where that is a generated
+screen: the gametype editor; Quit's is over the menus' scene, its main menu
+being a hand-written screen). Left and right (the d-pad, the stick, the arrow keys)
 step the choices, the pointer over one focuses it, and A, Start, a click or a
 tap does its `do`; B does the screen's `back`, else goes back. It is the same
 at every aspect ratio (in the menus' middle 640) and on a phone.

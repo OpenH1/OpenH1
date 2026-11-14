@@ -64,6 +64,7 @@ void pc_menu_browser_visit(char const *tab);
 int pc_menu_browser_visit_kind(void);
 void pc_menu_main_menu_shown(struct widget_instance *screen);
 boolean pc_menu_edit_leave(short local_player_index, boolean save);
+long ui_widget_port_previous_screen(short local_player_index);
 int halo_keyboard_prompts(void);
 long ui_widget_port_text_box_font(struct widget_instance *widget, short *width);
 short ui_widget_port_past_move(void);
@@ -201,21 +202,27 @@ objectives' five) */
 #define BOX_ROW_PICTURE "ui\\shell\\bitmaps\\menu_bkds"
 
 /* a <dialog>'s layout, the PC version's Quit question's (quit_screen): its box
-(alert_bkd) this tall from this far down, as wide as Quit's at least and else
-as its choices need, its picture's transparent right this wide; its title
-this far into its top band, its words' room under it, and its choices (each
-Quit's OK's button) this wide side by side in its bottom band, from this far
-down */
-#define DIALOG_TOP 160
-#define DIALOG_HEIGHT 160
+(alert_bkd) as wide as Quit's at least and else as its choices need, its
+picture's transparent right this wide; as tall as its words need, in the
+middle of the screen: its top band this tall (to its line), its words this
+far below it and above its bottom band, a line of them this tall, at most
+this many, and its bottom band (its foot, dialog_foot's, the box's picture
+cut above it) this tall, from the foot's top this far down; its title and
+words this far in from its left (its title's top this far down), and its
+choices (each Quit's OK's button) this wide side by side in its bottom band,
+this far above the box's foot */
 #define DIALOG_LEAST_WIDTH 280
 #define DIALOG_PICTURE_MARGIN 18
-#define DIALOG_TITLE_X 2
-#define DIALOG_TITLE_Y 4
+#define DIALOG_HEAD 29
+#define DIALOG_TEXT_ROOM 7
+#define DIALOG_LINE 21
+#define DIALOG_MOST_LINES 4
+#define DIALOG_FOOT 32
+#define DIALOG_FOOT_BAND 30
 #define DIALOG_TEXT_X 8
-#define DIALOG_TEXT_Y 35
+#define DIALOG_TITLE_Y 4
 #define DIALOG_CHOICE_WIDTH 128
-#define DIALOG_CHOICES_Y 133
+#define DIALOG_CHOICES_UP 27
 #define DIALOG_CHOICES_ROOM 5
 
 #define SCREEN_BUTTON_B 1
@@ -652,7 +659,8 @@ struct screen_open
 	struct widget_instance *dialog_box;
 	struct widget_instance *dialog_title;
 	struct widget_instance *dialog_text;
-	short dialog_width;
+	struct widget_instance *dialog_foot;
+	short dialog_width, dialog_height;
 };
 
 static struct
@@ -671,7 +679,8 @@ static struct
 	long box_left_tag, box_center_tag, box_right_tag, box_list_tag, box_item_tag, legend_tag;
 	long objectives_left_tag, objectives_center_tag, objectives_right_tag, objectives_title_tag, objectives_text_tag;
 	/* (a <dialog>'s) */
-	long dialog_tag, dialog_title_tag, dialog_text_tag, dialog_list_tag, dialog_choice_tag;
+	long dialog_tag, dialog_title_tag, dialog_text_tag, dialog_list_tag, dialog_choice_tag, dialog_foot_tag,
+		dialog_dim_tag;
 } screens = { FALSE };
 
 static void screens_names_give(void)
@@ -754,6 +763,8 @@ static boolean screen_blocks_found(void)
 	screens.dialog_text_tag = screen_block_tag("pc\\screens\\dialog_text");
 	screens.dialog_list_tag = screen_block_tag("pc\\screens\\dialog_list");
 	screens.dialog_choice_tag = screen_block_tag("pc\\screens\\dialog_choice");
+	screens.dialog_foot_tag = screen_block_tag("pc\\screens\\dialog_foot");
+	screens.dialog_dim_tag = screen_block_tag("pc\\screens\\dialog_dim");
 	if (screens.title_art_tag == NONE || screens.list_tag == NONE || screens.item_tag == NONE ||
 		screens.hint_tag == NONE || screens.prompt_left_tag == NONE || screens.button_tag == NONE ||
 		screens.cards_tag == NONE || screens.card_tag == NONE || screens.card_title_tag == NONE ||
@@ -765,7 +776,8 @@ static boolean screen_blocks_found(void)
 		screens.objectives_left_tag == NONE || screens.objectives_center_tag == NONE ||
 		screens.objectives_right_tag == NONE || screens.objectives_title_tag == NONE ||
 		screens.objectives_text_tag == NONE || screens.dialog_tag == NONE || screens.dialog_title_tag == NONE ||
-		screens.dialog_text_tag == NONE || screens.dialog_list_tag == NONE || screens.dialog_choice_tag == NONE)
+		screens.dialog_text_tag == NONE || screens.dialog_list_tag == NONE || screens.dialog_choice_tag == NONE ||
+		screens.dialog_foot_tag == NONE || screens.dialog_dim_tag == NONE)
 	{
 		platform_log("menus: the screens' blocks (screens/blocks.xml) are not all there");
 		screens.blocks_found = FALSE;
@@ -1511,20 +1523,34 @@ static boolean box_picture_of(struct widget_instance const *widget, long *bitmap
 quit_screen draws it): its box in the middle of the screen, its title, its
 words and its choices side by side in its foot */
 
-/* the dialog's widgets made: its box as wide as Quit's, or as its choices
-need (its picture's ends kept), in the middle of the menus' 640; its title in
-the box's top band, its words under it (wrapped to the box), and its choices,
-each a button of Quit's, side by side in its bottom band, the list's focus on
-the one it names (a hot reload's, the one focused). FALSE if the screen has
-no <dialog> with a <list> */
+/* a screen's widgets and all in them taken out of the events and the
+pointer's targets: drawn alone (a pop-up's screen behind it) */
+static void dialog_still(struct widget_instance *widget)
+{
+	struct widget_instance *child;
+
+	widget->disabled = TRUE;
+	for (child = widget->child; child; child = child->next)
+		dialog_still(child);
+}
+
+/* the dialog's widgets made: the screen it was opened from behind it, as it
+was and dimmed, taking nothing (where that is a generated screen: an editor's
+question over the editor; Quit's main menu is a hand-written one, so Quit's
+is over the menus' scene, as before); its box as wide as Quit's, or as its
+choices need (its picture's ends kept), as tall as its words need, in the
+middle of the screen: its title in the box's top band, its words under it
+(wrapped to the box), and its choices, each a button of Quit's, side by side
+in its bottom band, the list's focus on the one it names (a hot reload's,
+the one focused). FALSE if the screen has no <dialog> with a <list> */
 static boolean dialog_build(struct screen_open *open, struct menu_screen const *screen)
 {
 	struct widget_instance *widget = open->widget;
 	struct screen_values values;
 	char label[MENU_SCREEN_MAXIMUM_TEXT];
 	struct menu_screen_block const *dialog = NULL, *list = NULL;
-	long index, choices = 0, list_index = NONE, focus_index = 0;
-	short width, shown, left, x;
+	long index, choices = 0, list_index = NONE, focus_index = 0, behind_tag;
+	short width, height, shown, left, top, x, lines = 1;
 	struct widget_instance *focus = NULL;
 	char const *focus_id;
 
@@ -1568,18 +1594,44 @@ static boolean dialog_build(struct screen_open *open, struct menu_screen const *
 	open->header = NULL;
 	open->prompt_count = 0;
 	open->box = FALSE;
-	open->dialog_width = width;
-	open->dialog_box = screen_widget_add(widget, screens.dialog_tag, left, DIALOG_TOP);
-	open->dialog_title = screen_widget_add(widget, screens.dialog_title_tag, (short)(left + DIALOG_TITLE_X),
-		(short)(DIALOG_TOP + DIALOG_TITLE_Y));
-	open->dialog_text = screen_widget_add(widget, screens.dialog_text_tag, (short)(left + DIALOG_TEXT_X),
-		(short)(DIALOG_TOP + DIALOG_TEXT_Y));
-	if (!open->dialog_box || !open->dialog_title || !open->dialog_text)
+	/* (the screen it was opened from, behind it and dimmed) */
+	behind_tag = ui_widget_port_previous_screen(widget->local_player_index);
+	if (behind_tag != NONE && !screen_place_of(behind_tag))
+	{
+		struct widget_instance *behind = screen_widget_add(widget, behind_tag, 0, 0);
+
+		if (behind)
+		{
+			dialog_still(behind);
+			screen_widget_add(widget, screens.dialog_dim_tag, 0, 0);
+		}
+	}
+	open->dialog_box = screen_widget_add(widget, screens.dialog_tag, left, 0);
+	open->dialog_foot = screen_widget_add(widget, screens.dialog_foot_tag, left, 0);
+	open->dialog_title = screen_widget_add(widget, screens.dialog_title_tag, (short)(left + DIALOG_TEXT_X), 0);
+	open->dialog_text = screen_widget_add(widget, screens.dialog_text_tag, (short)(left + DIALOG_TEXT_X), 0);
+	if (!open->dialog_box || !open->dialog_foot || !open->dialog_title || !open->dialog_text)
 		return FALSE;
 	if (dialog->label && menu_screen_text(dialog->label, screen_value, &values, label, sizeof(label)))
 		screen_text_set(open->dialog_title, label);
-	if (dialog->text && menu_screen_text(dialog->text, screen_value, &values, label, sizeof(label)))
+	open->dialog_text->visible = FALSE;
+	if (dialog->text && menu_screen_text(dialog->text, screen_value, &values, label, sizeof(label)) && label[0])
+	{
 		screen_text_set(open->dialog_text, label);
+		open->dialog_text->visible = TRUE;
+		lines = (short)MAX(1, pc_menu_text_lines(open->dialog_text,
+			(unsigned short const *)open->dialog_text->parameters.text_box.text,
+			(short)(shown - 2 * DIALOG_TEXT_X), DIALOG_MOST_LINES));
+	}
+	/* (as tall as its words, in the middle of the screen) */
+	height = (short)(DIALOG_HEAD + DIALOG_TEXT_ROOM * 2 + lines * DIALOG_LINE + DIALOG_FOOT_BAND);
+	top = (short)((SCREEN_HEIGHT - height) / 2);
+	open->dialog_width = width;
+	open->dialog_height = height;
+	open->dialog_box->vertical_offset = (short)(widget->vertical_offset + top);
+	open->dialog_foot->vertical_offset = (short)(widget->vertical_offset + top + height - DIALOG_FOOT);
+	open->dialog_title->vertical_offset = (short)(widget->vertical_offset + top + DIALOG_TITLE_Y);
+	open->dialog_text->vertical_offset = (short)(widget->vertical_offset + top + DIALOG_HEAD + DIALOG_TEXT_ROOM);
 	/* (its choices, side by side in the middle of its bottom band) */
 	open->list = screen_widget_add(widget, screens.dialog_list_tag, 0, 0);
 	if (!open->list)
@@ -1596,7 +1648,7 @@ static boolean dialog_build(struct screen_open *open, struct menu_screen const *
 			continue;
 		}
 		made = screen_widget_add(open->list, screens.dialog_choice_tag,
-			(short)(x + open->item_count * DIALOG_CHOICE_WIDTH), (short)(DIALOG_TOP + DIALOG_CHOICES_Y));
+			(short)(x + open->item_count * DIALOG_CHOICE_WIDTH), (short)(top + height - DIALOG_CHOICES_UP));
 		if (!made)
 			break;
 		screen_text_set(made, label);
@@ -1624,8 +1676,9 @@ static boolean dialog_build(struct screen_open *open, struct menu_screen const *
 	return TRUE;
 }
 
-/* a dialog's box, title and words drawn as wide as its choices make the box
-(the box's picture its ends kept: keep_ends): TRUE for them */
+/* a dialog's box, its foot, title and words drawn as wide as its choices
+make the box (its pictures' ends kept: keep_ends), the box cut above its
+foot and its words as tall as their lines: TRUE for them */
 static boolean dialog_picture_of(struct widget_instance const *widget, long *bitmap_tag, rectangle2d *bounds)
 {
 	long open_index;
@@ -1638,11 +1691,20 @@ static boolean dialog_picture_of(struct widget_instance const *widget, long *bit
 		if (!open->widget || !open->dialog_box)
 			continue;
 		if (widget == open->dialog_box)
+		{
+			bounds->x1 = (short)(bounds->x0 + open->dialog_width);
+			bounds->y1 = (short)(bounds->y0 + open->dialog_height - DIALOG_FOOT);
+		}
+		else if (widget == open->dialog_foot)
 			bounds->x1 = (short)(bounds->x0 + open->dialog_width);
 		else if (widget == open->dialog_title)
-			bounds->x1 = (short)(bounds->x0 + shown - 2 * DIALOG_TITLE_X);
-		else if (widget == open->dialog_text)
 			bounds->x1 = (short)(bounds->x0 + shown - 2 * DIALOG_TEXT_X);
+		else if (widget == open->dialog_text)
+		{
+			bounds->x1 = (short)(bounds->x0 + shown - 2 * DIALOG_TEXT_X);
+			bounds->y1 = (short)(bounds->y0 + open->dialog_height - DIALOG_HEAD - DIALOG_FOOT_BAND -
+				DIALOG_TEXT_ROOM);
+		}
 		else
 			continue;
 		*bitmap_tag = NONE;

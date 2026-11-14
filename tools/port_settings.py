@@ -3718,7 +3718,25 @@ def pause_pictures() -> list:
                                                  4 if piece == "center" else 16, 256)
                                                 for height in PAUSE_BOX_EXTRA_HEIGHTS])
                  for piece in ("left", "center", "right")]
+    pictures += [("dialog/dialog_foot", [(dialog_foot_svg(), 256, DIALOG_FOOT)])]
     return pictures
+
+
+# a pop-up's box (the hand-written screens' <dialog>, menu_screen.c): the
+# Quit question's alert_bkd, cut above its bottom band, and its foot, this
+# tall from this row of it (the bottom band's line 2 rows down), drawn
+# under the cut so that the box is as tall as its words need
+DIALOG_FOOT = 32
+DIALOG_FOOT_ROW = 128
+
+
+def dialog_foot_svg() -> str:
+    """the foot of the Quit question's box (alert_bkd's redraw): its bottom
+    band, its border's bottom and corners"""
+    svg = (Path(__file__).resolve().parent.parent / "port/assets/menus/svg/shell/bitmaps/alert_bkd.svg").read_text()
+    head = svg[:svg.index(">") + 1]
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="256" '
+            f'height="{DIALOG_FOOT}" viewBox="0 {DIALOG_FOOT_ROW} 256 {DIALOG_FOOT}">' + svg[len(head):])
 
 
 # the button bars' buttons (bitmaps/text_button_background: the PC version's
