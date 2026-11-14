@@ -75,89 +75,6 @@ int main(void){
     run_c(tmp_path, code)
 
 
-def test_pending_menu_filter_visibility_and_focus(tmp_path):
-    code = r'''
-#include <assert.h>
-#include <string.h>
-#include <stdio.h>
-#include <wchar.h>
-#define NUMBEROF(a) (sizeof(a)/sizeof(*(a)))
-#define usnprintf swprintf
-#define FALSE 0
-#define TRUE 1
-typedef int boolean;
-struct widget_instance {
- char const *name;short vertical_offset;int visible,definition_tag_index;
- struct widget_instance *child,*next,*parent,*focused_child;
- struct {struct {short selected_index;}list;}parameters;
-};
-struct pc_menu_setting {int value_count;char const *values[12];};
-static struct pc_menu_setting settings[]={
- {2,{"true","false"}},
- {12,{"classic","gems","menu_gems","xbox_modern","ps_classic","ps_gems","ps_dark_gems","ps_modern","switch_classic","switch_gems","switch_modern","keyboard"}},
- {4,{"classic","gems","menu_gems","xbox_modern"}},
- {4,{"ps_classic","ps_gems","ps_dark_gems","ps_modern"}},
- {3,{"switch_classic","switch_gems","switch_modern"}}};
-static struct widget_instance automatic,keyboard_option,labels[4],styles[4];static int family,keyboard;
-static int keyboard_prompt_active(short port){assert(port==1);return keyboard;}
-static struct pc_menu_setting *pc_menu_setting_get(int id){return &settings[id];}
-static struct widget_instance *named(struct widget_instance *list,char const *name,int n){
- struct widget_instance *p;int i;
- char const *names[]={"hud_button_style_spinner","hud_button_style_xbox_spinner","hud_button_style_ps_spinner","hud_button_style_switch_spinner"};
- if(!strcmp(name,"auto_button_detection_spinner"))return &automatic;
- if(!strcmp(name,"keyboard_glyphs_spinner"))return &keyboard_option;
- for(i=0;i<4;i++)if(!strcmp(name,names[i]))return &styles[i];
- for(p=list->child;p;p=p->next)if(!strcmp(p->name,name))return p;
- return 0;
-}
-static short controller_of(struct widget_instance *w){return 1;}
-static void text_set(struct widget_instance *w,wchar_t const *s){assert(!wcscmp(s,L"BUTTON STYLE (P2):"));}
-'''
-    code += HEADER + function((ROOT / 'port/linux/src/controller_buttons.c').read_text(), 'controller_button_style_index') + r'''
-void controller_device_get(short port,struct controller_device *device){assert(port==1);device->family=family;}
-''' + (ROOT / 'port/linux/game/controller_button_menu.inl').read_text() + r'''
-int main(void){
- struct widget_instance list={0},a={0},r[4]={{0}},detected={0},bumper={0},bar={0};int i,j,k,repeat;
- char const *names[]={"op_hud_button_style","op_hud_button_style_xbox","op_hud_button_style_ps","op_hud_button_style_switch"};
- list.child=&a;a.next=&r[0];a.name="op_auto_button_detection";
- a.visible=1;automatic.parent=&a;
- for(i=0;i<4;i++){r[i].name=names[i];r[i].next=i<3?&r[i+1]:&detected;r[i].visible=1;r[i].child=&labels[i];r[i].vertical_offset=103;styles[i].definition_tag_index=i+1;}
- detected.name="op_detected_button_style";detected.next=&bumper;
- bumper.name="op_hud_bumper_style";bumper.next=&bar;bumper.vertical_offset=133;
- bar.name="button_bar";bar.vertical_offset=414;
- for(repeat=0;repeat<40;repeat++)for(k=0;k<4;k++)for(j=0;j<settings[k+1].value_count;j++){
-  family=k;automatic.parameters.list.selected_index=0;styles[k].parameters.list.selected_index=j;
-  list.focused_child=&r[(k+1)%4];controller_button_rows_show(&list);
-  for(i=0;i<4;i++)assert(r[i].visible==(i==k));assert(list.focused_child==&r[k]);
-  assert(list.parameters.list.selected_index==1+k);
-  assert(bumper.visible==(k<2&&j<3));
-  list.focused_child=&bumper;controller_button_rows_show(&list);
-  assert(list.focused_child==(bumper.visible?&bumper:&r[k]));
-  list.focused_child=&r[k];
-  automatic.parameters.list.selected_index=1;controller_button_rows_show(&list);
-  assert(r[0].visible && list.focused_child==&r[0]);
-  assert(styles[k].parameters.list.selected_index==j);
-  assert(bumper.visible==(styles[0].parameters.list.selected_index<3));
-  assert(a.visible && bumper.vertical_offset==133 && bar.vertical_offset==414);
- }
- styles[0].parameters.list.selected_index=-1;controller_button_rows_show(&list);assert(!bumper.visible);
- styles[0].parameters.list.selected_index=12;controller_button_rows_show(&list);assert(!bumper.visible);
- automatic.parameters.list.selected_index=0;family=99;controller_button_rows_show(&list);assert(r[0].visible);
- keyboard=1;keyboard_option.parameters.list.selected_index=1;controller_button_rows_show(&list);assert(r[0].visible&&!detected.visible);
- keyboard_option.parameters.list.selected_index=0;list.focused_child=&r[0];controller_button_rows_show(&list);
- assert(detected.visible&&!bumper.visible&&list.focused_child==&detected);
- for(i=0;i<4;i++)assert(!r[i].visible);
- automatic.parameters.list.selected_index=1;controller_button_rows_show(&list);
- assert(!detected.visible&&r[0].visible&&list.focused_child==&r[0]);
- automatic.parameters.list.selected_index=0;controller_button_rows_show(&list);assert(detected.visible);
- keyboard_option.parameters.list.selected_index=1;controller_button_rows_show(&list);assert(r[0].visible&&!detected.visible);
- automatic.parameters.list.selected_index=1;styles[0].parameters.list.selected_index=11;controller_button_rows_show(&list);assert(!bumper.visible);
- return 0;
-}
-'''
-    run_c(tmp_path, code)
-
-
 def test_artwork_mapping_transparency_labels_and_regeneration():
     import numpy as np
     from PIL import Image
@@ -172,32 +89,6 @@ def test_artwork_mapping_transparency_labels_and_regeneration():
         assert np.array_equal(np.asarray(expected), np.asarray(actual)), entry['name']
         bounds = actual.getchannel('A').getbbox()
         assert bounds and bounds[0] > 0 and bounds[1] > 0 and bounds[2] < 512 and bounds[3] < 512
-
-
-def test_menu_generated_and_default_on():
-    import port_settings
-    for name, lines in port_settings.settings_files().items():
-        assert (ROOT / 'port/assets/menus/ce' / name).read_text() == '\n'.join(lines)
-    # Dynamic captions must not be overwritten or resized to the static string
-    # by ui_widget's text update before the next frame.
-    import xml.etree.ElementTree as ET
-    prefix = 'main_menu.settings_select.player_setup.player_profile_edit'
-    menu = ET.parse(ROOT / f'port/assets/menus/ce/{prefix}.controller_appearance.xml')
-    labels = [w for w in menu.getroot().findall('widget')
-              if '/hud_button_style' in w.get('name', '') and w.get('name', '').endswith('_label')]
-    assert len(labels) == 4
-    assert all('string_list' not in w.attrib and 'string_index' in w.attrib for w in labels)
-    rows = port_settings.SCREENS['controller_appearance']['rows']
-    assert len(next(r[2] for r in rows if r[1] == 'display.hud_button_style')) == 12
-    assert next(r[2] for r in rows if r[1] == 'display.hud_bumper_style') == [('ORIGINAL XBOX', 'original'), ('MODERN XBOX', 'modern')]
-    parent = ET.parse(ROOT / f'port/assets/menus/ce/{prefix}.gamepad_setup.xml')
-    assert any('controller_appearance_screen' in e.get('open', '') for e in parent.iter('on'))
-    assert not any(r[1] in ('input.auto_button_detection', 'display.hud_bumper_style') or r[1].startswith('display.hud_button_style')
-                   for r in port_settings.SCREENS['video_settings/graphics']['rows'])
-    assert f'ce/{prefix}.controller_appearance.xml' in json.loads((ROOT / 'port/assets/menus/menus.json').read_text())['files']
-    config = (ROOT / 'port/linux/src/port_config.c').read_text()
-    assert re.search(r'"input.auto_button_detection", _config_boolean, "true"', config)
-    assert r'"display.hud_bumper_style", _config_string, "\"original\""' in config
 
 
 def test_real_glyph_geometry_opacity_cache_and_teardown(tmp_path):

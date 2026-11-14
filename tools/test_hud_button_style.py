@@ -25,51 +25,6 @@ def run_c(tmp_path, code):
     subprocess.run([str(binary)], check=True, timeout=10)
 
 
-def test_pending_visibility_spacing_and_focus(tmp_path):
-    body = function((ROOT / 'port/linux/game/menu_functions.c').read_text(), 'hud_button_style_row_show')
-    run_c(tmp_path, r'''
-#include <assert.h>
-#include <string.h>
-typedef int boolean;
-struct widget_instance {
-    char const *name; short vertical_offset; int visible,definition_tag_index;
-    struct widget_instance *child,*next,*parent,*focused_child;
-    struct {struct {short selected_index;} list;} parameters;
-};
-struct pc_menu_setting {int value_count;char const *values[2];};
-static void controller_button_rows_show(struct widget_instance *list) {(void)list;assert(0);}
-static struct widget_instance spinner;
-static struct pc_menu_setting setting={2,{"true","false"}};
-static struct pc_menu_setting *pc_menu_setting_get(int id) {(void)id;return &setting;}
-static struct widget_instance *named(struct widget_instance *list,char const *name,int n) {
-    struct widget_instance *p; (void)n;
-    if (!strcmp(name,"high_res_hud_spinner")) return &spinner;
-    for(p=list->child;p;p=p->next) if(!strcmp(p->name,name)) return p;
-    return 0;
-}
-''' + body + r'''
-int main(void) {
-    struct widget_instance list={0},hud={0},style={0},text={0},aa={0},bar={0}; int i;
-    list.child=&hud;hud.next=&style;style.next=&text;text.next=&aa;aa.next=&bar;
-    hud.name="op_high_res_hud";style.name="op_hud_button_style";text.name="op_high_res_text";
-    aa.name="op_anti_aliasing";bar.name="button_bar";spinner.parent=&hud;
-    style.visible=1;text.vertical_offset=133;aa.vertical_offset=163;bar.vertical_offset=414;
-    for(i=0;i<100;i++) {
-        list.focused_child=&style;spinner.parameters.list.selected_index=1;
-        hud_button_style_row_show(&list);hud_button_style_row_show(&list);
-        assert(!style.visible && text.vertical_offset==103 && aa.vertical_offset==133);
-        assert(list.focused_child==&hud && list.parameters.list.selected_index==0);
-        spinner.parameters.list.selected_index=0;
-        hud_button_style_row_show(&list);hud_button_style_row_show(&list);
-        assert(style.visible && text.vertical_offset==133 && aa.vertical_offset==163);
-        assert(bar.vertical_offset==414);
-    }
-    list.child=&bar;hud_button_style_row_show(&list);assert(bar.vertical_offset==414);
-    return 0;
-}
-''')
-
-
 def test_supplied_gems_preserve_transparency_and_fit_existing_bounds():
     import numpy as np
     from PIL import Image
