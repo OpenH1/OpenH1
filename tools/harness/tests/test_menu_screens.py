@@ -55,8 +55,11 @@ NEGATIVE_CONTROLS = {
     # a table's left not checked: an action the game has not got taken
     "table-left-unchecked": ("\t\t\t\taction_check(reader, table->left_action);\n", "\n", "lanes"),
     # a dot's column refused (the kinds counted short)
-    "dot-unknown": ("for (kind = 0; kind < 5 && values[2]; kind++)", "for (kind = 0; kind < 4 && values[2]; kind++)",
+    "dot-unknown": ("for (kind = 0; kind < 6 && values[2]; kind++)", "for (kind = 0; kind < 4 && values[2]; kind++)",
                     "lanes"),
+    # a swatch's column refused (the kinds counted short): Profile Color's file refused
+    "swatch-unknown": ("for (kind = 0; kind < 6 && values[2]; kind++)",
+                       "for (kind = 0; kind < 5 && values[2]; kind++)", "profile_color"),
     # a choice with no right taken
     "choice-no-right": ("else if (!choice->left_action || !choice->right_action)", "else if (!choice->left_action)",
                         "choice"),
@@ -163,6 +166,8 @@ def built(fault=None):
                                        c_string((ROOT / "port/assets/menus/screens/browser.xml").read_bytes()) + ";\n" +
                                        "static char const profile_select_xml[] =\n" +
                                        c_string((ROOT / "port/assets/menus/screens/profile_select.xml").read_bytes()) +
+                                       ";\n" + "static char const profile_color_xml[] =\n" +
+                                       c_string((ROOT / "port/assets/menus/screens/profile_color.xml").read_bytes()) +
                                        ";\n" + "static char const lobby_xml[] =\n" +
                                        c_string((ROOT / "port/assets/menus/screens/lobby.xml").read_bytes()) +
                                        ";\n" + "static char const pause_xml[] =\n" +
@@ -182,7 +187,7 @@ def built(fault=None):
 
 
 CASES = ["main", "hints", "good", "syntax", "elements", "spartan", "items", "actions", "bindings", "when",
-         "kept", "browser", "profile_select", "tabs", "table", "panel", "buttons", "lanes", "choice", "lobby", "chat",
+         "kept", "browser", "profile_select", "profile_color", "tabs", "table", "panel", "buttons", "lanes", "choice", "lobby", "chat",
          "box", "picture", "panels"]
 
 
@@ -213,6 +218,7 @@ def test_actions_registered():
     functions = read("port/linux/game/menu_functions.c")
     browser = re.search(r"\nint pc_menu_browser_value\(.*?\n\}\n", functions, re.S).group(0)
     profile = re.search(r"\nint pc_menu_profile_value\(.*?\n\}\n", functions, re.S).group(0)
+    color = re.search(r"\nint pc_menu_color_value\(.*?\n\}\n", functions, re.S).group(0)
     # (the lobby's in its pc_menu_lobby_value, or its cards' and friends' values: lobby_card_value, lobby_friends_value)
     lobby = re.search(r"\nint pc_menu_lobby_value\(.*?\n\}\n", read("port/linux/game/lobby_menu.inc"), re.S).group(0)
     for function in ("lobby_card_value", "lobby_friends_value"):
@@ -227,6 +233,8 @@ def test_actions_registered():
             assert f'"{binding}"' in browser, binding
         elif binding.startswith("profile."):
             assert f'"{binding}"' in profile, binding
+        elif binding.startswith("color."):
+            assert f'"{binding}"' in color, binding
         elif binding.startswith("lobby."):
             assert f'"{binding}"' in lobby, binding
         else:
@@ -244,6 +252,7 @@ def test_main_menu_files_listed():
     listed = json.loads(read("port/assets/menus/menus.json"))["files"]
     assert "screens/main.xml" in listed and "screens/blocks.xml" in listed and "screens/browser.xml" in listed
     assert "screens/profile_select.xml" in listed and "screens/lobby.xml" in listed
+    assert "screens/profile_color.xml" in listed
     assert "screens/pause.xml" in listed and "screens/pause_campaign.xml" in listed
     files = read("port/linux/src/menu_files.c")
     assert 'strncmp(files[index].path, "screens/", 8) || !strcmp(files[index].path, "screens/blocks.xml")' in files

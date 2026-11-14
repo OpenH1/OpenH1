@@ -137,6 +137,15 @@ int pc_menu_profile_value(char const *name, char *value, unsigned long size);
 row that makes one */
 int pc_menu_profile_choose(struct widget_instance *widget, struct event_record *event, short row);
 
+/* ---------- Profile Color's (menu_functions.c) */
+
+extern struct menu_table_source const pc_menu_color_source;
+/* a binding's value, UTF-8 ("color.<name>": nonzero if it has one) */
+int pc_menu_color_value(char const *name, char *value, unsigned long size);
+/* the row's color (NONE: the chosen one's) made the edited profile's:
+zero with no profile being edited */
+int pc_menu_color_choose(short row);
+
 /* ---------- the lobby's (menu_functions.c's lobby_menu.inc) */
 
 extern struct menu_table_source const pc_menu_lobby_source;
