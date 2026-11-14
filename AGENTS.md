@@ -334,6 +334,11 @@ Running the game without a person at it:
   `tools/determinism_compare.py`, part where something besides the input
   reached the simulation ("Determinism" in `port/linux/README.md`). Keep
   the simulation's randomness in the ticks and on the game's seeds.
+  `python tools/scorecard/identity.py --repeat` (CI's) plays StageKit's
+  scenarios twice and compares them so. A change that alters what the
+  simulation does in Classic (a fix of how something looks that writes the
+  game state) goes behind `game.enhanced_animations`, or the campaign gate
+  (`tools/scorecard/campaign_identity.py`, retail maps) parts.
 - Use a virtual display (Xvfb, with `SDL_VIDEO_DRIVER=x11`) for windowed
   runs, never the desktop of the person you work for, and stop only the
   processes you started.
