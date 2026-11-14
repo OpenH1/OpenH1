@@ -3145,6 +3145,9 @@ static long pause_list_patch(struct cache_file_tag_instance *instances, struct u
 	view.training = basic_training_active();
 	view.host_controls_screen = host_controls_widget != NONE;
 	view.training_screen = training_widget != NONE;
+	/* (the map's screen is every local player's: the functions of its host's
+	rows refuse the others, menu_functions.c) */
+	view.first_player = TRUE;
 	rows = network_host_controls_pause_rows_for(&view);
 	for (child = 0; child < NUMBER_OF_HOST_CONTROLS_PAUSE_ROWS; child++)
 		added += TEST_FLAG(rows, child) ? 1 : 0;
@@ -3404,10 +3407,12 @@ short menu_tags_legend_growth(
 
 /* the rows the pause menu adds for this machine, as pause_patch and
 pause_campaign_patch add them to the map's (network_host_controls_pause_rows_for):
-the hand-written pause menu's (menu_screen.c's pause.* bindings) */
+the hand-written pause menu's (menu_screen.c's pause.* bindings), its
+local player's: the host's rows the machine's first local player's alone */
 static boolean network_coop_campaign_map(void);
 
-unsigned long menu_tags_pause_rows(void)
+unsigned long menu_tags_pause_rows(
+	short local_player_index)
 {
 	struct host_controls_pause_view view;
 	/* (a network co-op game's map: its pause menu's FRIENDLY FIRE too) */
@@ -3425,6 +3430,7 @@ unsigned long menu_tags_pause_rows(void)
 	view.training = basic_training_active();
 	view.host_controls_screen = host_controls;
 	view.training_screen = training;
+	view.first_player = network_host_controls_local_player(local_player_index);
 	return network_host_controls_pause_rows_for(&view);
 }
 

@@ -228,7 +228,7 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | `{browser.panel.title}` ... `{browser.panel.status}` | The chosen game's name (or the list's title), where (map and mode), kind (GOAT H1, LEGACY) and its `tone`, tick rate, OPENCE CAN JOIN, players, ping, and its status line |
 | `{browser.searched}`, `{browser.joinable}`, `{browser.server}`, `{browser.link}`, `{browser.filtered}` | (for `if`s) the searches hide every game; a game to join is chosen; the server browser's list; Join by Link's; a list filtered and searched (not Join by Link's) |
 | `{pause.friendly_fire}` | Network co-op's FRIENDLY FIRE row's words, `FRIENDLY FIRE ON` or `OFF` (this machine's choice); none elsewhere |
-| `{pause.host_controls}`, `{pause.end_game}`, `{pause.chapters}` | (for `if`s) the pause menu's HOST CONTROLS (a network game's host's), END GAME (the host of a game of this machine alone) and CHAPTERS (Basic Training's), as `menu_tags.c` adds them to the map's |
+| `{pause.host_controls}`, `{pause.end_game}`, `{pause.chapters}` | (for `if`s) the pause menu's HOST CONTROLS (a network game's host's), END GAME (the host of a game of this machine alone) and CHAPTERS (Basic Training's), as `menu_tags.c` adds them to the map's; the host machine's first local player's alone (split screen's player 1: the screen's own player), an admin's too |
 | `{profile.title}` | Select Profile's chosen row: its profile's name, or `Create New Player Profile` on the row that makes one |
 | `{profile.name}`, `{profile.controls}`, `{profile.difficulty}`, `{profile.level}` | The chosen profile's name, controls (`Default`, `Inverted`), best difficulty finished (none before a level is) and current level (`The Pillar of Autumn`); none on the row that makes one |
 | `{profile.color}`, `{profile.chosen}` | (for a `<spartan>`'s color and `if`s) the chosen profile's color's number, or `random`; whether a profile (not the row that makes one) is chosen |
@@ -282,6 +282,7 @@ sounds and the fades are the game's.
 | `open host controls` | Host Controls, as the pause menu's HOST CONTROLS opens it |
 | `pause leave` | The player out of the game, as the multiplayer pause menu's LEAVE GAME (`mp game player quit`), and the screen closed |
 | `pause end game` | The game ended as its time limit would (END GAME) |
+| `pause chapters` | Basic Training's chapters, as the pause menu's CHAPTERS opens them (the host's first local player's alone) |
 | `pause friendly fire` | This machine's friendly fire in network co-op on or off (FRIENDLY FIRE) |
 | `pause revert`, `pause restart` | The campaign's questions for REVERT TO SAVED and RESTART LEVEL (the map's) |
 | `pause quit` | SAVE AND QUIT: the main menu, as the campaign's pause menu's |
