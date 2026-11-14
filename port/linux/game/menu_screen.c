@@ -238,6 +238,8 @@ this far above the box's foot */
 #define SCREEN_BUTTON_Y 3
 /* (menu_engine.c's ENGINE_EVENT_BUTTON: the event manager's button event) */
 #define SCREEN_EVENT_BUTTON 3
+/* (and its ENGINE_EVENT_LEFT_STICK: the left stick pushed to an edge) */
+#define SCREEN_EVENT_LEFT_STICK 1
 
 /* ---------- the registry: what the files may name */
 
@@ -279,6 +281,8 @@ static boolean screen_call_close(struct widget_instance *widget, struct event_re
 static boolean screen_call_edit(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted);
 static boolean screen_call_coop(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted);
+static boolean screen_call_add_player(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted);
 /* the row of the table an action is run for (0 up, on the table), NONE for
 none (a key's, a button's) */
@@ -389,7 +393,9 @@ static struct screen_action const screen_actions[] =
 	players, CHANGE TEAM), the invite copied, Server Setup, Host Controls,
 	another player of this machine, and the bots' choices stepped) */
 	{ "lobby row", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
-	{ "lobby start", NULL, NULL, "port lobby start", NULL, NULL, NULL },
+	/* (its Start and START GAME: a controller not in the game joins, on Add
+	Player's screen; a player's starts the host's game) */
+	{ "lobby start", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_add_player },
 	{ "lobby team red", NULL, NULL, "port lobby team red", NULL, NULL, NULL },
 	{ "lobby team blue", NULL, NULL, "port lobby team blue", NULL, NULL, NULL },
 	{ "lobby team toggle", NULL, NULL, "port lobby team toggle", NULL, NULL, NULL },
@@ -418,6 +424,11 @@ static struct screen_action const screen_actions[] =
 	{ "lobby friend right", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
 	{ "lobby friend invite", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
 	{ "lobby close", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_lobby },
+	/* (Add Player's, screens/add_player.xml (menu_functions.c's): those joining
+	brought into the game (DONE, a player's START), or let go of (B, BACK);
+	either back to the screen before) */
+	{ "add player done", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_add_player },
+	{ "add player back", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_add_player },
 	/* (the pause menu's, screens/pause.xml and pause_campaign.xml, as its
 	rows did on the map's: the screen closed (RESUME GAME), or every screen
 	(B; the campaign's RESUME GAME); the player out of a multiplayer game
@@ -451,6 +462,7 @@ static char const *const screen_action_names[] =
 	"lobby bots right", "lobby skill left", "lobby skill right", "lobby teams left", "lobby teams right",
 	"lobby chat", "lobby card", "lobby card friend", "lobby card mute", "lobby card kick", "lobby friends",
 	"lobby friend left", "lobby friend right", "lobby friend invite", "lobby close",
+	"add player done", "add player back",
 	"close", "close all", "pause leave", "open host controls", "pause end game", "pause chapters",
 	"pause friendly fire", "pause revert", "pause restart", "pause quit",
 };
@@ -486,7 +498,8 @@ static char const *const screen_binding_names[] =
 	"lobby.card.party", "lobby.card.note", "lobby.card.facts", "lobby.card.friend",
 	"lobby.card.mutable", "lobby.card.mute", "lobby.card.kick", "lobby.friends", "lobby.friends.count",
 	"lobby.friend", "lobby.friend.where", "lobby.friends.said", "lobby.map.picture", "lobby.description",
-	"lobby.where", "lobby.lineup", "lobby.lineup.names", "pause.friendly_fire", "pause.host_controls", "pause.end_game",
+	"lobby.where", "lobby.lineup", "lobby.lineup.names", "add.count", "add.title", "add.profile", "add.color", "add.help",
+	"add.done", "pause.friendly_fire", "pause.host_controls", "pause.end_game",
 	"pause.chapters",
 };
 
@@ -497,6 +510,7 @@ static struct menu_table_source const *const screen_sources[] =
 	&pc_menu_profile_source,
 	&pc_menu_lobby_source,
 	&pc_menu_color_source,
+	&pc_menu_add_player_source,
 };
 
 static char const *const screen_source_names[] =
@@ -505,6 +519,7 @@ static char const *const screen_source_names[] =
 	"profiles",
 	"lobby.players",
 	"profile.colors",
+	"add.players",
 };
 
 /* the chats a <chat> may name (menu_table.h), and their names */
@@ -539,6 +554,9 @@ static int screen_value(void *context, char const *name, char *value, unsigned l
 	/* (the lobby's: menu_functions.c's lobby_menu.inc) */
 	if (!strncmp(name, "lobby.", 6))
 		return pc_menu_lobby_value(name, value, size);
+	/* (Add Player's: menu_functions.c's) */
+	if (!strncmp(name, "add.", 4))
+		return pc_menu_add_player_value(name, value, size);
 	/* (co-op's, the lobby's WHO CAN JOIN and what keeps people from the
 	game: coop_menu.inc) */
 	if (!strncmp(name, "coop.", 5))
@@ -598,6 +616,9 @@ struct screen_place
 	void (*shown)(struct widget_instance *screen);
 	/* (whether it takes the screen's place this time: NULL, always) */
 	int (*takes)(void);
+	/* (a controller's key (MENU_SCREEN_KEY_*), before the screen's own and its
+	focus take it: MENU_SCREEN_KEY_FREE, theirs; NULL, all theirs) */
+	int (*key)(short controller, int key);
 };
 
 static struct screen_place const screen_places[] =
@@ -625,6 +646,10 @@ static struct screen_place const screen_places[] =
 	player, X adds one, Y the map vote or the invite), and what its list did
 	each frame done: pc_menu_lobby_frame) */
 	{ "lobby", "main_menu\\multiplayer_type_select\\lobby\\lobby_screen", pc_menu_lobby_frame, NULL },
+	/* (Add Player, as the lobby's and the preview's ADD PLAYER and another
+	controller's START open it: each controller not in the game its own
+	keys, menu_functions.c's) */
+	{ "add_player", "screens\\add_player", NULL, NULL, pc_menu_add_player_key },
 	/* (the pause menu, in place of the map's: menu_screen_pause_name opens
 	these, a campaign's or a multiplayer game's, pausing the game or not) */
 	{ "pause", "screens\\pause", NULL, NULL },
@@ -2371,6 +2396,97 @@ static boolean screen_call_lobby(struct widget_instance *widget, struct event_re
 	return result;
 }
 
+/* the lobby's start (menu_functions.c's: a controller not in the game
+joins, on Add Player's screen), and Add Player's DONE and BACK (those
+joining brought in, or let go of; then back to the screen before) */
+static boolean screen_call_add_player(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted)
+{
+	int call_deleted = FALSE;
+	boolean result;
+
+	*deleted = FALSE;
+	if (!strcmp(name, "lobby start"))
+	{
+		result = pc_menu_lobby_start(widget, event, &call_deleted) != 0;
+		*deleted = call_deleted != 0;
+		return result;
+	}
+	if (!pc_menu_add_player_action(name))
+		return TRUE;
+	menu_tags_back(widget, event, deleted);
+	return TRUE;
+}
+
+/* (menu_table.h's) the place of a hand-written screen by its name, where
+the new menus run it and its file is read (NULL: none) */
+static struct screen_place const *screen_place_named(char const *name)
+{
+	char tag_name[256];
+	long index;
+
+	if (!menu_engine_looks())
+		return NULL;
+	screens_names_give();
+	for (index = 0; index < NUMBEROF(screen_places); index++)
+	{
+		if (strcmp(screen_places[index].screen, name) || !menu_screens_find(name))
+			continue;
+		snprintf(tag_name, sizeof(tag_name), "pc\\%s", screen_places[index].widget);
+		if (tag_loaded(UI_WIDGET_DEFINITION_TAG, tag_name) != NONE)
+			return &screen_places[index];
+	}
+	return NULL;
+}
+
+int menu_screen_open_ready(char const *name)
+{
+	return screen_place_named(name) != NULL;
+}
+
+int menu_screen_open_named(struct widget_instance *widget, struct event_record *event, char const *name,
+	int *deleted)
+{
+	struct screen_place const *place = screen_place_named(name);
+	boolean open_deleted = FALSE;
+	boolean opened;
+	char tag_name[256];
+
+	*deleted = FALSE;
+	if (!place)
+		return FALSE;
+	snprintf(tag_name, sizeof(tag_name), "pc\\%s", place->widget);
+	opened = menu_tags_open(widget, event, tag_name, &open_deleted);
+	*deleted = open_deleted != 0;
+	return opened;
+}
+
+/* a controller's key on a screen that takes keys by controller (a press,
+not a held one's repeat: menu_table.h's MENU_SCREEN_KEY_*); NONE for none
+(an event that is no key: a stick let go of) */
+static int screen_key_of(struct event_record const *event)
+{
+	if (event->type == SCREEN_EVENT_LEFT_STICK)
+	{
+		return event->data.stick.x == SHORT_MIN ? MENU_SCREEN_KEY_LEFT :
+			event->data.stick.x == SHORT_MAX ? MENU_SCREEN_KEY_RIGHT :
+			event->data.stick.y == SHORT_MIN || event->data.stick.y == SHORT_MAX ? MENU_SCREEN_KEY_OTHER : NONE;
+	}
+	if (event->type != SCREEN_EVENT_BUTTON)
+		return NONE;
+	if (event->data.button.value != 1)
+		return MENU_SCREEN_KEY_OTHER;
+	switch (event->data.button.index)
+	{
+	case _gamepad_analog_button_a: return MENU_SCREEN_KEY_A;
+	case _gamepad_analog_button_b: return MENU_SCREEN_KEY_B;
+	case _gamepad_binary_button_start: return MENU_SCREEN_KEY_START;
+	case _gamepad_binary_button_dpad_left: return MENU_SCREEN_KEY_LEFT;
+	case _gamepad_binary_button_dpad_right: return MENU_SCREEN_KEY_RIGHT;
+	}
+	return MENU_SCREEN_KEY_OTHER;
+}
+
 /* co-op's actions of C's own (menu_functions.c's coop_menu.inc): WHO CAN
 JOIN's cards, the co-op list's fix (HOST CO-OP's: the HOST card's own
 action) and JOIN BY LINK, the lobby's fix */
@@ -2445,6 +2561,22 @@ boolean menu_screen_back(struct widget_instance *widget, struct event_record *ev
 	struct screen_open *open = screen_open_of(widget);
 
 	*deleted = FALSE;
+	/* (a screen that takes keys by controller (Add Player's: a controller
+	not in the game joining with its own), before its focus and its own
+	keys: those it takes, and its done, back to the screen before) */
+	if (open && open->place->key && event->controller_index >= 0)
+	{
+		int key = screen_key_of(event);
+		int taken = key == NONE ? MENU_SCREEN_KEY_FREE : open->place->key(event->controller_index, key);
+
+		if (taken == MENU_SCREEN_KEY_DONE)
+		{
+			menu_tags_back(widget, event, deleted);
+			return TRUE;
+		}
+		if (taken != MENU_SCREEN_KEY_FREE)
+			return TRUE;
+	}
 	/* (Start anywhere on a screen of its own start: that, where it does
 	something) */
 	if (open && open->start[0] && event->type == SCREEN_EVENT_BUTTON && event->data.button.value == 1 &&

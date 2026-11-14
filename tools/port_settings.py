@@ -5933,7 +5933,8 @@ def screen_pictures(framed, highlight) -> list:
         pictures.append((f"{PARTS}/lane_row_{row}x{SCREEN_LANE_ROW}", [
             (framed(row, SCREEN_LANE_ROW, "#0b2252", 0.9, "none", 5), row, SCREEN_LANE_ROW),
             (framed(row, SCREEN_LANE_ROW, "#002244", 0.9, "#2299ff", 5), row, SCREEN_LANE_ROW),
-            (framed(row, SCREEN_LANE_ROW, "#0e2a63", 1.0, "#3d8bff", 5), row, SCREEN_LANE_ROW),
+            # (marked as its own: a dim edge, so that only the focus lights a row)
+            (framed(row, SCREEN_LANE_ROW, "#0e2a63", 1.0, "#1f4f9a", 5), row, SCREEN_LANE_ROW),
             (framed(row, SCREEN_LANE_ROW, "#0d3a7a", 1.0, "#b8dbff", 5), row, SCREEN_LANE_ROW)]))
     for width, height in SCREEN_CHOICE_HEIGHTS.values():
         pictures.append((part_highlight(width, height), highlight(width, height)))
