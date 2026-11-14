@@ -3313,9 +3313,14 @@ an image of its own at the size it has on the screen (`port/linux/src/d3d8_devic
 extra views), without the anti-aliasing pass, multisampling, the world's
 ambient occlusion, the objects' shadows, lens flares or the weather, so the
 frame pays for about one small view whatever the number of feeds; with the
-link hidden, nothing. The weapon and arms are posed in their idle
-animation (not the teammate's reloads or shots). Not yet in VR, nor on the
-touch controls (`port/linux/game/spartan_link.c`).
+link hidden, nothing. The weapon and arms move as on the teammate's own
+screen: each shot's kick, a melee, a reload, a grenade's throw, a weapon
+put away and readied, a plasma weapon overheating and venting, a charge,
+walking's sway; while they zoom the weapon is hidden, as for them. This
+computer plays each teammate's weapon from what it already knows of them
+(`source/interface/first_person_weapons.c`'s feeds' slots), making no sound
+or effect of it. Not yet in VR, nor on the touch controls
+(`port/linux/game/spartan_link.c`).
 
 ### Voice chat
 
