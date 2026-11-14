@@ -1654,7 +1654,7 @@ static boolean dialog_build(struct screen_open *open, struct menu_screen const *
 	}
 	if (!dialog || !list)
 		return FALSE;
-	memset(&values, 0, sizeof(values));
+	screen_values_clear(&values, open);
 	for (index = 0; index < screen->block_count; index++)
 	{
 		if (screen->blocks[index].kind == MENU_SCREEN_ITEM && screen->blocks[index].parent == list_index &&
