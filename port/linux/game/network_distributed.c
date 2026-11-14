@@ -372,12 +372,22 @@ enum
 	it took, or this, none: send them whole) */
 	UNIT_STATES_WHOLE = 255,
 };
-/* a difference's first byte: the whole state follows (a unit state's bytes,
-distributed_unit_state_write), or the player, the host's ticks since the
-state it is a difference from, and the parts that differ (16 bits, as
-below), each as the state has it but the position (its difference on the
-grid, 16 bits a part), and the velocity, facing and client's tick, each its
-difference in a byte a part where it fits ("small"), else whole */
+/* a difference's first byte (a unit_difference_form): the whole state
+follows (a unit state's bytes, distributed_unit_state_write), or the player,
+the host's ticks since the state it is a difference from, and the parts that
+differ (16 bits, as below), each as the state has it but the position (its
+difference on the grid, 16 bits a part), and the velocity, facing and
+client's tick, each its difference in a byte a part where it fits
+("small"), else whole; and (a deck) after them the deck part, where it
+differs from the state's it is a difference of: a byte, 1 when the state
+has one (a rider in a vehicle's window, vehicle_riding.c) and its bytes
+follow (distributed_deck_put), 0 when it has none (from protocol 31) */
+enum unit_difference_form
+{
+	_unit_difference_form_whole = 0,
+	_unit_difference_form_difference,
+	_unit_difference_form_deck,
+};
 enum
 {
 	_unit_difference_flags_bit = 0,
@@ -2596,13 +2606,33 @@ static word distributed_unit_difference_write(
 			*cursor++ = written.unit_flags;
 			*cursor++ = written.active_camouflage;
 		}
-		buffer[0] = 1;
+		buffer[0] = _unit_difference_form_difference;
+		/* (the deck part, where it is not the state's it is from: a rider's
+		place on its deck, its window's ticks and verdicts) */
+		if (written.deck_present || base.deck_present)
+		{
+			byte written_deck[DISTRIBUTED_DECK_SIZE];
+			byte base_deck[DISTRIBUTED_DECK_SIZE];
+
+			if (written.deck_present)
+				distributed_deck_put(written_deck, &written.deck);
+			if (base.deck_present)
+				distributed_deck_put(base_deck, &base.deck);
+			if (written.deck_present != base.deck_present ||
+				csmemcmp(written_deck, base_deck, DISTRIBUTED_DECK_SIZE))
+			{
+				buffer[0] = _unit_difference_form_deck;
+				*cursor++ = written.deck_present ? 1 : 0;
+				if (written.deck_present)
+					cursor = distributed_deck_put(cursor, &written.deck);
+			}
+		}
 		buffer[1] = written.player_index;
 		buffer[2] = (byte)(now - base_time);
 		csmemcpy(buffer + 3, &parts, sizeof(parts));
 		return (word)(cursor - buffer);
 	}
-	buffer[0] = 0;
+	buffer[0] = _unit_difference_form_whole;
 	return (word)(1 + distributed_unit_state_write(state, predicted, buffer + 1));
 }
 
@@ -2628,13 +2658,14 @@ static word distributed_unit_difference_read(
 	*known = TRUE;
 	if (!distributed_take(&cursor, end, &form, sizeof(form)))
 		return 0;
-	if (!form)
+	if (form == _unit_difference_form_whole)
 	{
 		word size = distributed_unit_state_read(cursor, end, state);
 
 		return size ? (word)(1 + size) : 0;
 	}
-	if (form != 1 || !distributed_take(&cursor, end, &player_index, sizeof(player_index)) ||
+	if ((form != _unit_difference_form_difference && form != _unit_difference_form_deck) ||
+		!distributed_take(&cursor, end, &player_index, sizeof(player_index)) ||
 		!distributed_take(&cursor, end, &age, sizeof(age)) || !distributed_take(&cursor, end, &parts, sizeof(parts)))
 	{
 		return 0;
@@ -2735,6 +2766,18 @@ static word distributed_unit_difference_read(
 				!distributed_take(&cursor, end, &read.active_camouflage, sizeof(read.active_camouflage)))))
 	{
 		return 0;
+	}
+	/* (the deck part: present, whole and of a vehicle this machine has, or
+	none; else no state) */
+	if (form == _unit_difference_form_deck)
+	{
+		byte deck_present;
+
+		if (!distributed_take(&cursor, end, &deck_present, sizeof(deck_present)) || deck_present > 1)
+			return 0;
+		read.deck_present = FALSE;
+		if (deck_present && !distributed_deck_take(&cursor, end, &read.deck_present, &read.deck))
+			return 0;
 	}
 	if (!base)
 	{
@@ -5726,6 +5769,10 @@ static boolean distributed_substep_state_due(
 
 	return period != 0 && period <= 2 && player_machine != machine_index &&
 		TEST_FLAG(state->flags, _distributed_unit_alive_bit) && TEST_FLAG(state->flags, _distributed_unit_placed_bit) &&
+		/* (not a rider in a vehicle's window, which moves in its tick, as
+		at 30: vehicle_riding_bipeds.c's biped_riding_holds_lane; its deck
+		part goes with the tick's state) */
+		!state->deck_present &&
 		(player_machine == NONE || distributed_prediction_at_tick_start(player_index));
 }
 
