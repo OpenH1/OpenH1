@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from harness import enum_with, CHECK_FAILED, ROOT, build, constant, mutated, read, run  # noqa: E402
+from harness import enum_with, CHECK_FAILED, ROOT, build, constant, function, mutated, read, run  # noqa: E402
 
 CASES = ["seats", "actions", "team_moves", "kick", "move", "lock", "end", "next", "same", "maximum", "bans",
          "players", "bots", "bots_tab", "bot_count", "bot_skill", "bot_choices", "pause", "teleports"]
@@ -241,3 +241,37 @@ def test_files_are_the_generators():
     assert f"ce/{name}" in listed and f"ce/port/{title}.png" in listed
     assert f'<bitmap name="{title}">' in (ce / "bitmaps.xml").read_text()
     assert port_settings.TITLES[title] == "HOST CONTROLS"
+
+
+# Host Controls' PLAYLIST (host_controls_menu.inc): the playlist and its next, the host's own or, for a dedicated
+# server's admin, the server's; each once ended in itself, and a host's PLAYLIST tab hung the game
+PLAYLIST_NEGATIVE_CONTROLS = {
+    "playlist-ends-in-itself": (("return host_remote() ? network_admin_rotation() : network_host_game_playlist();",
+                                 "return host_remote() ? network_admin_rotation() : host_playlist();"), "host"),
+    "index-ends-in-itself": (("\treturn network_host_game_playlist_index();", "\treturn host_playlist_index();"),
+                             "host"),
+    "admin-sees-the-hosts": (("return host_remote() ? network_admin_rotation() : network_host_game_playlist();",
+                              "return network_host_game_playlist();"), "admin"),
+}
+
+
+def playlist_generated(fault=None):
+    menu = read("port/linux/game/host_controls_menu.inc")
+    code = function(menu, "host_playlist") + "\n\n" + function(menu, "host_playlist_index") + "\n"
+    if fault:
+        code = mutated(code, *fault)
+    return (("under_test.inc", code),)
+
+
+@pytest.mark.parametrize("case", ["host", "admin"])
+def test_playlist(case):
+    status, output = run(build("host_controls_playlist", playlist_generated()), case)
+    assert status == 0, output
+
+
+@pytest.mark.parametrize("control", PLAYLIST_NEGATIVE_CONTROLS)
+def test_playlist_negative_control(control):
+    fault, case = PLAYLIST_NEGATIVE_CONTROLS[control]
+    status, output = run(build("host_controls_playlist", playlist_generated(fault)), case)
+    assert status == CHECK_FAILED, f"host_controls_menu.inc with a fault ({control}) passed '{case}': " \
+        "the test cannot see it"

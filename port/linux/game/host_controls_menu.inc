@@ -450,9 +450,10 @@ static boolean host_ask(short verb, struct host_controls_player const *player, l
 	return TRUE;
 }
 
+/* the playlist and its next, the server's (an admin's) or this host's */
 static struct server_rotation const *host_playlist(void)
 {
-	return host_remote() ? network_admin_rotation() : host_playlist();
+	return host_remote() ? network_admin_rotation() : network_host_game_playlist();
 }
 
 static long host_playlist_index(void)
@@ -461,7 +462,7 @@ static long host_playlist_index(void)
 
 	if (network_admin_remote_state(&state))
 		return state.rotation_index;
-	return host_playlist_index();
+	return network_host_game_playlist_index();
 }
 
 static short host_gametypes(struct host_game_gametype const **gametypes)
