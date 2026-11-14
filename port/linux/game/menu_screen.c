@@ -660,9 +660,10 @@ struct screen_open
 	struct widget_instance *dialog_title;
 	struct widget_instance *dialog_text;
 	struct widget_instance *dialog_foot;
-	/* (the box and its foot drawn under them once more: its picture's
-	translucent bands made nearly opaque over the screen behind) */
-	struct widget_instance *dialog_under[2];
+	/* (the box and its foot drawn under them twice more, each pair a box
+	and its foot: its picture's translucent bands made nearly opaque over
+	the screen behind) */
+	struct widget_instance *dialog_under[4];
 	short dialog_width, dialog_height;
 };
 
@@ -1609,14 +1610,18 @@ static boolean dialog_build(struct screen_open *open, struct menu_screen const *
 			screen_widget_add(widget, screens.dialog_dim_tag, 0, 0);
 		}
 	}
-	open->dialog_under[0] = screen_widget_add(widget, screens.dialog_tag, left, 0);
-	open->dialog_under[1] = screen_widget_add(widget, screens.dialog_foot_tag, left, 0);
+	for (index = 0; index < NUMBEROF(open->dialog_under); index++)
+	{
+		open->dialog_under[index] = screen_widget_add(widget, index % 2 ? screens.dialog_foot_tag : screens.dialog_tag,
+			left, 0);
+		if (!open->dialog_under[index])
+			return FALSE;
+	}
 	open->dialog_box = screen_widget_add(widget, screens.dialog_tag, left, 0);
 	open->dialog_foot = screen_widget_add(widget, screens.dialog_foot_tag, left, 0);
 	open->dialog_title = screen_widget_add(widget, screens.dialog_title_tag, (short)(left + DIALOG_TEXT_X), 0);
 	open->dialog_text = screen_widget_add(widget, screens.dialog_text_tag, (short)(left + DIALOG_TEXT_X), 0);
-	if (!open->dialog_under[0] || !open->dialog_under[1] || !open->dialog_box || !open->dialog_foot ||
-		!open->dialog_title || !open->dialog_text)
+	if (!open->dialog_box || !open->dialog_foot || !open->dialog_title || !open->dialog_text)
 		return FALSE;
 	if (dialog->label && menu_screen_text(dialog->label, screen_value, &values, label, sizeof(label)))
 		screen_text_set(open->dialog_title, label);
@@ -1636,8 +1641,11 @@ static boolean dialog_build(struct screen_open *open, struct menu_screen const *
 	open->dialog_height = height;
 	open->dialog_box->vertical_offset = (short)(widget->vertical_offset + top);
 	open->dialog_foot->vertical_offset = (short)(widget->vertical_offset + top + height - DIALOG_FOOT);
-	open->dialog_under[0]->vertical_offset = open->dialog_box->vertical_offset;
-	open->dialog_under[1]->vertical_offset = open->dialog_foot->vertical_offset;
+	for (index = 0; index < NUMBEROF(open->dialog_under); index++)
+	{
+		open->dialog_under[index]->vertical_offset = index % 2 ? open->dialog_foot->vertical_offset :
+			open->dialog_box->vertical_offset;
+	}
 	open->dialog_title->vertical_offset = (short)(widget->vertical_offset + top + DIALOG_TITLE_Y);
 	open->dialog_text->vertical_offset = (short)(widget->vertical_offset + top + DIALOG_HEAD + DIALOG_TEXT_ROOM);
 	/* (its choices, side by side in the middle of its bottom band) */
@@ -1698,12 +1706,12 @@ static boolean dialog_picture_of(struct widget_instance const *widget, long *bit
 
 		if (!open->widget || !open->dialog_box)
 			continue;
-		if (widget == open->dialog_box || widget == open->dialog_under[0])
+		if (widget == open->dialog_box || widget == open->dialog_under[0] || widget == open->dialog_under[2])
 		{
 			bounds->x1 = (short)(bounds->x0 + open->dialog_width);
 			bounds->y1 = (short)(bounds->y0 + open->dialog_height - DIALOG_FOOT);
 		}
-		else if (widget == open->dialog_foot || widget == open->dialog_under[1])
+		else if (widget == open->dialog_foot || widget == open->dialog_under[1] || widget == open->dialog_under[3])
 			bounds->x1 = (short)(bounds->x0 + open->dialog_width);
 		else if (widget == open->dialog_title)
 			bounds->x1 = (short)(bounds->x0 + shown - 2 * DIALOG_TEXT_X);
