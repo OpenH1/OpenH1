@@ -1235,6 +1235,8 @@ it has played, the one after the last it finished, the first) and finished,
 and its saved game's; in co-op, those either player's has reached and
 finished, and no saved game (a game of one player's does not go on with
 two: game_state.c's game_state_header_valid) */
+static boolean coop_host_choosing(void);
+
 static void campaign_levels_read(struct player_profile const *profile)
 {
 	char const *map_name;
@@ -1262,8 +1264,13 @@ static void campaign_levels_read(struct player_profile const *profile)
 				campaign.levels[level].finished[marker] |= (flags >> (marker + 1)) & 1;
 		}
 	}
-	if (player_spawn_count >= 2 || !ui_widget_port_saved_game(&map_name, &campaign.saved_level, &difficulty))
+	/* (none either while co-op's HOST chooses its mission: a saved game is
+	the player's own, coop_menu.inc) */
+	if (player_spawn_count >= 2 || coop_host_choosing() ||
+		!ui_widget_port_saved_game(&map_name, &campaign.saved_level, &difficulty))
+	{
 		campaign.saved_level = NONE;
+	}
 	campaign.saved_difficulty = campaign.saved_level != NONE ? difficulty : NONE;
 }
 
@@ -6828,6 +6835,7 @@ static boolean multiplayer_host(struct widget_instance *widget, struct event_rec
 	new game starts with as network.host_public says) */
 	multiplayer.game_private = !config_boolean("network.host_public");
 	p2p_set_hosting_public(multiplayer.mode == _multiplayer_mode_host_internet && !multiplayer.game_private);
+	p2p_friends_set_game_closed(FALSE);
 	multiplayer.cooperative_maximum_players_set = FALSE;
 	if (multiplayer.mode == _multiplayer_mode_host_local)
 		return ui_widget_port_host_local(widget, event, widget_deleted);
@@ -7334,10 +7342,12 @@ static short *server_settings_maximum_players_index(void)
 }
 
 /* Server Setup's LISTING, PRIVATE: the multiplayer game's (as
-network.host_public started it), or co-op's, saved in network.coop_public */
+network.host_public started it), or co-op's, as network.coop_join keeps its
+WHO CAN JOIN (listed for ANYONE alone) */
 static boolean server_settings_private(void)
 {
-	return hosting_cooperative() ? !config_boolean("network.coop_public") : multiplayer.game_private;
+	return hosting_cooperative() ? strcmp(config_string("network.coop_join"), "anyone") != 0 :
+		multiplayer.game_private;
 }
 
 /* an internet game hosted (Create Game's INTERNET) */
@@ -7358,10 +7368,13 @@ static void server_settings_private_set(boolean private_game)
 {
 	if (!hosting_cooperative())
 		multiplayer.game_private = private_game;
-	else if (private_game != server_settings_private() &&
-		!config_write("network.coop_public", private_game ? "false" : "true"))
+	/* (co-op's WHO CAN JOIN: PUBLIC is ANYONE, PRIVATE FRIENDS, its
+	friends offered JOIN again: coop_menu.inc) */
+	else if (private_game != server_settings_private())
 	{
-		platform_log("menus: could not write network.coop_public to config.toml");
+		if (!config_write("network.coop_join", private_game ? "friends" : "anyone"))
+			platform_log("menus: could not write network.coop_join to config.toml");
+		p2p_friends_set_game_closed(FALSE);
 	}
 }
 
@@ -7392,6 +7405,8 @@ static boolean server_settings_initialize(struct widget_instance *list)
 	if ((spinner = named(list, "game_mode_spinner", 0)) != NULL)
 		spinner->parameters.list.selected_index = server_settings_game_mode();
 	p2p_set_hosting_public(multiplayer.mode == _multiplayer_mode_host_internet && !server_settings_private());
+	/* (co-op's INVITE ONLY: its friends offered no JOIN) */
+	p2p_friends_set_game_closed(hosting_cooperative() && !strcmp(config_string("network.coop_join"), "invite"));
 	return TRUE;
 }
 
@@ -7975,6 +7990,9 @@ static boolean lobby_browser_select(struct widget_instance *widget, short contro
 static void browser_prompts_show(struct widget_instance *list);
 static void browser_filters_refresh(void);
 
+/* (the co-op list's model off: coop_menu.inc) */
+static void coop_join_end(void);
+
 /* "gamespy screen init": the mode's title and parts; the games' client */
 static boolean browser_initialize(struct widget_instance *screen, struct event_record *event,
 	boolean *widget_deleted)
@@ -7985,6 +8003,8 @@ static boolean browser_initialize(struct widget_instance *screen, struct event_r
 	boolean link = multiplayer.mode == _multiplayer_mode_direct_link;
 	short index;
 
+	/* (the server browser's own list, never the co-op list's) */
+	coop_join_end();
 	server_browser_initialize(screen);
 	/* (the filters as Filters left them: browser_filters_read, below) */
 	browser_filters_refresh();
@@ -8198,7 +8218,7 @@ static short browser_offline_count;
 /* the most a list orders (browser_favorites_order): the server browser's
 games and its groups' headings (LOBBY_BROWSER_GAMES and
 NUMBER_OF_BROWSER_GROUPS, below), more than the local network's */
-#define BROWSER_LISTED_MAXIMUM (256 + 3)
+#define BROWSER_LISTED_MAXIMUM (256 + 5)
 /* which of those listed are favorites found (each group's first) */
 static boolean browser_listed_favorite[BROWSER_LISTED_MAXIMUM];
 /* the game starred or unstarred last, whose row takes the focus once the
@@ -8346,6 +8366,10 @@ enum
 	_browser_group_dedicated,
 	_browser_group_hosted,
 	_browser_group_legacy,
+	/* (the co-op list's, coop_menu.inc: friends' games, then the public
+	ones; no game of the server browser's own is in them) */
+	_browser_group_friends,
+	_browser_group_public,
 	NUMBER_OF_BROWSER_GROUPS
 };
 
@@ -8517,6 +8541,10 @@ static wchar_t const *browser_group_heading(short group)
 		return L"GOAT H1 Dedicated Servers";
 	case _browser_group_hosted:
 		return L"Hosted Servers";
+	case _browser_group_friends:
+		return L"Your Friends' Games";
+	case _browser_group_public:
+		return L"Public Co-op Games";
 	default:
 		return L"Legacy (Slow) Servers";
 	}
@@ -8861,6 +8889,10 @@ static void browser_view_read(void)
 		NUMBER_OF_BROWSER_TABS);
 	if (browser_tab_visit != NONE)
 		browser_tab = browser_tab_visit;
+	/* (the new engine's CO-OP tab opens co-op's own screen, its list not
+	the browser's: the browser opens on ALL in its place) */
+	if (browser_tab == _browser_tab_coop && menu_engine_looks())
+		browser_tab = _browser_tab_all;
 	browser_sort_column = browser_word_index(config_string("network.browser_sort"), browser_sort_words,
 		NUMBER_OF_BROWSER_SORTS);
 	browser_sort_descending = config_boolean("network.browser_sort_descending") != 0;
@@ -10067,6 +10099,20 @@ static struct
 	boolean password_joined;
 } lobby_browser;
 
+/* the co-op list (screens/coop_join.xml, coop_menu.inc): the server
+browser's model with its games the co-op ones alone, the player's friends'
+first (their presence's, a friend's listing taken into its row), and why
+none are in plain words. On while its screen is open */
+static boolean coop_join_listing(void);
+static short coop_join_order(short count);
+static boolean coop_join_party_row(short index);
+static void coop_join_row_fix(short index, struct browser_row *row);
+static void coop_join_status(short index, wchar_t *text, short size);
+static void coop_join_empty(wchar_t *text, short size);
+static boolean coop_join_friend(short index);
+static boolean coop_join_friend_row(short index);
+static boolean coop_join_value(char const *name, struct browser_row const *row, wchar_t *text, short size);
+
 static void browser_list_restart(void)
 {
 	lobby_browser.first = lobby_browser.chosen = 0;
@@ -10624,7 +10670,12 @@ static void lobby_browser_model(struct menu_table_view *view)
 		lobby_browser.count = matchmaking_playlist_games(lobby_browser.games, lobby_browser.count,
 			browser_doubles_playlist);
 	}
-	lobby_browser.count = lobby_browser_favorites(lobby_browser.count);
+	/* (the co-op list's: its friends' games, then the public co-op ones,
+	none hidden by the server browser's filters, searches or tab) */
+	if (coop_join_listing())
+		lobby_browser.count = coop_join_order(lobby_browser.count);
+	else
+		lobby_browser.count = lobby_browser_favorites(lobby_browser.count);
 	rows = lobby_browser_rows();
 	/* (the game starred or unstarred, moved by it: its row focused) */
 	if (browser_follow_key[0])
@@ -10689,7 +10740,7 @@ static void lobby_browser_model(struct menu_table_view *view)
 	/* (its host's tunnel opened and kept while it is chosen: joining it is
 	then at once) */
 	if (chosen < lobby_browser.count && !lobby_browser.joining && lobby_browser.games[chosen].open &&
-		!lobby_browser.games[chosen].failed)
+		!lobby_browser.games[chosen].failed && !coop_join_party_row(chosen))
 	{
 		p2p_probe_keep(&lobby_browser.games[chosen]);
 	}
@@ -10755,7 +10806,10 @@ static void lobby_browser_model(struct menu_table_view *view)
 
 		text[0] = 0;
 		if (chosen < lobby_browser.count)
+		{
 			browser_listing_row(&lobby_browser.games[chosen], &shown);
+			coop_join_row_fix(chosen, &shown);
+		}
 		else if (chosen < rows)
 			browser_offline_row(browser_favorites_get(browser_offline[chosen - lobby_browser.count]), &shown);
 		if (lobby_browser.joining)
@@ -10792,8 +10846,13 @@ static void lobby_browser_model(struct menu_table_view *view)
 			browser_offline_line(browser_favorites_get(browser_offline[chosen - lobby_browser.count]), text,
 				NUMBEROF(text));
 		}
+		/* (a friend's game the co-op list joins through their party) */
+		else if (chosen < rows && coop_join_party_row(chosen))
+			coop_join_status(chosen, text, NUMBEROF(text));
 		else if (chosen < rows)
 			browser_status_text(&shown, text, NUMBEROF(text));
+		else if (coop_join_listing())
+			usnprintf(text, NUMBEROF(text) - 1, L"Your friends' co-op games, then everyone's.");
 		else
 		{
 			usnprintf(text, NUMBEROF(text) - 1, browser_doubles_playlist != NONE ?
@@ -10804,7 +10863,7 @@ static void lobby_browser_model(struct menu_table_view *view)
 		if (chosen < rows)
 			browser_display.row = shown;
 		settings_wide_copy(browser_display.title, browser_doubles_playlist != NONE ? browser_doubles_name :
-			L"SERVER BROWSER", NUMBEROF(browser_display.title));
+			coop_join_listing() ? L"JOIN CO-OP" : L"SERVER BROWSER", NUMBEROF(browser_display.title));
 		settings_wide_copy(browser_display.status, text, NUMBEROF(browser_display.status));
 		for (index = 0; index < lobby_browser.count; index++)
 			players += lobby_browser.games[index].player_count;
@@ -10818,6 +10877,9 @@ static void lobby_browser_model(struct menu_table_view *view)
 		{
 			doubles_browser_empty(text, NUMBEROF(text));
 		}
+		/* (the co-op list's: why none, and its fix) */
+		if (coop_join_listing())
+			coop_join_empty(text, NUMBEROF(text));
 		settings_wide_copy(browser_display.empty, text, NUMBEROF(browser_display.empty));
 		browser_display.games = (short)(lobby_browser.count - lobby_browser.headings);
 		browser_display.players = players;
@@ -10940,6 +11002,10 @@ static boolean lobby_browser_select(struct widget_instance *widget, short contro
 		return TRUE;
 	if (index >= lobby_browser.count)
 		return campaign_fail();
+	/* (a friend's game not listed: joined through their party, which
+	follows them into it) */
+	if (coop_join_party_row(index))
+		return coop_join_friend(index);
 	game = &lobby_browser.games[index];
 	if (!game->open || !config_boolean("network.online"))
 		return campaign_fail();
@@ -11958,11 +12024,30 @@ static boolean browser_source_row(short index, struct browser_row *row, boolean 
 	if (index >= count)
 		browser_offline_row(browser_favorites_get(browser_offline[index - count]), row);
 	else if (server_browser)
+	{
 		browser_listing_row(&lobby_browser.games[index], row);
+		coop_join_row_fix(index, row);
+	}
 	else
 		browser_advertised_row(multiplayer.games[index], row);
 	*favorite = (index < count && browser_listed_favorite[index]) || row->offline;
 	return TRUE;
+}
+
+/* a co-op game's difficulty, as its gametype's words end with it ("Co-op
+Heroic": network_server_manager.c's listing, coop_menu.inc's friends'
+rows); empty for none */
+static wchar_t const *browser_coop_difficulty(struct browser_row const *row)
+{
+	static wchar_t const prefix[] = L"Co-op ";
+	short index;
+
+	for (index = 0; prefix[index]; index++)
+	{
+		if (row->gametype[index] != prefix[index])
+			return L"";
+	}
+	return row->gametype + index;
 }
 
 static void browser_source_update(struct menu_table_view *view)
@@ -12017,6 +12102,21 @@ static void browser_source_cell(short index, char const *column, int focused, st
 		}
 		cell->lock = row.locked;
 	}
+	/* (the co-op list's: the host, the mission, its difficulty) */
+	else if (!strcmp(column, "host"))
+	{
+		settings_wide_copy(text, row.name, MENU_TABLE_TEXT_LENGTH);
+		cell->lock = row.locked;
+		if (coop_join_friend_row(index))
+		{
+			usnprintf((wchar_t *)cell->badge, MENU_TABLE_BADGE_LENGTH - 1, L"FRIEND");
+			cell->badge[MENU_TABLE_BADGE_LENGTH - 1] = 0;
+		}
+	}
+	else if (!strcmp(column, "mission"))
+		settings_wide_copy(text, row.map, MENU_TABLE_TEXT_LENGTH);
+	else if (!strcmp(column, "difficulty"))
+		settings_wide_copy(text, browser_coop_difficulty(&row), MENU_TABLE_TEXT_LENGTH);
 	else if (!strcmp(column, "map"))
 		settings_wide_copy(text, row.map, MENU_TABLE_TEXT_LENGTH);
 	else if (!strcmp(column, "mode"))
@@ -12076,7 +12176,15 @@ int pc_menu_browser_value(char const *name, char *value, unsigned long size)
 	if (!strcmp(name, "browser.title"))
 	{
 		settings_wide_copy(text, multiplayer.mode == _multiplayer_mode_lan ? L"LOCAL NETWORK" : link ?
-			L"JOIN BY LINK" : L"SERVER BROWSER", NUMBEROF(text));
+			L"JOIN BY LINK" : coop_join_listing() ? L"JOIN CO-OP" : L"SERVER BROWSER", NUMBEROF(text));
+	}
+	/* (the co-op list's: its counts, the chosen game's mission and
+	difficulty, and the fix for an empty list) */
+	else if (coop_join_listing() && (!strcmp(name, "browser.counts") || !strcmp(name, "browser.fix") ||
+		!strcmp(name, "browser.panel.where")))
+	{
+		if (!coop_join_value(name, row, text, NUMBEROF(text)))
+			return FALSE;
 	}
 	else if (!strcmp(name, "browser.counts"))
 	{
@@ -14309,6 +14417,8 @@ static void gametype_engine_name(struct widget_instance *text_box)
 #include "lobby_menu.inc"
 /* (the campaign's screens: the Campaign menu, Choose Mission, Choose Difficulty) */
 #include "campaign_menu.inc"
+/* (co-op's screens, the new engine's: HOST, JOIN, the lobby's WHO CAN JOIN) */
+#include "coop_menu.inc"
 
 /* ---------- the hand-written screens' (menu_screen.c) */
 
@@ -14409,6 +14519,19 @@ boolean pc_menu_event_function_invoke(
 			return FALSE;
 		if (!strncmp(name, "port controller ", 16))
 			return pad_editor_event(widget, name);
+		/* (co-op's HOST: Choose Difficulty's PLAY goes on to WHO CAN JOIN;
+		the co-op list's screen made and let go of: coop_menu.inc) */
+		if (!strcmp(name, "port campaign play") && coop_host_choosing())
+			return coop_host_difficulty(widget, widget_deleted);
+		if (!strcmp(name, "port coop host begin") || !strcmp(name, "port coop host end"))
+			return coop_host_begin(!strcmp(name, "port coop host begin"));
+		if (!strcmp(name, "port coop join init"))
+			return coop_join_initialize(widget, event, widget_deleted);
+		if (!strcmp(name, "port coop join dispose"))
+		{
+			coop_join_dispose();
+			return TRUE;
+		}
 		if (!strncmp(name, "port campaign ", 14))
 			return campaign_menu_event(widget, name + 14, controller);
 		if (!strcmp(name, "main menu quit game"))

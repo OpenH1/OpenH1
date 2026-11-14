@@ -1659,10 +1659,13 @@ static const struct config_setting config_settings[] =
 		"download it (and the resource maps it needs) from the game's players\n"
 		"into custom_maps, if its host shares it (network.map_share); false\n"
 		"leaves the game, saying which map is missing." },
-	{ "network.coop_public", _config_boolean, "false", "HALO_NET_COOP_PUBLIC", _environment_value, _platform_all,
-		"Whether an online co-op game (Create Game > Internet, a SINGLEPLAYER\n"
-		"map) starts as PUBLIC or, false, PRIVATE: Server Setup's LISTING in\n"
-		"co-op, which writes its choice here." },
+	{ "network.coop_join", _config_string, "\"friends\"", "HALO_NET_COOP_JOIN", _environment_value, _platform_all,
+		"Who can join an online co-op game this machine hosts (Co-op > HOST's\n"
+		"WHO CAN JOIN writes its choice here): \"friends\" (friends see it in\n"
+		"their co-op list and join it; strangers do not), \"anyone\" (listed\n"
+		"in everyone's co-op list and server browser too) or \"invite\" (only\n"
+		"those with its invite link). Server Setup's LISTING in co-op writes\n"
+		"\"anyone\" (PUBLIC) or \"friends\" (PRIVATE)." },
 	{ "network.coop_friendly_fire", _config_string, "\"on\"", "HALO_NET_COOP_FRIENDLY_FIRE", _environment_value,
 		_platform_all,
 		"Whether the players of an online co-op game hurt each other: \"off\",\n"
@@ -3101,6 +3104,9 @@ static const char *const config_retired_settings[] =
 	"network.browser_show_oddball",
 	"network.browser_show_king",
 	"network.browser_show_race",
+	/* (online co-op's PUBLIC or PRIVATE, which most never saw change from
+	PRIVATE: who can join it, network.coop_join) */
+	"network.coop_public",
 	NULL,
 };
 
@@ -4472,6 +4478,7 @@ static const struct
 	{ "network.browser_tick", { "any", "30", "60", "120", "legacy", NULL }, "any" },
 	{ "network.browser_game_type", { "any", "slayer", "team_slayer", "ctf", "oddball", "king", "race", "swat",
 		"infection", "gun_game", "coop", "pro_2v2", NULL }, "any" },
+	{ "network.coop_join", { "friends", "anyone", "invite", NULL }, "friends" },
 	{ "network.browser_tab", { "all", "dedicated", "openh1", "legacy", "coop", "favorites", NULL }, "all" },
 	{ "network.browser_sort", { "players", "ping", "server", "map", "mode", NULL }, "players" },
 	{ "server.game_mode", { "openh1_120", "openh1_60", "openh1_30", "legacy", NULL }, NULL },

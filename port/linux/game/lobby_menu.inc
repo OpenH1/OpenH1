@@ -2178,7 +2178,17 @@ static void lobby_presence_tell(void)
 				engine_names[PIN(game->variant.game_engine_index, 0, 5)] : L"Co-op", NUMBEROF(gametype) - 1);
 		lobby_board_map_text(game->map.name, map, NUMBEROF(map));
 		text[0] = 0;
-		if (!local)
+		/* (network co-op: "Co-op Heroic on The Silent Cartographer", which a
+		friend's co-op list reads its mission and difficulty from:
+		coop_menu.inc's coop_friend_game) */
+		if (!local && !game->variant.game_engine_index && game->difficulty >= 0 && game->difficulty < 4)
+		{
+			static wchar_t const *const difficulties[] = { L"Easy", L"Normal", L"Heroic", L"Legendary" };
+
+			usnprintf(gametype, NUMBEROF(gametype) - 1, L"Co-op %s", difficulties[game->difficulty]);
+			gametype[NUMBEROF(gametype) - 1] = 0;
+		}
+		else if (!local)
 		{
 			/* (a Pro 2v2 Classic game's said so, its record's Instant Aim
 			off for everyone: the 2V2 browser tells a friend's kind by it,

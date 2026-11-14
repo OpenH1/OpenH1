@@ -49,11 +49,15 @@ touchscreen; the host's LOBBY TEXT CHAT has it on or off for everyone. -->
 			<pill text="{lobby.opence}" tone="2" width="132"/>
 		</pills>
 		<text text="THEN: {lobby.after}" if="lobby.after"/>
+		<text text="{coop.listing}" lines="2" if="coop.listing"/>
+		<text text="{coop.link}" if="coop.link" when="pointer"/>
+		<text text="{coop.problem}" lines="2" if="coop.problem"/>
 		<choice label="BOTS" value="{lobby.bots}" left="lobby bots left" right="lobby bots right" if="lobby.bots.shown" dim="lobby.bots.count.locked"/>
 		<choice label="SKILL" value="{lobby.skill}" left="lobby skill left" right="lobby skill right" if="lobby.bots.some" dim="lobby.bots.locked"/>
 		<choice label="TEAMS" value="{lobby.teams}" left="lobby teams left" right="lobby teams right" if="lobby.bots.some" dim="lobby.bots.locked"/>
 		<text text="{lobby.status}" lines="2"/>
 		<heading text="{lobby.waiting}" if="lobby.waiting"/>
+		<button key="accept" label="{coop.fix}" if="coop.fix" do="lobby fix"/>
 		<button key="accept" label="HOST CONTROLS" if="lobby.controls" do="lobby host" when="pointer"/>
 		<button key="accept" label="GAME SETTINGS" if="lobby.settings" do="lobby settings"/>
 		<button key="accept" label="{lobby.start}" if="lobby.host" do="lobby start"/>
@@ -84,6 +88,7 @@ touchscreen; the host's LOBBY TEXT CHAT has it on or off for everyone. -->
 		<button key="back" label="BACK" if="lobby.panel.open" do="lobby close" touch-width="84"/>
 		<button key="back" label="LEAVE" if="lobby.details" touch-width="84"/>
 		<button key="dpad" label="CHANGE TEAM" side="right" if="lobby.team.change" do="lobby team toggle" touch-width="120"/>
+		<button key="y" label="COPY LINK" side="right" if="coop.link" do="lobby invite" when="pointer"/>
 		<button key="rb" label="INVITE FRIENDS" side="right" if="lobby.invite" do="lobby friends" when="pointer"/>
 		<button key="rb" label="INVITE" side="right" if="lobby.invite" do="lobby friends" touch-width="80" when="touch"/>
 		<button key="x" label="ADD PLAYER" side="right" if="lobby.add" touch-width="106"/>
