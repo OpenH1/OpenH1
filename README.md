@@ -45,7 +45,7 @@ two can play together. OpenCE starts from the decompilation of
   holsters, raise the scope to your eye.
 - **128 players** online and on the LAN, up to 4 in split screen on each
   machine, and the campaign in co-op over the internet. Plays with OpenCE.
-- **Mods and Custom Edition maps**, from the game's own menus.
+- **Mods, Custom Edition maps and MCC maps**, from the game's own menus.
 
 | | Original | OpenH1 |
 | --- | --- | --- |
@@ -67,7 +67,7 @@ two can play together. OpenCE starts from the decompilation of
 | **Picture** | SMAA or FXAA, anisotropic filtering, sharper shadows, per-pixel lighting, full model detail. One switch: Video Setup › Graphics › Preset, Classic or Enhanced |
 | **Display** | Any resolution from 640 × 480, a field of view up to 150°, a HUD redrawn at 8× |
 | **Network** | Plays online with OpenCE players; internet play needs no servers to set up |
-| **Mods** | Texture, sound, text and model packs from the game's Mods menu; Custom Edition maps that share themselves |
+| **Mods** | Texture, sound, text and model packs from the game's Mods menu; Custom Edition and MCC maps that share themselves |
 | **Releases** | Every commit is built for every platform, and each build of `master` that passes is a release |
 
 Contributions are welcome: refer to "Contributing" below. Players and
@@ -188,6 +188,45 @@ stays where it is. On
 Android, copy the disc image to the phone first. The app puts `maps/` in its
 data folder. Refer to [port/android/README.md](port/android/README.md).
 
+## MCC maps
+
+The game also plays Halo 1 maps from the Master Chief Collection (MCC):
+Steam Workshop packages, and the base resources of your own MCC install.
+You still need the Xbox game data above. The maps load from their own
+folder, `mcc_maps`, beside `maps` and `custom_maps`; the Xbox and Custom
+Edition maps load as before.
+
+- **Windows and Linux.** Subscribe to a Halo 1 MCC Workshop mod and let
+  Steam finish downloading it: the game reads the installed package
+  directly (Steam can be closed while playing). The controls are in
+  Settings > Network Setup > Map Sharing > MCC Packages. If your Steam
+  library is not found, set `steam = '<your Steam folder>'` under `[paths]`
+  in `config.toml`.
+- **Any build.** Copy a package's whole folder
+  (`steamapps/workshop/content/976730/<workshop ID>`) into `mcc_maps`,
+  keeping its maps, JSON files, resources and pictures together; or make a
+  folder of your own (`mcc_maps/MyMod`) with `.map` files in it.
+- **Android.** Copy the Workshop folder, or a ZIP of it, to the phone; quit
+  the game, long-press its icon and choose Import MCC maps (refer to
+  [port/android/README.md](port/android/README.md#importing-mcc-packages)).
+
+The resources a package needs and does not carry come from your MCC
+install (with Steam discovery on), or from these copies:
+
+| File in your MCC installation | Where it goes |
+| --- | --- |
+| `halo1/maps/bitmaps.map` | `mcc_maps/_shared/singleplayer/bitmaps.map` |
+| `halo1/maps/custom_edition/bitmaps.map` | `mcc_maps/_shared/multiplayer/bitmaps.map` |
+| `halo1/maps/custom_edition/sounds.map` | `mcc_maps/_shared/multiplayer/sounds.map` |
+
+Use MCC's files, not Custom Edition's. Share Maps (Server Setup > Map
+Sharing) shares MCC packages too: a joining player is asked before a
+download, and it installs apart from their own copies. The base resources
+are never sent. Dedicated servers host MCC multiplayer maps and co-op
+campaigns as well. Refer to [docs/mcc_maps.md](docs/mcc_maps.md) for the
+formats and limits, and to
+[docs/dedicated_server.md](docs/dedicated_server.md#mcc-maps) for servers.
+
 ## Mods
 
 Mods are folders of Halo PC tag files, as the Halo Editing Kit and Invader
@@ -227,6 +266,9 @@ The game can play system link games on a local network and on the internet:
 - The netcode is new. Each machine moves its own player at once,
   and the host makes the decisions for the game. Refer to
   [port/linux/NETCODE.md](port/linux/NETCODE.md).
+- A host can let players stand on, ride and jump from moving vehicles
+  (`network.vehicle_riding`, off by default; refer to
+  [port/linux/README.md](port/linux/README.md#settings)).
 
 To find people to play with, ask in #looking-for-game on the
 [Discord](https://discord.gg/MJa327PSWt).

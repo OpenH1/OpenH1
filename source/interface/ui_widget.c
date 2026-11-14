@@ -682,6 +682,7 @@ boolean menu_studio_note_field(wchar_t *line, long size);
 #include "networking/network_server_manager.h"
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "network_party.h" /* port: port/linux/game/network_party.c */
+#include "touch_postgame.h" /* port: port/linux/game/touch_postgame.c */
 #include "rasterizer/rasterizer.h"
 #include "saved games/player_profile.h"
 #include "saved games/playlist_profile.h"
@@ -698,6 +699,14 @@ boolean menu_studio_note_field(wchar_t *line, long size);
 #include "text/unicode.h"
 #include "ui_widget.h"
 #include "controller_remap.h" /* port: port/linux/game/controller_remap_game.c */
+#include "mcc_pause_runtime.h" /* port: port/linux/game/mcc_pause_runtime.h */
+#include "mcc_pause.h" /* port: port/linux/game/mcc_pause.h */
+#include "mcc_ui_network.h" /* port: port/linux/game/mcc_ui_network.h */
+#include "mcc_ui.h" /* port: port/linux/game/mcc_ui.h */
+#include "mcc_hud_draw.h" /* port: port/linux/game/mcc_hud_draw.h */
+#include "mcc_menu_preview.h" /* port: port/linux/game/mcc_menu_preview.c */
+#include "mcc_menu_text.h" /* port: port/linux/game/mcc_menu_text.c */
+#include "mcc_maps.h" /* port: port/linux/game/mcc_maps.h */
 /* port: port/linux/game/menu_functions.c: a text's colour in place of its
 own (the server browser's pings) */
 boolean pc_menu_text_color(struct widget_instance *widget, real_argb_color *color);
@@ -2197,6 +2206,41 @@ void *ui_widget_realloc(
 		line);
 }
 
+/* port: MCC maps are selected by their full namespaced path. They do not enter
+the Xbox/CE multiplayer level-index list. */
+boolean ui_widget_port_mcc_multiplayer_map_choose(char const *level_name)
+{
+	short index = mcc_maps_find(level_name);
+	struct network_game_server *server = global_network_game_server_get();
+
+	if (index == NONE || mcc_maps_campaign(index))
+		return FALSE;
+	main_set_multiplayer_map_name(level_name);
+	game_engine_override_map_name(level_name);
+	if (server)
+		network_game_server_change_map_name(server, level_name);
+	saved_game_file_remember_last_used_multiplayer_map(level_name);
+	return TRUE;
+}
+
+boolean ui_widget_port_mcc_cooperative_level_choose(char const *level_name, short difficulty)
+{
+	struct network_game_server *server = global_network_game_server_get();
+	struct game_variant variant;
+
+	if (!server || !mcc_maps_level_campaign(level_name) ||
+		difficulty < 0 || difficulty >= NUMBER_OF_GAME_DIFFICULTY_LEVELS)
+		return FALSE;
+	csmemset(&variant, 0, sizeof(variant));
+	ustrcpy(variant.human_readable_game_description, L"Co-op");
+	main_set_difficulty(difficulty);
+	main_set_multiplayer_map_name(level_name);
+	network_game_server_port_set_cooperative(server, difficulty);
+	network_game_server_change_map_name(server, level_name);
+	network_game_server_change_game_variant(server, &variant);
+	return TRUE;
+}
+
 void widget_free(
 	void *ptr)
 {
@@ -3263,6 +3307,11 @@ void ui_widgets_close_all(
 		if (widget_globals.widget_stack[local_player_index])
 			dispose_widget_stack(&widget_globals.widget_stack[local_player_index]);
 	}
+	/* port: Release only an editor opened by MCC after its widgets are gone. */
+	{
+
+		mcc_ui_settings_close(NONE);
+	}
 
 	return;
 }
@@ -3290,6 +3339,8 @@ void ui_widgets_close_all_for_local_player(
 				dispose_widget_stack(&widget_globals.widget_stack[widget_index]);
 		}
 	}
+	/* port: and MCC's pause menu's settings (mcc_ui.c) */
+	mcc_ui_settings_close(local_player_index);
 
 	return;
 }
@@ -3738,6 +3789,15 @@ static void event_handler_dispatch(
 		/* port: not from a widget its function deleted (it went back:
 		menu_functions.c's profile_save_changes), which the Xbox's opened
 		from regardless */
+		/* port: MCC's New Game can close every widget at once. The event ends
+		with that deletion, before anything can open from the deleted tree */
+		if (TEST_FLAG(handler->flags, _event_handler_open_widget_bit) &&
+			!widget_deleted && handler->widget_tag.index != NONE &&
+			mcc_ui_new_game(widget, &widget_deleted))
+		{
+			*calling_widget_deleted = widget_deleted;
+			return;
+		}
 		if (TEST_FLAG(handler->flags, _event_handler_open_widget_bit) &&
 			!widget_deleted &&
 			handler->widget_tag.index != NONE)
@@ -4510,6 +4570,9 @@ static void render_state_bitmap(
 	if (bitmap && _texture_cache_bitmap_get_hardware_format(
 		(struct bitmap_data *)bitmap, FALSE, TRUE))
 	{
+		/* port: an MCC map's icon is drawn as its HUD's are (mcc_hud_draw.c) */
+		if (mcc_hud_icon_draw(bitmap_group_index, bitmap, clip, cursor_bounds, color, icon, TRUE))
+			return;
 		/* port: the sprite from a high-res texture, if it has one */
 		bitmap = hud_hires_sprite_bitmap(bitmap, icon->sequence_index);
 		scale = hud_globals_get_scale(local_player_count() > 1);
@@ -5330,6 +5393,20 @@ void network_game_reset_to_pregame_ui(
 	void)
 {
 	ui_widgets_close_all();
+	/* port: An MCC restart retains this round's settings and returns directly to
+	 * the ready lobby. The ordinary host map picker pauses its countdown. */
+	{
+
+		if (mcc_ui_network_restart_pregame())
+		{
+			char const *screen = network_game_is_splitscreen_local() ?
+				"ui\\shell\\main_menu\\multiplayer_type_select\\split_screen\\pregame\\splitscreen_pregame_wrapper_normal" :
+				pc_menus_screen("ui\\shell\\main_menu\\multiplayer_type_select\\connected\\pregame\\connected_pregame_screen");
+			if (!ui_widget_load_by_name_or_tag(screen, NONE, NULL, NONE, NONE, NONE, NONE))
+				error(_error_silent, "mcc: failed to load restart pregame screen");
+			return;
+		}
+	}
 	if (network_game_is_splitscreen_local())
 	{
 		if (network_game_is_quickstart_local())
@@ -6494,6 +6571,26 @@ static void widget_instance_render_text_box(
 	typed into, whose caret is placed at its font's size */
 	else if (!caret)
 		fit_scale = ui_widget_port_text_scale_begin(widget, definition, &bounds, offset, justification);
+	/* port: MCC owns these text boxes (mcc_pause.c): their instance copies
+	 * wrapped to the panel width, not the map's objective strings or other
+	 * menus' */
+	if (mcc_pause_text_wrap_needed(widget->definition_tag_index))
+	{
+		ui_widget_port_text_wrap(*text, &bounds, (short)(bounds.x1 - bounds.x0));
+		clip.x0 = MAX(clip.x0, bounds.x0);
+		clip.y0 = MAX(clip.y0, bounds.y0);
+		clip.x1 = MIN(clip.x1, bounds.x1);
+		clip.y1 = MIN(clip.y1, bounds.y1);
+	}
+	/* port: an MCC catalog's text, wrapped as measured in every menu style:
+	 * the MCC module formats it and clips it to this text box (mcc_menu_text.c) */
+	if (mcc_menu_text_draw(widget->definition_tag_index, widget->parameters.text_box.string_list_index,
+		*text, font_index, justification, &color, &bounds, &clip))
+	{
+		if (fit_scale != 1.0f)
+			rasterizer_text_set_scale(1.0f, 0.0f, 0.0f);
+		return;
+	}
 	/* port: the key of a button pictured beside the words in their gap
 	(ui_widget_port_key_label_text), the words left-justified moved left
 	by as much as the key's cap is wider than the gap, so that they end
@@ -8809,7 +8906,10 @@ static void ui_widgets_process_mouse(
 			ui_mouse_hover_x = pointer.x;
 			ui_mouse_hover_y = pointer.y;
 		}
-		if (pointer.left_clicks)
+		/* (a click on the carnage report's touchscreen buttons is the
+		report's: touch_postgame.c) */
+		if (pointer.left_clicks &&
+			(!game_engine_showing_postgame() || !touch_postgame_click(pointer.click_x, pointer.click_y)))
 		{
 			ui_mouse_click_pending = TRUE;
 			ui_mouse_click_x = pointer.click_x;
@@ -9092,6 +9192,8 @@ static void widget_instance_render_recursive(
 	/* port: (its definition's own box, before a hand-written screen's) */
 	rectangle2d own_bounds = definition->bounds;
 
+	short mcc_picture_index; /* port: (an MCC map's preview: mcc_menu_preview.c) */
+
 	/* port: a screen the port's menu engine draws (port/linux/game/menu_engine.c) */
 	if (!widget->parent && menu_engine_screen_draw(widget, clip_rect, offset, focus, use_nifty_plasma_fx))
 		return;
@@ -9155,7 +9257,16 @@ static void widget_instance_render_recursive(
 	the unknown level's frame for a map without one
 	(port/linux/game/custom_edition_maps.c) */
 	frame_index = widget->animation.current_frame_index;
-	custom_edition_picture = custom_edition_maps_picture(definition->background_bitmap.index, &frame_index);
+	/* port: MCC display indices never enter the CE provider. A failed MCC
+	 * preview retains the existing unknown frame in every menu style. */
+	mcc_picture_index = mcc_menu_preview_index(definition->background_bitmap.index, frame_index);
+	if (mcc_picture_index != NONE)
+	{
+		frame_index = 13;
+		custom_edition_picture = NULL;
+	}
+	else
+		custom_edition_picture = custom_edition_maps_picture(definition->background_bitmap.index, &frame_index);
 	bitmap = custom_edition_picture ? custom_edition_picture : bitmap_group_get_bitmap_from_sequence(
 		definition->background_bitmap.index,
 		0,
@@ -9262,7 +9373,11 @@ static void widget_instance_render_recursive(
 				custom_edition_maps_campaign_level(widget->animation.current_frame_index) == NONE;
 			short radius = pc_menu_widget_radius(widget->definition_tag_index);
 
-			if (pc_menu_frame_placement(bitmap, &frame_x, &frame_y, &frame_width, &frame_height))
+			/* port: MCC art fits and clips to this style's authored thumbnail
+			 * rectangle; only the MCC module decodes or owns its texture. */
+			if (mcc_picture_index != NONE && mcc_menu_preview_draw(mcc_picture_index, &bounds, clip, color, &multitexture_params))
+				shown = FALSE;
+			if (shown && pc_menu_frame_placement(bitmap, &frame_x, &frame_y, &frame_width, &frame_height))
 			{
 				placed = TRUE;
 				bounds.x0 += frame_x;
@@ -10931,6 +11046,29 @@ static boolean ui_check_for_pause_game(
 					pressed_by_first_local_player = FALSE;
 			}
 			local_player_count++;
+		}
+		/* port: MCC selects its owned stock-style pause tree; embedded map menus
+		 * remain available to custom scripts but are never the pause entry. */
+		{
+
+
+			if (mcc_pause_runtime_active())
+			{
+				if ((!network_game || game_engine_allow_pause()) &&
+					pressing_local_player_index == controller_index)
+				{
+					if (widget_globals.active_widgets[controller_index])
+						ui_widgets_close_all_for_local_player(controller_index);
+					else if (network_game || local_player_count <= 1 || !game_time_get_paused())
+					{
+						long screen = mcc_pause_runtime_screen(local_player_count, pressed_by_first_local_player);
+						if (screen == NONE || !ui_widget_load_by_name_or_tag(NULL, screen, NULL,
+							controller_index, NONE, NONE, NONE))
+							error(_error_silent, "mcc: failed to open native pause menu");
+					}
+				}
+				return pause_pressed;
+			}
 		}
 		if (network_game)
 		{

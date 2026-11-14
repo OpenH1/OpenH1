@@ -72,6 +72,7 @@ being hit looks and feels like on the clients).
 #include "hit_sounds.h"
 #include <stdio.h>
 #include "demo.h"
+#include "mcc_grenades.h"
 
 #include <math.h>
 
@@ -1808,6 +1809,8 @@ than one damage), the vehicle they drove lately; 0 when none of them deals
 it; how they deal it (the _damage_source flags); how far from them what
 they fire deals it; and the type of grenade when nothing but a grenade of
 theirs deals it, else NONE */
+#include "mcc_network_damage.inc"
+
 static real distributed_player_deals(
 	short player_index,
 	long damage_index,
@@ -1889,6 +1892,7 @@ static real distributed_player_deals(
 			*kinds |= this_kinds;
 		}
 	}
+	mcc_network_extra_grenade_damage(player_index, damage_index, kinds, reach, grenade_type, &grenade_rate);
 	if (rate > 0.0f)
 		*grenade_type = NONE;
 	rate = MAX(rate, grenade_rate);
@@ -2872,6 +2876,14 @@ static boolean distributed_report_valid(
 	{
 		REFUSE(_report_refused_zombie);
 	}
+	/* an Infection zombie's blow at a rider (not the vehicle, as the game's
+	melee has it) only past the host's own line to them (infection.c) */
+	if (melee && infection_unit_is_zombie(distributed_living_unit(player)) && target->object.type == _object_type_biped &&
+		target->object.parent_object_index != NONE &&
+		!infection_melee_rider_visible(distributed_living_unit(player), report->object_index, &report->damage.direction))
+	{
+		return FALSE;
+	}
 	if (collision && !distributed_player_drove_into(player_index, &report->damage.epicenter, &report->target_position,
 		target->object.bounding_sphere_radius, ticks))
 	{
@@ -3614,6 +3626,11 @@ void network_damage_note_grenade(
 	short index;
 	short slot = 0;
 
+	if (mcc_grenades_active() && grenade_type >= 2)
+	{
+		mcc_network_note_extra_grenade(unit_index, grenade_type);
+		return;
+	}
 	if (game_connection() != _game_connection_network_server || unit->unit.player_index == NONE ||
 		grenade_type < 0 || grenade_type >= NUMBER_OF_UNIT_GRENADE_TYPES)
 	{

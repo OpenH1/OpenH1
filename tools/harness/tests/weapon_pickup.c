@@ -37,7 +37,8 @@ enum
 struct network_game
 {
 	byte cooperative_flags;
-	short standard_rate;
+	byte standard_rate;
+	byte standard_flags;
 };
 
 /* the game: its connection, whether it is multiplayer, this machine's setting */
@@ -144,7 +145,7 @@ int main(int argc, char **argv)
 		network_standard_globals.hosting = TRUE;
 		network_standard_stamp_game(&record, TRUE);
 		CHECK(!walks_over(1), "the host's players walked over a second weapon (Xbox's way set)");
-		CHECK(TEST_FLAG(record.cooperative_flags, _network_game_hold_to_pick_up_bit),
+		CHECK(TEST_FLAG(record.standard_flags, _network_game_hold_to_pick_up_bit),
 			"the record does not say hold to pick up");
 		unit_player = OPENCE_PLAYER;
 		CHECK(walks_over(1), "an OpenCE machine's player held the action button");
@@ -154,11 +155,11 @@ int main(int argc, char **argv)
 		network_standard_globals.local_auto_pickup = TRUE;
 		network_standard_stamp_game(&record, FALSE);
 		CHECK(!walks_over(1), "the host's way changed during the game");
-		CHECK(TEST_FLAG(record.cooperative_flags, _network_game_hold_to_pick_up_bit),
+		CHECK(TEST_FLAG(record.standard_flags, _network_game_hold_to_pick_up_bit),
 			"the record's way changed during the game");
 		network_standard_stamp_game(&record, TRUE);
 		CHECK(walks_over(1), "the host's way did not change in the lobby");
-		CHECK(!TEST_FLAG(record.cooperative_flags, _network_game_hold_to_pick_up_bit),
+		CHECK(!TEST_FLAG(record.standard_flags, _network_game_hold_to_pick_up_bit),
 			"the record still says hold to pick up");
 		return 0;
 	}
@@ -170,7 +171,7 @@ int main(int argc, char **argv)
 		network_standard_globals.hosting = TRUE;
 		network_standard_stamp_game(&record, TRUE);
 		copy = network_standard_game_for_machine(&record, TRUE);
-		CHECK(!TEST_FLAG(copy->cooperative_flags, _network_game_hold_to_pick_up_bit),
+		CHECK(!TEST_FLAG(copy->standard_flags, _network_game_hold_to_pick_up_bit),
 			"an OpenCE machine's record says hold to pick up");
 		CHECK(network_standard_game_for_machine(&record, FALSE) == &record, "an OpenH1 machine's record is a copy");
 		return 0;
@@ -182,7 +183,7 @@ int main(int argc, char **argv)
 		connection = _game_connection_network_server;
 		network_standard_stamp_game(&record, TRUE);
 		CHECK(walks_over(1), "a Legacy game's players held the action button");
-		CHECK(!TEST_FLAG(record.cooperative_flags, _network_game_hold_to_pick_up_bit),
+		CHECK(!TEST_FLAG(record.standard_flags, _network_game_hold_to_pick_up_bit),
 			"a Legacy host's record says hold to pick up");
 		return 0;
 	}
@@ -194,17 +195,17 @@ int main(int argc, char **argv)
 		auto_pickup_setting = TRUE;
 		network_standard_globals.local_auto_pickup = TRUE;
 		network_standard_globals.joined = TRUE;
-		SET_FLAG(record.cooperative_flags, _network_game_hold_to_pick_up_bit, TRUE);
+		SET_FLAG(record.standard_flags, _network_game_hold_to_pick_up_bit, TRUE);
 		CHECK(!walks_over(1), "a client walked over a second weapon in a game whose host holds");
 		unit_player = OPENCE_PLAYER;
 		CHECK(walks_over(1), "a client took an OpenCE player to hold the action button");
 		unit_player = PLAYER;
 		auto_pickup_setting = FALSE;
 		network_standard_globals.local_auto_pickup = FALSE;
-		SET_FLAG(record.cooperative_flags, _network_game_hold_to_pick_up_bit, FALSE);
+		SET_FLAG(record.standard_flags, _network_game_hold_to_pick_up_bit, FALSE);
 		CHECK(walks_over(1), "a client held the action button in a game whose host walks over");
 		network_standard_globals.joined = FALSE;
-		SET_FLAG(record.cooperative_flags, _network_game_hold_to_pick_up_bit, TRUE);
+		SET_FLAG(record.standard_flags, _network_game_hold_to_pick_up_bit, TRUE);
 		CHECK(walks_over(1), "a Legacy game's client held the action button");
 		return 0;
 	}

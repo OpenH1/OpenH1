@@ -260,6 +260,18 @@ static const struct config_setting config_settings[] =
 		"refresh rate, -1 for no limit (which can hang some Intel graphics). On\n"
 		"Linux, the display's refresh rate or a whole fraction of it (60 at\n"
 		"60 Hz, 30) shows the frames in step with the display, as vsync does." },
+	{ "display.show_fps", _config_boolean, "false", "HALO_SHOW_FPS", _environment_set_is_true, _platform_all,
+		"Draw the frame rate at the bottom right of a game, counted over half a\n"
+		"second: green from 30 frames a second, red below." },
+	{ "display.stats_log", _config_boolean, "false", "HALO_STATS_LOG", _environment_value, _platform_all,
+		"A line a second in the log with the frame rate, the mode, the map, the\n"
+		"renderer and the size of the 3D view, so a graphics bug's report or two\n"
+		"builds compared say which of them was running and at what frame rate.\n"
+		"Nothing is sent anywhere; off by default." },
+	{ "display.mcc_texture_prepare_mb", _config_integer, "0", "HALO_MCC_TEXTURE_PREPARE_MB", _environment_value, _platform_desktop,
+		"MCC only: prepare large non-paletted textures during loading, within\n"
+		"this estimated GPU memory budget in MiB (0 disables, maximum 512).\n"
+		"Does not change texture quality or the Xbox/Custom Edition caches." },
 	{ "display.battery_saver", _config_string, "\"off\"", "HALO_BATTERY_SAVER", _environment_value, _platform_all,
 		"Draw less, for a longer battery and a cooler machine: \"on\", \"off\", or\n"
 		"\"auto\", on while the machine runs on its battery. On, each frame stays\n"
@@ -395,6 +407,20 @@ static const struct config_setting config_settings[] =
 		"High-res gameplay controller buttons: classic uses the Xbox's stencils;\n"
 		"gems uses shaded Xbox faces; menu_gems uses the menu's button art.\n"
 		"Requires display.high_res_hud.", _scope_player },
+	/* (OpenCE's button glyphs: port/linux/game/controller_glyphs.c) */
+	{ "display.hud_button_style_xbox", _config_string, "\"classic\"", "HALO_HUD_BUTTON_STYLE_XBOX", _environment_value, _platform_all,
+		"Remembered automatic Xbox style: classic, gems, menu_gems, xbox_modern." },
+	{ "display.hud_button_style_ps", _config_string, "\"ps_classic\"", "HALO_HUD_BUTTON_STYLE_PS", _environment_value, _platform_all,
+		"Remembered automatic PlayStation style: ps_classic, ps_gems, ps_dark_gems, ps_modern." },
+	{ "display.hud_button_style_switch", _config_string, "\"switch_classic\"", "HALO_HUD_BUTTON_STYLE_SWITCH", _environment_value, _platform_all,
+		"Remembered automatic Switch style: switch_classic, switch_gems, switch_modern." },
+	{ "display.hud_bumper_style", _config_string, "\"original\"", "HALO_HUD_BUMPER_STYLE", _environment_value, _platform_all,
+		"Xbox Classic, Gems and Dark Gems bumpers: original (black/white) or modern\n"
+		"(LB/RB). Shared by local players, including automatic button detection.\n"
+		"Requires high_res_hud; other button styles keep their own artwork." },
+	{ "input.auto_button_detection", _config_boolean, "true", "HALO_AUTO_BUTTON_DETECTION", _environment_value, _platform_all,
+		"Limit Button Style to the assigned controller's family. Unknown devices\n"
+		"keep the manual choice. Device detection itself is always available." },
 	{ "display.menu_pictures", _config_boolean, "true", "HALO_MENU_PICTURES", _environment_value, _platform_desktop,
 		"Draw the menus' pictures of the missions and the multiplayer maps again,\n"
 		"sharp, from your own maps: once, as the main menu first shows (\"Preparing\n"
@@ -1471,6 +1497,20 @@ static const struct config_setting config_settings[] =
 	{ "paths.custom_maps", _config_string, "\"\"", "HALO_CUSTOM_MAPS_ROOT", _environment_value, _platform_desktop,
 		"The custom_maps folder (Custom Edition maps, and their bitmaps.map,\n"
 		"sounds.map and loc.map); empty for the one in the data folder." },
+	{ "paths.steam", _config_string, "\"\"", "HALO_STEAM_ROOT", _environment_value, _platform_desktop,
+		"A Steam folder (or Steam library) to check first for subscribed Halo CE\n"
+		"Workshop items. Empty uses automatic discovery: Windows registry, Linux\n"
+		"Steam/XDG hints, usual folders and their libraries. Windows paths use single\n"
+		"quotes: 'D:\\Steam'." },
+	{ "game.mcc_campaigns", _config_boolean, "true", "HALO_MCC_CAMPAIGNS", _environment_value, _platform_all,
+		"Use explicit MCC campaign manifests for mission discovery, ordering and\n"
+		"progression. Reopen the map list after changing this." },
+	{ "game.workshop_maps", _config_boolean, "true", "HALO_WORKSHOP_MAPS", _environment_value, _platform_desktop,
+		"Discover installed Halo CE Steam Workshop maps. Read-only desktop\n"
+		"discovery; manually installed mcc_maps packages always remain available." },
+	{ "game.mcc_collections", _config_boolean, "true", "HALO_MCC_COLLECTIONS", _environment_value, _platform_all,
+		"Group identified MCC packages into the bundled Workshop collections.\n"
+		"Works with imported packages without Steam; reopen the map list after changing." },
 
 	{ "network.address", _config_string, "\"\"", "HALO_NET_ADDRESS", _environment_value, _platform_all,
 		"This machine's IPv4 address for system link, for a machine on several\n"
@@ -1523,6 +1563,9 @@ static const struct config_setting config_settings[] =
 		_environment_value, _platform_all,
 		"The server browsers list games that need a password (their Filters\n"
 		"page)." },
+	{ "network.browser_maps", _config_string, "\"yes\"", "HALO_NET_BROWSER_MAPS", _environment_value, _platform_all,
+		"The server browser lists games on maps this machine lacks: \"yes\", \"no\",\n"
+		"or \"downloadable\" (those of a Custom Edition map its host shares)." },
 	{ "network.browser_ping", _config_integer, "0", "HALO_NET_BROWSER_PING", _environment_value, _platform_all,
 		"The server browsers list only games whose ping is under this many\n"
 		"milliseconds (300, 250, 150, 100 or 50); 0 lists every game. A game\n"
@@ -1680,6 +1723,15 @@ static const struct config_setting config_settings[] =
 		"in everyone's co-op list and server browser too) or \"invite\" (only\n"
 		"those with its invite link). Server Setup's LISTING in co-op writes\n"
 		"\"anyone\" (PUBLIC) or \"friends\" (PRIVATE)." },
+	{ "network.coop_team_wipe", _config_string, "\"respawn\"", "HALO_NET_COOP_TEAM_WIPE", _environment_value,
+		_platform_all,
+		"When every co-op player dies: \"respawn\" puts them back at the\n"
+		"checkpoint without a revert (OpenH1's way, the default); \"revert\"\n"
+		"reverts the checkpoint; \"auto\" (OpenCE's default) reverts in a PRIVATE\n"
+		"game and only respawns in a PUBLIC game. A password does not make a\n"
+		"PUBLIC game private. Reverting requires a saved checkpoint with the current\n"
+		"players and machines; otherwise they respawn without a world reset.\n"
+		"TEAM WIPE in Server Setup > Co-op Options writes its choice here." },
 	{ "network.coop_friendly_fire", _config_string, "\"on\"", "HALO_NET_COOP_FRIENDLY_FIRE", _environment_value,
 		_platform_all,
 		"Whether the players of an online co-op game hurt each other: \"off\",\n"
@@ -1706,6 +1758,13 @@ static const struct config_setting config_settings[] =
 		"false, they walk through each other (the AI's characters they still\n"
 		"bump into). PLAYER COLLISIONS in co-op's Server Setup > Co-op Options\n"
 		"writes its choice here." },
+	{ "network.vehicle_riding", _config_boolean, "false", "HALO_NET_VEHICLE_RIDING", _environment_value, _platform_all,
+		"Host: the base setting: players standing on a moving vehicle are\n"
+		"carried by it (co-op's options in Server Setup set it). In\n"
+		"multiplayer each gametype's VEHICLE RIDING rule overrides it (a\n"
+		"gametype without the rule is off), and a dedicated server's co-op\n"
+		"entry may with +riding. A map's own choice still wins. Changes count\n"
+		"from the next map." },
 	{ "network.coop_enemies_mode", _config_string, "\"per_player\"", "HALO_NET_COOP_ENEMIES_MODE", _environment_value,
 		_platform_all,
 		"Online co-op's extra enemies: \"none\", \"per_player\" (each squad of\n"
@@ -1851,6 +1910,14 @@ static const struct config_setting config_settings[] =
 		"A team game: \"one\" starts with one team's players (the next joiners\n"
 		"balance), \"both\" waits for a player on each team, \"skip\" skips team\n"
 		"games while one player waits." },
+	{ "server.team_switch", _config_boolean, "true", "HALO_SERVER_TEAM_SWITCH", _environment_value,
+		_platform_server,
+		"A player in a team game may say \"!switch\" (or \"!team\") in the chat to\n"
+		"change teams: not in Infection, and with the gametype's auto team\n"
+		"balance only to the smaller team." },
+	{ "server.team_switch_cooldown_seconds", _config_integer, "30", "HALO_SERVER_TEAM_SWITCH_COOLDOWN_SECONDS",
+		_environment_value, _platform_server,
+		"Seconds a player waits after a !switch before another (0 to 3600)." },
 	{ "server.motd", _config_string, "\"\"", "HALO_SERVER_MOTD", _environment_value, _platform_server,
 		"A notice each machine is shown as it joins (127 characters); empty for\n"
 		"none." },
@@ -2076,6 +2143,11 @@ static const struct config_setting config_settings[] =
 		_environment_value, _platform_server,
 		"Seconds after a co-op loading zone switched the level's part before\n"
 		"another may (0 to 300)." },
+	{ "server.vehicle_riding_override_gametype", _config_boolean, "false", "HALO_SERVER_VEHICLE_RIDING_OVERRIDE_GAMETYPE",
+		_environment_value, _platform_server,
+		"True: on a dedicated server, turns the gametype's riding override\n"
+		"off, so multiplayer uses network.vehicle_riding. A map's own choice\n"
+		"still wins. Changes count from the next map." },
 	{ "server.map_vote", _config_boolean, "false", "HALO_SERVER_MAP_VOTE", _environment_value, _platform_server,
 		"As the lobby opens after a game, the players vote for the next among\n"
 		"server.map_vote_choices entries of the rotation picked at random (not\n"
@@ -2297,6 +2369,36 @@ static const struct config_setting config_settings[] =
 		"Seconds after the start before anything is damaged, so that a game can\n"
 		"be set up and started first (a host's messages to its own client are\n"
 		"damaged too)." },
+	{ "debug.riding_damage_speed", _config_real, "0.0", "HALO_RIDING_DAMAGE_SPEED", _environment_value, _platform_all,
+		"Riding: the closing speed (world units a tick) above which a vehicle\n"
+		"still hurts a player who just left it; 0 takes twice the player's own\n"
+		"run and jump speed." },
+	{ "debug.riding_teleport_step", _config_real, "4.0", "HALO_RIDING_TELEPORT_STEP", _environment_value, _platform_all,
+		"Riding: a vehicle that moves further in one update is teleported; its\n"
+		"riders are not carried along but put in the air from it, keeping\n"
+		"their motion, as if they had jumped." },
+	{ "debug.riding_moved_alone", _config_real, "0.25", "HALO_RIDING_MOVED_ALONE", _environment_value, _platform_all,
+		"Riding: a rider this far from where it ended its last tick was moved\n"
+		"by something else, and is put in the air from the vehicle, keeping\n"
+		"its motion, as if it had jumped." },
+	{ "debug.riding_transition_leash", _config_real, "0.25", "HALO_RIDING_TRANSITION_LEASH", _environment_value, _platform_all,
+		"Riding: the host's position allowance in world units during takeoff\n"
+		"and landing disagreement; never a velocity or accumulated movement\n"
+		"allowance. Non-finite or negative values mean none." },
+	{ "debug.riding_look_carry", _config_boolean, "true", "HALO_RIDING_LOOK_CARRY", _environment_value, _platform_all,
+		"Riding: the vehicle's turn turns the rider's view; false keeps the\n"
+		"view where the player put it (a test aid)." },
+	{ "debug.riding_air_grip", _config_real, "0.045", "HALO_RIDING_AIR_GRIP", _environment_value, _platform_all,
+		"Riding: how much, each tick, the motion of a player in the air over\n"
+		"the vehicle they left may change to follow its turns and its speed\n"
+		"back up to the speed they jumped with, or inside a vehicle that\n"
+		"encloses them any speeding up (world units a tick); a slowing\n"
+		"vehicle is followed at once, never ahead of it." },
+	{ "debug.riding_enclosure_grace_ticks", _config_real, "4", "HALO_RIDING_ENCLOSURE_GRACE_TICKS", _environment_value,
+		_platform_all,
+		"Riding: how many player ticks in a row a rider standing in an enclosed\n"
+		"vehicle may miss its cabin test (sliding about) before the cabin counts\n"
+		"as open (0 to 30)." },
 	{ "debug.test_input", _config_string, "\"\"", "HALO_TEST_INPUT", _environment_value, _platform_all,
 		"\"bot:<seed>\" plays controller 1 with a scripted pattern (automated\n"
 		"network tests); \"look:<seed>\" stands still, only turning and looking\n"
@@ -4467,6 +4569,10 @@ static const struct
 	{ "display.picture_shape", { "4:3", "16:9", NULL }, NULL },
 	{ "display.frame_style", { "plain", "halo", "xbox", NULL }, NULL },
 	{ "display.hud_button_style", { "classic", "gems", "menu_gems", NULL }, NULL },
+	{ "display.hud_button_style_xbox", { "classic", "gems", "menu_gems", "dark_gems", "xbox_modern", NULL }, NULL },
+	{ "display.hud_bumper_style", { "original", "modern", NULL }, NULL },
+	{ "display.hud_button_style_ps", { "ps_classic", "ps_gems", "ps_dark_gems", "ps_modern", NULL }, NULL },
+	{ "display.hud_button_style_switch", { "switch_classic", "switch_gems", "switch_modern", NULL }, NULL },
 	{ "display.spartan_link", { "small", "medium", "large", "off", NULL }, NULL },
 	{ "display.menus", { "pc", "xbox", NULL }, NULL },
 	{ "display.menu_engine", { "classic", "new", NULL }, NULL },
@@ -4499,6 +4605,7 @@ static const struct
 	{ "network.browser_game_type", { "any", "slayer", "team_slayer", "ctf", "oddball", "king", "race", "swat",
 		"infection", "gun_game", "coop", "pro_2v2", NULL }, "any" },
 	{ "network.coop_join", { "friends", "anyone", "invite", NULL }, "friends" },
+	{ "network.coop_team_wipe", { "respawn", "auto", "revert", NULL }, "respawn" },
 	{ "network.browser_tab", { "all", "dedicated", "openh1", "legacy", "coop", "favorites", NULL }, "all" },
 	{ "network.browser_sort", { "players", "ping", "server", "map", "mode", NULL }, "players" },
 	{ "server.game_mode", { "openh1_120", "openh1_60", "openh1_30", "legacy", NULL }, NULL },

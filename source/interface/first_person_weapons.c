@@ -1019,13 +1019,14 @@ short first_person_weapon_get_marker_by_name_render(
 	return 0;
 }
 
-void first_person_weapon_center_flashlight(
+boolean first_person_weapon_center_flashlight(
 	long unit_index,
 	real_point3d *position,
 	real_vector3d *forward,
 	real_vector3d *up)
 {
 	short local_player_index= first_person_weapon_index_from_unit_index(unit_index);
+	boolean centered= FALSE; /* port: returned */
 
 	if (local_player_index!=NONE)
 	{
@@ -1046,11 +1047,12 @@ void first_person_weapon_center_flashlight(
 				position->z= marker.matrix.position.z - marker.matrix.forward.k*0.5f;
 				*forward= marker.matrix.forward;
 				*up= marker.matrix.up;
+				centered= TRUE;
 			}
 		}
 	}
 
-	return;
+	return centered;
 }
 
 boolean first_person_weapon_adjust_light(
@@ -1398,6 +1400,9 @@ static void first_person_weapon_forget_weapon(
 
 	return;
 }
+
+/* port: MCC equipment replacement invalidates the cached weapon before deletion. */
+#include "mcc_first_person.inl" /* port: port/linux/game/mcc_first_person.inl */
 
 static void first_person_weapon_predict(
 	short local_player_index)

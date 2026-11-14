@@ -124,7 +124,8 @@ static void network_test_note_hit_sound(long attacker, long victim) { notes++; }
 struct network_game
 {
 	byte cooperative_flags;
-	short standard_rate;
+	byte standard_rate;
+	byte standard_flags;
 };
 static short connection;
 static struct
@@ -228,13 +229,13 @@ int main(int argc, char **argv)
 		network_standard_globals.hosting = TRUE;
 		network_standard_stamp_game(&record, TRUE);
 		CHECK(hit(LOCAL, REMOTE, 0.2f, 0.f, 0) == 1, "no beep on a host that allows them");
-		CHECK(!TEST_FLAG(record.cooperative_flags, _network_game_no_hit_sounds_bit), "the record forbids them");
+		CHECK(!TEST_FLAG(record.standard_flags, _network_game_no_hit_sounds_bit), "the record forbids them");
 		allow_setting = FALSE;
 		changes++;
 		network_standard_stamp_game(&record, FALSE);
 		CHECK(hit(LOCAL, REMOTE, 0.2f, 0.f, 0) == 1, "the host's rule changed during the game");
 		network_standard_stamp_game(&record, TRUE);
-		CHECK(TEST_FLAG(record.cooperative_flags, _network_game_no_hit_sounds_bit), "the record does not forbid them");
+		CHECK(TEST_FLAG(record.standard_flags, _network_game_no_hit_sounds_bit), "the record does not forbid them");
 		CHECK(hit(LOCAL, REMOTE, 0.2f, 0.f, 0) == 0, "a beep on a host that forbids them");
 		return 0;
 	}
@@ -247,11 +248,11 @@ int main(int argc, char **argv)
 		network_standard_globals.hosting = TRUE;
 		network_standard_stamp_game(&record, TRUE);
 		copy = network_standard_game_for_machine(&record, TRUE);
-		CHECK(!TEST_FLAG(copy->cooperative_flags, _network_game_no_hit_sounds_bit),
+		CHECK(!TEST_FLAG(copy->standard_flags, _network_game_no_hit_sounds_bit),
 			"an OpenCE machine's record forbids them");
 		network_standard_globals.hosting = FALSE;
 		network_standard_stamp_game(&record, TRUE);
-		CHECK(!TEST_FLAG(record.cooperative_flags, _network_game_no_hit_sounds_bit), "a Legacy host's record forbids them");
+		CHECK(!TEST_FLAG(record.standard_flags, _network_game_no_hit_sounds_bit), "a Legacy host's record forbids them");
 		/* (a Legacy host forbids them for its own players) */
 		connection = _game_connection_network_server;
 		CHECK(hit(LOCAL, REMOTE, 0.2f, 0.f, 0) == 0, "a beep on a Legacy host that forbids them");
@@ -264,7 +265,7 @@ int main(int argc, char **argv)
 		allow_setting = FALSE;
 		network_standard_globals.joined = TRUE;
 		CHECK(hit(LOCAL, REMOTE, 0.2f, 0.f, 0) == 1, "no beep on a client of a host that allows them");
-		SET_FLAG(record.cooperative_flags, _network_game_no_hit_sounds_bit, TRUE);
+		SET_FLAG(record.standard_flags, _network_game_no_hit_sounds_bit, TRUE);
 		allow_setting = TRUE;
 		CHECK(hit(LOCAL, REMOTE, 0.2f, 0.f, 0) == 0, "a beep on a client of a host that forbids them");
 		network_standard_globals.joined = FALSE;

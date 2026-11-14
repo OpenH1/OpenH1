@@ -42,13 +42,13 @@ NEGATIVE_CONTROLS = {
     # (one buffer: a beep restarted in it, cutting the last short)
     "one-buffer": (("hit_sounds.next = (short)((hit_sounds.next + 1) % HIT_SOUND_BUFFERS);", ""), "spacing"),
     # (a client takes its own setting, not its host's word)
-    "client-own-rule": (("return !TEST_FLAG(game->cooperative_flags, _network_game_no_hit_sounds_bit);",
+    "client-own-rule": (("return !TEST_FLAG(game->standard_flags, _network_game_no_hit_sounds_bit);",
                          "return config_boolean(\"network.allow_hit_sounds\") != 0;"), "client"),
     # (the host's rule changed during the game)
     "read-in-game": (("\tif (in_lobby)\n\t{\n\t\tnetwork_standard_globals.hosting_hold_to_pick_up",
                       "\tif (TRUE)\n\t{\n\t\tnetwork_standard_globals.hosting_hold_to_pick_up"), "host"),
     # (an OpenCE machine sent the bit)
-    "opence-sent-the-bit": (("\tSET_FLAG(legacy_game.cooperative_flags, _network_game_no_hit_sounds_bit, FALSE);\n",
+    "opence-sent-the-bit": (("\tSET_FLAG(legacy_game.standard_flags, _network_game_no_hit_sounds_bit, FALSE);\n",
                              ""), "records"),
     # (a Legacy host's record forbids them)
     "legacy-record": (("network_standard_globals.hosting && network_standard_globals.hosting_no_hit_sounds);",
