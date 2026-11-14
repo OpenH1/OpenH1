@@ -3982,7 +3982,7 @@ device's name whole, not cut short), as many lines at most, as they were
 the last time while they are the same (each frame): the lines each takes
 and its font's line's height */
 #define SETTINGS_PANEL_NAME_LINES 2
-#define SETTINGS_PANEL_VALUE_LINES 5
+#define SETTINGS_PANEL_VALUE_LINES 7
 /* (the longest name or value: a device's whole name) */
 #define SETTINGS_PANEL_VALUE_LENGTH 128
 
