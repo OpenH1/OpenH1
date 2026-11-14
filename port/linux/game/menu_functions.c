@@ -10110,7 +10110,6 @@ static void coop_join_row_fix(short index, struct browser_row *row);
 static void coop_join_status(short index, wchar_t *text, short size);
 static void coop_join_empty(wchar_t *text, short size);
 static boolean coop_join_friend(short index);
-static boolean coop_join_friend_row(short index);
 static boolean coop_join_value(char const *name, struct browser_row const *row, wchar_t *text, short size);
 
 static void browser_list_restart(void)
@@ -12107,11 +12106,6 @@ static void browser_source_cell(short index, char const *column, int focused, st
 	{
 		settings_wide_copy(text, row.name, MENU_TABLE_TEXT_LENGTH);
 		cell->lock = row.locked;
-		if (coop_join_friend_row(index))
-		{
-			usnprintf((wchar_t *)cell->badge, MENU_TABLE_BADGE_LENGTH - 1, L"FRIEND");
-			cell->badge[MENU_TABLE_BADGE_LENGTH - 1] = 0;
-		}
 	}
 	else if (!strcmp(column, "mission"))
 		settings_wide_copy(text, row.map, MENU_TABLE_TEXT_LENGTH);

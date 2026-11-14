@@ -2166,13 +2166,16 @@ static void lobby_presence_tell(void)
 	if (game && state >= _client_state_pregame)
 	{
 		wchar_t const *kind = game_modes_variant_kind_name(&game->variant, &game->variant_options);
-		wchar_t gametype[NUMBEROF(game->variant.human_readable_game_description) + 1];
+		/* (the gametype's own name, or co-op's with its difficulty: "Co-op
+		Legendary", longer than a gametype's name) */
+		wchar_t gametype[MAX(NUMBEROF(game->variant.human_readable_game_description) + 1, 24)];
 		boolean standard = host ? network_standard_hosting() : network_standard_agreed_rate() > 0;
 		long rate = network_standard_agreed_rate();
 		size_t length = 0;
 
-		ustrncpy(gametype, game->variant.human_readable_game_description, NUMBEROF(gametype) - 1);
-		gametype[NUMBEROF(gametype) - 1] = 0;
+		ustrncpy(gametype, game->variant.human_readable_game_description,
+			NUMBEROF(game->variant.human_readable_game_description));
+		gametype[NUMBEROF(game->variant.human_readable_game_description)] = 0;
 		if (!gametype[0])
 			ustrncpy(gametype, kind ? kind : game->variant.game_engine_index ?
 				engine_names[PIN(game->variant.game_engine_index, 0, 5)] : L"Co-op", NUMBEROF(gametype) - 1);

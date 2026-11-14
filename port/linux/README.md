@@ -741,8 +741,8 @@ CAMPAIGN. It has three cards:
   it: Internet play off (TURN ON INTERNET PLAY), the game list not reached
   (RETRY), public games turned off, or appearing offline to friends (SHOW
   ME ONLINE). The choice is kept (`network.coop_join`).
-- JOIN: one list of co-op games: your friends' first (FRIEND beside the
-  host's name), then the public ones, each with its host, mission,
+- JOIN: one list of co-op games: your friends' first (under YOUR
+  FRIENDS' GAMES), then the public ones, each with its host, mission,
   difficulty, players and ping. A friend's game that is not listed is
   joined through their party, which follows them in. With no game, the list
   says why (Internet play off, the game list not reached, no friends

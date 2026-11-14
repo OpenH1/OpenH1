@@ -406,12 +406,6 @@ static boolean coop_join_party_row(short index)
 	return coop_join_friend_of(index) && coop_join.party_of[index];
 }
 
-/* (menu_functions.c's cells: a friend's row's FRIEND pill) */
-static boolean coop_join_friend_row(short index)
-{
-	return coop_join_friend_of(index) != NULL;
-}
-
 /* a friend's game's row as its presence says it: its mission, its ping
 not timed (its host is reached through their party) */
 static void coop_join_row_fix(short index, struct browser_row *row)
@@ -515,8 +509,8 @@ static boolean coop_join_value(char const *name, struct browser_row const *row, 
 	text[0] = 0;
 	if (!strcmp(name, "browser.counts"))
 	{
-		usnprintf(text, size - 1, L"%d FRIENDS' %s    %d PUBLIC", coop_join.friend_games,
-			coop_join.friend_games == 1 ? L"GAME" : L"GAMES", coop_join.public_games);
+		usnprintf(text, size - 1, coop_join.friend_games == 1 ? L"%d FRIEND'S GAME    %d PUBLIC" :
+			L"%d FRIENDS' GAMES    %d PUBLIC", coop_join.friend_games, coop_join.public_games);
 	}
 	else if (!strcmp(name, "browser.panel.where") && row)
 	{

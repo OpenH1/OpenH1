@@ -515,7 +515,7 @@ band, three cards as the Campaign screen's, and the bar:
   `lobby_presence_tell`; a public game of their name is taken into their
   row and joined as any listing, else the row is joined through their party,
   `p2p_friends_join`, which follows them in), then the public ones. Each row
-  its host (FRIEND beside a friend's), mission, difficulty (the listing's
+  its host, mission, difficulty (the listing's
   gametype's end, `Co-op Heroic`), players and ping. With none, the list
   says why in plain words, with its fix in a button under the words
   (`{browser.fix}`, `coop fix`): `Internet play is off` (TURN ON INTERNET
