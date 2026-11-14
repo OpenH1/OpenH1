@@ -836,6 +836,11 @@ its own, or the one made for it as the friend joins): 0 if none; invites a
 friend to this machine's party (one made if none): 0 if not sent */
 int p2p_friends_join(const unsigned char *code);
 int p2p_friends_invite(const unsigned char *code);
+/* whether the game this machine hosts is its invite's alone (a co-op game's
+INVITE ONLY): while it hosts, its presence offers its friends no JOIN (the
+Friends screen's, the co-op list's); its friends still see it playing */
+void p2p_friends_set_game_closed(int closed);
+int p2p_friends_game_closed(void);
 /* a player of a network game this machine is in (its code, NULL if it has
 none; an OpenCE player's), and the game's words (NULL: as Discord's
 activity has them), for the recent players */

@@ -174,7 +174,10 @@ def built(fault=None):
                                        c_string((ROOT / "port/assets/menus/screens/pause.xml").read_bytes()) + ";\n" +
                                        "static char const pause_campaign_xml[] =\n" +
                                        c_string((ROOT / "port/assets/menus/screens/pause_campaign.xml").read_bytes()) +
-                                       ";\n")
+                                       ";\n" + "".join(
+                                           f"static char const {name}_xml[] =\n" +
+                                           c_string((ROOT / f"port/assets/menus/screens/{name}.xml").read_bytes()) +
+                                           ";\n" for name in ("coop", "coop_who", "coop_join")))
     (work / "menu_screens.h").write_text(read("port/linux/include/menu_screens.h"))
     executable = work / "menu_screens"
     command = ["clang", *ABI_FLAGS, "-std=gnu99", "-O1", "-Wall", "-Werror", "-Wno-unused-function",
@@ -188,7 +191,7 @@ def built(fault=None):
 
 CASES = ["main", "hints", "good", "syntax", "elements", "spartan", "items", "actions", "bindings", "when",
          "kept", "browser", "profile_select", "profile_color", "tabs", "table", "panel", "buttons", "lanes", "choice", "lobby", "chat",
-         "box", "picture", "panels"]
+         "box", "picture", "panels", "coop"]
 
 
 @pytest.mark.parametrize("case", CASES)
@@ -237,6 +240,11 @@ def test_actions_registered():
             assert f'"{binding}"' in color, binding
         elif binding.startswith("lobby."):
             assert f'"{binding}"' in lobby, binding
+        elif binding.startswith("coop."):
+            # (co-op's, coop_menu.inc's pc_menu_coop_value)
+            assert '"coop."' in value, binding
+            assert f'"{binding}"' in re.search(r"\nint pc_menu_coop_value\(.*?\n\}\n",
+                                                read("port/linux/game/coop_menu.inc"), re.S).group(0), binding
         else:
             assert f'"{binding}"' in value, binding
     sources = re.findall(r'"([^"]+)"', re.search(r"screen_source_names\[\] =\n\{\n(.*?)\n\};", source,
@@ -253,6 +261,7 @@ def test_main_menu_files_listed():
     assert "screens/main.xml" in listed and "screens/blocks.xml" in listed and "screens/browser.xml" in listed
     assert "screens/profile_select.xml" in listed and "screens/lobby.xml" in listed
     assert "screens/profile_color.xml" in listed
+    assert all(f"screens/{name}.xml" in listed for name in ("coop", "coop_who", "coop_join"))
     assert "screens/pause.xml" in listed and "screens/pause_campaign.xml" in listed
     files = read("port/linux/src/menu_files.c")
     assert 'strncmp(files[index].path, "screens/", 8) || !strcmp(files[index].path, "screens/blocks.xml")' in files

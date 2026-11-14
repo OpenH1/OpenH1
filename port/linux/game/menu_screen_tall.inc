@@ -48,6 +48,9 @@ rows' top, height and step, the bottom they end over (the panel's) */
 #define TALL_ROWS_Y 92
 #define TALL_ROW_HEIGHT 24
 #define TALL_ROWS_BOTTOM 436
+/* a group's heading among the rows (the server browser's, the co-op list's):
+the blocks' dim blue (blocks.xml's card subtitle's), 0xRRGGBBAA */
+#define TALL_HEADING_COLOR 0x6F9CD0FFUL
 #define TALL_TABLE_GROW 144
 /* a row's cells: the first's left, the cells'
 pictures' top in a row (16 units tall, in its middle; the gap between two
@@ -2366,7 +2369,8 @@ static void tall_rows_frame(struct screen_tall *tall, struct widget_instance *sc
 		if (heading)
 		{
 			pc_menu_text_fit(row->heading, words, tall_width(tall, row->heading));
-			tall_color(tall, row->heading, 0xFFFFFFFFUL);
+			/* (dimmer than the rows under it, a section's label, not a row) */
+			tall_color(tall, row->heading, TALL_HEADING_COLOR);
 		}
 		for (column_index = 0; column_index < tall->column_count; column_index++)
 		{
@@ -2468,6 +2472,20 @@ static void tall_rows_frame(struct screen_tall *tall, struct widget_instance *sc
 		bar->disabled = !shown;
 		if (!shown && tall->body->focused_child == bar)
 			tall->body->focused_child = NULL;
+		/* (its words again, a binding's that may change: the co-op list's
+		fix, which follows why it is empty) */
+		if (shown && tall->table_button.widget && tall->table_button.block->label &&
+			strchr(tall->table_button.block->label, '{'))
+		{
+			char label[MENU_SCREEN_MAXIMUM_TEXT];
+			char text[MENU_SCREEN_MAXIMUM_TEXT];
+			boolean touch = ui_widget_port_touch_menus() != 0;
+
+			tall_text(tall, tall->table_button.block->label, label, sizeof(label));
+			snprintf(text, sizeof(text), touch ? "%s%s" : "%s %s", touch ? "" :
+				tall_key_picture(tall->table_button.block->key), label);
+			tall_text_set(tall->table_button.widget, text);
+		}
 		if (bar->child)
 			bar->child->animation.current_frame_index = (short)(tall->body->focused_child == bar);
 	}
@@ -2987,6 +3005,20 @@ static void tall_bar_frame(struct screen_tall *tall)
 		tall_text_set(prompt->widget, text);
 	}
 	tall_focus_off_hidden(tall->bar);
+	/* (no prompt lit while the focus is not on the bar: a column list lights
+	its focused child as it updates, ui_widget.c's column_list_update, which
+	it does on the focus's path alone, so the one lit last stayed lit as the
+	focus left the bar) */
+	if (tall->bar && tall->body->focused_child != tall->bar)
+	{
+		struct widget_instance *child;
+
+		for (child = tall->bar->child; child; child = child->next)
+		{
+			if (child->animation.number_of_sprite_frames == 2)
+				child->animation.current_frame_index = 0;
+		}
+	}
 	if (tall->header_button.widget)
 	{
 		char label[MENU_SCREEN_MAXIMUM_TEXT];
