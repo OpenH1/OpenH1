@@ -41,17 +41,9 @@ are not those it was drawn for), the sprite is drawn from its bitmap.
 #include "cache/texture_cache.h"
 #include "render/render.h"
 #include "player_settings.h"
-#ifdef HALO_ANDROID
-#include "android_ce_texture_cache.h"
-#endif
 
 static boolean hud_hires_bitmap_resident(struct bitmap_data const *bitmap)
 {
-#ifdef HALO_ANDROID
-	/* CE heap pixels have no Xbox LRU block. Query without touching their age. */
-	if (android_ce_texture_resident(bitmap))
-		return TRUE;
-#endif
 	return bitmap->cache_block_index != NONE;
 }
 
