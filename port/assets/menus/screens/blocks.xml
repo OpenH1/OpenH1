@@ -338,4 +338,23 @@ picture, the line, the words for no rows) -->
 	<widget name="screens/objectives_text" type="text" width="270" height="94" font="ui\small_ui" color="#FF0080FF">
 		<data input="solo game objective text"/>
 	</widget>
+	<!-- A pop-up's blocks (<dialog>: screens/quit.xml, screens/save_changes.xml): the Quit question's box
+	in the middle of the screen, as the PC version's quit_screen draws it (its alert_bkd, its blue border and
+	bands), its title in the top band, its words under it and its choices side by side in the bottom band, each
+	a button of Quit's OK and BACK (menu_screen.c places them, and makes the box as wide as its choices need,
+	its ends kept). -->
+	<!-- the screens a pop-up of its own opens as (menu_screen.c's screen_places): over the menus' scene, as
+	Quit's question is -->
+	<widget name="screens/save_changes" width="640" height="480" flags="pass_unhandled_to_focused_child"/>
+	<widget name="screens/dialog" width="280" height="160" flags="keep_ends" bitmap="bitmaps/alert_bkd"/>
+	<widget name="screens/dialog_title" type="text" width="256" height="20" font="ui\large_ui" color="#FF2896FF" text_flags="no_focus_test"/>
+	<widget name="screens/dialog_text" type="text" width="245" height="94" font="ui\large_ui" color="#FFCCCCCC" align="center" text_flags="no_focus_test wrap"/>
+	<!-- its choices: left and right step them, the pointer over one gives it the focus; A, Start, a click or a
+	tap does its do -->
+	<widget name="screens/dialog_list" type="column_list" width="640" height="24" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
+	<widget name="screens/dialog_choice" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port screen do"/>
+		<on event="start" run="port screen do"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
 </menus>

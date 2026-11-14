@@ -3461,6 +3461,16 @@ WIDGET_PATCHES = {
     f"{PLAYLIST_EDIT}/edit_playlist_select_list": {
         "insert_before": {f"{PLAYLIST_EDIT}/playlist_edit_button_bar": [f'<child widget="{OPENCE_ITEM}"/>']},
         "inputs": ["port playlist edit desc"]},
+    # (the gametype editor left with changes not saved: B, Back and CANCEL ask
+    # first, the hand-written question, screens/save_changes.xml; with
+    # nothing changed they go back as before: menu_functions.c's
+    # edit_leave_ask)
+    f"{PLAYLIST_EDIT}/gametype_edit_screen": {"handlers": [
+        '<on event="created" run="close if not editing profile"/>',
+        '<on event="b back" run="port edit leave" open="screens/save_changes"/>']},
+    # (Step 1's BACK: the gametype's type's words and picture, not the PC
+    # version's SAVE CHANGES question's: gametype_select_description)
+    f"{PLAYLIST_EDIT}/game_type_select/gametype_select_list": {"inputs": ["port gametype select desc"]},
     # (the profile settings' picture: on Gamepad Setup's row, the profile's
     # button settings, BITMAP_FRAMES; menu_functions.c's
     # profile_gamepad_layout)

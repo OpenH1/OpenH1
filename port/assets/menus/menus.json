@@ -296,6 +296,8 @@
   "screens/pause_campaign.xml",
   "screens/profile_color.xml",
   "screens/profile_select.xml",
+  "screens/quit.xml",
+  "screens/save_changes.xml",
   "ce/port/bitmaps/text_button_background__0.png",
   "ce/port/bitmaps/text_button_background__1.png",
   "ce/port/blank__0.png",

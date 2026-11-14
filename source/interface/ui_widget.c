@@ -4256,6 +4256,20 @@ void ui_widget_port_go_back(
 	widget_instance_go_back_to_previous(widget);
 }
 
+/* port: the screen up for a local player (NONE: the menus' own), NULL for
+none: the screen gone back to, for the menus' functions (a pop-up's choice
+done on the screen before it: port/linux/game/menu_functions.c's
+pc_menu_edit_leave) */
+struct widget_instance *ui_widget_port_active_screen(
+	short local_player_index)
+{
+	short widget_stack = (local_player_index == NONE) ? 0 : local_player_index;
+
+	if (widget_stack < 0 || widget_stack >= MAXIMUM_NUMBER_OF_LOCAL_PLAYERS)
+		return NULL;
+	return widget_globals.active_widgets[widget_stack];
+}
+
 /* port: a widget of a tag made a child of the parent, before the child
 before (NULL: last), its offsets the parent's (the menu engine's rows of
 Settings' search, from their own pages' widgets: port/linux/game/menu_engine.c);

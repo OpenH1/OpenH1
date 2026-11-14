@@ -637,6 +637,9 @@ static char const *const port_function_names[] =
 	/* (a hand-written screen's item: its action; and a prompt of its button
 	bar: its key; left and right on a row or a choice, menu_screen.c) */
 	"port screen do", "port screen key", "port screen left", "port screen right",
+	/* (B on an editor: back, or the question when it has changes not saved:
+	menu_functions.c's edit_leave_ask) */
+	"port edit leave",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -690,6 +693,9 @@ static char const *const port_game_data_input_names[] =
 	"port doubles update",
 	/* (Settings' band's right: the profile it edits) */
 	"port settings profile",
+	/* (the gametype editor's Step 1: its BACK's description, the gametype's
+	type's) */
+	"port gametype select desc",
 };
 
 /* a pause box made wider while the keyboard plays (pause_boxes_fit) */
