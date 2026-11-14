@@ -1664,6 +1664,24 @@ static boolean main_map_change_refused(
 	return TRUE;
 }
 
+/* port: a game of this machine alone has no network game: a client or
+server the menus made and left behind is let go of as its map loads. The
+server browser's (as CAMPAIGN's CO-OP opens it), backed out of to CAMPAIGN
+and a mission started there, left its client searching, which the Xbox's
+main menu let go of (main_menu_initialize) and CAMPAIGN never does; the
+campaign then took itself for a network game (network_game_is_active), and
+Start or Escape asked for a multiplayer game's pause screen the map has not:
+no pause, whichever controller pressed it. (Not for the menus' pictures,
+whose maps load behind the menus.) */
+static void main_local_game_leave_network(
+	void)
+{
+	if (menu_pictures_preparing())
+		return;
+	dispose_global_network_game_client();
+	dispose_global_network_game_server();
+}
+
 static void main_change_map_name(
 	void)
 {
@@ -1738,6 +1756,7 @@ static void main_change_map_name(
 				NUMBEROF(options.map_name) - 1);
 			options.map_name[NUMBEROF(options.map_name) - 1] = 0;
 			options.difficulty = global_difficulty_level;
+			main_local_game_leave_network();
 			game_dispose_from_old_map();
 			game_precache_new_map(options.map_name, TRUE);
 			game_unload();
