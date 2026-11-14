@@ -26,6 +26,8 @@ static struct
 	long hosting_rate;
 	boolean hosting_hold_to_pick_up;
 	boolean hosting_classic_turning;
+	/* (hit sounds: hit_sounds.c's host rule) */
+	boolean hosting_no_hit_sounds;
 	boolean mixed;
 	boolean mixed_since;
 	boolean joined;
