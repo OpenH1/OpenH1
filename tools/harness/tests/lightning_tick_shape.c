@@ -170,6 +170,9 @@ static long rasterizer_dynamic_vertices_new(short type, long count)
 static void *rasterizer_dynamic_vertices_lock(long index) { return vertex_buffer; }
 static void rasterizer_dynamic_vertices_unlock(long index) { }
 static void rasterizer_dynamic_vertices_delete(long index) { }
+/* render_marks.c's (debug.render_marks): no marks recorded here */
+enum { RENDER_MARK_LIGHTNING = 1 };
+static void render_marks_next(int kind, long tag_index) { (void)kind; (void)tag_index; }
 static void rasterizer_dynamic_unlit_geometry_draw(struct shader const *shader, struct bitmap_data const *bitmap,
 	struct render_animation const *animation, long triangles, long vertex_buffer_index, long vertex_count,
 	real_point3d const *centroid, unsigned long flags)

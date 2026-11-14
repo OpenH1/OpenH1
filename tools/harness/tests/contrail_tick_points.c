@@ -30,6 +30,7 @@ struct location { long cluster_reference; short leaf_index; short cluster_index;
 #define NUMBEROF(a) (sizeof(a) / sizeof((a)[0]))
 #define TICKS_PER_SECOND 30
 #define csmemcmp memcmp
+#define csmemcpy memcpy
 #define match_assert_valid_real(file, line, value) ((void)0)
 
 #include "config.inc"
@@ -116,6 +117,14 @@ static long data_next_index(struct data_array *array, long index)
 static void contrail_verify(long contrail_index) { }
 static void contrail_delete(long contrail_index) { datum_delete(contrail_data, contrail_index); }
 
+/* random_math.c's: the contrails' randomness is the frames' (one seed here) */
+static boolean random_math_port_begin_cosmetic(void) { return FALSE; }
+static void random_math_port_end_cosmetic(boolean ticking) { (void)ticking; }
+/* the frames drawn at the ticks (no provisional heads between them), so the
+points counted are the ticks' own */
+static boolean halo_interpolation_enabled(void) { return FALSE; }
+static void contrail_remove_provisional_points(long contrail_index);
+static void contrail_add_provisional_points(long contrail_index);
 #include "under_test.inc"
 
 static long contrail_index;

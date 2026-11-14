@@ -13,7 +13,8 @@ from harness import CHECK_FAILED, build, constant, enum_with, function, mutated,
 
 CASES = ["steady-at-144", "uneven-frames", "time-jumps"]
 FUNCTIONS = ("contrail_scale_value", "contrail_scale_random_value", "contrail_next_frame",
-             "contrail_compute_new_point_count", "contrail_add_points", "contrail_update_points", "contrails_update")
+             "contrail_compute_new_point_count", "contrail_add_points", "contrail_update_points",
+             "contrail_remove_provisional_points", "contrail_add_provisional_points", "contrails_update")
 
 # a fault in the code and the case that must catch it
 NEGATIVE_CONTROLS = {
