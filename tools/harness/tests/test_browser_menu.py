@@ -103,6 +103,8 @@ NEGATIVE_CONTROLS = {
                       '\tbrowser_tab = 0 * browser_word_index(config_string("network.browser_tab")'), "view"),
     "way-not-read": (('\tbrowser_sort_descending = config_boolean("network.browser_sort_descending") != 0;',
                       "\tbrowser_sort_descending = TRUE;"), "view"),
+    # (the new engine's browser on CO-OP kept: its CO-OP tab is co-op's screen's door, the browser on ALL)
+    "coop-tab-kept": (("if (browser_tab == _browser_tab_coop && menu_engine_looks())", "if (FALSE)"), "view"),
     "written-unchanged": (('\tif (browser_tab_visit == NONE && strcmp(config_string("network.browser_tab"), '
                            'browser_tab_words[browser_tab]))', "\tif (browser_tab_visit == NONE)"), "view"),
     # (the column searches: browser_search_shows)

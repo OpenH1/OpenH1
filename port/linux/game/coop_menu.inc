@@ -213,7 +213,8 @@ static boolean coop_host_start(struct widget_instance *widget, struct event_reco
 	platform_log("menus: co-op hosted: %s on %s, %s can join", coop_host.map,
 		coop_host.difficulty == 3 ? "legendary" : coop_host.difficulty == 2 ? "heroic" :
 		coop_host.difficulty == 1 ? "normal" : "easy", coop_join_words[who]);
-	coop_host.active = FALSE;
+	/* (HOST's choosing goes on: the lobby left comes back to WHO CAN JOIN,
+	and Choose Difficulty's PLAY is still HOST's; co-op's screen ends it) */
 	coop_host.hosted_time = system_milliseconds() | 1;
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
 	return ui_widget_port_open(widget, LOBBY_NAME, widget_deleted);
