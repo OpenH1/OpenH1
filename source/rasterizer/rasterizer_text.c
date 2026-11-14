@@ -266,6 +266,11 @@ static boolean hires_text_fonts_made = FALSE;
 static real text_scale = 1.0f;
 static real text_scale_origin_x = 0.0f;
 static real text_scale_origin_y = 0.0f;
+/* port: the line's shift left and its cut (rasterizer_text_set_shift), the
+high-res text's; the font tags' bitmaps are drawn at whole units */
+static real text_shift = 0.0f;
+static real text_shift_left = 0.0f;
+static real text_shift_right = -1.0f;
 static pixel32 global_shadow_color = 0;
 static short rasterizer_text_unused = 0;
 static short magic_number= 12;
@@ -835,6 +840,18 @@ void rasterizer_text_get_scale(
 	return;
 }
 
+void rasterizer_text_set_shift(
+	real shift,
+	real left,
+	real right)
+{
+	text_shift = shift;
+	text_shift_left = left;
+	text_shift_right = right;
+
+	return;
+}
+
 /* port: a character's quad, scaled (rasterizer_text_set_scale), and moved
 past the whole units it is laid out at (rasterizer_screen_offset_set) */
 static void rasterizer_text_draw_scaled_character(
@@ -1238,6 +1255,13 @@ static void rasterizer_draw_hires_glyph(
 	{
 		clip_bottom = 32767.0f;
 	}
+	/* port: a line shifted left (rasterizer_text_set_shift): cut to its
+	box's edges where they are once it is shifted, then shifted */
+	if (text_shift_left <= text_shift_right)
+	{
+		clip_left = MAX(clip_left, text_shift_left + text_shift);
+		clip_right = MIN(clip_right, text_shift_right + text_shift);
+	}
 	top = baseline + glyph.top;
 	bottom = baseline + glyph.bottom;
 	u0 = glyph.u0;
@@ -1266,6 +1290,8 @@ static void rasterizer_draw_hires_glyph(
 	}
 	if (right <= left || bottom <= top)
 		return;
+	left -= text_shift;
+	right -= text_shift;
 
 	/* (the drop shadow first, a unit down and right, as the font tags') */
 	for (pass = shadow ? 0 : 1; pass < 2; pass++)

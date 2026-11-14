@@ -2405,6 +2405,7 @@ places under its name (_settings_shared) */
 #define SETTINGS_TABS_ROWS_TOP 104
 #define SETTINGS_PAGE_ROWS_TOP 80
 #define SETTINGS_PANEL_TEXT_TOP 44
+#define SETTINGS_PANEL_VALUE_UNDER_NAME 14
 #define SETTINGS_PANEL_TEXT_UNDER_STILLS 122
 #define SETTINGS_PANEL_TEXT_UNDER_PICTURE 146
 #define SETTINGS_PANEL_TEXT_LENGTH 512
@@ -3973,6 +3974,76 @@ static short settings_facts_lines(struct settings_facts const *facts, long font,
 	return lines;
 }
 
+static short menu_text_wrap_lines(long font, wchar_t const *text, short width, short lines, wchar_t *wrapped);
+static boolean menu_text_same(wchar_t const *a, wchar_t const *b);
+
+/* the panel's name and value, each wrapped to its box (issue 899: a long
+device's name whole, not cut short), as many lines at most, as they were
+the last time while they are the same (each frame): the lines each takes
+and its font's line's height */
+#define SETTINGS_PANEL_NAME_LINES 2
+#define SETTINGS_PANEL_VALUE_LINES 3
+
+struct settings_panel_wrapping
+{
+	void const *box;
+	long font;
+	short width;
+	short lines;
+	short line;
+	wchar_t text[ROW_TEXT_LENGTH];
+	wchar_t wrapped[SETTINGS_PANEL_TEXT_LENGTH];
+};
+
+static struct settings_panel_wrapping settings_panel_name_wrapping, settings_panel_value_wrapping;
+
+/* a font's line's height: two lines' less one's (12 while the font is not
+known) */
+static short settings_font_line(long font)
+{
+	static real_argb_color const white = { 1.0f, 1.0f, 1.0f, 1.0f };
+	rectangle2d bounds, text_bounds, cursor;
+	short line;
+
+	if (font == NONE)
+		return 12;
+	bounds.x0 = 0;
+	bounds.y0 = 0;
+	bounds.x1 = 0x3FFF;
+	bounds.y1 = 480;
+	draw_string_set_draw_mode(font, NONE, 0, 0, &white);
+	draw_unicode_string_compute_bounds(&bounds, L"X\r\nX", &text_bounds, &cursor);
+	line = (short)(text_bounds.y1 - text_bounds.y0);
+	draw_unicode_string_compute_bounds(&bounds, L"X", &text_bounds, &cursor);
+	return (short)(line - (text_bounds.y1 - text_bounds.y0));
+}
+
+/* a box of the panel's text wrapped to it, `most` lines at most (the last
+cut short with "..."): the lines it takes */
+static short settings_panel_wrap(struct settings_panel_wrapping *wrapping, struct widget_instance *box,
+	wchar_t const *text, short most)
+{
+	short width;
+	long font = ui_widget_port_text_box_font(box, &width);
+
+	if (!box)
+		return 1;
+	if (wrapping->box != box || wrapping->font != font || wrapping->width != width ||
+		!menu_text_same(wrapping->text, text))
+	{
+		wrapping->box = box;
+		wrapping->font = font;
+		wrapping->width = width;
+		settings_wide_copy(wrapping->text, text, ROW_TEXT_LENGTH);
+		wrapping->lines = text[0] ? menu_text_wrap_lines(font, text, width, most, wrapping->wrapped) : 1;
+		if (!text[0])
+			wrapping->wrapped[0] = 0;
+		wrapping->line = settings_font_line(font);
+	}
+	text_set_length(box, wrapping->wrapped, SETTINGS_PANEL_TEXT_LENGTH);
+	return wrapping->lines;
+}
+
 static void settings_panel_show(struct widget_instance *list, short tab)
 {
 	struct widget_instance *panel = list->parameters.list.extended_description;
@@ -3989,6 +4060,7 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	wchar_t const *help = NULL;
 	wchar_t *bar;
 	short still = NONE, length, lines, note_lines, line = 12, index;
+	short name_lines, value_lines, name_more, value_more;
 	boolean stills = FALSE, picture = FALSE;
 	struct widget_instance *row_spinner = NULL;
 	char const *const still_names[] = { "classic", "enhanced" };
@@ -4132,8 +4204,14 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	row_facts.count = 0;
 	if (!strncmp(row->name, "op_", 3))
 		settings_facts_of(row, row_spinner, words, &row_facts);
-	text_set_length(settings_part(panel, "panel name"), name, ROW_TEXT_LENGTH);
-	text_set_length(settings_part(panel, "panel value"), value, ROW_TEXT_LENGTH);
+	/* (the name and the value whole, wrapped: the value under the name's
+	lines, the words under the value's, issue 899) */
+	name_lines = settings_panel_wrap(&settings_panel_name_wrapping, settings_part(panel, "panel name"), name,
+		SETTINGS_PANEL_NAME_LINES);
+	value_lines = settings_panel_wrap(&settings_panel_value_wrapping, settings_part(panel, "panel value"), value,
+		SETTINGS_PANEL_VALUE_LINES);
+	name_more = (short)((name_lines - 1) * settings_panel_name_wrapping.line);
+	value_more = (short)((value_lines - 1) * settings_panel_value_wrapping.line);
 	/* (wrapped in the text boxes' fonts, taken from their definitions in the
 	map loaded now: a font's tag index is not kept, as the next map's tags
 	are numbered again) */
@@ -4183,6 +4261,25 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		short top = stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : picture ? SETTINGS_PANEL_TEXT_UNDER_PICTURE :
 			SETTINGS_PANEL_TEXT_TOP;
 
+		if (settings_part(panel, "panel value"))
+		{
+			settings_part(panel, "panel value")->vertical_offset =
+				(short)(name_top + SETTINGS_PANEL_VALUE_UNDER_NAME + name_more);
+		}
+		/* (a name or a value of more lines: the words under them, the
+		pictures, in their place, left out) */
+		if (name_more + value_more > 0)
+		{
+			if (stills || picture)
+			{
+				settings_value_picture_show(panel, row, NONE);
+				stills = FALSE;
+				picture = FALSE;
+				still = NONE;
+			}
+			top = (short)(SETTINGS_PANEL_TEXT_TOP + name_more + value_more);
+		}
+
 		/* (the last facts left out first: the first is kept where it fits) */
 		while (facts && facts_values && row_facts.count > 1 &&
 			settings_panel_height(lines, note_lines, line) + line / 2 + fact_lines * line > room - top)
@@ -4201,7 +4298,7 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 			settings_value_picture_show(panel, row, NONE);
 			stills = FALSE;
 			still = NONE;
-			top = SETTINGS_PANEL_TEXT_TOP;
+			top = (short)(SETTINGS_PANEL_TEXT_TOP + name_more + value_more);
 		}
 		if (note_lines && settings_panel_height(lines, note_lines, line) > room - top)
 			note_lines = 0;
@@ -7714,19 +7811,224 @@ static void menu_text_fit(long font, wchar_t const *text, wchar_t *fitted, short
 	menu_text_cut(text, low, fitted, size);
 }
 
+/* ---- a line too long for its box (issue 899): the whole of it kept for
+the text box a fit cut it short in (menu_text_box_fit_to), or for a row's
+own text (a list's row's, a spinner's value) measured once as it is drawn;
+drawn by ui_widget.c (pc_menu_text_line). While its row has the focus the
+whole line is drawn, cut to its box, and scrolled: still at its start for a
+pause, moved left at a steady speed to its end, still there for a pause,
+then from its start again (menu_text_scroll_offset), on the menus' clock;
+while not, the line cut short with "..." */
+
+/* how long a line is still at each end, in milliseconds, and how fast it
+moves, in the menus' units a second (a 640 by 480 screen's pixels) */
+#define MENU_TEXT_SCROLL_PAUSE 1500
+#define MENU_TEXT_SCROLL_SPEED 30
+/* the lines kept (by their widget: a few screens' rows and cells), the
+places a widget's may be in, and the longest line */
+#define MENU_TEXT_LINES 128
+#define MENU_TEXT_LINE_PROBES 8
+#define MENU_TEXT_LINE_LENGTH 128
+/* a focus gone longer than this, and the line's scroll begins again as its
+row is focused (a row hidden and shown again) */
+#define MENU_TEXT_SCROLL_GONE 250
+
+struct menu_text_line
+{
+	/* (the text box or spinner; NULL: a free place) */
+	void const *widget;
+	long font;
+	/* (the room it is drawn in, the whole line's width and its fitted
+	form's: NONE, not measured yet) */
+	short width;
+	short full_width;
+	short shown_width;
+	/* (cut short by a fit: shown is what the box was given; else shown is
+	the widget's own text, and cut its form cut short while it is too long) */
+	boolean fitted;
+	boolean focused;
+	unsigned long focus_time;
+	unsigned long drawn_time;
+	wchar_t shown[MENU_TEXT_LINE_LENGTH];
+	wchar_t full[MENU_TEXT_LINE_LENGTH];
+	wchar_t cut[MENU_TEXT_LINE_LENGTH];
+};
+
+static struct menu_text_line menu_text_lines[MENU_TEXT_LINES];
+
+/* how far a line `overflow` units wider than its box is moved left
+(fractions of a unit too), `elapsed` milliseconds after its row took the
+focus: none for the pause, then the speed's units a second until it shows
+its end, all of the overflow for the pause, then none again, and over */
+static real menu_text_scroll_offset(short overflow, unsigned long elapsed)
+{
+	unsigned long travel, at;
+
+	if (overflow <= 0)
+		return 0.0f;
+	travel = (unsigned long)overflow * 1000UL / MENU_TEXT_SCROLL_SPEED;
+	at = elapsed % (2UL * MENU_TEXT_SCROLL_PAUSE + travel);
+	if (at < MENU_TEXT_SCROLL_PAUSE)
+		return 0.0f;
+	if (at >= MENU_TEXT_SCROLL_PAUSE + travel)
+		return (real)overflow;
+	return (real)(at - MENU_TEXT_SCROLL_PAUSE) * (real)MENU_TEXT_SCROLL_SPEED / 1000.0f;
+}
+
+static boolean menu_text_same(wchar_t const *a, wchar_t const *b)
+{
+	for (; *a && *a == *b; a++, b++)
+	{
+	}
+	return *a == *b;
+}
+
+/* whether a text is one line (a row's of more lines is drawn as it is) */
+static boolean menu_text_one_line(wchar_t const *text)
+{
+	for (; *text; text++)
+	{
+		if (*text == '\r' || *text == '\n')
+			return FALSE;
+	}
+	return TRUE;
+}
+
+/* a widget's line (make: a place taken for it, a free one or else the one
+drawn longest ago of those it may have); NULL */
+static struct menu_text_line *menu_text_line_of(void const *widget, boolean make)
+{
+	unsigned long first = (unsigned long)(((size_t)widget >> 4) % MENU_TEXT_LINES);
+	struct menu_text_line *oldest = NULL;
+	long probe;
+
+	if (!widget)
+		return NULL;
+	for (probe = 0; probe < MENU_TEXT_LINE_PROBES; probe++)
+	{
+		struct menu_text_line *line = &menu_text_lines[(first + probe) % MENU_TEXT_LINES];
+
+		if (line->widget == widget)
+			return line;
+		if (!oldest || (oldest->widget && (!line->widget || line->drawn_time < oldest->drawn_time)))
+			oldest = line;
+	}
+	if (!make)
+		return NULL;
+	memset(oldest, 0, sizeof(*oldest));
+	oldest->widget = widget;
+	oldest->full_width = NONE;
+	oldest->shown_width = NONE;
+	return oldest;
+}
+
+/* a text box's text fitted to `width` (its box's: 0 or less), kept whole
+for its scroll where it is cut short; returning how wide it is drawn (0
+while its font is not known). The same text fitted again (each frame) is
+not measured again */
+static short menu_text_box_fit_to(struct widget_instance *box, wchar_t const *text, short width)
+{
+	wchar_t fitted[MENU_TEXT_LINE_LENGTH];
+	short box_width;
+	long font = ui_widget_port_text_box_font(box, &box_width);
+	struct menu_text_line *line;
+
+	if (!box)
+		return 0;
+	if (width <= 0)
+		width = box_width;
+	line = menu_text_line_of(box, FALSE);
+	if (line && line->fitted && line->font == font && line->width == width && text &&
+		menu_text_same(line->full, text) && line->shown_width != NONE)
+	{
+		text_set(box, line->shown);
+		return line->shown_width;
+	}
+	menu_text_fit(font, text, fitted, NUMBEROF(fitted), width);
+	text_set(box, fitted);
+	/* (cut short: the whole kept; whole: none) */
+	if (text && !menu_text_same(fitted, text))
+	{
+		line = menu_text_line_of(box, TRUE);
+		line->fitted = TRUE;
+		line->font = font;
+		line->width = width;
+		line->full_width = NONE;
+		settings_wide_copy(line->shown, fitted, MENU_TEXT_LINE_LENGTH);
+		settings_wide_copy(line->full, text, MENU_TEXT_LINE_LENGTH);
+		line->shown_width = font != NONE ? settings_text_width(font, fitted) : 0;
+		return line->shown_width;
+	}
+	if (line)
+		line->widget = NULL;
+	return font != NONE ? settings_text_width(font, fitted) : 0;
+}
+
+/* (ui_widget.c, as it draws a line of a text box or a spinner's value, in
+its font, in a box `width` units wide: whether it is a row's text (a list's
+row's, a spinner's value), whether its row has the focus, the menus' clock)
+the line to draw in place of the widget's text, how far it is moved left
+(*scroll) and the room it is cut to (*room): the whole of it, scrolled,
+while its row has the focus, its form cut short with "..." while not; NULL
+to draw the widget's text as it is (it fits, or is no row's and was not
+cut short by a fit) */
+wchar_t const *pc_menu_text_line(struct widget_instance *widget, long font, wchar_t const *text, short width,
+	boolean row, boolean focused, unsigned long now, real *scroll, short *room)
+{
+	struct menu_text_line *line = menu_text_line_of(widget, FALSE);
+
+	*scroll = 0.0f;
+	*room = width;
+	if (!text || !text[0] || font == NONE || width <= 0)
+		return NULL;
+	/* (a fit's, while the box still has what it was given) */
+	if (line && line->fitted && (line->font != font || !menu_text_same(line->shown, text)))
+	{
+		line->widget = NULL;
+		line = NULL;
+	}
+	if (!line || !line->fitted)
+	{
+		if (!row)
+			return NULL;
+		if (!line || line->font != font || line->width != width || !menu_text_same(line->shown, text))
+		{
+			line = menu_text_line_of(widget, TRUE);
+			line->font = font;
+			line->width = width;
+			settings_wide_copy(line->shown, text, MENU_TEXT_LINE_LENGTH);
+			settings_wide_copy(line->full, text, MENU_TEXT_LINE_LENGTH);
+			line->full_width = menu_text_one_line(text) ? settings_text_width(font, line->full) : 0;
+			if (line->full_width > width)
+				menu_text_fit(font, line->full, line->cut, MENU_TEXT_LINE_LENGTH, width);
+		}
+	}
+	if (line->full_width == NONE)
+		line->full_width = settings_text_width(font, line->full);
+	/* (scrolled from its start as its row takes the focus) */
+	if (focused && (!line->focused || now - line->drawn_time > MENU_TEXT_SCROLL_GONE))
+		line->focus_time = now;
+	line->focused = focused;
+	line->drawn_time = now;
+	*room = line->width;
+	if (line->full_width <= line->width)
+		return NULL;
+	if (focused)
+	{
+		*scroll = menu_text_scroll_offset((short)(line->full_width - line->width), now - line->focus_time);
+		return line->full;
+	}
+	return line->fitted ? NULL : line->cut;
+}
+
 /* a text box's text fitted to it (to `width` if that is less, and more
 than 0), returning how wide it is drawn (0 while its font is not known) */
 static short menu_text_box_fit(struct widget_instance *box, wchar_t const *text, short width)
 {
-	wchar_t fitted[ROW_TEXT_LENGTH];
 	short box_width;
-	long font = ui_widget_port_text_box_font(box, &box_width);
 
-	if (!box)
-		return 0;
-	menu_text_fit(font, text, fitted, NUMBEROF(fitted), (short)(width > 0 ? MIN(width, box_width) : box_width));
-	text_set(box, fitted);
-	return font != NONE ? settings_text_width(font, fitted) : 0;
+	ui_widget_port_text_box_font(box, &box_width);
+	return menu_text_box_fit_to(box, text, (short)(width > 0 ? MIN(width, box_width) : box_width));
 }
 
 /* a text box's text wrapped to its width, `lines` lines at most: the last
@@ -7745,13 +8047,25 @@ static void menu_text_box_wrap(struct widget_instance *box, wchar_t const *text,
 definition on a wide screen) */
 static void menu_text_box_wrap_width(struct widget_instance *box, wchar_t const *text, short lines, short width)
 {
-	wchar_t wrapped[SETTINGS_PANEL_TEXT_LENGTH], last[SETTINGS_PANEL_TEXT_LENGTH];
-	short line = 1, index, start = 0, box_width;
+	wchar_t wrapped[SETTINGS_PANEL_TEXT_LENGTH];
+	short box_width;
 	long font = ui_widget_port_text_box_font(box, &box_width);
 
 	if (!box)
 		return;
-	settings_text_wrap(text, wrapped, NUMBEROF(wrapped), font, width);
+	menu_text_wrap_lines(font, text, width, lines, wrapped);
+	text_set_length(box, wrapped, SETTINGS_PANEL_TEXT_LENGTH);
+}
+
+/* text wrapped across width in the font into wrapped (SETTINGS_PANEL_TEXT_LENGTH
+characters), `lines` lines at most: the last of them, if there is more, the
+rest of the text fitted to it with "..."; the lines it takes */
+static short menu_text_wrap_lines(long font, wchar_t const *text, short width, short lines, wchar_t *wrapped)
+{
+	wchar_t last[SETTINGS_PANEL_TEXT_LENGTH];
+	short line = 1, index, start = 0;
+
+	settings_text_wrap(text, wrapped, SETTINGS_PANEL_TEXT_LENGTH, font, width);
 	for (index = 0; wrapped[index]; index++)
 	{
 		if (wrapped[index] != '\r' || wrapped[index + 1] != '\n')
@@ -7768,13 +8082,13 @@ static void menu_text_box_wrap_width(struct widget_instance *box, wchar_t const 
 				last[length++] = wrapped[index] == '\n' ? ' ' : wrapped[index];
 			}
 			last[length] = 0;
-			menu_text_fit(font, last, wrapped + start, (short)(NUMBEROF(wrapped) - start), width);
+			menu_text_fit(font, last, wrapped + start, (short)(SETTINGS_PANEL_TEXT_LENGTH - start), width);
 			break;
 		}
 		line++;
 		start = (short)(index + 2);
 	}
-	text_set_length(box, wrapped, SETTINGS_PANEL_TEXT_LENGTH);
+	return line;
 }
 
 /* whether a column list is a strip of tabs (port_settings.py's _tab_strip:
@@ -12595,15 +12909,7 @@ char const *pc_menu_text_field_words(void)
 
 short pc_menu_text_fit(struct widget_instance *box, unsigned short const *text, short width)
 {
-	wchar_t fitted[ROW_TEXT_LENGTH];
-	short box_width;
-	long font = ui_widget_port_text_box_font(box, &box_width);
-
-	if (!box)
-		return 0;
-	menu_text_fit(font, (wchar_t const *)text, fitted, NUMBEROF(fitted), width > 0 ? width : box_width);
-	text_set(box, fitted);
-	return font != NONE ? settings_text_width(font, fitted) : 0;
+	return menu_text_box_fit_to(box, (wchar_t const *)text, width);
 }
 
 void pc_menu_text_wrap(struct widget_instance *box, unsigned short const *text, short width, short lines)

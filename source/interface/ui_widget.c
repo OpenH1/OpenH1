@@ -701,6 +701,11 @@ boolean menu_studio_note_field(wchar_t *line, long size);
 /* port: port/linux/game/menu_functions.c: a text's colour in place of its
 own (the server browser's pings) */
 boolean pc_menu_text_color(struct widget_instance *widget, real_argb_color *color);
+/* port: port/linux/game/menu_functions.c: a line too long for its box, to
+draw in place of a widget's text: whole and scrolled while its row has the
+focus, cut short with "..." while not (widget_instance_port_text_line_draw) */
+wchar_t const *pc_menu_text_line(struct widget_instance *widget, long font, wchar_t const *text, short width,
+	boolean row, boolean focused, unsigned long now, real *scroll, short *room);
 
 /* ---------- constants */
 
@@ -5710,6 +5715,97 @@ static boolean widget_instance_port_on_focus_path(
 	return TRUE;
 }
 
+/* port: whether a widget's text is a row's (issue 899: cut short with "..."
+where it is too long, and scrolled while the row has the focus): a
+spinner's value, a list's row's text, or a text box in a list's row */
+static boolean widget_instance_port_in_row(
+	struct widget_instance *widget)
+{
+	struct widget_instance *parent = widget->parent;
+
+	return widget->type == _ui_widget_type_spinner_list ||
+		(parent && (parent->type == _ui_widget_type_column_list ||
+			(parent->parent && parent->parent->type == _ui_widget_type_column_list)));
+}
+
+/* port: whether a widget's row has the focus: the widget the focus ends at
+(down the screen's focused children) is the widget, or its parent (a row
+it is a text of, as a table's cells), or a spinner beside it in its parent
+(a settings row's spinner, beside its label); not a screen's own texts.
+Only that row's lines scroll: a panel the focus passes through does not */
+static boolean widget_instance_port_row_focused(
+	struct widget_instance *widget)
+{
+	struct widget_instance *end = widget;
+
+	if (!widget->parent)
+		return FALSE;
+	while (end->parent)
+		end = end->parent;
+	while (end->focused_child)
+		end = end->focused_child;
+	return end == widget ||
+		(widget->parent->parent && (end == widget->parent ||
+			(end->type == _ui_widget_type_spinner_list && end->parent == widget->parent)));
+}
+
+/* port: a line of a menu's text too long for its box (issue 899:
+menu_functions.c's pc_menu_text_line) drawn in its place, in the bounds
+it is laid out in (its look's scale set, as begun) and its clip: while its
+row has the focus, the whole line left-justified in the room it was fitted
+to, moved left by its scroll (its fraction of a unit too, the high-res
+text's: rasterizer_text_set_shift) and cut to that room; while not, its
+form cut short with "...". FALSE if the text is drawn as it is (it fits),
+the draw mode set as it was either way */
+static boolean widget_instance_port_text_line_draw(
+	struct widget_instance *widget,
+	rectangle2d const *bounds,
+	rectangle2d const *clip,
+	wchar_t const *text,
+	long font_index,
+	short justification,
+	real_argb_color const *color)
+{
+	real scroll, scale, origin_x, origin_y;
+	short room;
+	boolean focused = widget_instance_port_row_focused(widget);
+	wchar_t const *line = pc_menu_text_line(widget, font_index, text, (short)(bounds->x1 - bounds->x0),
+		widget_instance_port_in_row(widget), focused, widget_globals.current_system_milliseconds, &scroll, &room);
+	rectangle2d laid, cut;
+	short whole, left, right;
+
+	/* (measuring a line sets the draw mode: as it was) */
+	draw_string_set_draw_mode(font_index, NONE, justification, 0, color);
+	if (!line)
+		return FALSE;
+	if (!focused)
+	{
+		rasterizer_draw_unicode_string(bounds, clip, NULL, 0, line);
+		return TRUE;
+	}
+	/* (the room: at the box's left, right or middle, as justified) */
+	left = justification == _text_justification_right ? (short)(bounds->x1 - room) :
+		justification == _text_justification_center ? (short)((bounds->x0 + bounds->x1 - room) / 2) : bounds->x0;
+	right = (short)(left + room);
+	whole = (short)scroll;
+	laid = *bounds;
+	laid.x0 = (short)(left - whole);
+	laid.x1 = (short)(laid.x0 + 0x3FFF);
+	/* (the clip in the screen's units, as the scale draws the room: a unit
+	wider at its right for the line's fraction of a unit) */
+	rasterizer_text_get_scale(&scale, &origin_x, &origin_y);
+	cut = *clip;
+	cut.x0 = (short)MAX(cut.x0, (short)(origin_x + ((real)left - origin_x) * scale));
+	cut.x1 = (short)MIN(cut.x1, (short)(origin_x + ((real)right + 1.0f - origin_x) * scale + 0.999f));
+	draw_string_set_draw_mode(font_index, NONE, _text_justification_left, 0, color);
+	rasterizer_text_set_shift(scroll - (real)whole, (real)left, (real)right);
+	if (cut.x1 > cut.x0)
+		rasterizer_draw_unicode_string(&laid, &cut, NULL, 0, line);
+	rasterizer_text_set_shift(0.0f, 0.0f, -1.0f);
+	draw_string_set_draw_mode(font_index, NONE, justification, 0, color);
+	return TRUE;
+}
+
 static boolean string_has_icons_to_draw(
 	wchar_t *string)
 {
@@ -6128,6 +6224,8 @@ static void widget_instance_render_text_box(
 	/* port: the scale a dialog's text is drawn at to fit its room
 	(ui_widget_port_text_fit) */
 	real fit_scale = 1.0f;
+	/* port: (its text wrapped to its box) */
+	boolean wrapped = FALSE;
 
 	if (definition->text_label_string_list.index != NONE)
 	{
@@ -6301,6 +6399,7 @@ static void widget_instance_render_text_box(
 				ui_widget_port_text_unbreak(*text);
 		}
 		fit_scale = ui_widget_port_text_fit(*text, &bounds, width, height, &font_index, &color, justification);
+		wrapped = TRUE;
 	}
 	/* port: or drawn at its look's scale (the menu engine's), but a field
 	typed into, whose caret is placed at its font's size */
@@ -6358,8 +6457,14 @@ static void widget_instance_render_text_box(
 	}
 	else if (string_has_icons_to_draw(*text))
 		draw_string_and_hack_in_icons(&bounds, &clip, NULL, 0, *text, FALSE);
-	else
+	/* port: a line too long for its box: whole and scrolled while its row
+	has the focus, cut short while not (issue 899); not a text wrapped to
+	its box, nor a field typed into */
+	else if (wrapped || caret ||
+		!widget_instance_port_text_line_draw(widget, &bounds, &clip, *text, font_index, justification, &color))
+	{
 		rasterizer_draw_unicode_string(&bounds, &clip, NULL, 0, *text);
+	}
 	/* port: (the text drawn at its own size again) */
 	if (fit_scale != 1.0f)
 		rasterizer_text_set_scale(1.0f, 0.0f, 0.0f);
@@ -6587,15 +6692,21 @@ static void widget_instance_render_spinner_list(
 					definition->justification,
 					0,
 					&color);
-				/* port: at its look's scale (the menu engine's) */
-				if (ui_widget_port_text_scale_begin(widget, definition, &bounds, offset,
-					definition->justification) != 1.0f)
+				/* port: at its look's scale (the menu engine's); a value too
+				long for its box whole and scrolled while its row has the
+				focus, cut short while not (issue 899) */
 				{
-					rasterizer_draw_unicode_string(&bounds, &clip, NULL, 0, item_text);
-					rasterizer_text_set_scale(1.0f, 0.0f, 0.0f);
+					real scale = ui_widget_port_text_scale_begin(widget, definition, &bounds, offset,
+						definition->justification);
+
+					if (!widget_instance_port_text_line_draw(widget, &bounds, &clip, item_text,
+						definition->text_font.index, definition->justification, &color))
+					{
+						rasterizer_draw_unicode_string(&bounds, &clip, NULL, 0, item_text);
+					}
+					if (scale != 1.0f)
+						rasterizer_text_set_scale(1.0f, 0.0f, 0.0f);
 				}
-				else
-					rasterizer_draw_unicode_string(&bounds, &clip, NULL, 0, item_text);
 			}
 		}
 		if (definition->text_label_string_list.index != NONE)

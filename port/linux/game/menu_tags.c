@@ -1458,11 +1458,14 @@ static long spinner_expand(char const *setting, boolean values, char const **pie
 			(int)(MAXIMUM_STRINGS - count));
 		for (index = 0; index < added; index++)
 		{
-			char shown[32];
+			char shown[sizeof(names[0])];
 			char const *name = names[index];
 			char *piece;
 			long length;
 
+			/* (the whole name, in capitals: a row too long for it cuts it
+			short and scrolls it while it has the focus, and the panel wraps
+			it, issue 899) */
 			if (!values)
 			{
 				long at;
@@ -1470,9 +1473,6 @@ static long spinner_expand(char const *setting, boolean values, char const **pie
 				for (at = 0; name[at] && at < (long)sizeof(shown) - 1; at++)
 					shown[at] = name[at] >= 'a' && name[at] <= 'z' ? (char)(name[at] - 'a' + 'A') : name[at];
 				shown[at] = 0;
-				/* (cut short: what the spinner shows) */
-				if (strlen(name) > 18)
-					strcpy(shown + 15, "...");
 				name = shown;
 			}
 			length = (long)strlen(name);

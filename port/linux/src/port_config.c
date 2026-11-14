@@ -2151,6 +2151,12 @@ static const struct config_setting config_settings[] =
 		"\"<setting>=<value>@<seconds>\": that many seconds into a level (of its\n"
 		"game time), the setting is written as Settings' OK writes it, so that\n"
 		"a change in play can be timed (game/bsp_switch_test.c); \"\" never." },
+	{ "debug.audio_device_name", _config_string, "\"\"", "HALO_AUDIO_DEVICE_NAME", _environment_value,
+		_platform_desktop,
+		"A device of this name listed first in Settings > Audio's OUTPUT DEVICE\n"
+		"and INPUT DEVICE, as if the system had it (choosing it plays on the\n"
+		"system's default), so that a long name's row and panel can be tested;\n"
+		"\"\" none." },
 	{ "debug.network_test_pickup", _config_real, "0.0", "HALO_NETWORK_TEST_PICKUP", _environment_value, _platform_all,
 		"This many seconds into an automated test game the host stands its last\n"
 		"player on a weapon, which a joining player then picks up; 0 never." },

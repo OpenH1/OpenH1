@@ -360,6 +360,10 @@ SETTINGS_PANEL_X, SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_BOTTOM = 388, 224, 400
 # (its words SETTINGS_PANEL_INSET in from its sides)
 SETTINGS_PANEL_INSET = 12
 SETTINGS_PANEL_WORDS = SETTINGS_PANEL_WIDTH - 2 * SETTINGS_PANEL_INSET
+# (the room under the panel's name and value for their lines past the first,
+# wrapped: the name's one more of small_ui's 20, the value's two more of
+# large_ui's 26; menu_functions.c's SETTINGS_PANEL_NAME_LINES, _VALUE_LINES)
+SETTINGS_PANEL_NAME_MORE, SETTINGS_PANEL_VALUE_MORE = 1 * 20, 2 * 26
 # the footer's band (bitmaps/gradient's line, at 409, over Defaults, OK and
 # Cancel): a page's rows, packed for any platform, end above it
 # (test_port_settings.py's test_settings_rows_fit). The list does not scroll
@@ -2696,9 +2700,15 @@ def _settings_shared(g: SettingsLayout = SETTINGS_CLASSIC) -> list:
     # (the words' box as tall as the panel's room for them: settings_panel_show
     # cuts them to it)
     text_height = 220 if g is SETTINGS_CLASSIC else g.panel_bottom - g.tab_top - 52 - 6
-    lines += _settings_text(f"{SETTINGS}/panel_name", [("width", SETTINGS_PANEL_WORDS), ("height", 18), ("color", SETTINGS_DIM),
+    # (the name and the value wrapped, as many lines as settings_panel_show
+    # gives them, SETTINGS_PANEL_NAME_LINES and _VALUE_LINES: a long device's
+    # name whole, issue 899; the value SETTINGS_PANEL_VALUE_UNDER_NAME under
+    # the name)
+    lines += _settings_text(f"{SETTINGS}/panel_name", [("width", SETTINGS_PANEL_WORDS),
+                                                      ("height", 18 + SETTINGS_PANEL_NAME_MORE), ("color", SETTINGS_DIM),
                                                       ("wide", grown), ("past", grown_past)])
-    lines += _settings_text(f"{SETTINGS}/panel_value", [("width", SETTINGS_PANEL_WORDS), ("height", 24), ("font", "ui\\large_ui"),
+    lines += _settings_text(f"{SETTINGS}/panel_value", [("width", SETTINGS_PANEL_WORDS),
+                                                       ("height", 24 + SETTINGS_PANEL_VALUE_MORE), ("font", "ui\\large_ui"),
                                                        ("color", "#FFFFFFFF"), ("wide", grown), ("past", grown_past)])
     lines += _settings_text(f"{SETTINGS}/panel_text", [("width", SETTINGS_PANEL_WORDS), ("height", text_height), ("color", SETTINGS_BLUE),
                                                       ("wide", grown), ("past", grown_past)])

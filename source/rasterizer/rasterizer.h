@@ -965,6 +965,14 @@ void rasterizer_text_get_scale(
 	real *scale,
 	real *origin_x,
 	real *origin_y);
+/* port: a line moved left by a fraction of a unit past the whole units it
+is laid out at, and cut to left and right (in the units it is laid out in)
+at fractions of a unit too, until set back to 0 and no cut (left > right):
+the menus' line scrolled in its box (ui_widget.c) */
+void rasterizer_text_set_shift(
+	real shift,
+	real left,
+	real right);
 void rasterizer_text_cache_flush(
 	void);
 void rasterizer_text_cache_dispose(
