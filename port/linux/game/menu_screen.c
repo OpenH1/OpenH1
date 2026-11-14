@@ -630,8 +630,11 @@ struct screen_open
 	boolean colors;
 	struct screen_spartan spartans[MENU_SCREEN_MAXIMUM_SPARTANS];
 	long spartan_count;
-	/* (its cards' scale, to fill their room: 0 for their own size) */
+	/* (its cards' scale, to fill their room: 0 for their own size; and their
+	titles', smaller than CARD_TITLE_SCALE where one would be wider than its
+	card at it, every title of the row the same: 0 for CARD_TITLE_SCALE) */
 	real card_scale;
+	real card_title_scale;
 	/* (its button bar's prompts, each its key, and its place in the 640
 	and its side, which past 16:9 moves it to the screen's edge each frame) */
 	struct widget_instance *prompts[SCREEN_MAXIMUM_BUTTONS];
@@ -887,6 +890,30 @@ static struct screen_spartan *screen_spartan_add(struct screen_open *open, struc
 
 /* the screen's widgets made from the hand-written screen, in place of
 whatever it had: FALSE (nothing changed) if they cannot be */
+/* a card's title measured: the row's titles drawn smaller than
+CARD_TITLE_SCALE (all of them, so that they match) where this one would be
+wider than its box at it (SPLIT SCREEN's) */
+#define CARD_TITLE_MARGIN 6
+static void screen_card_title_fit(struct screen_open *open, struct widget_instance *title, char const *label)
+{
+	unsigned short wide[MENU_SCREEN_MAXIMUM_TEXT];
+	short index, width, room;
+	real scale;
+
+	for (index = 0; label[index] && index < MENU_SCREEN_MAXIMUM_TEXT - 1; index++)
+		wide[index] = (unsigned char)label[index];
+	wide[index] = 0;
+	width = pc_menu_text_width(title, wide);
+	room = (short)(CARD_WIDTH - 2 * CARD_TITLE_MARGIN - 2 * CARD_TITLE_MARGIN);
+	if (width <= 0 || width * CARD_TITLE_SCALE <= room)
+		return;
+	scale = (real)room / (real)width;
+	if (scale < 1.0f)
+		scale = 1.0f;
+	if (open->card_title_scale <= 0.0f || scale < open->card_title_scale)
+		open->card_title_scale = scale;
+}
+
 static boolean screen_build(struct screen_open *open, struct menu_screen const *screen)
 {
 	struct widget_instance *widget = open->widget;
@@ -1025,6 +1052,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 				focus_id = block->focus;
 			/* (at their own size: a scale, 0 for none, would draw them larger) */
 			open->card_scale = 0.0f;
+			open->card_title_scale = 0.0f;
 			card_width = CARD_WIDTH;
 			card_gap = CARD_GAP;
 			x = (short)((SCREEN_WIDTH - count * card_width - (count - 1) * card_gap) / 2);
@@ -1060,6 +1088,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 				if (part)
 				{
 					screen_text_set(part, label);
+					screen_card_title_fit(open, part, label);
 					part = part->next;
 				}
 				if (part)
@@ -2144,15 +2173,18 @@ boolean menu_screen_text_scale(long definition_index, short wide_extra, real *sc
 	if (screens.blocks_found && (definition_index == screens.card_title_tag ||
 		definition_index == screens.card_subtitle_tag))
 	{
-		real card_scale = 1.0f;
+		real card_scale = 1.0f, title_scale = CARD_TITLE_SCALE;
 		long open_index;
 
 		for (open_index = 0; open_index < SCREEN_MAXIMUM_OPEN; open_index++)
 		{
 			if (screens.open[open_index].widget && screens.open[open_index].card_scale > 0.0f)
 				card_scale = screens.open[open_index].card_scale;
+			/* (a row whose titles are drawn smaller to fit: screen_card_title_fit) */
+			if (screens.open[open_index].widget && screens.open[open_index].card_title_scale > 0.0f)
+				title_scale = screens.open[open_index].card_title_scale;
 		}
-		*scale = (definition_index == screens.card_title_tag ? CARD_TITLE_SCALE : 1.0f) * card_scale;
+		*scale = (definition_index == screens.card_title_tag ? title_scale : 1.0f) * card_scale;
 		return TRUE;
 	}
 	if (!screens.blocks_found || definition_index != screens.item_tag)
