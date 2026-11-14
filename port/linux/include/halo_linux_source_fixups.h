@@ -303,10 +303,6 @@ gauge (port/linux/game/weapon_gauge.c) */
 float weapon_gauge_meter_value(long object_index, short value_source, float meter_value);
 /* while TRUE, drawing shifts right to center 640-column layouts */
 void halo_screen_ui_offset(unsigned char centered);
-/* the same for a player's view of a split screen (its width): a half
-screen's 640 columns are centred as the screen's, a quarter's 320 in the
-quarter; the shift in effect */
-void halo_screen_ui_offset_view(long view_width);
 long halo_screen_ui_offset_current(void);
 /* names a model lighting vertex program, whose draws can be lit for each
 pixel (port/linux/src/d3d8_device.c, display.per_pixel_lighting) */

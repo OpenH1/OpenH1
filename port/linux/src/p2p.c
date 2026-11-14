@@ -3549,12 +3549,6 @@ void p2p_token_listed(const unsigned char *token)
 		p2p.token_listed = 1;
 }
 
-void p2p_token_listed(const unsigned char *token)
-{
-	if (p2p.has_token && !memcmp(token, p2p.token, P2P_TOKEN_SIZE))
-		p2p.token_listed = 1;
-}
-
 void p2p_new_invite_if_listed(void)
 {
 	if (!p2p.has_token || !p2p.token_listed)

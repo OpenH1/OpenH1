@@ -4106,35 +4106,6 @@ static void distributed_client_apply_retried_inventories(
 	}
 }
 
-/* the kept inventories all of whose unit and weapons have come: applied once,
-as if they had come now */
-static void distributed_client_apply_retried_inventories(
-	void)
-{
-	short index = 0;
-
-	while (index < objects_client_retried_inventory_count)
-	{
-		struct distributed_retried_inventory *retried = &objects_client_retried_inventories[index];
-
-		if (game_time_get() - retried->time >= EMPTY_INVENTORY_TICKS)
-		{
-			*retried = objects_client_retried_inventories[--objects_client_retried_inventory_count];
-		}
-		else if (distributed_client_inventory_whole(&retried->inventory))
-		{
-			struct distributed_inventory inventory = retried->inventory;
-
-			*retried = objects_client_retried_inventories[--objects_client_retried_inventory_count];
-			distributed_client_apply_inventory(&inventory);
-		}
-		else
-		{
-			index++;
-		}
-	}
-}
-
 void network_objects_client_tick(
 	void)
 {

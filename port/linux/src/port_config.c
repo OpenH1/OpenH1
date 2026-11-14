@@ -407,8 +407,7 @@ static const struct config_setting config_settings[] =
 		"High-res gameplay controller buttons: classic uses the Xbox's stencils;\n"
 		"gems uses shaded Xbox faces; menu_gems uses the menu's button art.\n"
 		"Requires display.high_res_hud.", _scope_player },
-	/* (OpenCE's button glyphs: port/linux/game/controller_glyphs.c,
-	menu_button_glyphs.c, port/linux/src/keyboard_prompts.c) */
+	/* (OpenCE's button glyphs: port/linux/game/controller_glyphs.c) */
 	{ "display.hud_button_style_xbox", _config_string, "\"classic\"", "HALO_HUD_BUTTON_STYLE_XBOX", _environment_value, _platform_all,
 		"Remembered automatic Xbox style: classic, gems, menu_gems, xbox_modern." },
 	{ "display.hud_button_style_ps", _config_string, "\"ps_classic\"", "HALO_HUD_BUTTON_STYLE_PS", _environment_value, _platform_all,
@@ -422,12 +421,6 @@ static const struct config_setting config_settings[] =
 	{ "input.auto_button_detection", _config_boolean, "true", "HALO_AUTO_BUTTON_DETECTION", _environment_value, _platform_all,
 		"Limit Button Style to the assigned controller's family. Unknown devices\n"
 		"keep the manual choice. Device detection itself is always available." },
-	{ "display.menu_button_glyphs", _config_boolean, "false", "HALO_MENU_BUTTON_GLYPHS", _environment_value, _platform_all,
-		"Use the selected keyboard/controller style in PC-menu face-button legends." },
-	{ "display.keyboard_glyphs", _config_boolean, "false", "HALO_KEYBOARD_GLYPHS", _environment_value, _platform_all,
-		"With auto button detection on, show binding-aware gameplay keycaps after\n"
-		"keyboard/mouse activity. Off preserves existing prompts. Manual keyboard\n"
-		"style works with detection off. Menu legends require menu_button_glyphs." },
 	{ "display.menu_pictures", _config_boolean, "true", "HALO_MENU_PICTURES", _environment_value, _platform_desktop,
 		"Draw the menus' pictures of the missions and the multiplayer maps again,\n"
 		"sharp, from your own maps: once, as the main menu first shows (\"Preparing\n"
@@ -2430,17 +2423,6 @@ static const struct config_setting config_settings[] =
 		"nearest enemy in sight; \"key=walk\": a keyboard action held) on the\n"
 		"simulation's clock in seconds from the scenario's start (tools/scorecard),\n"
 		"the same at any simulation rate; empty for none." },
-	{ "debug.virtual_gamepads", _config_integer, "0", "HALO_VIRTUAL_GAMEPADS", _environment_value, _platform_desktop,
-		"Attach this many SDL virtual gamepads (0 to 4), which the game takes for\n"
-		"gamepads plugged in, for testing split screen; debug.virtual_gamepad_script\n"
-		"drives them." },
-	{ "debug.virtual_gamepad_script", _config_string, "\"\"", "HALO_VIRTUAL_GAMEPAD_SCRIPT", _environment_value,
-		_platform_desktop,
-		"What debug.virtual_gamepads press: \"<seconds> <pad> <what>; ...\", the\n"
-		"seconds from when the network lobby first opens, the pad 1 to 4 (0: the\n"
-		"keyboard, a SPACE and start Enter), and a button (a, b, x, y, start, back,\n"
-		"up, down, left, right, lb, rb, lt, rt: pressed for 150 ms),\n"
-		"\"walk\" (the sticks move from then on) or \"still\"." },
 	{ "debug.trace", _config_string, "\"\"", "HALO_TRACE", _environment_value, _platform_all,
 		"A file to write a line for each simulation step to: the players' place,\n"
 		"velocity and aim, each projectile's, and what happened in the step\n"

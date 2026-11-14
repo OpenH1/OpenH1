@@ -216,9 +216,6 @@ static game_state_before_load_proc before_load_procs[] =
 	where the loaded state has them, not blended in from there
 	(render_interpolation.c; drawing only) */
 	render_interpolation_reset,
-	/* port: (and the inputs their functions were computed from are not
-	theirs: objects.c's object_function_inputs) */
-	object_function_inputs_forget,
 };
 
 static game_state_after_load_proc after_load_procs[] =
@@ -327,9 +324,6 @@ void game_state_initialize_for_new_map(
 
 	/* port: (the objects are put back: object_bounds_cache.c) */
 	object_bounds_cache_invalidate();
-	/* port: (and the inputs their functions were computed from are not
-	theirs: objects.c's object_function_inputs) */
-	object_function_inputs_forget();
 	game_state_note_event("map start");
 	game_state_data_arrays_new_map();
 

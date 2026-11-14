@@ -744,6 +744,7 @@ boolean debug_trigger_volumes;
 
 /* ---------- public code */
 
+#include "mcc_cache.h" /* port: port/linux/game/mcc_cache.c */
 #include "mcc_script_threads.inl" /* port: MCC-only bounded thread storage. */
 #include "mcc_script_runtime.inl" /* port: port/linux/game/mcc_script_runtime.inl */
 #include "hs_console_state.inl" /* port: port/linux/game/hs_console_state.inl */

@@ -10,7 +10,6 @@ finger down (host_gesture_insets).
 */
 
 #include "touch_input.h"
-#include "keyboard_prompts.h"
 #include "touch_menu.h"
 #include "port_config.h"
 
@@ -132,12 +131,10 @@ void touch_input_event(unsigned int type, const SDL_TouchFingerEvent *finger)
 	switch (type)
 	{
 	case SDL_EVENT_FINGER_DOWN:
-		keyboard_prompt_touch();
 		refresh_zones(width, height);
 		touch_menu_down(&menu, finger->fingerID, x, y);
 		break;
 	case SDL_EVENT_FINGER_MOTION:
-		keyboard_prompt_touch();
 		touch_menu_move(&menu, finger->fingerID, x, y);
 		break;
 	case SDL_EVENT_FINGER_UP:
@@ -413,9 +410,6 @@ void touch_input_controls(XINPUT_GAMEPAD *pad, int menus)
 		host_touch_bindings(bindings);
 	}
 	host_touch_read(state);
-	/* Touch retains native prompts while automatic detection is enabled. */
-	for (index = 0; index < 7; index++)
-		if (state[index]) { keyboard_prompt_touch(); break; }
 	/* the stick moves the player through the game's input state, whatever
 	the profile's sticks do (touch_input_move), not as the left stick */
 	move_x = state[0] / 32767.0f;
@@ -484,7 +478,6 @@ void touch_input_look(float scale, float *yaw, float *pitch, float *gyro_yaw, fl
 		delta[index] += look_carried[index];
 		look_carried[index] = 0.0f;
 	}
-	if (delta[0] || delta[1]) keyboard_prompt_touch();
 	*yaw -= delta[0] * scale;
 	*pitch -= delta[1] * scale;
 	*gyro_yaw -= delta[2] * scale;

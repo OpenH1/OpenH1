@@ -62,6 +62,7 @@ a bitmap made is kept until the map goes, as anything may still hold it.
 #include "main/console.h"
 #include "rasterizer/rasterizer_swizzle.h"
 #include "tag_files/tag_groups.h"
+#include "../src/port_mods.h" /* port: port/linux/src/port_mods.c */
 #include "cache_file_formats.h"
 #include "custom_edition_cache.h"
 #include "mods.h"

@@ -5,6 +5,7 @@
 #include "bitmaps/bitmaps.h"
 #include "interface/ui_widget.h"
 #include "tag_files/tag_groups.h"
+#include "tag_files/tag_files.h"
 #include "mcc_maps.h"
 #include "mcc_menu_preview.h"
 #include "../src/mcc_preview_image.h"

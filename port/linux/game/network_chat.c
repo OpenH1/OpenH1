@@ -3104,11 +3104,6 @@ short network_chat_controller(void)
 	return chat_input.active && chat_keyboard.open ? chat_input.controller : NONE;
 }
 
-short network_chat_controller(void)
-{
-	return chat_input.active && chat_keyboard.open ? chat_input.controller : NONE;
-}
-
 boolean network_chat_typing(
 	void)
 {
