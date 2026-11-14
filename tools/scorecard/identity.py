@@ -25,6 +25,7 @@ could not run (no baseline: a note, not a failure, with --missing-ok).
 import argparse
 import concurrent.futures
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -87,6 +88,25 @@ def play_all(game, work, maps, trace=None):
         futures = {name: pool.submit(play, name, work / name, game, maps[name], slot, trace)
                    for slot, name in enumerate(SCENARIOS, start=200)}
         return {name: future.result() for name, future in futures.items()}
+
+
+def dumped(name, work, maps, trace, said):
+    """two runs that parted played again, each writing the game state at the tick they first differed at
+    (debug.determinism_dump), compared byte by byte: what differs, where (determinism_compare.py --dump)"""
+    tick = re.search(r"debug\.determinism_dump=(\d+)", said)
+    if not tick:
+        return []
+    dump = dict(trace or {}, HALO_DETERMINISM_DUMP=tick.group(1))
+    folders = [work / "dumped" / name / run for run in ("a", "b")]
+    for slot, folder in enumerate(folders, start=260):
+        play(name, folder, runner.GAME, maps[name], slot, dump)
+    bins = [folder / f"{LOG}.{tick.group(1)}.bin" for folder in folders]
+    if not all(path.is_file() for path in bins):
+        return [f"(played again, no game state written at tick {tick.group(1)})"]
+    compared = subprocess.run([sys.executable, str(ROOT / "tools/determinism_compare.py"), str(folders[0] / LOG),
+                               str(folders[1] / LOG), "--dump", *map(str, bins)], capture_output=True, text=True)
+    return [f"played again, the game state at tick {tick.group(1)} compared:"] + \
+        (compared.stdout.strip().splitlines() or [compared.stderr.strip()])[:40]
 
 
 def ticks_logged(path):
@@ -162,6 +182,8 @@ def main():
         if not alike:
             print("\n".join("    " + line for line in compared.stdout.strip().splitlines()))
             failed += 1
+            if args.repeat and not args.mutation:
+                print("\n".join("    " + line for line in dumped(name, work, maps, trace, compared.stdout)))
     checked = [name for name in SCENARIOS if name in recorded]
     print(f"identity: {len(checked) - failed} of {len(checked)} scenarios bit-identical at 30 Hz" +
           (", run twice" if args.repeat else ""))
