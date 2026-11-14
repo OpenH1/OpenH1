@@ -46,7 +46,6 @@ static struct sound_datum *checked_sound(long index) {
 #define render_debug_looping_sound(...) ((void)0)
 #define player_effect_continuous_refresh(...) ((void)0)
 #define csmemcpy memcpy
-#define VALID_INDEX(i,c) ((i)>=0&&(i)<(c))
 /* coop_sound_sync.c's: no co-op client's sounds here */
 #define coop_sound_sync_place(...) _coop_sound_sync_play
 #define coop_sound_sync_refreshed(...) ((void)0)
