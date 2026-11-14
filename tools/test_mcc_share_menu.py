@@ -1,4 +1,4 @@
-"""MCC sharing navigation and visible-action focus on each platform."""
+"""MCC packages' navigation (Settings > Mods) and the sharing screens' focus on each platform."""
 from pathlib import Path
 import subprocess
 import xml.etree.ElementTree as ET
@@ -8,16 +8,38 @@ ROOT = Path(__file__).resolve().parents[1]
 GAME = ROOT / "port/linux/game"
 
 
-@pytest.mark.parametrize("platform", ["desktop", "android", "web"])
-@pytest.mark.parametrize("in_game", [False, True])
-def test_stock_network_menu_reaches_sharing(platform, in_game):
-    """Traverse the shipped Stock widgets without loading optional frontend tags."""
-    base = "main_menu/settings_select/player_setup/player_profile_edit/network_setup/"
-    widgets = {w.get("name"): w for file in (ROOT / "port/assets/menus/ce").glob("*.xml")
-               for w in ET.parse(file).getroot().findall("widget")}
-    pending = [base + ("in_game/in_game_network_settings_screen" if in_game else "network_settings_screen")]
+MENUS = ROOT / "port/assets/menus/ce"
+SETTINGS = "main_menu/settings_select/player_setup/player_profile_edit/"
+
+
+def _menus():
+    """the generated menus' widgets and string lists, by name"""
+    widgets, strings = {}, {}
+    for file in MENUS.glob("*.xml"):
+        root = ET.parse(file).getroot()
+        for widget in root.findall("widget"):
+            widgets[widget.get("name")] = widget
+        for listing in root.findall("strings"):
+            strings[listing.get("name")] = [s.get("text") for s in listing.findall("string")]
+    return widgets, strings
+
+
+def _label(widgets, strings, name):
+    widget = widgets[name]
+    return strings[widget.get("string_list")][int(widget.get("string_index"))]
+
+
+@pytest.mark.parametrize("platform", ["desktop", "android"])
+def test_settings_mods_tab_reaches_mcc_packages(platform):
+    """Settings > Mods > MASTER CHIEF COLLECTION: the MCC PACKAGES row opens
+    the packages' settings, and they reach MCC DOWNLOADS and its REMOVE"""
+    widgets, strings = _menus()
+    # (the settings' last tab is MODS, which "port settings tab" opens)
+    assert strings["main_menu/settings/tab_names"][-1] == "MODS"
+    assert _label(widgets, strings, SETTINGS + "video_settings/tab_mods_settings") == "MODS"
+    visible = lambda node: platform in node.get("platform", "desktop android").split()
+    pending = [SETTINGS + "mods_settings/mods_settings_screen"]
     reached = set()
-    visible = lambda node: platform in node.get("platform", "desktop android web").split()
     while pending:
         name = pending.pop()
         if name in reached or name not in widgets or not visible(widgets[name]):
@@ -28,15 +50,21 @@ def test_stock_network_menu_reaches_sharing(platform, in_game):
                 target = node.get("widget") if node.tag == "child" else node.get("open")
                 if target:
                     pending.append(target)
+    row = SETTINGS + "mods_settings/op_mcc_packages"
+    assert row in reached
+    labels = strings[SETTINGS + "mods_settings/labels"]
+    assert labels.index("MASTER CHIEF COLLECTION") < labels.index("MCC PACKAGES ›")
+    packages = SETTINGS + "network_setup/mcc_packages/mcc_packages_screen"
+    assert packages in reached
     settings = {widgets[name].get("setting") for name in reached}
-    assert {"network.map_download", "network.map_seed",
-            "game.mcc_campaigns", "game.mcc_collections"} <= settings
+    assert {"game.mcc_campaigns", "game.mcc_collections"} <= settings
+    # (Steam's Workshop is the desktop's alone)
     assert ("game.workshop_maps" in settings) == (platform == "desktop")
-    assert base + "mcc_downloads/screen" in reached
-    assert base + "mcc_downloads/remove" in reached
+    assert SETTINGS + "network_setup/mcc_downloads/screen" in reached
+    assert SETTINGS + "network_setup/mcc_downloads/remove" in reached
 
 
-@pytest.mark.parametrize("platform", ["desktop", "android", "web"])
+@pytest.mark.parametrize("platform", ["desktop", "android"])
 @pytest.mark.parametrize("screen", ["share", "downloads"])
 def test_prompt_focus_tracks_visible_actions(tmp_path, platform, screen):
     from harness import function
@@ -78,7 +106,7 @@ int main(void) {
         download_on=d;workshop_on=w;
         screen.focused_child=children+1;screen.parameters.list.selected_index=1;
         expected=d?1:w?2:4;
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#ifdef HALO_ANDROID
         if(!d&&w)expected=3;
 #endif
         update(&screen);

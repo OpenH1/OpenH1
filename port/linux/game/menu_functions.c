@@ -16134,7 +16134,7 @@ void pc_menu_game_data_function_invoke(
         struct widget_instance *workshop=named(widget,"workshop",0);
         struct widget_instance *browser=named(widget,"browser",0);
         boolean steam=mcc_share_game_has_workshop();
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#ifdef HALO_ANDROID
         steam=FALSE;
 #endif
         if (download) download->visible=mcc_share_game_can_download();

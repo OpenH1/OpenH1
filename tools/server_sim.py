@@ -79,13 +79,13 @@ COMMAND_LINE = 511
 ROTATION_TEXT = 4096
 ENTRY_TEXT = 255
 NOTICE_SIZE = 128
-NETWORK_VERSION = 38
+NETWORK_VERSION = 44
 # the RCON's hello's capabilities, and the status's (server_http.c's server_http_capabilities)
 CAPABILITIES = ["events", "status", "rotation", "settings", "bans", "owner_web", "ban_address", "stop",
                 "event_addresses", "identity", "vpn", "link", "game_mode"]
 # the OpenH1 protocol version (halo_port_limits.h's HALO_PORT_STANDARD_NETWORK_VERSION), and server.game_mode's
 # words with each one's tick rate
-OPENH1_VERSION = 11
+OPENH1_VERSION = 31
 GAME_MODES = {"legacy": 30, "openh1_30": 30, "openh1_60": 60, "openh1_120": 120}
 # the VPN policy's netlist (server_netlist.c): a master's list the simulator holds, and the addresses it lists
 VPN_LISTED = ("198.51.100.0", "198.51.100.255")

@@ -82,7 +82,6 @@ these OpenCE contributors (MCC maps, riding on vehicles, the dedicated
 server, co-op, the server browser and many fixes): chestahh, MrBruh, Jonas
 Volman (bnunu), Guven, Erik, medic-code, Steve Rice, s3anyboy,
 PeterRichardsonGolf, justinfilip, hispanorum, Kenneth Mosquera, hkmodd,
-trevorm7, Mootjuh, Brenden Hyde, eltanschauung, Carlos Pérez, Stefan Maier,
-John Cranston, Constantine Luke Matthew Bubar, Alastair, Wouter Beets,
-JoshRob297 and Antimomentum. Everyone who has contributed to OpenCE is on
+trevorm7, Mootjuh, Brenden Hyde, eltanschauung, Stefan Maier, John Cranston,
+Constantine Luke Matthew Bubar, Alastair, JoshRob297 and Antimomentum. Everyone who has contributed to OpenCE is on
 its [contributors page](https://github.com/OpenCommunityEdition/OpenCE/graphs/contributors).
