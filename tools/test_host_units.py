@@ -24,7 +24,7 @@ def compiler():
     return None
 
 
-def run_test(tmp_path, name, sources, includes=(), arguments=()):
+def run_test(tmp_path, name, sources, includes=(), arguments=(), flags=()):
     cc = compiler()
     if not cc:
         pytest.skip("no C compiler")
@@ -32,7 +32,7 @@ def run_test(tmp_path, name, sources, includes=(), arguments=()):
         pytest.skip("the host runs on AArch64 and x86-64 only")
     binary = tmp_path / name
     subprocess.run(
-        [cc, "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-O1", "-D_GNU_SOURCE",
+        [cc, "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-O1", "-D_GNU_SOURCE", *flags,
          f"-I{ROOT / 'port' / 'android' / 'include'}", f"-I{HOST}", *[f"-I{path}" for path in includes],
          "-pthread", *[str(source) for source in sources], "-o", str(binary)],
         check=True,
@@ -108,11 +108,13 @@ def test_host_crash_signal(tmp_path, broken):
         watch = tmp_path / "host_memory_watch.c"
         watch.write_text(text.replace(", SIGABRT,", ",").replace('#include "host', f'#include "{HOST}/host'))
     sources = [TESTS / "host_crash_signal_test.c", HOST / "host_arch.c", watch, HOST / "host_watch_hash.c"]
+    # (the frame records the report walks, as the host is built: tools/linux_guest_build.py)
+    flags = ["-fno-omit-frame-pointer"]
     if not broken:
-        run_test(tmp_path, "host_crash_signal_test", sources, [tmp_path], [str(tmp_path)])
+        run_test(tmp_path, "host_crash_signal_test", sources, [tmp_path], [str(tmp_path)], flags)
         return
     with pytest.raises(AssertionError):
-        run_test(tmp_path, "host_crash_signal_test", sources, [tmp_path], [str(tmp_path)])
+        run_test(tmp_path, "host_crash_signal_test", sources, [tmp_path], [str(tmp_path)], flags)
 
 
 def test_frame_pacing_divisor(tmp_path):
