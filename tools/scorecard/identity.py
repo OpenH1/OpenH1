@@ -59,8 +59,11 @@ LOG = "determinism.txt"
 # the frames' allocations already
 COMPARE = ["--builds", "--simulation", "--ignore", "hs thread"]
 # what two runs of this build are compared by: everything the log has, the takers by their call sites (the same
-# build's), the frames' allocations too (fixed steps: the same frames each run)
-REPEAT_COMPARE = []
+# build's), the frames' allocations too (fixed steps: the same frames each run), but the script threads, as COMPARE:
+# a console line's thread keeps its expression's index in the scenario's script syntax, outside the game state,
+# whose salt counts the lines compiled before it (on CI's runners, lob's map_name thread was 0xdfaa000a in one run
+# and 0xd63a000a in the other, at the first tick), which the scripts' running does not read
+REPEAT_COMPARE = ["--ignore", "hs thread"]
 # the tick whose game state the two runs write (debug.determinism_dump), for where they differ if they part there:
 # the first, which the map's loading leaves
 REPEAT_DUMP = "1"
