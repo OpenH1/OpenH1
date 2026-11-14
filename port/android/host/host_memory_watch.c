@@ -40,6 +40,9 @@ cannot fault).
 #ifndef _WIN32
 #include <dlfcn.h>
 #endif
+#ifdef __GLIBC__
+#include <execinfo.h>
+#endif
 
 /* the tracking's pages: the host's under page protection; the hashing's
 (WATCH_HASH_PAGE_SIZE) otherwise */
@@ -192,6 +195,27 @@ static void crash_line(const char *line)
 	host_crash_record_line(line);
 }
 
+#ifdef __GLIBC__
+/* the return addresses past the interrupted code's (at pc) by the C
+library's unwinder (the binaries' unwinding tables, which cross the signal's
+frame), or 0 if it does not reach it; backtrace is called once as the
+handlers are installed, which loads the unwinder */
+static int unwound_frames(uint64_t pc, uint64_t *returns, int most)
+{
+	void *frames[64];
+	int count = backtrace(frames, (int)(sizeof(frames) / sizeof(frames[0]))), index, taken = 0;
+
+	for (index = 0; index < count; index++)
+	{
+		if ((uint64_t)(uintptr_t)frames[index] == pc)
+			break;
+	}
+	for (index++; index < count && taken < most; index++)
+		returns[taken++] = (uint64_t)(uintptr_t)frames[index];
+	return taken;
+}
+#endif
+
 /* the guest's code, the stack and the frame records at a crash, through the
 log's sink (which neither locks nor uses stdio); the walk copies each record
 without faulting (host_arch_read_memory), as the frame pointer may hold
@@ -241,6 +265,18 @@ static void report_crash(int signal_number, siginfo_t *information, void *contex
 	for (index = 0; host_arch_register_line(context, index, line, sizeof(line)); index++)
 		crash_line(line);
 	count = host_arch_walk_frames(fp, host_arch_read_memory, returns, (int)(sizeof(returns) / sizeof(returns[0])));
+#ifdef __GLIBC__
+	/* (glibc built without frame pointers, as some distributions' is, raises
+	an abort in code that uses the register for itself: the unwinder's frames
+	instead) */
+	if (count < 2)
+	{
+		int unwound = unwound_frames(pc, returns, (int)(sizeof(returns) / sizeof(returns[0])));
+
+		if (unwound > count)
+			count = unwound;
+	}
+#endif
 	for (index = 0; index < count; index++)
 	{
 		snprintf(line, sizeof(line), "  frame %2d: return %016llx", index, (unsigned long long)returns[index]);
@@ -324,6 +360,14 @@ void host_install_signal_handlers(void)
 		snprintf(host_module_name, sizeof(host_module_name), "%s",
 			name ? name + 1 : module.dli_fname ? module.dli_fname : "");
 	}
+#ifdef __GLIBC__
+	{
+		void *frame;
+
+		/* (the unwinder loaded now, not in a handler) */
+		backtrace(&frame, 1);
+	}
+#endif
 
 	memset(&action, 0, sizeof(action));
 	action.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;
