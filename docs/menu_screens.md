@@ -86,6 +86,27 @@ top.
 A row's label can be a binding's (`{pause.friendly_fire}`), read again each
 frame.
 
+### A pop-up: `<dialog>`
+
+A screen with a `<dialog>` is a question in a box in the middle of the
+screen, drawn as the Quit question is (the PC version's `quit_screen`: its
+`alert_bkd` box with its blue border and bands, over the menus' scene): its
+title in the box's top band, its words under it, and its `<list>`'s items its
+choices, side by side in the box's bottom band, each a button of Quit's OK
+and BACK. The box is Quit's width, or wider for three or four choices (its
+picture's ends kept). Left and right (the d-pad, the stick, the arrow keys)
+step the choices, the pointer over one focuses it, and A, Start, a click or a
+tap does its `do`; B does the screen's `back`, else goes back. It is the same
+at every aspect ratio (in the menus' middle 640) and on a phone.
+
+| Element | Attributes | Meaning |
+| --- | --- | --- |
+| `<dialog>` | `title` (required), `text` | The box: its title and its words (wrapped to the box, bindings filled). A screen with one has nothing else but its `<list>` |
+| `<list>` | `focus` | (in a `<dialog>`) Its choices: 1 to 4 `<item>`s, `focus` the one focused as it opens (each opening asks anew) |
+
+`screens/quit.xml` (in place of the PC version's Quit question) and
+`screens/save_changes.xml` (below) are pop-ups.
+
 ### The tall layout: tabs, tables, panels and searches
 
 A screen with a `<table>` is laid out as Settings' and the server browser's
@@ -268,6 +289,9 @@ sounds and the fades are the game's.
 | `open settings` | Settings, as the main menu's SETTINGS opens it |
 | `open training` | The VR tutorial (Basic Training's chapters) |
 | `quit` | The quit question, as the main menu's QUIT and B open it |
+| `quit game` | The game quit (the quit question's OK) |
+| `back` | Back to the screen before, as B goes (a pop-up's BACK and CANCEL) |
+| `edit save`, `edit discard` | Back to the editor the question was opened from, its changes then saved as its OK saves them (a built-in gametype's new name asked first), or let go of, and the editor closed (below) |
 | `search next` | The next of the screen's searches typed into (the first, if none is) |
 | `search clear` | Every search's words cleared, as a table's CLEAR SEARCH |
 | `browser back` | The browser's back (its own: `gamespy back handler`) |
@@ -509,6 +533,21 @@ deletes the chosen one, B goes back. The list's model is the generated screen's 
 `profile_list`: the profiles read, the row chosen, its scroll), and the
 actions run the generated screen's functions and open its screens. The
 classic engine keeps its own screen and the original pictures.
+
+## Leaving an editor with changes not saved
+
+The gametype editor (Edit Gametypes' EDIT, a generated screen) takes B, Back
+and its CANCEL with `port edit leave` (`tools/port_settings.py`'s
+`WIDGET_PATCHES`, `menu_functions.c`'s `edit_leave_ask`): with nothing
+changed it goes back, as before; with changes it opens
+`screens/save_changes.xml`, a pop-up of its own (`screens/save_changes`, a
+stand-in in `blocks.xml`), the editor kept in the history. SAVE saves them as
+the editor's OK does (a built-in gametype asks for a new name first, the
+editor kept for its OK), DON'T SAVE lets them go, and CANCEL (or B) goes back
+to the editor, the changes kept (`pc_menu_edit_leave`). Another generated
+editor opts in with the same handler. The editor's Step 1 (its GAME TYPE)
+shows the gametype's own type while its BACK is focused, not the PC version's
+picture of a SAVE CHANGES question, which looked like one BACK asked (#901).
 
 ## The pause menu
 
