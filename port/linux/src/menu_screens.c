@@ -75,7 +75,8 @@ enum reader_element
 	_element_box,
 	_element_legend,
 	_element_objectives,
-	_element_picture
+	_element_picture,
+	_element_dialog
 };
 
 struct reader
@@ -956,7 +957,8 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 			reader_problem(reader, "a screen has one <title-art>", NULL);
 		block = block_add(reader, element == _element_space ? MENU_SCREEN_SPACE : MENU_SCREEN_TITLE_ART, -1);
 	}
-	else if ((parent_element == _element_screen || parent_element == _element_box) && !strcmp(name, "list"))
+	else if ((parent_element == _element_screen || parent_element == _element_box ||
+		parent_element == _element_dialog) && !strcmp(name, "list"))
 	{
 		static char const *const names[] = { "id", "focus", NULL };
 
@@ -964,7 +966,7 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 		attributes_read(reader, name, attributes, names, values);
 		if (kind_count(screen, MENU_SCREEN_LIST) || kind_count(screen, MENU_SCREEN_CARDS) || kind_count(screen, MENU_SCREEN_COLORS))
 			reader_problem(reader, "a screen has one <list>, <cards> or <colors>", NULL);
-		block = block_add(reader, MENU_SCREEN_LIST, parent_element == _element_box ? parent_block : -1);
+		block = block_add(reader, MENU_SCREEN_LIST, parent_element == _element_screen ? -1 : parent_block);
 		if (block >= 0)
 		{
 			screen->blocks[block].id = values[0];
@@ -1163,6 +1165,27 @@ static void XMLCALL element_start(void *data, XML_Char const *name, XML_Char con
 		if (block >= 0)
 			screen->blocks[block].label = values[0];
 	}
+	else if (parent_element == _element_screen && !strcmp(name, "dialog"))
+	{
+		static char const *const names[] = { "title", "text", NULL };
+
+		element = _element_dialog;
+		attributes_read(reader, name, attributes, names, values);
+		one_check(reader, MENU_SCREEN_DIALOG, "dialog");
+		if (!reader->failed && (kind_count(screen, MENU_SCREEN_BOX) || kind_count(screen, MENU_SCREEN_TABLE) ||
+			kind_count(screen, MENU_SCREEN_LIST)))
+			reader_problem(reader, "a <dialog> is a screen's alone, with no <box>, <table> or <list> beside it", NULL);
+		if (!reader->failed && (!values[0] || !values[0][0]))
+			reader_problem(reader, "a <dialog> has its title", NULL);
+		text_attribute_check(reader, values[0]);
+		text_attribute_check(reader, values[1]);
+		block = block_add(reader, MENU_SCREEN_DIALOG, -1);
+		if (block >= 0)
+		{
+			screen->blocks[block].label = values[0];
+			screen->blocks[block].text = values[1];
+		}
+	}
 	else if (parent_element == _element_screen && !strcmp(name, "buttons"))
 	{
 		static char const *const names[] = { NULL };
@@ -1271,6 +1294,25 @@ static void XMLCALL element_end(void *data, XML_Char const *name)
 
 		if (!kind_count(screen, MENU_SCREEN_LIST))
 			reader_problem(reader, "a <box> has a <list>", NULL);
+	}
+	/* (a dialog's choices: its list's items, 1 to MENU_SCREEN_MAXIMUM_CHOICES,
+	side by side at its foot) */
+	else if (element == _element_dialog)
+	{
+		struct menu_screen *screen = reader->screen;
+		int index, list = -1, choices = 0;
+
+		for (index = 0; index < screen->block_count; index++)
+		{
+			if (screen->blocks[index].kind == MENU_SCREEN_LIST)
+				list = index;
+		}
+		for (index = 0; list >= 0 && index < screen->block_count; index++)
+			choices += screen->blocks[index].kind == MENU_SCREEN_ITEM && screen->blocks[index].parent == list;
+		if (list < 0)
+			reader_problem(reader, "a <dialog> has a <list> of its choices", NULL);
+		else if (choices > MENU_SCREEN_MAXIMUM_CHOICES)
+			reader_problem(reader, "a <dialog> has at most %s choices", "4");
 	}
 	else if (element == _element_list || element == _element_cards)
 	{

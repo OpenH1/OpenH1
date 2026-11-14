@@ -14758,6 +14758,80 @@ static void gametype_engine_name(struct widget_instance *text_box)
 		text_box->parameters.text_box.string_list_index = strings[PIN(variant->game_engine_index, 0, 5)];
 }
 
+/* "port gametype select desc" (after the PC version's "gametype select menu
+update desc"): Step 1's BACK, the list's sixth past its five types, shows the
+gametype's own type's words and picture, not the PC version's sixth (its
+SAVE CHANGES question's picture, of an item this list has not, which looked
+like a question that BACK asked) */
+static void gametype_select_description(struct widget_instance *list)
+{
+	struct widget_instance *description = list->parameters.list.extended_description;
+	struct game_variant *variant = edit_variant();
+	short index = list->focused_child ? ui_widget_port_list_index(list) : NONE;
+	short item;
+
+	if (!description || !description->child || !description->child->next)
+		return;
+	description->child->next->visible = TRUE;
+	if (index < (short)NUMBEROF(engine_items))
+		return;
+	for (item = 0; variant && item < (short)NUMBEROF(engine_items); item++)
+	{
+		if (engine_of_item[item] == variant->game_engine_index)
+		{
+			description->child->parameters.text_box.string_list_index = item;
+			description->child->next->animation.current_frame_index = item;
+			return;
+		}
+	}
+	/* (a gametype of no type: no picture) */
+	description->child->next->visible = FALSE;
+}
+
+/* ---- leaving an editor with changes not saved (the gametype editor's B,
+Back and CANCEL): the hand-written question, screens/save_changes.xml */
+
+struct widget_instance *ui_widget_port_active_screen(short local_player_index);
+
+/* "port edit leave" (B on a screen that edits a gametype or a profile, as
+its CANCEL presses B; its handler opens the question where this succeeds):
+with nothing changed, back to the screen before, as B went, the question not
+asked; with changes, TRUE, the screen kept in the history for the question's
+CANCEL */
+static boolean edit_leave_ask(struct widget_instance *widget, boolean *widget_deleted)
+{
+	if (player_ui_edit_profile_is_dirty())
+	{
+		platform_log("menus: leaving the editor with changes not saved: asked");
+		return TRUE;
+	}
+	ui_play_audio_feedback_sound(SOUND_BACK);
+	ui_widget_port_go_back(widget);
+	*widget_deleted = TRUE;
+	return TRUE;
+}
+
+/* the question's SAVE and DON'T SAVE (menu_screen.c's "edit save" and "edit
+discard"), on the editor it went back to: the changes saved as the editor's
+OK saves them (a built-in gametype's new name asked first, the editor kept
+open for its OK), or let go of, and the editor closed as its OK closes it */
+boolean pc_menu_edit_leave(short local_player_index, boolean save)
+{
+	struct widget_instance *screen = ui_widget_port_active_screen(local_player_index);
+	boolean profile = player_ui_get_edit_player_profile() != NULL;
+	boolean deleted = FALSE;
+	boolean done;
+
+	if (!screen)
+		return FALSE;
+	if (!save)
+		player_ui_end_editing_profile();
+	done = profile ? profile_save_changes(screen, &deleted) : ui_widget_port_gametype_save(screen, &deleted);
+	platform_log("menus: leaving the editor: %s", !save ? "its changes let go of" : done ? "its changes saved" :
+		"a new name asked first");
+	return done;
+}
+
 /* ---------- the party: Multiplayer's PARTY and its screen */
 
 #include "party_menu.inc"
@@ -15034,6 +15108,10 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "mp profile save changes"))
 		{
 			return ui_widget_port_gametype_save(widget, widget_deleted);
+		}
+		else if (!strcmp(name, "port edit leave"))
+		{
+			return edit_leave_ask(widget, widget_deleted);
 		}
 		else if (!strcmp(name, "mp profile begin editing"))
 		{
@@ -15590,4 +15668,6 @@ void pc_menu_game_data_function_invoke(
 		host_controls_update(widget);
 	else if (!strcmp(name, "port playlist edit desc"))
 		playlist_edit_description(widget);
+	else if (!strcmp(name, "port gametype select desc"))
+		gametype_select_description(widget);
 }

@@ -891,6 +891,53 @@ int main(int argc, char **argv)
 		refused("<screen name=\"t\"><box x=\"1\" y=\"10\" width=\"200\"><list><item label=\"A\" do=\"quit\"/>"
 			"</list></box><box x=\"1\" y=\"10\" width=\"200\"/></screen>", "one <box>");
 	}
+	else if (!strcmp(name, "dialog"))
+	{
+		/* the pop-ups' files (#901): a <dialog>'s title and words, and its
+		list's items its choices; the question as the gametype editor is
+		left with changes (SAVE, DON'T SAVE, CANCEL) and Quit's */
+		struct menu_screen_block const *dialog;
+		int dialog_index, list_index;
+
+		CHECK(read_text(save_changes_xml, &screen, problem), "the save question's file is refused: %s", problem);
+		dialog_index = kind_first(&screen, MENU_SCREEN_DIALOG);
+		list_index = kind_first(&screen, MENU_SCREEN_LIST);
+		CHECK(dialog_index >= 0 && list_index >= 0, "no dialog, or no list");
+		dialog = &screen.blocks[dialog_index];
+		CHECK(dialog->label && !strcmp(dialog->label, "SAVE CHANGES?"), "its title");
+		CHECK(dialog->text && strstr(dialog->text, "unsaved changes"), "its words");
+		CHECK(screen.blocks[list_index].parent == dialog_index, "the list not in the dialog");
+		CHECK(kind_total(&screen, MENU_SCREEN_ITEM, list_index) == 3, "%d choices",
+			kind_total(&screen, MENU_SCREEN_ITEM, list_index));
+		CHECK(block_of(&screen, "save") && !strcmp(block_of(&screen, "save")->action, "edit save") &&
+			block_of(&screen, "discard") && !strcmp(block_of(&screen, "discard")->action, "edit discard") &&
+			block_of(&screen, "cancel") && !strcmp(block_of(&screen, "cancel")->action, "back"),
+			"its choices' actions");
+		CHECK(!strcmp(screen.blocks[list_index].focus, "save"), "its focus");
+		menu_screen_free(&screen);
+		CHECK(read_text(quit_xml, &screen, problem), "Quit's file is refused: %s", problem);
+		CHECK(kind_total(&screen, MENU_SCREEN_DIALOG, -1) == 1 &&
+			kind_total(&screen, MENU_SCREEN_ITEM, kind_first(&screen, MENU_SCREEN_LIST)) == 2, "Quit's two choices");
+		CHECK(block_of(&screen, "ok") && !strcmp(block_of(&screen, "ok")->action, "quit game"), "Quit's OK");
+		menu_screen_free(&screen);
+		/* (what a dialog must have and may not) */
+		refused("<screen name='t'><dialog title='T' text='W'/></screen>", "<list> of its choices");
+		refused("<screen name='t'><dialog text='W'><list><item label='A' do='back'/></list></dialog>"
+			"</screen>", "has its title");
+		refused("<screen name='t'><dialog title='T'><list><item label='A' do='back'/>"
+			"<item label='B' do='back'/><item label='C' do='back'/><item label='D' do='back'/>"
+			"<item label='E' do='back'/></list></dialog></screen>", "at most 4 choices");
+		refused("<screen name='t'><dialog title='T' text='{nothing.here}'><list><item label='A' do='back'/>"
+			"</list></dialog></screen>", "no binding {nothing.here}");
+		refused("<screen name='t'><dialog title='T'><list><item label='A' do='open nowhere'/></list>"
+			"</dialog></screen>", "no action");
+		refused("<screen name='t'><dialog title='T'><list><item label='A' do='back'/></list></dialog>"
+			"<dialog title='U'/></screen>", "one <dialog>");
+		refused("<screen name='t'><list><item label='A' do='back'/></list><dialog title='T'/></screen>",
+			"with no <box>, <table> or <list> beside it");
+		refused("<screen name='t'><dialog title='T' words='W'><list><item label='A' do='back'/></list>"
+			"</dialog></screen>", "no attribute words");
+	}
 	else if (!strcmp(name, "coop"))
 	{
 		static char const *const coop_actions[] = { "coop host", "coop join", "coop split" };
