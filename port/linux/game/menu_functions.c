@@ -7970,16 +7970,17 @@ static short menu_text_box_fit_to(struct widget_instance *box, wchar_t const *te
 its font, in a box `width` units wide: whether it is a row's text (a list's
 row's, a spinner's value), whether its row has the focus, the menus' clock)
 the line to draw in place of the widget's text, how far it is moved left
-(*scroll) and the room it is cut to (*room): the whole of it, scrolled,
+(*scroll, at most *overflow) and the room it is cut to (*room): the whole of it, scrolled,
 while its row has the focus, its form cut short with "..." while not; NULL
 to draw the widget's text as it is (it fits, or is no row's and was not
 cut short by a fit) */
 wchar_t const *pc_menu_text_line(struct widget_instance *widget, long font, wchar_t const *text, short width,
-	boolean row, boolean focused, unsigned long now, real *scroll, short *room)
+	boolean row, boolean focused, unsigned long now, real *scroll, short *room, short *overflow)
 {
 	struct menu_text_line *line = menu_text_line_of(widget, FALSE);
 
 	*scroll = 0.0f;
+	*overflow = 0;
 	*room = width;
 	if (!text || !text[0] || font == NONE || width <= 0)
 		return NULL;
@@ -8015,9 +8016,10 @@ wchar_t const *pc_menu_text_line(struct widget_instance *widget, long font, wcha
 	*room = line->width;
 	if (line->full_width <= line->width)
 		return NULL;
+	*overflow = (short)(line->full_width - line->width);
 	if (focused)
 	{
-		*scroll = menu_text_scroll_offset((short)(line->full_width - line->width), now - line->focus_time);
+		*scroll = menu_text_scroll_offset(*overflow, now - line->focus_time);
 		return line->full;
 	}
 	return line->fitted ? NULL : line->cut;

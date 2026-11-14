@@ -705,7 +705,7 @@ boolean pc_menu_text_color(struct widget_instance *widget, real_argb_color *colo
 draw in place of a widget's text: whole and scrolled while its row has the
 focus, cut short with "..." while not (widget_instance_port_text_line_draw) */
 wchar_t const *pc_menu_text_line(struct widget_instance *widget, long font, wchar_t const *text, short width,
-	boolean row, boolean focused, unsigned long now, real *scroll, short *room);
+	boolean row, boolean focused, unsigned long now, real *scroll, short *room, short *overflow);
 
 /* ---------- constants */
 
@@ -5753,14 +5753,20 @@ static boolean widget_instance_port_row_focused(
 	return end == widget || (widget->parent->parent && end == widget->parent);
 }
 
+/* port: how far, in the menus' units, a scrolled line fades out at a cut
+edge (at most a quarter of its room) */
+#define UI_WIDGET_PORT_TEXT_LINE_FADE 8.0f
+
 /* port: a line of a menu's text too long for its box (issue 899:
 menu_functions.c's pc_menu_text_line) drawn in its place, in the bounds
-it is laid out in (its look's scale set, as begun) and its clip: while its
-row has the focus, the whole line left-justified in the room it was fitted
-to, moved left by its scroll (its fraction of a unit too, the high-res
-text's: rasterizer_text_set_shift) and cut to that room; while not, its
-form cut short with "...". FALSE if the text is drawn as it is (it fits),
-the draw mode set as it was either way */
+it is laid out in (its look's scale set, as begun) less the room kept clear
+at its left and right (inset, in the screen's units: a spinner's arrows),
+and its clip: while its row has the focus, the whole line left-justified in
+the room it was fitted to, moved left by its scroll (its fraction of a unit
+too, the high-res text's: rasterizer_text_set_shift), cut to that room and
+faded out at an edge it is cut at; while not, its form cut short with
+"...". FALSE if the text is drawn as it is (it fits), the draw mode set as
+it was either way */
 static boolean widget_instance_port_text_line_draw(
 	struct widget_instance *widget,
 	rectangle2d const *bounds,
@@ -5768,46 +5774,95 @@ static boolean widget_instance_port_text_line_draw(
 	wchar_t const *text,
 	long font_index,
 	short justification,
-	real_argb_color const *color)
+	real_argb_color const *color,
+	short inset_left,
+	short inset_right)
 {
-	real scroll, scale, origin_x, origin_y;
-	short room;
+	real scroll, scale, origin_x, origin_y, fade;
+	short room, overflow;
 	boolean focused = widget_instance_port_row_focused(widget);
-	wchar_t const *line = pc_menu_text_line(widget, font_index, text, (short)(bounds->x1 - bounds->x0),
-		widget_instance_port_in_row(widget), focused, widget_globals.current_system_milliseconds, &scroll, &room);
-	rectangle2d laid, cut;
+	rectangle2d inside = *bounds, laid, cut;
+	wchar_t const *line;
 	short whole, left, right;
 
+	/* (the room kept clear, in the units it is laid out in) */
+	rasterizer_text_get_scale(&scale, &origin_x, &origin_y);
+	inside.x0 = (short)(inside.x0 + (short)((real)inset_left / scale + 0.999f));
+	inside.x1 = (short)(inside.x1 - (short)((real)inset_right / scale + 0.999f));
+	line = pc_menu_text_line(widget, font_index, text, (short)(inside.x1 - inside.x0), widget_instance_port_in_row(widget),
+		focused, widget_globals.current_system_milliseconds, &scroll, &room, &overflow);
 	/* (measuring a line sets the draw mode: as it was) */
 	draw_string_set_draw_mode(font_index, NONE, justification, 0, color);
 	if (!line)
 		return FALSE;
 	if (!focused)
 	{
-		rasterizer_draw_unicode_string(bounds, clip, NULL, 0, line);
+		rasterizer_draw_unicode_string(&inside, clip, NULL, 0, line);
 		return TRUE;
 	}
 	/* (the room: at the box's left, right or middle, as justified) */
-	left = justification == _text_justification_right ? (short)(bounds->x1 - room) :
-		justification == _text_justification_center ? (short)((bounds->x0 + bounds->x1 - room) / 2) : bounds->x0;
+	left = justification == _text_justification_right ? (short)(inside.x1 - room) :
+		justification == _text_justification_center ? (short)((inside.x0 + inside.x1 - room) / 2) : inside.x0;
 	right = (short)(left + room);
 	whole = (short)scroll;
-	laid = *bounds;
+	laid = inside;
 	laid.x0 = (short)(left - whole);
 	laid.x1 = (short)(laid.x0 + 0x3FFF);
 	/* (the clip in the screen's units, as the scale draws the room: a unit
 	wider at its right for the line's fraction of a unit) */
-	rasterizer_text_get_scale(&scale, &origin_x, &origin_y);
 	cut = *clip;
 	cut.x0 = (short)MAX(cut.x0, (short)(origin_x + ((real)left - origin_x) * scale));
 	cut.x1 = (short)MIN(cut.x1, (short)(origin_x + ((real)right + 1.0f - origin_x) * scale + 0.999f));
+	/* (faded at its left once it has moved, at its right until its end shows) */
+	fade = MIN(UI_WIDGET_PORT_TEXT_LINE_FADE, (real)room * 0.25f);
 	draw_string_set_draw_mode(font_index, NONE, _text_justification_left, 0, color);
-	rasterizer_text_set_shift(scroll - (real)whole, (real)left, (real)right);
+	rasterizer_text_set_shift(scroll - (real)whole, (real)left, (real)right, scroll > 0.0f ? fade : 0.0f,
+		scroll < (real)overflow ? fade : 0.0f);
 	if (cut.x1 > cut.x0)
 		rasterizer_draw_unicode_string(&laid, &cut, NULL, 0, line);
-	rasterizer_text_set_shift(0.0f, 0.0f, -1.0f);
+	rasterizer_text_set_shift(0.0f, 0.0f, -1.0f, 0.0f, 0.0f);
 	draw_string_set_draw_mode(font_index, NONE, justification, 0, color);
 	return TRUE;
+}
+
+/* port: the room a spinner's value keeps clear at its left and right, in
+the screen's units, for its arrows (its header's and footer's pictures,
+each drawn at its size from its bounds' corner, or across its bounds if
+they are wider) and a gap past them: as far as an arrow reaches into its
+text's box (bounds, as drawn, before its look's scale), and the gap */
+#define UI_WIDGET_PORT_SPINNER_ARROW_GAP 3
+
+static void widget_instance_port_spinner_insets(
+	struct widget_instance *widget,
+	struct ui_widget_definition *definition,
+	rectangle2d const *bounds,
+	point2d offset,
+	short *inset_left,
+	short *inset_right)
+{
+	short middle = (short)((bounds->x0 + bounds->x1) / 2);
+	short extra = spinner_string_list_extra_count(definition->text_label_string_list.index) ? SPINNER_EXTRA_WIDTH : 0;
+
+	(void)widget;
+	*inset_left = 0;
+	*inset_right = 0;
+	if (definition->list_header_bitmap.index != NONE)
+	{
+		struct bitmap_data *bitmap = bitmap_group_get_bitmap_from_sequence(definition->list_header_bitmap.index, 0, 0);
+		short x0 = (short)(definition->list_header_bounds.x0 - extra + offset.x);
+		short x1 = (short)MAX(definition->list_header_bounds.x1 - extra + offset.x, x0 + (bitmap ? bitmap->width : 0));
+
+		if (bitmap && x0 < middle)
+			*inset_left = (short)MAX(0, x1 + UI_WIDGET_PORT_SPINNER_ARROW_GAP - bounds->x0);
+	}
+	if (definition->list_footer_bitmap.index != NONE)
+	{
+		struct bitmap_data *bitmap = bitmap_group_get_bitmap_from_sequence(definition->list_footer_bitmap.index, 0, 0);
+		short x0 = (short)(definition->list_footer_bounds.x0 + offset.x);
+
+		if (bitmap && x0 > middle)
+			*inset_right = (short)MAX(0, bounds->x1 - (x0 - UI_WIDGET_PORT_SPINNER_ARROW_GAP));
+	}
 }
 
 static boolean string_has_icons_to_draw(
@@ -6465,7 +6520,7 @@ static void widget_instance_render_text_box(
 	has the focus, cut short while not (issue 899); not a text wrapped to
 	its box, nor a field typed into */
 	else if (wrapped || caret ||
-		!widget_instance_port_text_line_draw(widget, &bounds, &clip, *text, font_index, justification, &color))
+		!widget_instance_port_text_line_draw(widget, &bounds, &clip, *text, font_index, justification, &color, 0, 0))
 	{
 		rasterizer_draw_unicode_string(&bounds, &clip, NULL, 0, *text);
 	}
@@ -6698,13 +6753,17 @@ static void widget_instance_render_spinner_list(
 					&color);
 				/* port: at its look's scale (the menu engine's); a value too
 				long for its box whole and scrolled while its row has the
-				focus, cut short while not (issue 899) */
+				focus, cut short while not (issue 899), clear of its arrows */
 				{
-					real scale = ui_widget_port_text_scale_begin(widget, definition, &bounds, offset,
-						definition->justification);
+					short inset_left, inset_right;
+					real scale;
 
+					widget_instance_port_spinner_insets(widget, definition, &bounds, offset, &inset_left,
+						&inset_right);
+					scale = ui_widget_port_text_scale_begin(widget, definition, &bounds, offset,
+						definition->justification);
 					if (!widget_instance_port_text_line_draw(widget, &bounds, &clip, item_text,
-						definition->text_font.index, definition->justification, &color))
+						definition->text_font.index, definition->justification, &color, inset_left, inset_right))
 					{
 						rasterizer_draw_unicode_string(&bounds, &clip, NULL, 0, item_text);
 					}

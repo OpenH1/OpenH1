@@ -86,10 +86,11 @@ static wchar_t const *frames(struct widget_instance *widget, wchar_t const *text
 {
 	wchar_t const *line = NULL;
 	unsigned long now;
+	short overflow;
 
 	for (now = from; now < to; now += 16)
-		pc_menu_text_line(widget, 1, text, width, row, focused, now, scroll, room);
-	line = pc_menu_text_line(widget, 1, text, width, row, focused, to, scroll, room);
+		pc_menu_text_line(widget, 1, text, width, row, focused, now, scroll, room, &overflow);
+	line = pc_menu_text_line(widget, 1, text, width, row, focused, to, scroll, room, &overflow);
 	return line;
 }
 
@@ -138,14 +139,14 @@ static void case_row(void)
 	static struct widget_instance spinner;
 	wchar_t const *line;
 	real scroll;
-	short room;
+	short room, overflow;
 	long frame;
 
-	line = pc_menu_text_line(&spinner, 1, LONG_NAME, 90, TRUE, FALSE, 1000, &scroll, &room);
+	line = pc_menu_text_line(&spinner, 1, LONG_NAME, 90, TRUE, FALSE, 1000, &scroll, &room, &overflow);
 	CHECK(line && ends_with_dots(line) && settings_text_width(1, line) <= 90 && scroll == 0.0f,
 		"not cut short to its box with no focus: %ls", line ? line : L"(as it is)");
 	CHECK(!wcsncmp(line, LONG_NAME, wcslen(line) - 3), "its cut form is not its start: %ls", line);
-	line = pc_menu_text_line(&spinner, 1, LONG_NAME, 90, TRUE, TRUE, 2000, &scroll, &room);
+	line = pc_menu_text_line(&spinner, 1, LONG_NAME, 90, TRUE, TRUE, 2000, &scroll, &room, &overflow);
 	CHECK(line && !wcscmp(line, LONG_NAME) && scroll == 0.0f && room == 90, "not whole and still as focused");
 	line = frames(&spinner, LONG_NAME, 90, TRUE, TRUE, 2000, 2000 + MENU_TEXT_SCROLL_PAUSE + 1000, &scroll, &room);
 	CHECK(line && fabsf(scroll - MENU_TEXT_SCROLL_SPEED) < 0.01f, "a second into its move it is at %g", scroll);
@@ -154,7 +155,7 @@ static void case_row(void)
 	for (frame = 0; frame < 600; frame++)
 	{
 		pc_menu_text_line(&spinner, 1, LONG_NAME, 90, TRUE, frame < 300, 10000 + (unsigned long)frame * 16,
-			&scroll, &room);
+			&scroll, &room, &overflow);
 	}
 	CHECK(measures == 0, "measured %ld times drawn again", measures);
 	/* (its end shown, and no further) */
@@ -164,6 +165,8 @@ static void case_row(void)
 	CHECK(line && !wcscmp(line, LONG_NAME), "not whole at its end");
 	CHECK(fabsf(scroll - (settings_text_width(1, LONG_NAME) - 90)) < 0.01f, "at its end it is at %g, not %d", scroll,
 		settings_text_width(1, LONG_NAME) - 90);
+	pc_menu_text_line(&spinner, 1, LONG_NAME, 90, TRUE, TRUE, 40000, &scroll, &room, &overflow);
+	CHECK(overflow == settings_text_width(1, LONG_NAME) - 90, "its overflow %d", overflow);
 }
 
 /* a line that fits, a line of more lines, and a long one of no row's that
@@ -172,14 +175,14 @@ static void case_as_it_is(void)
 {
 	static struct widget_instance label, title, lines;
 	real scroll;
-	short room;
+	short room, overflow;
 
-	CHECK(!pc_menu_text_line(&label, 1, L"OUTPUT", 90, TRUE, TRUE, 1000, &scroll, &room) && scroll == 0.0f,
+	CHECK(!pc_menu_text_line(&label, 1, L"OUTPUT", 90, TRUE, TRUE, 1000, &scroll, &room, &overflow) && scroll == 0.0f,
 		"a line that fits drawn otherwise");
-	CHECK(!pc_menu_text_line(&title, 1, LONG_NAME, 90, FALSE, TRUE, 1000, &scroll, &room),
+	CHECK(!pc_menu_text_line(&title, 1, LONG_NAME, 90, FALSE, TRUE, 1000, &scroll, &room, &overflow),
 		"a screen's own text cut or scrolled");
 	CHECK(!pc_menu_text_line(&lines, 1, L"SPEAKERS\r\nHIGH DEFINITION AUDIO DEVICE", 90, TRUE, TRUE, 1000, &scroll,
-		&room), "a text of more lines scrolled");
+		&room, &overflow), "a text of more lines scrolled");
 }
 
 /* a fit's line cut short: whole for its scroll while its row has the
@@ -190,7 +193,7 @@ static void case_fitted(void)
 	static struct widget_instance cell;
 	wchar_t const *line;
 	real scroll;
-	short room, drawn, again;
+	short room, overflow, drawn, again;
 	long frame;
 
 	cell.font = 1;
@@ -198,26 +201,26 @@ static void case_fitted(void)
 	drawn = menu_text_box_fit_to(&cell, LONG_NAME, 90);
 	CHECK(ends_with_dots(cell.text) && drawn <= 90 && drawn == settings_text_width(1, cell.text),
 		"not cut short to 90: %ls (%d)", cell.text, drawn);
-	CHECK(!pc_menu_text_line(&cell, 1, cell.text, 200, FALSE, FALSE, 1000, &scroll, &room),
+	CHECK(!pc_menu_text_line(&cell, 1, cell.text, 200, FALSE, FALSE, 1000, &scroll, &room, &overflow),
 		"its cut form drawn otherwise with no focus");
-	line = pc_menu_text_line(&cell, 1, cell.text, 200, FALSE, TRUE, 2000, &scroll, &room);
+	line = pc_menu_text_line(&cell, 1, cell.text, 200, FALSE, TRUE, 2000, &scroll, &room, &overflow);
 	CHECK(line && !wcscmp(line, LONG_NAME) && room == 90, "not whole in its fit's room as focused (room %d)", room);
 	measures = 0;
 	for (frame = 0; frame < 100; frame++)
 	{
 		again = menu_text_box_fit_to(&cell, LONG_NAME, 90);
-		pc_menu_text_line(&cell, 1, cell.text, 200, FALSE, TRUE, 2000 + (unsigned long)frame * 16, &scroll, &room);
+		pc_menu_text_line(&cell, 1, cell.text, 200, FALSE, TRUE, 2000 + (unsigned long)frame * 16, &scroll, &room, &overflow);
 	}
 	CHECK(measures == 0 && again == drawn, "fitted again with %ld measures (%d wide, not %d)", measures, again, drawn);
 	/* (another text, which fits) */
 	menu_text_box_fit_to(&cell, L"SPEAKERS", 90);
 	CHECK(!wcscmp(cell.text, L"SPEAKERS"), "not whole: %ls", cell.text);
-	CHECK(!pc_menu_text_line(&cell, 1, cell.text, 200, FALSE, TRUE, 3000, &scroll, &room),
+	CHECK(!pc_menu_text_line(&cell, 1, cell.text, 200, FALSE, TRUE, 3000, &scroll, &room, &overflow),
 		"the line before still drawn");
 	/* (the box given words of its own after a fit) */
 	menu_text_box_fit_to(&cell, LONG_NAME, 90);
 	text_set(&cell, L"LOADING...");
-	CHECK(!pc_menu_text_line(&cell, 1, cell.text, 200, FALSE, TRUE, 4000, &scroll, &room),
+	CHECK(!pc_menu_text_line(&cell, 1, cell.text, 200, FALSE, TRUE, 4000, &scroll, &room, &overflow),
 		"a fit's line drawn in place of the box's own words");
 }
 
@@ -227,18 +230,18 @@ static void case_refocus(void)
 {
 	static struct widget_instance row;
 	real scroll;
-	short room;
+	short room, overflow;
 	unsigned long moving = MENU_TEXT_SCROLL_PAUSE + 1000;
 
 	frames(&row, LONG_NAME, 90, TRUE, TRUE, 1000, 1000 + moving, &scroll, &room);
 	CHECK(scroll > 0.0f, "not moving");
-	pc_menu_text_line(&row, 1, LONG_NAME, 90, TRUE, FALSE, 1000 + moving + 16, &scroll, &room);
-	pc_menu_text_line(&row, 1, LONG_NAME, 90, TRUE, TRUE, 1000 + moving + 32, &scroll, &room);
+	pc_menu_text_line(&row, 1, LONG_NAME, 90, TRUE, FALSE, 1000 + moving + 16, &scroll, &room, &overflow);
+	pc_menu_text_line(&row, 1, LONG_NAME, 90, TRUE, TRUE, 1000 + moving + 32, &scroll, &room, &overflow);
 	CHECK(scroll == 0.0f, "focused again, it is at %g", scroll);
 	frames(&row, LONG_NAME, 90, TRUE, TRUE, 1000 + moving + 32, 1000 + 2 * moving, &scroll, &room);
 	CHECK(scroll > 0.0f, "not moving again");
 	/* (not drawn for a second: hidden) */
-	pc_menu_text_line(&row, 1, LONG_NAME, 90, TRUE, TRUE, 2000 + 2 * moving, &scroll, &room);
+	pc_menu_text_line(&row, 1, LONG_NAME, 90, TRUE, TRUE, 2000 + 2 * moving, &scroll, &room, &overflow);
 	CHECK(scroll == 0.0f, "shown again, it is at %g", scroll);
 }
 
