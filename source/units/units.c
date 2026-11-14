@@ -12001,8 +12001,11 @@ void unit_postprocess_node_matrices(
 	}
 
 	/* port: a dead biped's body raised onto the ground that rises under it
-	(biped_limp_noodle.c) */
-	if (unit->object.type==_object_type_biped)
+	(biped_limp_noodle.c), with the game's animation enhancements only: the
+	pose is the game state's (the limp body starts from it, what strikes the
+	body strikes it there, the AI sees it), so Classic keeps the original's
+	(tools/scorecard/campaign_identity.py: b30's AI parted at tick 1897) */
+	if (unit->object.type==_object_type_biped && network_standard_enhanced_animations())
 		biped_limp_noodle_drape_dying(unit_index, node_matrices);
 
 	return;

@@ -7,10 +7,16 @@ seeds' takers by count, as two builds' call sites lie at other addresses; COMPAR
     python tools/scorecard/identity.py --baseline-game <master's build>/halo
     python tools/scorecard/identity.py --record <folder>      this build's logs, as master's baseline
     python tools/scorecard/identity.py --baseline <folder>    this build against logs recorded so
+    python tools/scorecard/identity.py --repeat               this build against itself: two runs of the same input
+    python tools/scorecard/identity.py --repeat --mutation unseeded   a draw by the host's clock: must fail
 
 The scenarios use only what master's game has had since the merge of OpenCE's StageKit (the scripted bot,
 debug.test_input "bot:", on the game's clock; cues; debug.fixed_step), so that either build plays them; the maps
 are this build's generator's, the same for both.
+
+--repeat is the determinism check: the same build, input, seed and settings played twice must log the same game
+state, seeds and seeds' takers (by call site, the same build's) every tick, and the same frames' state too
+(REPEAT_COMPARE). It needs no baseline, so CI runs it on every branch, with its negative control.
 
 Exit status: 0 when every scenario's logs agree, 1 when one parts (the first tick where, and what), 2 when the gate
 could not run (no baseline: a note, not a failure, with --missing-ok).
@@ -51,6 +57,9 @@ LOG = "determinism.txt"
 # debug.determinism_dump), which moves when any code does; the decal vertex cache, which keeps another, is one of
 # the frames' allocations already
 COMPARE = ["--builds", "--simulation", "--ignore", "hs thread"]
+# what two runs of this build are compared by: everything the log has, the takers by their call sites (the same
+# build's), the frames' allocations too (fixed steps: the same frames each run)
+REPEAT_COMPARE = []
 
 
 def play(name, folder, game, map_path, slot, trace=None):
@@ -90,6 +99,8 @@ def main():
     source.add_argument("--baseline-game", type=Path, help="master's game, played now")
     source.add_argument("--baseline", type=Path, help="master's logs, recorded with --record")
     source.add_argument("--record", type=Path, help="record this build's logs here (master's baseline)")
+    source.add_argument("--repeat", action="store_true",
+                        help="this build played twice, its two runs compared (the determinism check)")
     parser.add_argument("--missing-ok", action="store_true", help="no baseline is a note, exit 0 (CI's first run)")
     parser.add_argument("--work", type=Path, default=ROOT / "build/scorecard/identity")
     parser.add_argument("--trace", action="store_true",
@@ -120,7 +131,10 @@ def main():
         (args.record / "baseline.json").write_text(json.dumps(dict(scenarios=list(SCENARIOS)), indent=1))
         print(f"identity: {len(SCENARIOS)} scenarios' logs recorded in {args.record}")
         return 0
-    if args.baseline_game:
+    if args.repeat:
+        play_all(runner.GAME, work / "baseline", maps, trace)
+        baseline = {name: work / "baseline" / name / LOG for name in SCENARIOS}
+    elif args.baseline_game:
         play_all(args.baseline_game, work / "baseline", maps)
         baseline = {name: work / "baseline" / name / LOG for name in SCENARIOS}
     else:
@@ -137,7 +151,7 @@ def main():
             failed += 1
             continue
         compared = subprocess.run([sys.executable, str(ROOT / "tools/determinism_compare.py"), str(baseline[name]),
-                                   str(work / "branch" / name / LOG), *COMPARE],
+                                   str(work / "branch" / name / LOG), *(REPEAT_COMPARE if args.repeat else COMPARE)],
                                   capture_output=True, text=True)
         least = SCENARIOS[name][3] * runner.TICKS_PER_SECOND
         alike = compared.returncode == 0 and min(ticks_logged(baseline[name]),
@@ -149,7 +163,8 @@ def main():
             print("\n".join("    " + line for line in compared.stdout.strip().splitlines()))
             failed += 1
     checked = [name for name in SCENARIOS if name in recorded]
-    print(f"identity: {len(checked) - failed} of {len(checked)} scenarios bit-identical at 30 Hz")
+    print(f"identity: {len(checked) - failed} of {len(checked)} scenarios bit-identical at 30 Hz" +
+          (", run twice" if args.repeat else ""))
     return 1 if failed else 0
 
 

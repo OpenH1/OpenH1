@@ -57,3 +57,11 @@ def test_drawn_from_the_animation():
     # Every unit's nodes, as the objects' update makes them, go through it after the unit's own (units.c).
     post = function(read('source/units/units.c'), 'unit_postprocess_node_matrices')
     assert 'biped_limp_noodle_drape_dying(unit_index, node_matrices);' in post
+
+
+def test_classic_keeps_the_original_pose():
+    # The pose is the game state's, which the AI and what strikes the body read: Classic (the animation
+    # enhancements off, game.enhanced_animations as the game's rule) plays the original's (the campaign gate).
+    post = function(read('source/units/units.c'), 'unit_postprocess_node_matrices')
+    call = post[:post.index('biped_limp_noodle_drape_dying(unit_index, node_matrices);')]
+    assert 'network_standard_enhanced_animations()' in call[call.rindex('if ('):]
