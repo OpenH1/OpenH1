@@ -2269,6 +2269,14 @@ static void first_person_weapon_message(
 			case _first_person_weapon_message_primary_fire:
 				first_person_weapon->firing_push_back_velocity+=
 					FIRST_PERSON_WEAPON_FIRING_PUSH_BACK_VELOCITY;
+				/* port: (a feed's shot's kick, in debug.spartan_link_log: a
+				weapon without a firing animation, the assault rifle's, kicks
+				with it alone) */
+				if (FIRST_PERSON_WEAPON_FEED_SLOT(local_player_index))
+				{
+					spartan_link_feed_state_log(first_person_weapon->unit_index, "kick",
+						first_person_weapon->firing_push_back_velocity);
+				}
 				break;
 
 			case _first_person_weapon_message_reload_while_empty:
