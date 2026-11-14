@@ -770,7 +770,8 @@ The lobby, a network game's and a game of this computer alone's (Create
 Game's OFFLINE, split screen), is laid out as Multiplayer is (`game/lobby_menu.inc`).
 The players are in a column for each team, red's and blue's, or in one list
 in a game without teams and in Infection, whose zombies are chosen as it
-starts. Each row has the player's team's dot, name and a tag: HOST, BOT,
+starts. Each row has the player's team's dot, name and a tag: HOST (the
+host's first player), SPLIT SCREEN (another player on the same computer), BOT,
 PARTY (a member of your party), OPENCE or OPENH1 (the host knows each
 computer's; a player knows only its own; a bot's BOT and the bots' skill,
 "BOT · HEROIC", where its name leaves room). Your own row is framed. In each

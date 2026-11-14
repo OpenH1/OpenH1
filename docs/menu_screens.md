@@ -264,7 +264,7 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | `{profile.current}` | Player 1's profile's name (the active one, else the one used last) |
 | `{color.profile}`, `{color.title}`, `{color.spartan}`, `{color.current}`, `{color.about}` | Profile Color's: the edited profile's name; the focused color's name (`Red`, `Random`), its word for a `<spartan>` (its number, or `random`), `Current color` while it is the profile's own, and a line of what it does |
 | `{lobby.title}`, `{lobby.subtitle}`, `{lobby.subtitle.short}` | The lobby's title (GAME LOBBY), and the game's name, where it is and its players (`Player's game · Local network · 4/16 players · 2 bots`; a game of this machine alone's `Offline with bots · 3 players`); its shorter forms for the band's `fallback`, a line each (`Player's game · Local network · 4/16 players`, `Player's game · 4/16 players`, `Player's game · 4/16`, `4/16 players`, `4/16`) |
-| `{lobby.red}`, `{lobby.blue}`, `{lobby.red.count}`, `{lobby.blue.count}`, `{lobby.red.tone}`, `{lobby.blue.tone}` | The lanes: RED and BLUE in a team game, each its count (`2 PLAYERS`) and tone (0, 1); in a game without teams PLAYERS alone (blue's none), `3 OF 16` at blue's right, tone 2 |
+| `{lobby.red}`, `{lobby.blue}`, `{lobby.red.count}`, `{lobby.blue.count}`, `{lobby.red.tone}`, `{lobby.blue.tone}` | The lanes: RED and BLUE in a team game, each its count (`2 PLAYERS`) and tone (0, 1); in a game without teams PLAYERS alone (blue's none), `3 OF 16` at blue's right (an offline game's `3 PLAYERS`), tone 2 |
 | `{lobby.gametype}`, `{lobby.map}`, `{lobby.limits}`, `{lobby.kind}`, `{lobby.kind.tone}`, `{lobby.tick}`, `{lobby.opence}`, `{lobby.after}` | The next game: its gametype, map (a co-op game's level and difficulty), limits (`50 kills · 10 min`), GOAT H1 or LEGACY and its pill's tone, its tick rate (`120 TICK`), OPENCE CAN JOIN (the host's, while OpenCE's players may join), the game after it (a host's playlist's) |
 | `{lobby.bots}`, `{lobby.skill}`, `{lobby.teams}`, `{lobby.bots.shown}`, `{lobby.bots.locked}`, `{lobby.bots.count.locked}` | The host's bots: BOTS' choice (`ADD 3`), SKILL, TEAMS; (for `if`s and `dim`s) whether the host has them (any game but co-op), whether the gametype is one they do not play, and BOTS' a matchmaking game's too |
 | `{lobby.status}`, `{lobby.start}`, `{lobby.waiting}` | How the game is (the countdown, the invite copied, how another controller joins...); START GAME's words (or `STARTING IN 3`); a player's (`Waiting for the host`) |
@@ -454,10 +454,11 @@ this machine alone's, in the new engine; the classic engine keeps the
 generated one. GAME LOBBY in the band, the game's name, where it is and its
 players at its right; the players in a table of two lanes, red's and blue's
 (`RED`, `BLUE`, each its count; in a game without teams `PLAYERS`, one list
-down both, `3 OF 16` at its right), each row a player's dot, name (and its
+down both, `3 OF 16` at its right, an offline game's `3 PLAYERS`), each row a player's dot, name (and its
 controller, `(P2)`, of this machine's players when it has more than one; its
-speaker while it talks in voice chat) and tag (HOST, BOT and the bots' skill
-where it fits, PARTY, GOAT H1, OPENCE), this machine's own framed, `+3 more`
+speaker while it talks in voice chat) and tag (HOST, its machine's first player alone; SPLIT SCREEN, a machine's
+players past its first; BOT and the bots' skill where it fits, PARTY, GOAT H1,
+OPENCE), this machine's own framed with a dim edge (the focus alone lit), `+3 more`
 in a lane's last row where it has more than its rows. Over the lanes, on
 the computer (a phone's lanes keep their rows), a lineup of the players' Spartans (`<spartan color="lobby.lineup" names="lobby.lineup.names">`), each its name under it: in a
 team game four of each team over its lane, else the first eight; each the
