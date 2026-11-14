@@ -268,8 +268,8 @@ static void report_crash(int signal_number, siginfo_t *information, void *contex
 #ifdef __GLIBC__
 	/* (glibc built without frame pointers, as some distributions' is, raises
 	an abort in code that uses the register for itself: the unwinder's frames
-	instead) */
-	if (count < 2)
+	instead, for a signal raised, not a fault) */
+	if (count < 2 && information->si_code <= 0)
 	{
 		int unwound = unwound_frames(pc, returns, (int)(sizeof(returns) / sizeof(returns[0])));
 
