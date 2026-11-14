@@ -542,6 +542,22 @@ void network_test_note_hit(
 		network_test_microseconds());
 }
 
+/* a hit sound played (hit_sounds.c): who hit whom, and their teams */
+void network_test_note_hit_sound(
+	long attacker_player_index,
+	long victim_player_index)
+{
+	struct player_datum *attacker = player_try_and_get(attacker_player_index);
+	struct player_datum *victim = player_try_and_get(victim_player_index);
+
+	if (network_test.mode == _network_test_off || network_test.mode == _network_test_probe || !attacker || !victim)
+		return;
+	platform_log("network test: hit sound player %d team %ld hit player %d team %ld at %llu",
+		(int)DATUM_INDEX_TO_ABSOLUTE_INDEX(attacker_player_index), (long)attacker->team_index,
+		(int)DATUM_INDEX_TO_ABSOLUTE_INDEX(victim_player_index), (long)victim->team_index,
+		network_test_microseconds());
+}
+
 /* appends to a line, cut short when it is full */
 static void network_test_append(
 	char *line,

@@ -95,7 +95,7 @@ takes it for a newer version and does not join. Raise it with any change to
 what a Standard game's machines send each other, and with every raise of
 HALO_PORT_NETWORK_VERSION: HALO_PORT_STANDARD_BASE_VERSION is the network
 version it was last raised for, and the build fails until they agree. */
-#define HALO_PORT_STANDARD_NETWORK_VERSION 29
+#define HALO_PORT_STANDARD_NETWORK_VERSION 30
 /* (1: the rate agreed; 2: the players' sub-steps sent, network_substeps.c;
 3: OpenCE players in the game, network_standard.c's mixed games; 4: a
 player moved to the other team by the host, network_host_controls.c; 5:
@@ -159,7 +159,10 @@ network_standard_simulation_fixes), where it stayed pinned on a wall
 steeper than 45 degrees: every machine of the game moves its copies alike;
 29: a co-op player the host brought to its own player, or went to, told on
 their machine, the brought player turned the host's way
-(network_host_controls.c's _distributed_message_host_teleport).
+(network_host_controls.c's _distributed_message_host_teleport); 30:
+whether the host forbids its players' hit sounds in the game record
+(_network_game_no_hit_sounds_bit, network_standard.c's
+network_standard_hit_sounds_allowed).
 Legacy games, and what an OpenCE machine sees, are unchanged) */
 #define HALO_PORT_STANDARD_BASE_VERSION 41
 #define HALO_PORT_STANDARD_VERSION_BIT 0x8000

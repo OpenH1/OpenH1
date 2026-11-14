@@ -178,7 +178,27 @@
 			<choice shown="9" value="0.9"/>
 			<choice shown="10" value="1"/>
 		</row>
-		<section key="section_10" title="VOICE CHAT"/>
+		<section key="section_10" title="MULTIPLAYER"/>
+		<row key="voice_chat_settings" kind="link" label="VOICE CHAT ›" crumb="AUDIO › MULTIPLAYER" open="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/voice_chat/voice_chat_screen">
+			<help>Talking to the other players in network games, your microphone and their voices' volume.</help>
+		</row>
+		<row key="hit_sounds" kind="choice" setting="audio.hit_sounds" label="HIT SOUNDS" crumb="AUDIO › MULTIPLAYER">
+			<help>A short beep each time you damage another player, as the host dealt it. A host may forbid them in its games.</help>
+			<note>The beep is a placeholder for now.</note>
+			<choice shown="ON" value="true"/>
+			<choice shown="OFF" value="false"/>
+		</row>
+		<row key="allow_hit_sounds" kind="choice" setting="network.allow_hit_sounds" label="ALLOW HIT SOUNDS" crumb="AUDIO › MULTIPLAYER">
+			<help>In the games you host, whether the players may hear their hit sounds. A Legacy game's players cannot be told.</help>
+			<choice shown="YES" value="true"/>
+			<choice shown="NO" value="false"/>
+		</row>
+		<button key="button_defaults" kind="defaults" run="port settings defaults" help="Puts this tab's settings back to their defaults. Nothing changes until OK."/>
+		<button key="button_ok" kind="ok" run="port settings ok" help="Keeps your changes, on every tab, and applies them."/>
+		<button key="button_cancel" kind="cancel" run="port settings cancel" help="Leaves Settings without keeping any change."/>
+	</screen>
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/voice_chat/voice_chat_screen" kind="settings" layout="page" geometry="tall" title="VOICE CHAT">
+		<section key="section_0" title="VOICE CHAT"/>
 		<row key="voice_chat" kind="choice" setting="audio.voice_chat" label="VOICE CHAT" crumb="AUDIO › VOICE CHAT" search="mic microphone" search_choices="push talk open mic">
 			<help>Talk to the other players in network games: while Push to Talk is held (Key Bindings sets its key), whenever you speak, or never.</help>
 			<choice shown="PUSH TO TALK" value="push_to_talk"/>
@@ -203,9 +223,9 @@
 			<choice shown="9" value="0.9"/>
 			<choice shown="10" value="1"/>
 		</row>
-		<button key="button_defaults" kind="defaults" run="port settings defaults" help="Puts this tab's settings back to their defaults. Nothing changes until OK."/>
-		<button key="button_ok" kind="ok" run="port settings ok" help="Keeps your changes, on every tab, and applies them."/>
-		<button key="button_cancel" kind="cancel" run="port settings cancel" help="Leaves Settings without keeping any change."/>
+		<button key="button_defaults" kind="defaults" run="port settings defaults" help="Puts this page's settings back to their defaults."/>
+		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
+		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
 	<screen name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_settings_screen" kind="settings" layout="tab" geometry="tall" tab="CONTROLS">
 		<about>The mouse, the controller and the keys.</about>
