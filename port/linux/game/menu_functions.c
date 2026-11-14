@@ -3983,6 +3983,8 @@ the last time while they are the same (each frame): the lines each takes
 and its font's line's height */
 #define SETTINGS_PANEL_NAME_LINES 2
 #define SETTINGS_PANEL_VALUE_LINES 5
+/* (the longest name or value: a device's whole name) */
+#define SETTINGS_PANEL_VALUE_LENGTH 128
 
 struct settings_panel_wrapping
 {
@@ -3991,7 +3993,7 @@ struct settings_panel_wrapping
 	short width;
 	short lines;
 	short line;
-	wchar_t text[ROW_TEXT_LENGTH];
+	wchar_t text[SETTINGS_PANEL_VALUE_LENGTH];
 	wchar_t wrapped[SETTINGS_PANEL_TEXT_LENGTH];
 };
 
@@ -4034,7 +4036,7 @@ static short settings_panel_wrap(struct settings_panel_wrapping *wrapping, struc
 		wrapping->box = box;
 		wrapping->font = font;
 		wrapping->width = width;
-		settings_wide_copy(wrapping->text, text, ROW_TEXT_LENGTH);
+		settings_wide_copy(wrapping->text, text, SETTINGS_PANEL_VALUE_LENGTH);
 		wrapping->lines = text[0] ? menu_text_wrap_lines(font, text, width, most, wrapping->wrapped) : 1;
 		if (!text[0])
 			wrapping->wrapped[0] = 0;
@@ -4054,7 +4056,7 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	short fact_lines = 0, facts_height, facts_width;
 	long text_font, note_font;
 	short text_width, note_width;
-	wchar_t name[ROW_TEXT_LENGTH] = { 0 }, value[ROW_TEXT_LENGTH] = { 0 };
+	wchar_t name[ROW_TEXT_LENGTH] = { 0 }, value[SETTINGS_PANEL_VALUE_LENGTH] = { 0 };
 	wchar_t words[SETTINGS_PANEL_TEXT_LENGTH] = { 0 }, wrapped[SETTINGS_PANEL_TEXT_LENGTH];
 	wchar_t noted[SETTINGS_PANEL_TEXT_LENGTH] = { 0 };
 	wchar_t const *help = NULL;
@@ -4132,7 +4134,7 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		if (spinner)
 		{
 			settings_wide_copy(value, settings_widget_text(spinner, spinner->parameters.list.selected_index),
-				ROW_TEXT_LENGTH);
+				SETTINGS_PANEL_VALUE_LENGTH);
 		}
 		else if (settings_slider_of(row))
 		{

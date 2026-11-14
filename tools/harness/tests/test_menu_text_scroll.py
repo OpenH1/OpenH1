@@ -47,7 +47,7 @@ NEGATIVE_CONTROLS = {
 def generated(fault=None):
     menus = read("port/linux/game/menu_functions.c")
     defines = "\n".join(re.search(rf"^#define {name} .+$", menus, re.M).group(0) for name in (
-        "ROW_TEXT_LENGTH", "SETTINGS_PANEL_TEXT_LENGTH", "MENU_TEXT_ELLIPSIS_LENGTH", "MENU_TEXT_SCROLL_PAUSE",
+        "ROW_TEXT_LENGTH", "SETTINGS_PANEL_TEXT_LENGTH", "SETTINGS_PANEL_VALUE_LENGTH","MENU_TEXT_ELLIPSIS_LENGTH", "MENU_TEXT_SCROLL_PAUSE",
         "MENU_TEXT_SCROLL_SPEED", "MENU_TEXT_LINES", "MENU_TEXT_LINE_PROBES", "MENU_TEXT_LINE_LENGTH",
         "MENU_TEXT_SCROLL_GONE"))
     code = "\n\n".join([defines, structure(menus, "menu_text_line"), structure(menus, "settings_panel_wrapping"),
