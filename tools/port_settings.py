@@ -1651,7 +1651,7 @@ PAGES = {
              "games are OpenCE's netcode.", None),
             ("GAME TYPE", "network.browser_game_type", BROWSER_GAME_TYPES,
              "Lists only the games of this type.|Slayer is free for all; SWAT, Infection and Gun Game are "
-             "OpenCE's. Pro 2v2 is PRO 2V2's games.", None),
+             "GOAT H1's. Pro 2v2 is PRO 2V2's games.", None),
         ],
     },
     DISCORD_ACCOUNT[0]: {
@@ -3223,6 +3223,10 @@ OPENCE_ROWS = [
         "A melee kill takes the victim back a weapon."]),
 ]
 OPENCE_ITEM = f"{PLAYLIST_EDIT}/playlist_edit_opence_item"
+# the game's name, as players read it (#1031), and the editor's row and
+# header for these rules (its widgets keep their opence_ names)
+GOAT_H1 = "GOAT H1"
+OPENCE_OPTIONS = f"{GOAT_H1} OPTIONS"
 
 # Capture the Flag's KILLS SCORE and KILLS PER CAPTURE (game_engine_ctf.c)
 # and King of the Hill's MULTI-HILL (game_engine_king.c), OpenCE's (#467):
@@ -3263,10 +3267,10 @@ GAMETYPE_RULES_EXTRAS = {
 GAMETYPE_RULES_STEP = 30
 
 STRING_INSERTS = {
-    # (the gametype editor's OPENCE OPTIONS' words, after the PC version's:
+    # (the gametype editor's GOAT H1 OPTIONS' words, after the PC version's:
     # menu_functions.c's playlist_edit_description)
     f"{PLAYLIST_EDIT}/playlist_edit_list_extended_dsc_text": [(8, [
-        "Choose the rules of OpenCE's\\ngametypes: SWAT, Infection,\\nGun Game and Hardcore.\\nThis gametype:"])],
+        f"Choose the rules of {GOAT_H1}'s\\ngametypes: SWAT, Infection,\\nGun Game and Hardcore.\\nThis gametype:"])],
     f"{PLAYER_EDIT}/player_options_labels": [(8, ["AIM ASSIST:", "SHIELD EFFECTS:"])],
     f"{PLAYER_EDIT}/cap_player_options": [(28, AIM_ASSIST_HELP + SHIELD_EFFECTS_HELP)],
     # (Teamplay Options' voice chat and vote kick rows, after its own:
@@ -3327,8 +3331,9 @@ STRING_OVERRIDES.update({
         "Play Slayer against computer\\nplayers, alone or with\\nfriends on this screen.",
         "Make your own gametypes:\\nthe rules, weapons and\\nvehicles, kept for next time.",
     ],
-    # (and the port's OPENCE: OpenCE's gametypes, port/linux/game/game_modes.c)
-    "main_menu/gametype_select/var_gametype_banks": ["STANDARD", "OPENCE", "CUSTOM"],
+    # (and the port's own gametypes, port/linux/game/game_modes.c, by the
+    # game's name: GOAT_H1)
+    "main_menu/gametype_select/var_gametype_banks": ["STANDARD", GOAT_H1, "CUSTOM"],
     # (the PC's weapon sets, then the Xbox's NO GRENADES: menu_functions.c's
     # gametype_options maps them to the engine's)
     "main_menu/settings_select/multiplayer_setup/item_options_edit/item_options_labels": ["INFINITE GRENADES:", "WEAPON SET:", "VEHICLE SET:", "STARTING EQUIPMENT:",
@@ -3492,6 +3497,15 @@ WIDGET_PATCHES = {
     f"{PLAYLIST_EDIT}/edit_playlist_select_list": {
         "insert_before": {f"{PLAYLIST_EDIT}/playlist_edit_button_bar": [f'<child widget="{OPENCE_ITEM}"/>']},
         "inputs": ["port playlist edit desc"]},
+    # (its panel's picture: the gametype's own, as Game Options' list shows
+    # it (game_type_select's rules_options, a frame for each game type),
+    # whichever row has the focus; the PC version's pictures of the rows
+    # have no redraw. Its icon (up to 172 units wide and high, from the
+    # frame's top) in the middle of the panel, above the words:
+    # menu_functions.c's playlist_edit_description)
+    f"{PLAYLIST_EDIT}/playlist_edit_ext_desc_pic": {"set": {
+        "bitmap": f"{PLAYLIST_EDIT}/game_type_select/rules_options",
+        "left": 307, "top": 82, "width": 256, "height": 190}},
     # (the profile settings' picture: on Gamepad Setup's row, the profile's
     # button settings, BITMAP_FRAMES; menu_functions.c's
     # profile_gamepad_layout)
@@ -4897,7 +4911,7 @@ def _player_options_extras() -> list:
 
 
 def _opence_options() -> list:
-    """the gametype editor's OPENCE OPTIONS: its row, after the editor's own
+    """the gametype editor's GOAT H1 OPTIONS (OPENCE_OPTIONS): its row, after the editor's own
     (as they are laid out), and its screen, as the gametype's options' are
     (_setup_option_screen), its spinners the gametype's (menu_functions.c's
     gametype_options), its header its words (no picture of its own)"""
@@ -4905,10 +4919,10 @@ def _opence_options() -> list:
     lines = [line.replace("port setup options init", "mp profile init opence options")
              .replace("port setup options save", "mp profile set opence options")
              .replace(f'bitmap="{OPENCE_EDIT}/header_opence"',
-                      'type="text" text="OPENCE OPTIONS" font="ui\\large_ui" color="#FFFFFFFF" text_x="13" text_y="16"')
+                      f'type="text" text="{OPENCE_OPTIONS}" font="ui\\large_ui" color="#FFFFFFFF" text_x="13" text_y="16"')
              for line in lines]
     lines += _widget(OPENCE_ITEM, [("type", "text"), ("left", 51), ("top", 309), ("width", 232), ("height", 32),
-                                   ("bitmap", "bitmaps/list_item_bkd"), ("text", "OPENCE OPTIONS"),
+                                   ("bitmap", "bitmaps/list_item_bkd"), ("text", OPENCE_OPTIONS),
                                    ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 5)],
                      [f'<on event="a" open="{OPENCE_EDIT}/opence_screen"/>',
                       f'<on event="start" open="{OPENCE_EDIT}/opence_screen"/>',
