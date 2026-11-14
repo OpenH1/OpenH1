@@ -4984,6 +4984,28 @@ real render_interpolation_first_person_phase(short local_player_index)
 	return phase < 0.0 ? 0.0f : phase > 1.0 ? 1.0f : (real)phase;
 }
 
+/* A Spartan link feed's first-person weapon (spartan_link.c; its slot's
+animations are first_person_weapons.c's feeds', advanced with the players'):
+sampled at the frame's time as the player's own view drawn from the newest
+step is, so that it moves every frame however seldom the feed is drawn (one
+feed a frame, in turn), which a blend between the poses drawn at the last
+two ticks (render_interpolation_first_person) could not: a feed drawn every
+other frame or less has none at the tick before. Its world is drawn between
+the ticks, a tick behind the weapon, which is posed at the feed's camera
+and so moves with nothing of the world's. -1 with the frames' interpolation
+off, drawn by the tick as before */
+real render_interpolation_first_person_feed_phase(void)
+{
+	double phase;
+
+	if (!interpolation_rendering)
+		return -1.0f;
+	if (game_time_get_paused())
+		return 0.0f;
+	phase = (double)game_time_get() + (double)interpolation_fraction - first_person_updated_time;
+	return phase < 0.0 ? 0.0f : phase > 1.0 ? 1.0f : (real)phase;
+}
+
 /* The phase (render_interpolation_first_person_phase) of the step running
 now, at its end, where the frames after it go on from: a state's change made
 in it (a shot of a sub-step, a message of the tick's own work) is blended
