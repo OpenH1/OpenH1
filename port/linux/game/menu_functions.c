@@ -13288,7 +13288,9 @@ profile (its screen, "port lobby player choose"); ADD PLAYER ("port lobby
 add player") gives one gamepad its own controller first (as it shares
 player 1's: pc_menu_split_players). A player's B leaves the game alone ("port
 lobby leave"; the machine's last leaves it). In game, a player's pause menu's
-QUIT is theirs (the Xbox's "mp game player quit") */
+QUIT is theirs (the Xbox's "mp game player quit"). In the new menus that START
+and ADD PLAYER open Add Player's screen instead (below), where each controller joins and
+chooses its profile with its own keys */
 static struct
 {
 	/* ADD PLAYER chosen: one gamepad is the new player's */
@@ -13364,20 +13366,29 @@ static boolean lobby_join_reset(void)
 	return TRUE;
 }
 
-/* "port lobby add player" (ADD PLAYER): the next START of another controller
-joins (one gamepad leaves the keyboard's controller for its own) */
-static boolean lobby_add_player(void)
+static boolean add_player_open(struct widget_instance *widget, struct event_record *event, short controller,
+	boolean *widget_deleted);
+static boolean lobby_board_start(short controller);
+
+/* "port lobby add player" (ADD PLAYER): in the new menus Add Player's
+screen, where each other controller joins and chooses its profile; in the
+classic ones, the next START of another controller joins (one gamepad
+leaves the keyboard's controller for its own) */
+static boolean lobby_add_player(struct widget_instance *widget, struct event_record *event, boolean *widget_deleted)
 {
 	if (lobby_local_player_count() >= MAXIMUM_LOCAL_PLAYERS)
 		return campaign_fail();
+	if (add_player_open(widget, event, NONE, widget_deleted))
+		return TRUE;
 	lobby_join.adding = TRUE;
 	return TRUE;
 }
 
 /* "port lobby join" (START): a controller not playing joins, choosing its
-profile next (FALSE: no profile screen); a player's START is the focused
-button's */
-static boolean lobby_join_start(struct widget_instance *widget, short controller, boolean *widget_deleted)
+profile next (in the new menus on Add Player's screen; FALSE: no profile
+screen); a player's START is the focused button's */
+static boolean lobby_join_start(struct widget_instance *widget, struct event_record *event, short controller,
+	boolean *widget_deleted)
 {
 	void *client = global_network_game_client_get();
 	struct network_game *game = client ? network_game_client_get_game(client) : NULL;
@@ -13395,8 +13406,35 @@ static boolean lobby_join_start(struct widget_instance *widget, short controller
 		display_error_text_deferred(L"The game is full: there's\r\nno room for another\r\nplayer.", NONE);
 		return campaign_fail();
 	}
+	/* (the new menus: Add Player's screen open, this controller joining
+	there; the classic profile list not opened from the screen gone) */
+	if (add_player_open(widget, event, controller, widget_deleted))
+		return TRUE;
 	lobby_join.controller = controller;
 	return TRUE;
+}
+
+/* "lobby start" (the hand-written lobby's Start and its START GAME, A on
+its players): a controller not in the game joins (Add Player's screen, it
+choosing its profile there), as the generated lobby's START does ("port
+lobby join"); a player's starts the host's game (FALSE where it does not:
+a player not the host's, whose Start is then the screen's widgets') */
+int pc_menu_lobby_start(struct widget_instance *widget, struct event_record *event, int *deleted)
+{
+	short controller = event_controller(widget, event);
+	boolean widget_deleted = FALSE;
+	boolean result;
+
+	*deleted = FALSE;
+	if (lobby_controller_playing(controller))
+		return lobby_board_start(controller);
+	/* (no Add Player's screen: the generated lobby's START, its profile
+	list) */
+	if (!menu_screen_open_ready("add_player"))
+		return FALSE;
+	result = lobby_join_start(widget, event, controller, &widget_deleted);
+	*deleted = widget_deleted;
+	return result;
 }
 
 /* "port lobby leave" (B): a player leaves the game, the machine's last
@@ -13798,7 +13836,8 @@ static void preview_update(struct widget_instance *list)
 /* "port lobby preview add" (START): as the lobby's ("port lobby join"), a
 controller not joining chooses its profile, to join with the others; a
 joining player's START is the focused button's */
-static boolean preview_add(struct widget_instance *widget, short controller, boolean *widget_deleted)
+static boolean preview_add(struct widget_instance *widget, struct event_record *event, short controller,
+	boolean *widget_deleted)
 {
 	struct advertised_game *game = preview_game();
 	short count = lobby_local_player_count();
@@ -13815,6 +13854,9 @@ static boolean preview_add(struct widget_instance *widget, short controller, boo
 		display_error_text_deferred(L"The game is full: there's\r\nno room for another\r\nplayer.", NONE);
 		return campaign_fail();
 	}
+	/* (the new menus: Add Player's screen, as the lobby's) */
+	if (add_player_open(widget, event, controller, widget_deleted))
+		return TRUE;
 	lobby_join.controller = controller;
 	return TRUE;
 }
@@ -13854,6 +13896,522 @@ static boolean preview_join(struct widget_instance *widget, short controller, bo
 	if (!lobby_local_player_count() && !multiplayer_player(controller))
 		return FALSE;
 	return advertised_join(widget, game, widget_deleted);
+}
+
+/* ---- Add Player (screens/add_player.xml: menu_screen.c and menu_table.h),
+the new menus' in place of the lobby's and the preview's ADD PLAYER and
+START of another controller, as the Xbox's Select Profile of four (its
+4way_start2join_screen) had it: a row for each of this machine's four
+controllers. A controller not in the game joins with A or START (one at a
+time or together), chooses its own profile with left and right, and is
+ready with A; B goes back a step. Once every one joining is ready, A or
+START of one of them (or DONE, or a player's START) brings them all into
+the game, as the classic screen's choice did (the lobby's "net
+splitscreen prejoin players" adds them), and goes back. The players in the
+game keep the screen's focus, its B and its BACK; a controller joining
+takes none of it. One gamepad sharing player 1's controller with the
+keyboard has its own while the screen is open (lobby_join.adding:
+pc_menu_split_players), and joins as the second */
+
+enum
+{
+	ADD_PLAYER_EMPTY,
+	ADD_PLAYER_CHOOSING,
+	ADD_PLAYER_READY
+};
+
+static struct
+{
+	/* each controller's: ADD_PLAYER_*, and the profile it chose (its
+	index, NONE for none) */
+	short state[MAXIMUM_LOCAL_PLAYERS];
+	long profile[MAXIMUM_LOCAL_PLAYERS];
+	/* the controller that pressed last, whose row the panel shows (NONE:
+	the focused row's), and whether the table's focus goes to it */
+	short acted;
+	boolean focus;
+	short chosen;
+} add_player;
+
+/* whether the controller's player is in the game (or joining it from the
+preview): theirs is the screen's focus, not a row of their own to choose */
+static boolean add_player_in_game(short controller)
+{
+	return lobby_controller_playing(controller);
+}
+
+static short add_player_joining(void)
+{
+	short controller, count = 0;
+
+	for (controller = 0; controller < MAXIMUM_LOCAL_PLAYERS; controller++)
+		count += add_player.state[controller] != ADD_PLAYER_EMPTY && !add_player_in_game(controller);
+	return count;
+}
+
+/* how many more may join: this machine's four, and the game's room (the
+lobby's players, or a game under way's as its preview has them) */
+static short add_player_room(void)
+{
+	void *client = global_network_game_client_get();
+	struct network_game *game = client ? network_game_client_get_game(client) : NULL;
+	short state_data, local = 0, controller, room;
+
+	for (controller = 0; controller < MAXIMUM_LOCAL_PLAYERS; controller++)
+		local += add_player_in_game(controller);
+	room = (short)(MAXIMUM_LOCAL_PLAYERS - local - add_player_joining());
+	if (game && network_game_client_get_state(client, &state_data) == _client_state_pregame)
+		room = (short)MIN(room, game->maximum_players - lobby_player_count - add_player_joining());
+	else
+	{
+		struct advertised_game *preview = preview_game();
+
+		if (!preview || !preview->open)
+			return 0;
+		room = (short)MIN(room, preview->maximum_player_count - preview->player_count - local - add_player_joining());
+	}
+	return (short)MAX(room, 0);
+}
+
+/* a profile's place in the list (NONE: not there) */
+static short add_player_place(long profile_index)
+{
+	short index;
+
+	for (index = 0; index < profile_list.count; index++)
+	{
+		if (profile_list.indices[index] == profile_index)
+			return index;
+	}
+	return NONE;
+}
+
+/* whether another of this machine's players has the profile (in the game,
+or joining with it) */
+static boolean add_player_taken(short controller, long profile_index)
+{
+	short other;
+
+	for (other = 0; other < MAXIMUM_LOCAL_PLAYERS; other++)
+	{
+		if (other == controller)
+			continue;
+		if (add_player_in_game(other) && player_ui_get_active_player_profile_index(other) == profile_index)
+			return TRUE;
+		if (!add_player_in_game(other) && add_player.state[other] != ADD_PLAYER_EMPTY &&
+			add_player.profile[other] == profile_index)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+/* a joining controller's first profile: its own (the one it had), else the
+first no other player of this machine has, as the classic list's */
+static long add_player_first_profile(short controller)
+{
+	long own = player_ui_get_active_player_profile_index(controller);
+	short index;
+
+	if (own != NONE && add_player_place(own) != NONE && !add_player_taken(controller, own))
+		return own;
+	for (index = 0; index < profile_list.count; index++)
+	{
+		if (!add_player_taken(controller, profile_list.indices[index]))
+			return profile_list.indices[index];
+	}
+	return profile_list.count ? profile_list.indices[0] : NONE;
+}
+
+static void add_player_reset(void)
+{
+	short controller;
+
+	for (controller = 0; controller < MAXIMUM_LOCAL_PLAYERS; controller++)
+	{
+		add_player.state[controller] = ADD_PLAYER_EMPTY;
+		add_player.profile[controller] = NONE;
+	}
+	add_player.acted = NONE;
+	add_player.focus = FALSE;
+	add_player.chosen = 0;
+}
+
+/* the controller's row the panel shows, and the focus moved there */
+static void add_player_act(short controller)
+{
+	add_player.acted = controller;
+	add_player.focus = TRUE;
+}
+
+/* a controller not in the game joins: its row choosing, on its first
+profile (FALSE: no room, or no profile to choose) */
+static boolean add_player_join(short controller)
+{
+	if (controller < 0 || controller >= MAXIMUM_LOCAL_PLAYERS || add_player_in_game(controller))
+		return FALSE;
+	if (add_player.state[controller] != ADD_PLAYER_EMPTY)
+		return TRUE;
+	profile_list_read(FALSE);
+	add_player_act(controller);
+	if (add_player_room() <= 0)
+	{
+		display_error_text_deferred(L"The game is full: there's\r\nno room for another\r\nplayer.", NONE);
+		return campaign_fail();
+	}
+	add_player.profile[controller] = add_player_first_profile(controller);
+	if (add_player.profile[controller] == NONE)
+	{
+		display_error_text_deferred(L"Make a player profile\r\nfirst (Settings, MANAGE\r\nPROFILES).", NONE);
+		return campaign_fail();
+	}
+	add_player.state[controller] = ADD_PLAYER_CHOOSING;
+	ui_play_audio_feedback_sound(SOUND_FORWARD);
+	return TRUE;
+}
+
+/* a choosing controller's profile stepped (by one, either way, round from
+the last to the first) */
+static void add_player_step(short controller, short step)
+{
+	short place;
+
+	profile_list_read(FALSE);
+	if (!profile_list.count)
+		return;
+	place = add_player_place(add_player.profile[controller]);
+	place = (short)(((place == NONE ? 0 : place + step) + profile_list.count) % profile_list.count);
+	add_player.profile[controller] = profile_list.indices[place];
+	add_player_act(controller);
+	ui_play_audio_feedback_sound(SOUND_CURSOR);
+}
+
+/* whether every controller joining is ready (and one is) */
+static boolean add_player_all_ready(void)
+{
+	short controller, ready = 0;
+
+	for (controller = 0; controller < MAXIMUM_LOCAL_PLAYERS; controller++)
+	{
+		if (add_player_in_game(controller))
+			continue;
+		if (add_player.state[controller] == ADD_PLAYER_CHOOSING)
+			return FALSE;
+		ready += add_player.state[controller] == ADD_PLAYER_READY;
+	}
+	return ready > 0;
+}
+
+/* the ready controllers brought into the game, each on its profile (the
+lobby's "net splitscreen prejoin players" adds them; the preview's JOIN
+GAME): FALSE while one still chooses, or one's profile cannot play (its
+row back to choosing) */
+static boolean add_player_finish(void)
+{
+	short controller;
+
+	for (controller = 0; controller < MAXIMUM_LOCAL_PLAYERS; controller++)
+	{
+		if (add_player.state[controller] == ADD_PLAYER_CHOOSING && !add_player_in_game(controller))
+		{
+			add_player_act(controller);
+			return campaign_fail();
+		}
+	}
+	for (controller = 0; controller < MAXIMUM_LOCAL_PLAYERS; controller++)
+	{
+		if (add_player.state[controller] != ADD_PLAYER_READY || add_player_in_game(controller))
+			continue;
+		if (!ui_widget_port_multiplayer_player(controller, add_player.profile[controller]))
+		{
+			add_player.state[controller] = ADD_PLAYER_CHOOSING;
+			add_player_act(controller);
+			return FALSE;
+		}
+	}
+	add_player_reset();
+	ui_play_audio_feedback_sound(SOUND_FORWARD);
+	return TRUE;
+}
+
+/* a controller's key on the screen (MENU_SCREEN_KEY_*): MENU_SCREEN_KEY_FREE
+for a player in the game's (the screen's focus and its own keys take it),
+else taken (MENU_SCREEN_KEY_TAKEN), or taken and the screen done
+(MENU_SCREEN_KEY_DONE: the players brought in, back to the screen before).
+A controller not in the game: A or START joins; choosing, left and right
+step its profile, A or START is ready, B leaves; ready, A or START brings
+everyone in once all are, B chooses again. Its other keys do nothing, nor
+move the screen's focus */
+int pc_menu_add_player_key(short controller, int key)
+{
+	short *state;
+
+	if (controller < 0 || controller >= MAXIMUM_LOCAL_PLAYERS || add_player_in_game(controller))
+		return MENU_SCREEN_KEY_FREE;
+	state = &add_player.state[controller];
+	switch (*state)
+	{
+	case ADD_PLAYER_EMPTY:
+		if (key == MENU_SCREEN_KEY_A || key == MENU_SCREEN_KEY_START)
+			add_player_join(controller);
+		break;
+	case ADD_PLAYER_CHOOSING:
+		if (key == MENU_SCREEN_KEY_LEFT || key == MENU_SCREEN_KEY_RIGHT)
+			add_player_step(controller, (short)(key == MENU_SCREEN_KEY_LEFT ? -1 : 1));
+		else if (key == MENU_SCREEN_KEY_A || key == MENU_SCREEN_KEY_START)
+		{
+			*state = ADD_PLAYER_READY;
+			add_player_act(controller);
+			ui_play_audio_feedback_sound(SOUND_FORWARD);
+		}
+		else if (key == MENU_SCREEN_KEY_B)
+		{
+			*state = ADD_PLAYER_EMPTY;
+			add_player.profile[controller] = NONE;
+			add_player_act(controller);
+			ui_play_audio_feedback_sound(SOUND_BACK);
+		}
+		break;
+	case ADD_PLAYER_READY:
+		if ((key == MENU_SCREEN_KEY_A || key == MENU_SCREEN_KEY_START) && add_player_all_ready())
+			return add_player_finish() ? MENU_SCREEN_KEY_DONE : MENU_SCREEN_KEY_TAKEN;
+		if (key == MENU_SCREEN_KEY_A || key == MENU_SCREEN_KEY_START)
+		{
+			/* (another still choosing: theirs shown) */
+			add_player_finish();
+		}
+		else if (key == MENU_SCREEN_KEY_B)
+		{
+			*state = ADD_PLAYER_CHOOSING;
+			add_player_act(controller);
+			ui_play_audio_feedback_sound(SOUND_BACK);
+		}
+		break;
+	}
+	return MENU_SCREEN_KEY_TAKEN;
+}
+
+/* "add player done" (DONE, a player's START: TRUE, back to the screen
+before) and "add player back" (B, BACK: those joining let go of, TRUE) */
+int pc_menu_add_player_action(char const *name)
+{
+	if (!strcmp(name, "add player back"))
+	{
+		add_player_reset();
+		return TRUE;
+	}
+	if (!strcmp(name, "add player done"))
+	{
+		/* (no one joining: back, as BACK) */
+		if (!add_player_joining())
+		{
+			add_player_reset();
+			return TRUE;
+		}
+		return add_player_finish();
+	}
+	return FALSE;
+}
+
+/* the screen opened (from the lobby or the preview): no one joining yet
+but the controller given (NONE: none), whose A or START opened it; one
+gamepad has its own controller while it is open (lobby_join.adding) */
+static void add_player_begin(short controller)
+{
+	add_player_reset();
+	lobby_join.adding = TRUE;
+	lobby_join.controller = NONE;
+	profile_list_read(TRUE);
+	if (controller != NONE)
+		add_player_join(controller);
+}
+
+/* ADD PLAYER, or a controller not in the game's START: the screen opened,
+in the new menus (FALSE: not open, the classic way's then) */
+static boolean add_player_open(struct widget_instance *widget, struct event_record *event, short controller,
+	boolean *widget_deleted)
+{
+	int deleted = FALSE;
+	boolean opened;
+
+	if (!menu_screen_open_ready("add_player"))
+		return FALSE;
+	add_player_begin(controller);
+	opened = menu_screen_open_named(widget, event, "add_player", &deleted) != 0;
+	*widget_deleted = deleted != 0;
+	return opened;
+}
+
+/* the profile of a controller's row: the profile it chose, a player's own */
+static boolean add_player_profile(short controller, struct player_profile *profile)
+{
+	if (add_player_in_game(controller))
+	{
+		if (player_ui_get_active_player_profile_index(controller) == NONE)
+			return FALSE;
+		player_ui_get_active_player_profile(controller, profile);
+		return TRUE;
+	}
+	return add_player.state[controller] != ADD_PLAYER_EMPTY && add_player.profile[controller] != NONE &&
+		player_profile_get(add_player.profile[controller], profile);
+}
+
+static void add_player_source_update(struct menu_table_view *view)
+{
+	profile_list_read(FALSE);
+	view->count = MAXIMUM_LOCAL_PLAYERS;
+	view->first = 0;
+	/* (the controller that pressed last: its row focused and shown, else
+	the focused row's) */
+	if (add_player.focus && add_player.acted != NONE && add_player.acted < view->shown)
+	{
+		view->focus = add_player.acted;
+		add_player.chosen = add_player.acted;
+	}
+	else if (view->focused != NONE && view->focused >= 0 && view->focused < MAXIMUM_LOCAL_PLAYERS)
+		add_player.chosen = view->focused;
+	add_player.focus = FALSE;
+	view->chosen = add_player.chosen;
+}
+
+static int add_player_source_heading(short index, unsigned short *words, short size)
+{
+	(void)index;
+	(void)words;
+	(void)size;
+	return FALSE;
+}
+
+/* a row's words: its controller's state, words for each (the four the
+same as the Xbox's: Press A to Join, the profile chosen, Profile Selected) */
+static void add_player_words(short controller, char const *column, wchar_t *text, short size)
+{
+	struct player_profile profile;
+	boolean pad = controller == 0 || input_has_gamepad(controller);
+
+	text[0] = 0;
+	if (!strcmp(column, "controller"))
+		usnprintf(text, size - 1, L"P%d", controller + 1);
+	else if (!strcmp(column, "profile"))
+	{
+		struct network_player *player = add_player_in_game(controller) ? lobby_local_player(controller) : NULL;
+
+		if (add_player_profile(controller, &profile))
+			settings_wide_copy(text, profile.player_name, (short)MIN(size, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1));
+		/* (a player in the game with no profile of this machine's: its name
+		there) */
+		else if (player)
+		{
+			ustrncpy(text, player->name, (short)MIN(size - 1, (short)NUMBEROF(player->name)));
+			text[MIN(size - 1, (short)NUMBEROF(player->name))] = 0;
+		}
+		else
+			settings_wide_copy(text, add_player_in_game(controller) ? L"" : pad ? L"Press A to join" :
+				L"No controller", size);
+	}
+	else if (!strcmp(column, "state"))
+	{
+		settings_wide_copy(text, add_player_in_game(controller) ? L"IN THE GAME" :
+			add_player.state[controller] == ADD_PLAYER_CHOOSING ? L"CHOOSING" :
+			add_player.state[controller] == ADD_PLAYER_READY ? L"READY" : L"", size);
+	}
+	text[size - 1] = 0;
+}
+
+static void add_player_source_cell(short index, char const *column, int focused, struct menu_table_cell *cell)
+{
+	wchar_t text[MENU_TABLE_TEXT_LENGTH];
+	struct player_profile profile;
+
+	(void)focused;
+	cell->frame = NONE;
+	if (index < 0 || index >= MAXIMUM_LOCAL_PLAYERS)
+		return;
+	if (!strcmp(column, "color"))
+	{
+		if (add_player_profile(index, &profile))
+		{
+			cell->frame = (short)(profile.primary_color_index >= 0 && profile.primary_color_index < COLOR_COUNT ?
+				profile.primary_color_index : COLOR_COUNT);
+		}
+		return;
+	}
+	add_player_words(index, column, text, NUMBEROF(text));
+	settings_wide_copy((wchar_t *)cell->text, text, MENU_TABLE_TEXT_LENGTH);
+	/* (a row with no controller dimmed; READY in the blocks' green) */
+	if (!strcmp(column, "profile") && !add_player_profile(index, &profile))
+		cell->color = index == 0 || input_has_gamepad(index) ? 0x8DB6E6FFUL : 0x6F9CD080UL;
+	if (!strcmp(column, "state") && add_player.state[index] == ADD_PLAYER_READY && !add_player_in_game(index))
+		cell->color = 0x7CD67CFFUL;
+}
+
+/* (this machine's players, in the game or joining, framed as its own) */
+static int add_player_source_state(short index)
+{
+	return add_player_in_game(index) || add_player.state[index] != ADD_PLAYER_EMPTY ? MENU_TABLE_ROW_MARKED :
+		MENU_TABLE_ROW_PLAIN;
+}
+
+struct menu_table_source const pc_menu_add_player_source =
+{
+	add_player_source_update, add_player_source_heading, add_player_source_cell, NULL, add_player_source_state,
+};
+
+/* an add.* binding's value (UTF-8; nonzero if it has one): how many more
+may join, the chosen row's player, profile, color and what its controller
+does next, and whether DONE brings them in */
+int pc_menu_add_player_value(char const *name, char *value, unsigned long size)
+{
+	short controller = (short)PIN(add_player.chosen, 0, MAXIMUM_LOCAL_PLAYERS - 1);
+	struct player_profile profile;
+	boolean has = add_player_profile(controller, &profile);
+	boolean pad = controller == 0 || input_has_gamepad(controller);
+	wchar_t text[ROW_TEXT_LENGTH];
+
+	value[0] = 0;
+	text[0] = 0;
+	if (!strcmp(name, "add.count"))
+	{
+		short room = add_player_room();
+
+		snprintf(value, size, room == 1 ? "1 MORE CAN JOIN" : room ? "%d MORE CAN JOIN" : "NO ROOM FOR MORE", room);
+	}
+	else if (!strcmp(name, "add.title"))
+		snprintf(value, size, "PLAYER %d", controller + 1);
+	else if (!strcmp(name, "add.profile"))
+	{
+		if (has || add_player_in_game(controller))
+			add_player_words(controller, "profile", text, NUMBEROF(text));
+	}
+	else if (!strcmp(name, "add.color"))
+	{
+		if (has && profile.primary_color_index >= 0 && profile.primary_color_index < COLOR_COUNT)
+			snprintf(value, size, "%d", profile.primary_color_index);
+		else if (has)
+			snprintf(value, size, "random");
+	}
+	else if (!strcmp(name, "add.help"))
+	{
+		snprintf(value, size, "%s", add_player_in_game(controller) ?
+			"In the game. Another controller: press A or START on it to join." :
+			add_player.state[controller] == ADD_PLAYER_CHOOSING ?
+			"Left and right: another profile. A: ready. B: leave." :
+			add_player.state[controller] == ADD_PLAYER_READY ? (add_player_all_ready() ?
+			"Ready. A or START adds the new players. B: choose again." : "Ready. Waiting for the others.") :
+			pad ? "Press A or START on this controller to join." : "Connect a controller, then press A on it.");
+	}
+	else if (!strcmp(name, "add.done"))
+	{
+		if (add_player_all_ready())
+			snprintf(value, size, "yes");
+	}
+	else
+		return FALSE;
+	text[NUMBEROF(text) - 1] = 0;
+	if (text[0])
+		text_utf8(text, value, (long)size);
+	return value[0] != 0;
 }
 
 /* ---- the gametype editor: Edit Gametypes' list (the built-in gametypes
@@ -15423,7 +15981,7 @@ boolean pc_menu_event_function_invoke(
 		}
 		else if (!strcmp(name, "port lobby start"))
 		{
-			return lobby_board_start();
+			return lobby_board_start(controller);
 		}
 		else if (!strcmp(name, "port lobby bots load"))
 		{
@@ -15471,11 +16029,11 @@ boolean pc_menu_event_function_invoke(
 		}
 		else if (!strcmp(name, "port lobby add player"))
 		{
-			return lobby_add_player();
+			return lobby_add_player(widget, event, widget_deleted);
 		}
 		else if (!strcmp(name, "port lobby join"))
 		{
-			return lobby_join_start(widget, controller, widget_deleted);
+			return lobby_join_start(widget, event, controller, widget_deleted);
 		}
 		else if (!strcmp(name, "port lobby leave"))
 		{
@@ -15491,7 +16049,7 @@ boolean pc_menu_event_function_invoke(
 		}
 		else if (!strcmp(name, "port lobby preview add"))
 		{
-			return preview_add(widget, controller, widget_deleted);
+			return preview_add(widget, event, controller, widget_deleted);
 		}
 		else if (!strcmp(name, "port lobby preview leave"))
 		{
