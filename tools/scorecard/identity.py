@@ -91,15 +91,17 @@ def play_all(game, work, maps, trace=None):
 
 
 def dumped(name, work, maps, trace, said):
-    """two runs that parted played again, each writing the game state at the tick they first differed at
-    (debug.determinism_dump), compared byte by byte: what differs, where (determinism_compare.py --dump)"""
+    """two runs that parted played again (with the others, side by side, as they parted), each writing the game
+    state at the tick they first differed at (debug.determinism_dump), compared byte by byte: what differs, and
+    where (determinism_compare.py --dump)"""
     tick = re.search(r"debug\.determinism_dump=(\d+)", said)
     if not tick:
         return []
     dump = dict(trace or {}, HALO_DETERMINISM_DUMP=tick.group(1))
-    folders = [work / "dumped" / name / run for run in ("a", "b")]
-    for slot, folder in enumerate(folders, start=260):
-        play(name, folder, runner.GAME, maps[name], slot, dump)
+    # (all of them side by side again, as they parted: what reached one may be the machine's load)
+    for run in ("a", "b"):
+        play_all(runner.GAME, work / "dumped" / run, maps, dump)
+    folders = [work / "dumped" / run / name for run in ("a", "b")]
     bins = [folder / f"{LOG}.{tick.group(1)}.bin" for folder in folders]
     if not all(path.is_file() for path in bins):
         return [f"(played again, no game state written at tick {tick.group(1)})"]
