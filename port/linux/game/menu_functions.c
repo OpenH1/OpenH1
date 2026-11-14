@@ -1235,6 +1235,8 @@ it has played, the one after the last it finished, the first) and finished,
 and its saved game's; in co-op, those either player's has reached and
 finished, and no saved game (a game of one player's does not go on with
 two: game_state.c's game_state_header_valid) */
+static boolean coop_host_choosing(void);
+
 static void campaign_levels_read(struct player_profile const *profile)
 {
 	char const *map_name;
@@ -1262,8 +1264,13 @@ static void campaign_levels_read(struct player_profile const *profile)
 				campaign.levels[level].finished[marker] |= (flags >> (marker + 1)) & 1;
 		}
 	}
-	if (player_spawn_count >= 2 || !ui_widget_port_saved_game(&map_name, &campaign.saved_level, &difficulty))
+	/* (none either while co-op's HOST chooses its mission: a saved game is
+	the player's own, coop_menu.inc) */
+	if (player_spawn_count >= 2 || coop_host_choosing() ||
+		!ui_widget_port_saved_game(&map_name, &campaign.saved_level, &difficulty))
+	{
 		campaign.saved_level = NONE;
+	}
 	campaign.saved_difficulty = campaign.saved_level != NONE ? difficulty : NONE;
 }
 
@@ -1968,6 +1975,15 @@ static struct widget_instance *screen_of(struct widget_instance *widget)
 	return widget;
 }
 
+/* whether the widget's screen is its machine's first local player's, whose
+alone the host's rows of the pause menu are (HOST CONTROLS, END GAME,
+CHAPTERS: a split screen's player 1; network_host_controls_local_player),
+the map's screens being every player's alike */
+static boolean host_rows_player(struct widget_instance *widget)
+{
+	return widget && network_host_controls_local_player(screen_of(widget)->local_player_index);
+}
+
 /* "port settings save" (OK): those changed written, and applied */
 static boolean setting_changed_save(struct widget_instance *spinner, struct pc_menu_setting *setting)
 {
@@ -2405,6 +2421,7 @@ places under its name (_settings_shared) */
 #define SETTINGS_TABS_ROWS_TOP 104
 #define SETTINGS_PAGE_ROWS_TOP 80
 #define SETTINGS_PANEL_TEXT_TOP 44
+#define SETTINGS_PANEL_VALUE_UNDER_NAME 14
 #define SETTINGS_PANEL_TEXT_UNDER_STILLS 122
 #define SETTINGS_PANEL_TEXT_UNDER_PICTURE 146
 #define SETTINGS_PANEL_TEXT_LENGTH 512
@@ -3973,6 +3990,78 @@ static short settings_facts_lines(struct settings_facts const *facts, long font,
 	return lines;
 }
 
+static short menu_text_wrap_lines(long font, wchar_t const *text, short width, short lines, wchar_t *wrapped);
+static boolean menu_text_same(wchar_t const *a, wchar_t const *b);
+
+/* the panel's name and value, each wrapped to its box (issue 899: a long
+device's name whole, not cut short), as many lines at most, as they were
+the last time while they are the same (each frame): the lines each takes
+and its font's line's height */
+#define SETTINGS_PANEL_NAME_LINES 2
+#define SETTINGS_PANEL_VALUE_LINES 7
+/* (the longest name or value: a device's whole name) */
+#define SETTINGS_PANEL_VALUE_LENGTH 128
+
+struct settings_panel_wrapping
+{
+	void const *box;
+	long font;
+	short width;
+	short lines;
+	short line;
+	wchar_t text[SETTINGS_PANEL_VALUE_LENGTH];
+	wchar_t wrapped[SETTINGS_PANEL_TEXT_LENGTH];
+};
+
+static struct settings_panel_wrapping settings_panel_name_wrapping, settings_panel_value_wrapping;
+
+/* a font's line's height: two lines' less one's (12 while the font is not
+known) */
+static short settings_font_line(long font)
+{
+	static real_argb_color const white = { 1.0f, 1.0f, 1.0f, 1.0f };
+	rectangle2d bounds, text_bounds, cursor;
+	short line;
+
+	if (font == NONE)
+		return 12;
+	bounds.x0 = 0;
+	bounds.y0 = 0;
+	bounds.x1 = 0x3FFF;
+	bounds.y1 = 480;
+	draw_string_set_draw_mode(font, NONE, 0, 0, &white);
+	draw_unicode_string_compute_bounds(&bounds, L"X\r\nX", &text_bounds, &cursor);
+	line = (short)(text_bounds.y1 - text_bounds.y0);
+	draw_unicode_string_compute_bounds(&bounds, L"X", &text_bounds, &cursor);
+	return (short)(line - (text_bounds.y1 - text_bounds.y0));
+}
+
+/* a box of the panel's text wrapped to it, `most` lines at most (the last
+cut short with "..."): the lines it takes */
+static short settings_panel_wrap(struct settings_panel_wrapping *wrapping, struct widget_instance *box,
+	wchar_t const *text, short most)
+{
+	short width;
+	long font = ui_widget_port_text_box_font(box, &width);
+
+	if (!box)
+		return 1;
+	if (wrapping->box != box || wrapping->font != font || wrapping->width != width ||
+		!menu_text_same(wrapping->text, text))
+	{
+		wrapping->box = box;
+		wrapping->font = font;
+		wrapping->width = width;
+		settings_wide_copy(wrapping->text, text, SETTINGS_PANEL_VALUE_LENGTH);
+		wrapping->lines = text[0] ? menu_text_wrap_lines(font, text, width, most, wrapping->wrapped) : 1;
+		if (!text[0])
+			wrapping->wrapped[0] = 0;
+		wrapping->line = settings_font_line(font);
+	}
+	text_set_length(box, wrapping->wrapped, SETTINGS_PANEL_TEXT_LENGTH);
+	return wrapping->lines;
+}
+
 static void settings_panel_show(struct widget_instance *list, short tab)
 {
 	struct widget_instance *panel = list->parameters.list.extended_description;
@@ -3983,12 +4072,13 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	short fact_lines = 0, facts_height, facts_width;
 	long text_font, note_font;
 	short text_width, note_width;
-	wchar_t name[ROW_TEXT_LENGTH] = { 0 }, value[ROW_TEXT_LENGTH] = { 0 };
+	wchar_t name[ROW_TEXT_LENGTH] = { 0 }, value[SETTINGS_PANEL_VALUE_LENGTH] = { 0 };
 	wchar_t words[SETTINGS_PANEL_TEXT_LENGTH] = { 0 }, wrapped[SETTINGS_PANEL_TEXT_LENGTH];
 	wchar_t noted[SETTINGS_PANEL_TEXT_LENGTH] = { 0 };
 	wchar_t const *help = NULL;
 	wchar_t *bar;
 	short still = NONE, length, lines, note_lines, line = 12, index;
+	short name_lines, value_lines, name_more, value_more;
 	boolean stills = FALSE, picture = FALSE;
 	struct widget_instance *row_spinner = NULL;
 	char const *const still_names[] = { "classic", "enhanced" };
@@ -4060,7 +4150,7 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		if (spinner)
 		{
 			settings_wide_copy(value, settings_widget_text(spinner, spinner->parameters.list.selected_index),
-				ROW_TEXT_LENGTH);
+				SETTINGS_PANEL_VALUE_LENGTH);
 		}
 		else if (settings_slider_of(row))
 		{
@@ -4132,8 +4222,14 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	row_facts.count = 0;
 	if (!strncmp(row->name, "op_", 3))
 		settings_facts_of(row, row_spinner, words, &row_facts);
-	text_set_length(settings_part(panel, "panel name"), name, ROW_TEXT_LENGTH);
-	text_set_length(settings_part(panel, "panel value"), value, ROW_TEXT_LENGTH);
+	/* (the name and the value whole, wrapped: the value under the name's
+	lines, the words under the value's, issue 899) */
+	name_lines = settings_panel_wrap(&settings_panel_name_wrapping, settings_part(panel, "panel name"), name,
+		SETTINGS_PANEL_NAME_LINES);
+	value_lines = settings_panel_wrap(&settings_panel_value_wrapping, settings_part(panel, "panel value"), value,
+		SETTINGS_PANEL_VALUE_LINES);
+	name_more = (short)((name_lines - 1) * settings_panel_name_wrapping.line);
+	value_more = (short)((value_lines - 1) * settings_panel_value_wrapping.line);
 	/* (wrapped in the text boxes' fonts, taken from their definitions in the
 	map loaded now: a font's tag index is not kept, as the next map's tags
 	are numbered again) */
@@ -4183,6 +4279,25 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		short top = stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : picture ? SETTINGS_PANEL_TEXT_UNDER_PICTURE :
 			SETTINGS_PANEL_TEXT_TOP;
 
+		if (settings_part(panel, "panel value"))
+		{
+			settings_part(panel, "panel value")->vertical_offset =
+				(short)(name_top + SETTINGS_PANEL_VALUE_UNDER_NAME + name_more);
+		}
+		/* (a name or a value of more lines: the words under them, the
+		pictures, in their place, left out) */
+		if (name_more + value_more > 0)
+		{
+			if (stills || picture)
+			{
+				settings_value_picture_show(panel, row, NONE);
+				stills = FALSE;
+				picture = FALSE;
+				still = NONE;
+			}
+			top = (short)(SETTINGS_PANEL_TEXT_TOP + name_more + value_more);
+		}
+
 		/* (the last facts left out first: the first is kept where it fits) */
 		while (facts && facts_values && row_facts.count > 1 &&
 			settings_panel_height(lines, note_lines, line) + line / 2 + fact_lines * line > room - top)
@@ -4201,7 +4316,7 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 			settings_value_picture_show(panel, row, NONE);
 			stills = FALSE;
 			still = NONE;
-			top = SETTINGS_PANEL_TEXT_TOP;
+			top = (short)(SETTINGS_PANEL_TEXT_TOP + name_more + value_more);
 		}
 		if (note_lines && settings_panel_height(lines, note_lines, line) > room - top)
 			note_lines = 0;
@@ -6828,6 +6943,7 @@ static boolean multiplayer_host(struct widget_instance *widget, struct event_rec
 	new game starts with as network.host_public says) */
 	multiplayer.game_private = !config_boolean("network.host_public");
 	p2p_set_hosting_public(multiplayer.mode == _multiplayer_mode_host_internet && !multiplayer.game_private);
+	p2p_friends_set_game_closed(FALSE);
 	multiplayer.cooperative_maximum_players_set = FALSE;
 	if (multiplayer.mode == _multiplayer_mode_host_local)
 		return ui_widget_port_host_local(widget, event, widget_deleted);
@@ -7334,10 +7450,12 @@ static short *server_settings_maximum_players_index(void)
 }
 
 /* Server Setup's LISTING, PRIVATE: the multiplayer game's (as
-network.host_public started it), or co-op's, saved in network.coop_public */
+network.host_public started it), or co-op's, as network.coop_join keeps its
+WHO CAN JOIN (listed for ANYONE alone) */
 static boolean server_settings_private(void)
 {
-	return hosting_cooperative() ? !config_boolean("network.coop_public") : multiplayer.game_private;
+	return hosting_cooperative() ? strcmp(config_string("network.coop_join"), "anyone") != 0 :
+		multiplayer.game_private;
 }
 
 /* an internet game hosted (Create Game's INTERNET) */
@@ -7358,10 +7476,13 @@ static void server_settings_private_set(boolean private_game)
 {
 	if (!hosting_cooperative())
 		multiplayer.game_private = private_game;
-	else if (private_game != server_settings_private() &&
-		!config_write("network.coop_public", private_game ? "false" : "true"))
+	/* (co-op's WHO CAN JOIN: PUBLIC is ANYONE, PRIVATE FRIENDS, its
+	friends offered JOIN again: coop_menu.inc) */
+	else if (private_game != server_settings_private())
 	{
-		platform_log("menus: could not write network.coop_public to config.toml");
+		if (!config_write("network.coop_join", private_game ? "friends" : "anyone"))
+			platform_log("menus: could not write network.coop_join to config.toml");
+		p2p_friends_set_game_closed(FALSE);
 	}
 }
 
@@ -7392,6 +7513,8 @@ static boolean server_settings_initialize(struct widget_instance *list)
 	if ((spinner = named(list, "game_mode_spinner", 0)) != NULL)
 		spinner->parameters.list.selected_index = server_settings_game_mode();
 	p2p_set_hosting_public(multiplayer.mode == _multiplayer_mode_host_internet && !server_settings_private());
+	/* (co-op's INVITE ONLY: its friends offered no JOIN) */
+	p2p_friends_set_game_closed(hosting_cooperative() && !strcmp(config_string("network.coop_join"), "invite"));
 	return TRUE;
 }
 
@@ -7714,19 +7837,226 @@ static void menu_text_fit(long font, wchar_t const *text, wchar_t *fitted, short
 	menu_text_cut(text, low, fitted, size);
 }
 
+/* ---- a line too long for its box (issue 899): the whole of it kept for
+the text box a fit cut it short in (menu_text_box_fit_to), or for a row's
+own text (a list's row's, a spinner's value) measured once as it is drawn;
+drawn by ui_widget.c (pc_menu_text_line). While its row has the focus the
+whole line is drawn, cut to its box, and scrolled: still at its start for a
+pause, moved left at a steady speed to its end, still there for a pause,
+then from its start again (menu_text_scroll_offset), on the menus' clock;
+while not, the line cut short with "..." */
+
+/* how long a line is still at each end, in milliseconds, and how fast it
+moves, in the menus' units a second (a 640 by 480 screen's pixels) */
+#define MENU_TEXT_SCROLL_PAUSE 1500
+#define MENU_TEXT_SCROLL_SPEED 30
+/* the lines kept (by their widget: a few screens' rows and cells), the
+places a widget's may be in, and the longest line */
+#define MENU_TEXT_LINES 128
+#define MENU_TEXT_LINE_PROBES 8
+#define MENU_TEXT_LINE_LENGTH 128
+/* a focus gone longer than this, and the line's scroll begins again as its
+row is focused (a row hidden and shown again) */
+#define MENU_TEXT_SCROLL_GONE 250
+
+struct menu_text_line
+{
+	/* (the text box or spinner; NULL: a free place) */
+	void const *widget;
+	long font;
+	/* (the room it is drawn in, the whole line's width and its fitted
+	form's: NONE, not measured yet) */
+	short width;
+	short full_width;
+	short shown_width;
+	/* (cut short by a fit: shown is what the box was given; else shown is
+	the widget's own text, and cut its form cut short while it is too long) */
+	boolean fitted;
+	boolean focused;
+	unsigned long focus_time;
+	unsigned long drawn_time;
+	wchar_t shown[MENU_TEXT_LINE_LENGTH];
+	wchar_t full[MENU_TEXT_LINE_LENGTH];
+	wchar_t cut[MENU_TEXT_LINE_LENGTH];
+};
+
+static struct menu_text_line menu_text_lines[MENU_TEXT_LINES];
+
+/* how far a line `overflow` units wider than its box is moved left
+(fractions of a unit too), `elapsed` milliseconds after its row took the
+focus: none for the pause, then the speed's units a second until it shows
+its end, all of the overflow for the pause, then none again, and over */
+static real menu_text_scroll_offset(short overflow, unsigned long elapsed)
+{
+	unsigned long travel, at;
+
+	if (overflow <= 0)
+		return 0.0f;
+	travel = (unsigned long)overflow * 1000UL / MENU_TEXT_SCROLL_SPEED;
+	at = elapsed % (2UL * MENU_TEXT_SCROLL_PAUSE + travel);
+	if (at < MENU_TEXT_SCROLL_PAUSE)
+		return 0.0f;
+	if (at >= MENU_TEXT_SCROLL_PAUSE + travel)
+		return (real)overflow;
+	return (real)(at - MENU_TEXT_SCROLL_PAUSE) * (real)MENU_TEXT_SCROLL_SPEED / 1000.0f;
+}
+
+static boolean menu_text_same(wchar_t const *a, wchar_t const *b)
+{
+	for (; *a && *a == *b; a++, b++)
+	{
+	}
+	return *a == *b;
+}
+
+/* whether a text is one line (a row's of more lines is drawn as it is) */
+static boolean menu_text_one_line(wchar_t const *text)
+{
+	for (; *text; text++)
+	{
+		if (*text == '\r' || *text == '\n')
+			return FALSE;
+	}
+	return TRUE;
+}
+
+/* a widget's line (make: a place taken for it, a free one or else the one
+drawn longest ago of those it may have); NULL */
+static struct menu_text_line *menu_text_line_of(void const *widget, boolean make)
+{
+	unsigned long first = (unsigned long)(((size_t)widget >> 4) % MENU_TEXT_LINES);
+	struct menu_text_line *oldest = NULL;
+	long probe;
+
+	if (!widget)
+		return NULL;
+	for (probe = 0; probe < MENU_TEXT_LINE_PROBES; probe++)
+	{
+		struct menu_text_line *line = &menu_text_lines[(first + probe) % MENU_TEXT_LINES];
+
+		if (line->widget == widget)
+			return line;
+		if (!oldest || (oldest->widget && (!line->widget || line->drawn_time < oldest->drawn_time)))
+			oldest = line;
+	}
+	if (!make)
+		return NULL;
+	memset(oldest, 0, sizeof(*oldest));
+	oldest->widget = widget;
+	oldest->full_width = NONE;
+	oldest->shown_width = NONE;
+	return oldest;
+}
+
+/* a text box's text fitted to `width` (its box's: 0 or less), kept whole
+for its scroll where it is cut short; returning how wide it is drawn (0
+while its font is not known). The same text fitted again (each frame) is
+not measured again */
+static short menu_text_box_fit_to(struct widget_instance *box, wchar_t const *text, short width)
+{
+	wchar_t fitted[MENU_TEXT_LINE_LENGTH];
+	short box_width;
+	long font = ui_widget_port_text_box_font(box, &box_width);
+	struct menu_text_line *line;
+
+	if (!box)
+		return 0;
+	if (width <= 0)
+		width = box_width;
+	line = menu_text_line_of(box, FALSE);
+	if (line && line->fitted && line->font == font && line->width == width && text &&
+		menu_text_same(line->full, text) && line->shown_width != NONE)
+	{
+		text_set(box, line->shown);
+		return line->shown_width;
+	}
+	menu_text_fit(font, text, fitted, NUMBEROF(fitted), width);
+	text_set(box, fitted);
+	/* (cut short: the whole kept; whole: none) */
+	if (text && !menu_text_same(fitted, text))
+	{
+		line = menu_text_line_of(box, TRUE);
+		line->fitted = TRUE;
+		line->font = font;
+		line->width = width;
+		line->full_width = NONE;
+		settings_wide_copy(line->shown, fitted, MENU_TEXT_LINE_LENGTH);
+		settings_wide_copy(line->full, text, MENU_TEXT_LINE_LENGTH);
+		line->shown_width = font != NONE ? settings_text_width(font, fitted) : 0;
+		return line->shown_width;
+	}
+	if (line)
+		line->widget = NULL;
+	return font != NONE ? settings_text_width(font, fitted) : 0;
+}
+
+/* (ui_widget.c, as it draws a line of a text box or a spinner's value, in
+its font, in a box `width` units wide: whether it is a row's text (a list's
+row's, a spinner's value), whether its row has the focus, the menus' clock)
+the line to draw in place of the widget's text, how far it is moved left
+(*scroll, at most *overflow) and the room it is cut to (*room): the whole of it, scrolled,
+while its row has the focus, its form cut short with "..." while not; NULL
+to draw the widget's text as it is (it fits, or is no row's and was not
+cut short by a fit) */
+wchar_t const *pc_menu_text_line(struct widget_instance *widget, long font, wchar_t const *text, short width,
+	boolean row, boolean focused, unsigned long now, real *scroll, short *room, short *overflow)
+{
+	struct menu_text_line *line = menu_text_line_of(widget, FALSE);
+
+	*scroll = 0.0f;
+	*overflow = 0;
+	*room = width;
+	if (!text || !text[0] || font == NONE || width <= 0)
+		return NULL;
+	/* (a fit's, while the box still has what it was given) */
+	if (line && line->fitted && (line->font != font || !menu_text_same(line->shown, text)))
+	{
+		line->widget = NULL;
+		line = NULL;
+	}
+	if (!line || !line->fitted)
+	{
+		if (!row)
+			return NULL;
+		if (!line || line->font != font || line->width != width || !menu_text_same(line->shown, text))
+		{
+			line = menu_text_line_of(widget, TRUE);
+			line->font = font;
+			line->width = width;
+			settings_wide_copy(line->shown, text, MENU_TEXT_LINE_LENGTH);
+			settings_wide_copy(line->full, text, MENU_TEXT_LINE_LENGTH);
+			line->full_width = menu_text_one_line(text) ? settings_text_width(font, line->full) : 0;
+			if (line->full_width > width)
+				menu_text_fit(font, line->full, line->cut, MENU_TEXT_LINE_LENGTH, width);
+		}
+	}
+	if (line->full_width == NONE)
+		line->full_width = settings_text_width(font, line->full);
+	/* (scrolled from its start as its row takes the focus) */
+	if (focused && (!line->focused || now - line->drawn_time > MENU_TEXT_SCROLL_GONE))
+		line->focus_time = now;
+	line->focused = focused;
+	line->drawn_time = now;
+	*room = line->width;
+	if (line->full_width <= line->width)
+		return NULL;
+	*overflow = (short)(line->full_width - line->width);
+	if (focused)
+	{
+		*scroll = menu_text_scroll_offset(*overflow, now - line->focus_time);
+		return line->full;
+	}
+	return line->fitted ? NULL : line->cut;
+}
+
 /* a text box's text fitted to it (to `width` if that is less, and more
 than 0), returning how wide it is drawn (0 while its font is not known) */
 static short menu_text_box_fit(struct widget_instance *box, wchar_t const *text, short width)
 {
-	wchar_t fitted[ROW_TEXT_LENGTH];
 	short box_width;
-	long font = ui_widget_port_text_box_font(box, &box_width);
 
-	if (!box)
-		return 0;
-	menu_text_fit(font, text, fitted, NUMBEROF(fitted), (short)(width > 0 ? MIN(width, box_width) : box_width));
-	text_set(box, fitted);
-	return font != NONE ? settings_text_width(font, fitted) : 0;
+	ui_widget_port_text_box_font(box, &box_width);
+	return menu_text_box_fit_to(box, text, (short)(width > 0 ? MIN(width, box_width) : box_width));
 }
 
 /* a text box's text wrapped to its width, `lines` lines at most: the last
@@ -7745,13 +8075,25 @@ static void menu_text_box_wrap(struct widget_instance *box, wchar_t const *text,
 definition on a wide screen) */
 static void menu_text_box_wrap_width(struct widget_instance *box, wchar_t const *text, short lines, short width)
 {
-	wchar_t wrapped[SETTINGS_PANEL_TEXT_LENGTH], last[SETTINGS_PANEL_TEXT_LENGTH];
-	short line = 1, index, start = 0, box_width;
+	wchar_t wrapped[SETTINGS_PANEL_TEXT_LENGTH];
+	short box_width;
 	long font = ui_widget_port_text_box_font(box, &box_width);
 
 	if (!box)
 		return;
-	settings_text_wrap(text, wrapped, NUMBEROF(wrapped), font, width);
+	menu_text_wrap_lines(font, text, width, lines, wrapped);
+	text_set_length(box, wrapped, SETTINGS_PANEL_TEXT_LENGTH);
+}
+
+/* text wrapped across width in the font into wrapped (SETTINGS_PANEL_TEXT_LENGTH
+characters), `lines` lines at most: the last of them, if there is more, the
+rest of the text fitted to it with "..."; the lines it takes */
+static short menu_text_wrap_lines(long font, wchar_t const *text, short width, short lines, wchar_t *wrapped)
+{
+	wchar_t last[SETTINGS_PANEL_TEXT_LENGTH];
+	short line = 1, index, start = 0;
+
+	settings_text_wrap(text, wrapped, SETTINGS_PANEL_TEXT_LENGTH, font, width);
 	for (index = 0; wrapped[index]; index++)
 	{
 		if (wrapped[index] != '\r' || wrapped[index + 1] != '\n')
@@ -7768,13 +8110,13 @@ static void menu_text_box_wrap_width(struct widget_instance *box, wchar_t const 
 				last[length++] = wrapped[index] == '\n' ? ' ' : wrapped[index];
 			}
 			last[length] = 0;
-			menu_text_fit(font, last, wrapped + start, (short)(NUMBEROF(wrapped) - start), width);
+			menu_text_fit(font, last, wrapped + start, (short)(SETTINGS_PANEL_TEXT_LENGTH - start), width);
 			break;
 		}
 		line++;
 		start = (short)(index + 2);
 	}
-	text_set_length(box, wrapped, SETTINGS_PANEL_TEXT_LENGTH);
+	return line;
 }
 
 /* whether a column list is a strip of tabs (port_settings.py's _tab_strip:
@@ -7975,6 +8317,9 @@ static boolean lobby_browser_select(struct widget_instance *widget, short contro
 static void browser_prompts_show(struct widget_instance *list);
 static void browser_filters_refresh(void);
 
+/* (the co-op list's model off: coop_menu.inc) */
+static void coop_join_end(void);
+
 /* "gamespy screen init": the mode's title and parts; the games' client */
 static boolean browser_initialize(struct widget_instance *screen, struct event_record *event,
 	boolean *widget_deleted)
@@ -7985,6 +8330,8 @@ static boolean browser_initialize(struct widget_instance *screen, struct event_r
 	boolean link = multiplayer.mode == _multiplayer_mode_direct_link;
 	short index;
 
+	/* (the server browser's own list, never the co-op list's) */
+	coop_join_end();
 	server_browser_initialize(screen);
 	/* (the filters as Filters left them: browser_filters_read, below) */
 	browser_filters_refresh();
@@ -8198,7 +8545,7 @@ static short browser_offline_count;
 /* the most a list orders (browser_favorites_order): the server browser's
 games and its groups' headings (LOBBY_BROWSER_GAMES and
 NUMBER_OF_BROWSER_GROUPS, below), more than the local network's */
-#define BROWSER_LISTED_MAXIMUM (256 + 3)
+#define BROWSER_LISTED_MAXIMUM (256 + 5)
 /* which of those listed are favorites found (each group's first) */
 static boolean browser_listed_favorite[BROWSER_LISTED_MAXIMUM];
 /* the game starred or unstarred last, whose row takes the focus once the
@@ -8346,6 +8693,10 @@ enum
 	_browser_group_dedicated,
 	_browser_group_hosted,
 	_browser_group_legacy,
+	/* (the co-op list's, coop_menu.inc: friends' games, then the public
+	ones; no game of the server browser's own is in them) */
+	_browser_group_friends,
+	_browser_group_public,
 	NUMBER_OF_BROWSER_GROUPS
 };
 
@@ -8517,6 +8868,10 @@ static wchar_t const *browser_group_heading(short group)
 		return L"GOAT H1 Dedicated Servers";
 	case _browser_group_hosted:
 		return L"Hosted Servers";
+	case _browser_group_friends:
+		return L"YOUR FRIENDS' GAMES";
+	case _browser_group_public:
+		return L"PUBLIC CO-OP GAMES";
 	default:
 		return L"Legacy (Slow) Servers";
 	}
@@ -8861,6 +9216,10 @@ static void browser_view_read(void)
 		NUMBER_OF_BROWSER_TABS);
 	if (browser_tab_visit != NONE)
 		browser_tab = browser_tab_visit;
+	/* (the new engine's CO-OP tab opens co-op's own screen, its list not
+	the browser's: the browser opens on ALL in its place) */
+	if (browser_tab == _browser_tab_coop && menu_engine_looks())
+		browser_tab = _browser_tab_all;
 	browser_sort_column = browser_word_index(config_string("network.browser_sort"), browser_sort_words,
 		NUMBER_OF_BROWSER_SORTS);
 	browser_sort_descending = config_boolean("network.browser_sort_descending") != 0;
@@ -10067,6 +10426,19 @@ static struct
 	boolean password_joined;
 } lobby_browser;
 
+/* the co-op list (screens/coop_join.xml, coop_menu.inc): the server
+browser's model with its games the co-op ones alone, the player's friends'
+first (their presence's, a friend's listing taken into its row), and why
+none are in plain words. On while its screen is open */
+static boolean coop_join_listing(void);
+static short coop_join_order(short count);
+static boolean coop_join_party_row(short index);
+static void coop_join_row_fix(short index, struct browser_row *row);
+static void coop_join_status(short index, wchar_t *text, short size);
+static void coop_join_empty(wchar_t *text, short size);
+static boolean coop_join_friend(short index);
+static boolean coop_join_value(char const *name, struct browser_row const *row, wchar_t *text, short size);
+
 static void browser_list_restart(void)
 {
 	lobby_browser.first = lobby_browser.chosen = 0;
@@ -10624,7 +10996,12 @@ static void lobby_browser_model(struct menu_table_view *view)
 		lobby_browser.count = matchmaking_playlist_games(lobby_browser.games, lobby_browser.count,
 			browser_doubles_playlist);
 	}
-	lobby_browser.count = lobby_browser_favorites(lobby_browser.count);
+	/* (the co-op list's: its friends' games, then the public co-op ones,
+	none hidden by the server browser's filters, searches or tab) */
+	if (coop_join_listing())
+		lobby_browser.count = coop_join_order(lobby_browser.count);
+	else
+		lobby_browser.count = lobby_browser_favorites(lobby_browser.count);
 	rows = lobby_browser_rows();
 	/* (the game starred or unstarred, moved by it: its row focused) */
 	if (browser_follow_key[0])
@@ -10689,7 +11066,7 @@ static void lobby_browser_model(struct menu_table_view *view)
 	/* (its host's tunnel opened and kept while it is chosen: joining it is
 	then at once) */
 	if (chosen < lobby_browser.count && !lobby_browser.joining && lobby_browser.games[chosen].open &&
-		!lobby_browser.games[chosen].failed)
+		!lobby_browser.games[chosen].failed && !coop_join_party_row(chosen))
 	{
 		p2p_probe_keep(&lobby_browser.games[chosen]);
 	}
@@ -10755,7 +11132,10 @@ static void lobby_browser_model(struct menu_table_view *view)
 
 		text[0] = 0;
 		if (chosen < lobby_browser.count)
+		{
 			browser_listing_row(&lobby_browser.games[chosen], &shown);
+			coop_join_row_fix(chosen, &shown);
+		}
 		else if (chosen < rows)
 			browser_offline_row(browser_favorites_get(browser_offline[chosen - lobby_browser.count]), &shown);
 		if (lobby_browser.joining)
@@ -10792,8 +11172,13 @@ static void lobby_browser_model(struct menu_table_view *view)
 			browser_offline_line(browser_favorites_get(browser_offline[chosen - lobby_browser.count]), text,
 				NUMBEROF(text));
 		}
+		/* (a friend's game the co-op list joins through their party) */
+		else if (chosen < rows && coop_join_party_row(chosen))
+			coop_join_status(chosen, text, NUMBEROF(text));
 		else if (chosen < rows)
 			browser_status_text(&shown, text, NUMBEROF(text));
+		else if (coop_join_listing())
+			usnprintf(text, NUMBEROF(text) - 1, L"Your friends' co-op games, then everyone's.");
 		else
 		{
 			usnprintf(text, NUMBEROF(text) - 1, browser_doubles_playlist != NONE ?
@@ -10804,7 +11189,7 @@ static void lobby_browser_model(struct menu_table_view *view)
 		if (chosen < rows)
 			browser_display.row = shown;
 		settings_wide_copy(browser_display.title, browser_doubles_playlist != NONE ? browser_doubles_name :
-			L"SERVER BROWSER", NUMBEROF(browser_display.title));
+			coop_join_listing() ? L"JOIN CO-OP" : L"SERVER BROWSER", NUMBEROF(browser_display.title));
 		settings_wide_copy(browser_display.status, text, NUMBEROF(browser_display.status));
 		for (index = 0; index < lobby_browser.count; index++)
 			players += lobby_browser.games[index].player_count;
@@ -10818,6 +11203,9 @@ static void lobby_browser_model(struct menu_table_view *view)
 		{
 			doubles_browser_empty(text, NUMBEROF(text));
 		}
+		/* (the co-op list's: why none, and its fix) */
+		if (coop_join_listing())
+			coop_join_empty(text, NUMBEROF(text));
 		settings_wide_copy(browser_display.empty, text, NUMBEROF(browser_display.empty));
 		browser_display.games = (short)(lobby_browser.count - lobby_browser.headings);
 		browser_display.players = players;
@@ -10940,6 +11328,10 @@ static boolean lobby_browser_select(struct widget_instance *widget, short contro
 		return TRUE;
 	if (index >= lobby_browser.count)
 		return campaign_fail();
+	/* (a friend's game not listed: joined through their party, which
+	follows them into it) */
+	if (coop_join_party_row(index))
+		return coop_join_friend(index);
 	game = &lobby_browser.games[index];
 	if (!game->open || !config_boolean("network.online"))
 		return campaign_fail();
@@ -11958,11 +12350,30 @@ static boolean browser_source_row(short index, struct browser_row *row, boolean 
 	if (index >= count)
 		browser_offline_row(browser_favorites_get(browser_offline[index - count]), row);
 	else if (server_browser)
+	{
 		browser_listing_row(&lobby_browser.games[index], row);
+		coop_join_row_fix(index, row);
+	}
 	else
 		browser_advertised_row(multiplayer.games[index], row);
 	*favorite = (index < count && browser_listed_favorite[index]) || row->offline;
 	return TRUE;
+}
+
+/* a co-op game's difficulty, as its gametype's words end with it ("Co-op
+Heroic": network_server_manager.c's listing, coop_menu.inc's friends'
+rows); empty for none */
+static wchar_t const *browser_coop_difficulty(struct browser_row const *row)
+{
+	static wchar_t const prefix[] = L"Co-op ";
+	short index;
+
+	for (index = 0; prefix[index]; index++)
+	{
+		if (row->gametype[index] != prefix[index])
+			return L"";
+	}
+	return row->gametype + index;
 }
 
 static void browser_source_update(struct menu_table_view *view)
@@ -12017,6 +12428,16 @@ static void browser_source_cell(short index, char const *column, int focused, st
 		}
 		cell->lock = row.locked;
 	}
+	/* (the co-op list's: the host, the mission, its difficulty) */
+	else if (!strcmp(column, "host"))
+	{
+		settings_wide_copy(text, row.name, MENU_TABLE_TEXT_LENGTH);
+		cell->lock = row.locked;
+	}
+	else if (!strcmp(column, "mission"))
+		settings_wide_copy(text, row.map, MENU_TABLE_TEXT_LENGTH);
+	else if (!strcmp(column, "difficulty"))
+		settings_wide_copy(text, browser_coop_difficulty(&row), MENU_TABLE_TEXT_LENGTH);
 	else if (!strcmp(column, "map"))
 		settings_wide_copy(text, row.map, MENU_TABLE_TEXT_LENGTH);
 	else if (!strcmp(column, "mode"))
@@ -12076,7 +12497,15 @@ int pc_menu_browser_value(char const *name, char *value, unsigned long size)
 	if (!strcmp(name, "browser.title"))
 	{
 		settings_wide_copy(text, multiplayer.mode == _multiplayer_mode_lan ? L"LOCAL NETWORK" : link ?
-			L"JOIN BY LINK" : L"SERVER BROWSER", NUMBEROF(text));
+			L"JOIN BY LINK" : coop_join_listing() ? L"JOIN CO-OP" : L"SERVER BROWSER", NUMBEROF(text));
+	}
+	/* (the co-op list's: its counts, the chosen game's mission and
+	difficulty, and the fix for an empty list) */
+	else if (coop_join_listing() && (!strcmp(name, "browser.counts") || !strcmp(name, "browser.fix") ||
+		!strcmp(name, "browser.panel.where")))
+	{
+		if (!coop_join_value(name, row, text, NUMBEROF(text)))
+			return FALSE;
 	}
 	else if (!strcmp(name, "browser.counts"))
 	{
@@ -12595,15 +13024,7 @@ char const *pc_menu_text_field_words(void)
 
 short pc_menu_text_fit(struct widget_instance *box, unsigned short const *text, short width)
 {
-	wchar_t fitted[ROW_TEXT_LENGTH];
-	short box_width;
-	long font = ui_widget_port_text_box_font(box, &box_width);
-
-	if (!box)
-		return 0;
-	menu_text_fit(font, (wchar_t const *)text, fitted, NUMBEROF(fitted), width > 0 ? width : box_width);
-	text_set(box, fitted);
-	return font != NONE ? settings_text_width(font, fitted) : 0;
+	return menu_text_box_fit_to(box, (wchar_t const *)text, width);
 }
 
 void pc_menu_text_wrap(struct widget_instance *box, unsigned short const *text, short width, short lines)
@@ -12766,10 +13187,11 @@ static void training_update(struct widget_instance *list)
 
 /* "port pause end game" (the in-game pause menu's END GAME, the host's:
 menu_tags.c's pause_patch): the game ends as its time limit would, its
-players staying for the next (the carnage report, then the host's PICK GAME) */
-static boolean pause_end_game(void)
+players staying for the next (the carnage report, then the host's PICK GAME);
+the host's first local player's alone (host_rows_player) */
+static boolean pause_end_game(struct widget_instance *widget)
 {
-	if (!global_network_game_server_get() || !game_engine_running())
+	if (!global_network_game_server_get() || !game_engine_running() || !host_rows_player(widget))
 		return campaign_fail();
 	game_engine_end_game();
 	return TRUE;
@@ -14383,6 +14805,8 @@ boolean pc_menu_edit_leave(short local_player_index, boolean save)
 #include "lobby_menu.inc"
 /* (the campaign's screens: the Campaign menu, Choose Mission, Choose Difficulty) */
 #include "campaign_menu.inc"
+/* (co-op's screens, the new engine's: HOST, JOIN, the lobby's WHO CAN JOIN) */
+#include "coop_menu.inc"
 
 /* ---------- the hand-written screens' (menu_screen.c) */
 
@@ -14483,6 +14907,19 @@ boolean pc_menu_event_function_invoke(
 			return FALSE;
 		if (!strncmp(name, "port controller ", 16))
 			return pad_editor_event(widget, name);
+		/* (co-op's HOST: Choose Difficulty's PLAY goes on to WHO CAN JOIN;
+		the co-op list's screen made and let go of: coop_menu.inc) */
+		if (!strcmp(name, "port campaign play") && coop_host_choosing())
+			return coop_host_difficulty(widget, widget_deleted);
+		if (!strcmp(name, "port coop host begin") || !strcmp(name, "port coop host end"))
+			return coop_host_begin(!strcmp(name, "port coop host begin"));
+		if (!strcmp(name, "port coop join init"))
+			return coop_join_initialize(widget, event, widget_deleted);
+		if (!strcmp(name, "port coop join dispose"))
+		{
+			coop_join_dispose();
+			return TRUE;
+		}
 		if (!strncmp(name, "port campaign ", 14))
 			return campaign_menu_event(widget, name + 14, controller);
 		if (!strcmp(name, "main menu quit game"))
@@ -14709,7 +15146,7 @@ boolean pc_menu_event_function_invoke(
 		}
 		else if (!strcmp(name, "port pause end game"))
 		{
-			return pause_end_game();
+			return pause_end_game(widget);
 		}
 		else if (!strcmp(name, "port coop friendly fire"))
 		{
@@ -14852,7 +15289,13 @@ boolean pc_menu_event_function_invoke(
 		}
 		else if (!strcmp(name, "port training open"))
 		{
-			/* (the pause menu's CHAPTERS: its screen opened by the button) */
+			/* (the pause menu's CHAPTERS: its screen opened by the button,
+			the host's first local player's alone) */
+			if (!host_rows_player(widget))
+			{
+				ui_play_audio_feedback_sound(SOUND_ERROR);
+				return FALSE;
+			}
 		}
 		else if (!strcmp(name, "port update now"))
 		{
@@ -14903,7 +15346,7 @@ boolean pc_menu_event_function_invoke(
 		/* (Host Controls: host_controls_menu.inc) */
 		else if (!strcmp(name, "port host open"))
 		{
-			return host_controls_open();
+			return host_controls_open(widget);
 		}
 		else if (!strcmp(name, "port host init"))
 		{

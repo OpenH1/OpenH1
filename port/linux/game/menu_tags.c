@@ -640,6 +640,9 @@ static char const *const port_function_names[] =
 	/* (B on an editor: back, or the question when it has changes not saved:
 	menu_functions.c's edit_leave_ask) */
 	"port edit leave",
+	/* (co-op's screens, the new engine's: HOST's choosing begun and over,
+	the co-op list's screen made and let go of: coop_menu.inc) */
+	"port coop host begin", "port coop host end", "port coop join init", "port coop join dispose",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -1464,11 +1467,14 @@ static long spinner_expand(char const *setting, boolean values, char const **pie
 			(int)(MAXIMUM_STRINGS - count));
 		for (index = 0; index < added; index++)
 		{
-			char shown[32];
+			char shown[sizeof(names[0])];
 			char const *name = names[index];
 			char *piece;
 			long length;
 
+			/* (the whole name, in capitals: a row too long for it cuts it
+			short and scrolls it while it has the focus, and the panel wraps
+			it, issue 899) */
 			if (!values)
 			{
 				long at;
@@ -1476,9 +1482,6 @@ static long spinner_expand(char const *setting, boolean values, char const **pie
 				for (at = 0; name[at] && at < (long)sizeof(shown) - 1; at++)
 					shown[at] = name[at] >= 'a' && name[at] <= 'z' ? (char)(name[at] - 'a' + 'A') : name[at];
 				shown[at] = 0;
-				/* (cut short: what the spinner shows) */
-				if (strlen(name) > 18)
-					strcpy(shown + 15, "...");
 				name = shown;
 			}
 			length = (long)strlen(name);
@@ -3151,6 +3154,9 @@ static long pause_list_patch(struct cache_file_tag_instance *instances, struct u
 	view.training = basic_training_active();
 	view.host_controls_screen = host_controls_widget != NONE;
 	view.training_screen = training_widget != NONE;
+	/* (the map's screen is every local player's: the functions of its host's
+	rows refuse the others, menu_functions.c) */
+	view.first_player = TRUE;
 	rows = network_host_controls_pause_rows_for(&view);
 	for (child = 0; child < NUMBER_OF_HOST_CONTROLS_PAUSE_ROWS; child++)
 		added += TEST_FLAG(rows, child) ? 1 : 0;
@@ -3410,10 +3416,12 @@ short menu_tags_legend_growth(
 
 /* the rows the pause menu adds for this machine, as pause_patch and
 pause_campaign_patch add them to the map's (network_host_controls_pause_rows_for):
-the hand-written pause menu's (menu_screen.c's pause.* bindings) */
+the hand-written pause menu's (menu_screen.c's pause.* bindings), its
+local player's: the host's rows the machine's first local player's alone */
 static boolean network_coop_campaign_map(void);
 
-unsigned long menu_tags_pause_rows(void)
+unsigned long menu_tags_pause_rows(
+	short local_player_index)
 {
 	struct host_controls_pause_view view;
 	/* (a network co-op game's map: its pause menu's FRIENDLY FIRE too) */
@@ -3431,6 +3439,7 @@ unsigned long menu_tags_pause_rows(void)
 	view.training = basic_training_active();
 	view.host_controls_screen = host_controls;
 	view.training_screen = training;
+	view.first_player = network_host_controls_local_player(local_player_index);
 	return network_host_controls_pause_rows_for(&view);
 }
 

@@ -793,8 +793,10 @@ int main(int argc, char **argv)
 			panel_buttons += block->kind == MENU_SCREEN_BUTTON && screen.blocks[block->parent].kind == MENU_SCREEN_PANEL;
 			rights += block->kind == MENU_SCREEN_BUTTON && block->side && !strcmp(block->side, "right");
 		}
-		CHECK(choices == 4 && panel_buttons == 8, "%d choices, %d panel buttons", choices, panel_buttons);
-		CHECK(rights == 6, "%d buttons at the bar's right", rights);
+		/* (the panels' buttons: a co-op host's fix too, coop.fix; the bar's
+		right: a co-op host's COPY LINK too) */
+		CHECK(choices == 4 && panel_buttons == 9, "%d choices, %d panel buttons", choices, panel_buttons);
+		CHECK(rights == 7, "%d buttons at the bar's right", rights);
 		CHECK(kind_first(&screen, MENU_SCREEN_CHAT) >= 0 &&
 			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_CHAT)].source, "lobby.chat"), "the lobby's chat");
 		/* (its panels: the next game's (its map's picture), a player's card
@@ -935,6 +937,68 @@ int main(int argc, char **argv)
 			"with no <box>, <table> or <list> beside it");
 		refused("<screen name='t'><dialog title='T' words='W'><list><item label='A' do='back'/></list>"
 			"</dialog></screen>", "no attribute words");
+	}
+	else if (!strcmp(name, "coop"))
+	{
+		static char const *const coop_actions[] = { "coop host", "coop join", "coop split" };
+		static char const *const who_actions[] = { "coop host friends", "coop host anyone", "coop host invite" };
+		static char const *const columns[] = { "host", "mission", "difficulty", "players", "ping" };
+		struct menu_screen_block const *table, *fix;
+		int index, table_index, cards = 0;
+
+		/* (co-op's one screen: HOST, JOIN and SPLIT SCREEN's cards, HOST
+		focused first) */
+		CHECK(read_text(coop_xml, &screen, problem), "co-op's file is refused: %s", problem);
+		CHECK(!strcmp(screen.name, "coop") && kind_total(&screen, MENU_SCREEN_CARDS, -2) == 1 &&
+			!strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_CARDS)].focus, "host"), "co-op's cards");
+		for (index = 0; index < screen.block_count; index++)
+		{
+			if (screen.blocks[index].kind != MENU_SCREEN_CARD)
+				continue;
+			CHECK(cards < 3 && !strcmp(screen.blocks[index].action, coop_actions[cards]), "co-op's card %d", cards);
+			cards++;
+		}
+		CHECK(cards == 3, "%d co-op cards", cards);
+		menu_screen_free(&screen);
+		/* (WHO CAN JOIN: FRIENDS, ANYONE, INVITE ONLY, each hosting) */
+		CHECK(read_text(coop_who_xml, &screen, problem), "WHO CAN JOIN's file is refused: %s", problem);
+		cards = 0;
+		for (index = 0; index < screen.block_count; index++)
+		{
+			if (screen.blocks[index].kind != MENU_SCREEN_CARD)
+				continue;
+			CHECK(cards < 3 && !strcmp(screen.blocks[index].action, who_actions[cards]), "WHO CAN JOIN's card %d",
+				cards);
+			cards++;
+		}
+		CHECK(cards == 3 && !strcmp(screen.blocks[kind_first(&screen, MENU_SCREEN_CARDS)].focus, "friends"),
+			"WHO CAN JOIN's cards");
+		menu_screen_free(&screen);
+		/* (the co-op list: the server browser's games, its columns the
+		host, mission, difficulty, players and ping, an empty list's fix
+		under its words, no tabs nor searches) */
+		CHECK(read_text(coop_join_xml, &screen, problem), "the co-op list's file is refused: %s", problem);
+		table_index = kind_first(&screen, MENU_SCREEN_TABLE);
+		CHECK(table_index >= 0, "no table");
+		table = &screen.blocks[table_index];
+		CHECK(!strcmp(table->source, "browser.games") && !strcmp(table->action, "browser join") && table->empty,
+			"the co-op list's source, do or empty");
+		CHECK(kind_total(&screen, MENU_SCREEN_COLUMN, table_index) == 5, "%d columns",
+			kind_total(&screen, MENU_SCREEN_COLUMN, table_index));
+		for (index = 0; index < 5; index++)
+			CHECK(block_of(&screen, columns[index]) != NULL, "no %s column", columns[index]);
+		CHECK(block_of(&screen, "ping")->cell == MENU_SCREEN_CELL_PING, "the ping's column");
+		fix = &screen.blocks[kind_first(&screen, MENU_SCREEN_BUTTON)];
+		CHECK(fix->parent == table_index && !strcmp(fix->action, "coop fix") && !strcmp(fix->condition, "browser.fix"),
+			"the empty list's fix");
+		CHECK(kind_total(&screen, MENU_SCREEN_TAB, -2) == 0 && kind_total(&screen, MENU_SCREEN_SEARCH, -2) == 0,
+			"the co-op list has tabs or searches");
+		menu_screen_free(&screen);
+		/* (the server browser's CO-OP tab: co-op's screen) */
+		CHECK(read_text(browser_xml, &screen, problem), "the browser's file is refused: %s", problem);
+		CHECK(block_of(&screen, "coop") && !strcmp(block_of(&screen, "coop")->action, "open coop"),
+			"the browser's CO-OP tab does not open co-op's screen");
+		menu_screen_free(&screen);
 	}
 	else
 	{

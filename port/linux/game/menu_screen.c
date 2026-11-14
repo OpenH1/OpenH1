@@ -53,7 +53,7 @@ long menu_tags_background(long tag_index);
 void menu_tags_background_set(long tag_index, long background_tag_index);
 long menu_tags_flags(long tag_index);
 short menu_tags_legend_growth(long legends_tag);
-unsigned long menu_tags_pause_rows(void);
+unsigned long menu_tags_pause_rows(short local_player_index);
 int halo_keyboard_prompts(void);
 boolean config_boolean(char const *name);
 struct widget_instance *ui_widget_port_add_child(struct widget_instance *parent, long tag_index,
@@ -85,6 +85,14 @@ boolean pc_menu_browser_sort(char const *word);
 boolean pc_menu_browser_favorite(short row);
 boolean pc_menu_browser_select(struct widget_instance *widget, struct event_record *event, short row,
 	boolean *deleted);
+/* (menu_functions.c's coop_menu.inc: co-op's screens' bindings and
+actions, WHO CAN JOIN's choice kept, the co-op list's fix a host's, co-op's
+screen opened) */
+int pc_menu_coop_value(char const *name, char *value, unsigned long size);
+int pc_menu_coop_action(struct widget_instance *widget, struct event_record *event, char const *name, int *deleted);
+char const *pc_menu_coop_who_word(void);
+int pc_menu_coop_fix_hosts(void);
+void pc_menu_coop_opened(void);
 
 /* ---------- constants */
 
@@ -270,6 +278,8 @@ static boolean screen_call_close(struct widget_instance *widget, struct event_re
 	boolean *deleted);
 static boolean screen_call_edit(struct widget_instance *widget, struct event_record *event, char const *name,
 	boolean *deleted);
+static boolean screen_call_coop(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted);
 /* the row of the table an action is run for (0 up, on the table), NONE for
 none (a key's, a button's) */
 static short screen_action_row = NONE;
@@ -283,20 +293,40 @@ static struct screen_action const screen_actions[] =
 	campaign: a profile made first if there is none, as the PC version's
 	CAMPAIGN, and then Choose Mission at once: port_settings.py's
 	_solo_new_profile) */
-	{ "open solo", NULL, NULL, "new game if no plyr profiles", "port campaign init", "main_menu/campaign/mission_screen",
+	{ "open solo", NULL, "port coop host end", "new game if no plyr profiles", "port campaign init", "main_menu/campaign/mission_screen",
 		"main_menu/campaign/solo_creating_profile" },
 	/* (the server browser, as Multiplayer's SERVER BROWSER opens it: its mode
-	the browser's; every game, or the co-op games, this visit) */
+	the browser's; every game this visit) */
 	{ "open multiplayer", "all", "mp type set mode", "new game if no plyr profiles", NULL,
 		"main_menu/multiplayer_type_select/join_game/join_game_screen",
 		"main_menu/profile_manager/multiplayer_creating_profile" },
-	{ "open coop", "coop", "mp type set mode", "new game if no plyr profiles", NULL,
-		"main_menu/multiplayer_type_select/join_game/join_game_screen",
-		"main_menu/profile_manager/multiplayer_creating_profile" },
+	/* (co-op's one screen, screens/coop.xml, every way in: Campaign's
+	CO-OP, the server browser's CO-OP tab, Multiplayer's CO-OP CAMPAIGN) */
+	{ "open coop", NULL, NULL, NULL, NULL, "screens/coop", NULL },
 	/* (the browser's HOST & MORE: the PC version's Multiplayer screen, the
-	hub; its HOST CO-OP: the hub's co-op page, online or split screen) */
+	hub; co-op's own screen) */
 	{ "open host", NULL, NULL, NULL, NULL, "main_menu/multiplayer_type_select/multiplayer_type_select_screen", NULL },
-	{ "open host coop", NULL, NULL, NULL, NULL, "main_menu/multiplayer_type_select/hub/coop_screen", NULL },
+	{ "open host coop", NULL, NULL, NULL, NULL, "screens/coop", NULL },
+	/* (co-op's, screens/coop.xml: HOST, Choose Mission and Choose
+	Difficulty as the campaign's (a profile made first if there is none),
+	HOST's choosing begun; JOIN, the co-op list (screens/coop_join.xml);
+	SPLIT SCREEN, as the hub's SPLIT-SCREEN CO-OP. WHO CAN JOIN's cards
+	(screens/coop_who.xml) host the game; the co-op list's fix and JOIN BY
+	LINK, the lobby's fix: coop_menu.inc) */
+	{ "coop host", NULL, "port coop host begin", "new game if no plyr profiles", "port campaign init",
+		"main_menu/campaign/mission_screen", "main_menu/campaign/solo_creating_profile" },
+	/* (a profile made first if there is none, back to co-op's screen after:
+	Select Profile's own, not Multiplayer's, which ends on the hub) */
+	{ "coop join", NULL, NULL, "new game if no plyr profiles", NULL, "screens/coop_join",
+		"main_menu/profile_manager/pm_empty_creating_profile" },
+	{ "coop split", NULL, NULL, "port coop begin", NULL, "main_menu/multiplayer_type_select/coop/player_2_profile_screen",
+		NULL },
+	{ "coop host friends", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_coop },
+	{ "coop host anyone", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_coop },
+	{ "coop host invite", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_coop },
+	{ "coop fix", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_coop },
+	{ "coop join link", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_coop },
+	{ "lobby fix", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_coop },
 	{ "open settings", NULL, NULL, "port settings begin", NULL,
 		"main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen", NULL },
 	{ "open training", NULL, NULL, NULL, NULL, "main_menu/training/training_screen", NULL },
@@ -391,7 +421,8 @@ static struct screen_action const screen_actions[] =
 	/* (the pause menu's, screens/pause.xml and pause_campaign.xml, as its
 	rows did on the map's: the screen closed (RESUME GAME), or every screen
 	(B; the campaign's RESUME GAME); the player out of a multiplayer game
-	(LEAVE GAME, the screen closed); the host's Host Controls and END GAME;
+	(LEAVE GAME, the screen closed); the host's Host Controls, END GAME and
+	Basic Training's CHAPTERS (its first local player's alone);
 	network co-op's FRIENDLY FIRE; the campaign's REVERT TO SAVED and
 	RESTART LEVEL, each its question first, and SAVE AND QUIT) */
 	{ "close", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_close },
@@ -399,6 +430,7 @@ static struct screen_action const screen_actions[] =
 	{ "pause leave", NULL, NULL, NULL, NULL, NULL, NULL, screen_call_close },
 	{ "open host controls", NULL, NULL, "port host open", NULL, "main_menu/host_controls/host_controls_screen", NULL },
 	{ "pause end game", NULL, NULL, "port pause end game", NULL, NULL, NULL },
+	{ "pause chapters", NULL, NULL, "port training open", NULL, "main_menu/training/training_screen", NULL },
 	{ "pause friendly fire", NULL, NULL, "port coop friendly fire", NULL, NULL, NULL },
 	{ "pause revert", NULL, NULL, NULL, NULL, "ui\\shell\\error\\confirm_restartatsave_modal_fullscreen", NULL },
 	{ "pause restart", NULL, NULL, NULL, NULL, "ui\\shell\\error\\confirm_restartlevel_modal_fullscreen", NULL },
@@ -408,6 +440,8 @@ static struct screen_action const screen_actions[] =
 static char const *const screen_action_names[] =
 {
 	"open campaign", "open solo", "open multiplayer", "open coop", "open host", "open host coop", "open settings",
+	"coop host", "coop join", "coop split", "coop host friends", "coop host anyone", "coop host invite", "coop fix",
+	"coop join link", "lobby fix",
 	"open training", "quit", "quit game", "back", "edit save", "edit discard", "search next", "search clear", "browser back", "browser host", "browser tab all",
 	"browser tab dedicated", "browser tab openh1", "browser tab legacy", "browser tab coop", "browser tab favorites",
 	"browser sort players", "browser sort ping", "browser sort server", "browser sort map", "browser sort mode",
@@ -417,18 +451,20 @@ static char const *const screen_action_names[] =
 	"lobby bots right", "lobby skill left", "lobby skill right", "lobby teams left", "lobby teams right",
 	"lobby chat", "lobby card", "lobby card friend", "lobby card mute", "lobby card kick", "lobby friends",
 	"lobby friend left", "lobby friend right", "lobby friend invite", "lobby close",
-	"close", "close all", "pause leave", "open host controls", "pause end game",
+	"close", "close all", "pause leave", "open host controls", "pause end game", "pause chapters",
 	"pause friendly fire", "pause revert", "pause restart", "pause quit",
 };
 
 /* a binding's value: the saved game's mission and difficulty (player 1's
-profile's), none without one */
+profile's), none without one; the screen's local player (its widget's: a
+split screen's pause menu is its player's), whose the pause.* rows are */
 struct screen_values
 {
 	boolean read;
 	boolean saved;
 	char level[64];
 	char difficulty[64];
+	short local_player_index;
 };
 
 static char const *const screen_binding_names[] =
@@ -438,7 +474,7 @@ static char const *const screen_binding_names[] =
 	"browser.search.any", "browser.panel.title", "browser.panel.where", "browser.panel.kind",
 	"browser.panel.kind.tone", "browser.panel.tick", "browser.panel.opence", "browser.panel.players",
 	"browser.panel.ping", "browser.panel.status", "browser.joinable", "browser.server", "browser.link",
-	"browser.filtered", "profile.title", "profile.name", "profile.level", "profile.difficulty", "profile.controls",
+	"browser.filtered", "browser.fix", "coop.listing", "coop.link", "coop.problem", "coop.fix", "profile.title", "profile.name", "profile.level", "profile.difficulty", "profile.controls",
 	"profile.color", "profile.chosen", "profile.current", "color.profile", "color.title", "color.spartan",
 	"color.current", "color.about", "lobby.title", "lobby.subtitle", "lobby.subtitle.short", "lobby.red",
 	"lobby.red.count", "lobby.red.tone", "lobby.blue", "lobby.blue.count", "lobby.blue.tone", "lobby.gametype",
@@ -503,11 +539,16 @@ static int screen_value(void *context, char const *name, char *value, unsigned l
 	/* (the lobby's: menu_functions.c's lobby_menu.inc) */
 	if (!strncmp(name, "lobby.", 6))
 		return pc_menu_lobby_value(name, value, size);
-	/* (the pause menu's: the rows this machine's has, as menu_tags.c adds
-	them to the map's; FRIENDLY FIRE's words, this machine's choice) */
+	/* (co-op's, the lobby's WHO CAN JOIN and what keeps people from the
+	game: coop_menu.inc) */
+	if (!strncmp(name, "coop.", 5))
+		return pc_menu_coop_value(name, value, size);
+	/* (the pause menu's: the rows this machine's has for the screen's local
+	player, as menu_tags.c adds them to the map's, the host's for its first
+	local player alone; FRIENDLY FIRE's words, this machine's choice) */
 	if (!strncmp(name, "pause.", 6))
 	{
-		unsigned long rows = menu_tags_pause_rows();
+		unsigned long rows = menu_tags_pause_rows(values->local_player_index);
 
 		if (!strcmp(name, "pause.friendly_fire") && TEST_FLAG(rows, _host_controls_pause_friendly_fire))
 			snprintf(value, size, config_boolean("network.coop_own_friendly_fire") ? "FRIENDLY FIRE ON" :
@@ -563,6 +604,13 @@ static struct screen_place const screen_places[] =
 {
 	{ "main", "main_menu\\main_menu", pc_menu_main_menu_shown, NULL },
 	{ "campaign", "screens\\campaign", NULL, NULL },
+	/* (co-op's one screen: its own, and the hub's co-op page, which
+	Multiplayer's CO-OP CAMPAIGN opens; HOST's WHO CAN JOIN; the co-op
+	list) */
+	{ "coop", "screens\\coop", NULL, NULL },
+	{ "coop", "main_menu\\multiplayer_type_select\\hub\\coop_screen", NULL, NULL },
+	{ "coop_who", "screens\\coop_who", NULL, NULL },
+	{ "coop_join", "screens\\coop_join", NULL, NULL },
 	/* (Join Game's, in each of its modes: the server browser, the local
 	network's list, Join by Link) */
 	{ "browser", "main_menu\\multiplayer_type_select\\join_game\\join_game_screen", NULL, NULL },
@@ -630,8 +678,11 @@ struct screen_open
 	boolean colors;
 	struct screen_spartan spartans[MENU_SCREEN_MAXIMUM_SPARTANS];
 	long spartan_count;
-	/* (its cards' scale, to fill their room: 0 for their own size) */
+	/* (its cards' scale, to fill their room: 0 for their own size; and their
+	titles', smaller than CARD_TITLE_SCALE where one would be wider than its
+	card at it, every title of the row the same: 0 for CARD_TITLE_SCALE) */
 	real card_scale;
+	real card_title_scale;
 	/* (its button bar's prompts, each its key, and its place in the 640
 	and its side, which past 16:9 moves it to the screen's edge each frame) */
 	struct widget_instance *prompts[SCREEN_MAXIMUM_BUTTONS];
@@ -854,6 +905,13 @@ static struct widget_instance *screen_widget_add(struct widget_instance *parent,
 	return widget;
 }
 
+/* the bindings' values unread, for the open screen's local player */
+static void screen_values_clear(struct screen_values *values, struct screen_open const *open)
+{
+	memset(values, 0, sizeof(*values));
+	values->local_player_index = open && open->widget ? open->widget->local_player_index : NONE;
+}
+
 /* whether an item is made: its when holds, and its label's bindings have
 values */
 static boolean screen_item_shown(struct menu_screen_block const *item, struct screen_values *values, char *label,
@@ -911,6 +969,30 @@ static struct screen_spartan *screen_spartan_add(struct screen_open *open, struc
 
 /* the screen's widgets made from the hand-written screen, in place of
 whatever it had: FALSE (nothing changed) if they cannot be */
+/* a card's title measured: the row's titles drawn smaller than
+CARD_TITLE_SCALE (all of them, so that they match) where this one would be
+wider than its box at it (SPLIT SCREEN's) */
+#define CARD_TITLE_MARGIN 6
+static void screen_card_title_fit(struct screen_open *open, struct widget_instance *title, char const *label)
+{
+	unsigned short wide[MENU_SCREEN_MAXIMUM_TEXT];
+	short index, width, room;
+	real scale;
+
+	for (index = 0; label[index] && index < MENU_SCREEN_MAXIMUM_TEXT - 1; index++)
+		wide[index] = (unsigned char)label[index];
+	wide[index] = 0;
+	width = pc_menu_text_width(title, wide);
+	room = (short)(CARD_WIDTH - 2 * CARD_TITLE_MARGIN - 2 * CARD_TITLE_MARGIN);
+	if (width <= 0 || width * CARD_TITLE_SCALE <= room)
+		return;
+	scale = (real)room / (real)width;
+	if (scale < 1.0f)
+		scale = 1.0f;
+	if (open->card_title_scale <= 0.0f || scale < open->card_title_scale)
+		open->card_title_scale = scale;
+}
+
 static boolean screen_build(struct screen_open *open, struct menu_screen const *screen)
 {
 	struct widget_instance *widget = open->widget;
@@ -939,7 +1021,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 		if (screen->blocks[index].kind == MENU_SCREEN_DIALOG)
 			return dialog_build(open, screen);
 	}
-	memset(&values, 0, sizeof(values));
+	screen_values_clear(&values, open);
 	/* (each block's room, from the top down: a space shares what is left) */
 	for (index = 0; index < screen->block_count; index++)
 	{
@@ -1052,6 +1134,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 				focus_id = block->focus;
 			/* (at their own size: a scale, 0 for none, would draw them larger) */
 			open->card_scale = 0.0f;
+			open->card_title_scale = 0.0f;
 			card_width = CARD_WIDTH;
 			card_gap = CARD_GAP;
 			x = (short)((SCREEN_WIDTH - count * card_width - (count - 1) * card_gap) / 2);
@@ -1087,6 +1170,7 @@ static boolean screen_build(struct screen_open *open, struct menu_screen const *
 				if (part)
 				{
 					screen_text_set(part, label);
+					screen_card_title_fit(open, part, label);
 					part = part->next;
 				}
 				if (part)
@@ -1339,7 +1423,7 @@ static boolean box_build(struct screen_open *open, struct menu_screen const *scr
 	}
 	if (!box || !list)
 		return FALSE;
-	memset(&values, 0, sizeof(values));
+	screen_values_clear(&values, open);
 	for (index = 0; index < screen->block_count; index++)
 	{
 		if (screen->blocks[index].kind == MENU_SCREEN_ITEM && screen->blocks[index].parent == list_index &&
@@ -1470,7 +1554,7 @@ static void box_frame(struct screen_open *open)
 	short growth = 0;
 	long index;
 
-	memset(&values, 0, sizeof(values));
+	screen_values_clear(&values, open);
 	for (index = 0; index < open->item_count; index++)
 	{
 		struct menu_screen_block const *item = open->item_blocks[index];
@@ -1826,6 +1910,12 @@ boolean menu_screen_opened(struct widget_instance *widget)
 	screen = menu_screens_find(place->screen);
 	if (!screen)
 		return FALSE;
+	/* (co-op's screen: HOST's choosing over, as Choose Mission's B comes
+	back to it; WHO CAN JOIN on the choice kept: coop_menu.inc) */
+	if (!strcmp(place->screen, "coop"))
+		pc_menu_coop_opened();
+	if (!strcmp(place->screen, "coop_who"))
+		snprintf(screens.focused[place - screen_places], SCREEN_ID_LENGTH, "%s", pc_menu_coop_who_word());
 	for (index = 0; index < SCREEN_MAXIMUM_OPEN; index++)
 	{
 		struct screen_open *open = &screens.open[index];
@@ -1928,7 +2018,7 @@ static short screen_spartan_colors(struct screen_open const *open, struct screen
 		char value[MENU_SCREEN_MAXIMUM_TEXT];
 		char const *word = value;
 
-		memset(&values, 0, sizeof(values));
+		screen_values_clear(&values, open);
 		if (!block->value || !screen_value(&values, block->value, value, sizeof(value)))
 		{
 			colors[0] = SCREEN_SPARTAN_NONE;
@@ -2281,6 +2371,23 @@ static boolean screen_call_lobby(struct widget_instance *widget, struct event_re
 	return result;
 }
 
+/* co-op's actions of C's own (menu_functions.c's coop_menu.inc): WHO CAN
+JOIN's cards, the co-op list's fix (HOST CO-OP's: the HOST card's own
+action) and JOIN BY LINK, the lobby's fix */
+static boolean screen_call_coop(struct widget_instance *widget, struct event_record *event, char const *name,
+	boolean *deleted)
+{
+	int coop_deleted = FALSE;
+	boolean result;
+
+	*deleted = FALSE;
+	if (!strcmp(name, "coop fix") && pc_menu_coop_fix_hosts())
+		return screen_action_run(widget, event, "coop host", deleted);
+	result = pc_menu_coop_action(widget, event, name, &coop_deleted) != 0;
+	*deleted = coop_deleted != 0;
+	return result;
+}
+
 boolean menu_screen_step(struct widget_instance *widget, struct event_record *event, boolean *deleted, short step)
 {
 	struct screen_open *open = screen_open_of(widget_instance_get_topmost_parent(widget));
@@ -2375,15 +2482,18 @@ boolean menu_screen_text_scale(long definition_index, short wide_extra, real *sc
 	if (screens.blocks_found && (definition_index == screens.card_title_tag ||
 		definition_index == screens.card_subtitle_tag))
 	{
-		real card_scale = 1.0f;
+		real card_scale = 1.0f, title_scale = CARD_TITLE_SCALE;
 		long open_index;
 
 		for (open_index = 0; open_index < SCREEN_MAXIMUM_OPEN; open_index++)
 		{
 			if (screens.open[open_index].widget && screens.open[open_index].card_scale > 0.0f)
 				card_scale = screens.open[open_index].card_scale;
+			/* (a row whose titles are drawn smaller to fit: screen_card_title_fit) */
+			if (screens.open[open_index].widget && screens.open[open_index].card_title_scale > 0.0f)
+				title_scale = screens.open[open_index].card_title_scale;
 		}
-		*scale = (definition_index == screens.card_title_tag ? CARD_TITLE_SCALE : 1.0f) * card_scale;
+		*scale = (definition_index == screens.card_title_tag ? title_scale : 1.0f) * card_scale;
 		return TRUE;
 	}
 	if (!screens.blocks_found || definition_index != screens.item_tag)

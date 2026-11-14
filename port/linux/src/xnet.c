@@ -356,6 +356,18 @@ int WSAAPI WSAStartup(WORD version_requested, LPWSADATA data)
 	return 0;
 }
 
+/* internet play started now, network.online turned on while the game runs
+(the menus' TURN ON INTERNET PLAY: the co-op list's, the lobby's), as
+WSAStartup starts it; the game's sockets bound before were told it
+(p2p_socket_port keeps them while it is off). Nothing if it runs, or
+network.online is still off */
+void xnet_internet_play_start(void)
+{
+	unsigned long local;
+
+	p2p_initialize(local_address_setting(&local) ? local : loopback_address());
+}
+
 int WSAAPI WSACleanup(void)
 {
 	return 0;

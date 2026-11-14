@@ -12,6 +12,14 @@ screen file's, set on each widget as the screen is made. -->
 	<!-- (on a touchscreen, drawn from background_tall_touch: its footer's line raised, as the tall screens' are,
 	menu_tags.c's widget_build) -->
 	<widget name="screens/campaign" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/background_tall"/>
+	<!-- co-op's (screens/coop.xml, coop_who.xml, coop_join.xml: menu_functions.c's coop_menu.inc); the co-op
+	list's runs the server browser's model on its co-op list while it is open -->
+	<widget name="screens/coop" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/background_tall"/>
+	<widget name="screens/coop_who" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/background_tall"/>
+	<widget name="screens/coop_join" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/background_tall">
+		<on event="created" run="port coop join init"/>
+		<on event="deleted" run="port coop join dispose"/>
+	</widget>
 	<!-- a header's title in the tall layout's band, as Settings' and the browsers' titles (port_settings.py's tall_title) -->
 	<widget name="screens/header_text" type="text" left="24" width="592" height="40" font="heading" color="#FF2995FD" text_y="9" wide="-106 0" text_flags="no_focus_test"/>
 	<!-- an inner screen's header: its lettered picture (the file's picture=), where the campaign menu's is -->
