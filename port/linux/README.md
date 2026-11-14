@@ -726,6 +726,31 @@ not continue a saved game of one player. Multiplayer > ONLINE CO-OP hosts
 the campaign over the Internet instead: it is Create Game > Internet with
 the map list on the campaign's levels, and friends join by the invite link.
 
+Under the new menus, co-op has one screen, CO-OP, whichever way you come:
+Campaign > CO-OP, the server browser's CO-OP tab, or Multiplayer > CO-OP
+CAMPAIGN. It has three cards:
+
+- HOST: choose the mission and the difficulty (Choose Mission and Choose
+  Difficulty, as the campaign has them), then WHO CAN JOIN: FRIENDS (the
+  default: your friends see the game in their co-op list and join it;
+  strangers do not), ANYONE (also listed in everyone's co-op list and the
+  server browser) or INVITE ONLY (only people with the invite link). The
+  game is hosted at once, and the lobby says who can see it, shows the
+  invite link (Y copies it, INVITE FRIENDS invites a friend), and says in
+  plain words what keeps people from finding it, with a button that fixes
+  it: Internet play off (TURN ON INTERNET PLAY), the game list not reached
+  (RETRY), public games turned off, or appearing offline to friends (SHOW
+  ME ONLINE). The choice is kept (`network.coop_join`).
+- JOIN: one list of co-op games: your friends' first (FRIEND beside the
+  host's name), then the public ones, each with its host, mission,
+  difficulty, players and ping. A friend's game that is not listed is
+  joined through their party, which follows them in. With no game, the list
+  says why (Internet play off, the game list not reached, no friends
+  hosting and no public co-op games), with a button that fixes it. JOIN BY
+  LINK joins a copied invite link. An invite accepted still goes straight
+  to that game.
+- SPLIT SCREEN: Multiplayer > SPLIT-SCREEN CO-OP, as above.
+
 Network games have split screen too: up to 4 players on each computer. In
 the game lobby, another controller presses START to join, and the new
 player's profile is chosen on the ADD PLAYER screen that opens (with any
@@ -1520,7 +1545,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.map_seed` | `true` | `HALO_NET_MAP_SEED` | When you play in the game of another machine: help send its map to players who join without it. HELP SEND MAPS in Settings > Network Setup > Map Sharing. |
 | `network.map_seed_upload` | `256` | `HALO_NET_MAP_SEED_UPLOAD` | When you play in the game of another machine: the most kilobytes per second that the game sends of maps to other players (`16` to `10240`, 10 MB/s). UPLOAD LIMIT in Settings > Network Setup > Map Sharing. |
 | `network.map_download` | `true` | `HALO_NET_MAP_DOWNLOAD` | When you join a game on a Custom Edition map that you do not have: download it from the players of the game. `false`: leave the game and show which map is missing. DOWNLOAD MAPS in Settings > Network Setup > Map Sharing. |
-| `network.coop_public` | `false` | `HALO_NET_COOP_PUBLIC` | `true`: an online co-op game (Create Game > ONLINE CO-OP, or Internet with a SINGLEPLAYER map) starts as PUBLIC. `false`: it starts as PRIVATE. LISTING in co-op's Server Setup writes its choice here. Refer to "Server browser". |
+| `network.coop_join` | `"friends"` | `HALO_NET_COOP_JOIN` | Who can join an online co-op game you host: `"friends"`, your friends see it in their co-op list and join it (it is not listed for strangers); `"anyone"`, it is also listed in everyone's co-op list and the server browser (PUBLIC); `"invite"`, only people with its invite link (your friends are offered no JOIN). Co-op > HOST's WHO CAN JOIN writes its choice here, and LISTING in co-op's Server Setup writes `"anyone"` (PUBLIC) or `"friends"` (PRIVATE). Replaces `network.coop_public`, which most hosts never saw leave PRIVATE. Refer to "Server browser". |
 | `network.brokers_file` | `"brokers.txt"` | `HALO_NET_BROKERS_FILE` | The file of the public MQTT brokers that let the machines of an invite find each other, and that carry the listings of the server browser: next to `config.toml` (else the release's, `share/openh1/brokers.txt`), unless a full path. One `host:port` on each line, up to 4; `#` starts a comment. |
 | `network.stun_servers` | Google and Cloudflare | `HALO_NET_STUN` | The public STUN servers (`host:port`, with commas between them) that give the internet address of a machine. |
 | `network.client_timeout_seconds` | `15` | `HALO_NET_CLIENT_TIMEOUT_SECONDS` | Hosting: the seconds the host waits for a machine it hears nothing from before it drops it (5 to 300; the stock game waits 15). The same seconds are how long each machine's reliable stream waits for its peer to read before it gives up, and how long a host in a game waits for its own network to come back (an address renewed, a wifi drop) before it ends the game; each machine reads its own setting. A longer wait keeps players whose connection stalls (a browser tab in the background), but a machine that is really gone leaves its players frozen for longer. |
@@ -3370,8 +3395,9 @@ Server Setup in Create Game > Internet has a LISTING row:
 - PRIVATE: only players with the invite link can join.
 
 Each new game starts as PUBLIC (`network.host_public = false` makes new
-games start as PRIVATE). An online co-op game starts as PRIVATE, and keeps
-the last choice of its LISTING (`network.coop_public`). A LAN game is never listed. `network.public_lobby = false` turns the server browser off.
+games start as PRIVATE). An online co-op game is listed as its WHO CAN JOIN
+says (`network.coop_join`: ANYONE is PUBLIC, FRIENDS and INVITE ONLY are
+PRIVATE); its LISTING writes ANYONE or FRIENDS there. A LAN game is never listed. `network.public_lobby = false` turns the server browser off.
 
 A PUBLIC game can also have a PASSWORD (a row of Server Setup, below
 LISTING). The Server Browser shows a lock at the left of a game with a
