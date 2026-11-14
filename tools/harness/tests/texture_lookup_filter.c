@@ -1,7 +1,7 @@
 /*
 TEXTURE_LOOKUP_FILTER.C (test)
 
-The menus' bitmaps (menu_files.c) and the high-res HUD's placeholders
+The high-res HUD's placeholders, beside a stand-in for the menus' bitmaps
 (hud_hires.c), which the renderer asks after for each texture it binds: with
 their filters, a texture is found exactly when it is registered, through
 registrations, replacements and forgetting. test_texture_lookup_filter.py
@@ -13,8 +13,7 @@ takes the code (under_test.inc) from the sources.
 /* what the code calls */
 #define MAXIMUM_ART 1024
 #define platform_log(...) ((void)0)
-#define xgpu_gl_texture_deleted(texture) ((void)0)
-#define glDeleteTextures(count, textures) ((void)0)
+#define xgpu_texture_replacements_changed() ((void)0)
 static unsigned int next_texture = 1;
 static const unsigned char *file_data(const char *name, unsigned long *size)
 {

@@ -67,6 +67,12 @@ static struct game_looping_sound_datum *game_looping_sound_get(long index)
  CHECK(index>=0&&index<8&&playing[index].used,"no such playing sound %ld",index);
  return &playing[index];
 }
+/* data.c's lookup of one that may be gone (unattached_looping_sound_stop) */
+#define game_looping_sound_data playing
+static void *datum_try_and_get(struct game_looping_sound_datum *sounds,long index)
+{
+ return index>=0&&index<8&&sounds[index].used ? &sounds[index] : NULL;
+}
 static void scripted_music_stop_all(void){}
 
 /* the host's world: its clock, whether it draws, its resends and the events it sends */
