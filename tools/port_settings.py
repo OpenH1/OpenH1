@@ -772,6 +772,17 @@ DISCORD_ACCOUNT = ("network_setup/discord_account", "discord_account_screen")
 # (the server browsers' Filters, which their FILTERS opens too: menu_functions.c's
 # browser_filters_read; its title the PC version's Filters')
 BROWSER_FILTERS = ("network_setup/browser_filters", "browser_filters_screen")
+# Mods' MCC PACKAGES (port/linux/game/mcc_maps.c): the MCC maps installed,
+# their campaign missions and collections; its MCC DOWNLOADS opens the copies
+# received from hosts (_mcc_downloads), and a host's MCC map asks before it
+# downloads (_mcc_download, which mcc_share.c opens by its name)
+MCC_PACKAGES = ("network_setup/mcc_packages", "mcc_packages_screen")
+# Button Remapping's CONTROLLER BUTTONS (port/linux/game/controller_glyphs.c,
+# hud_hires_tags.c): the HUD's buttons drawn as the controller playing has
+# them, Xbox, PlayStation or Switch, in the style chosen for each
+CONTROLLER_BUTTONS = ("gamepad_setup/button_remapping/controller_buttons", "controller_buttons_screen")
+MCC_DOWNLOADS = f"{PE}/network_setup/mcc_downloads"
+MCC_DOWNLOAD = f"{PE}/network_setup/mcc_download"
 BROWSER_FILTERS_TITLE = "main_menu/multiplayer_type_select/join_game/filters/header_filters"
 BROWSER_PINGS = [("ANY", "0")] + [(f"UNDER {ms} MS", str(ms)) for ms in (300, 250, 150, 100, 50)]
 # the Filters page's TICK RATE and GAME TYPE (network.browser_tick and
@@ -1051,8 +1062,8 @@ PAGES = {
             # game)
             (SECTION, "MAP SHARING"),
             ("DOWNLOAD MAPS", "network.map_download", ON_OFF,
-             "Joining a game on a Custom Edition map you do not have downloads it from the players, if they "
-             "share it.", "desktop android"),
+             "Joining a game on a map you do not have downloads it, if it is shared: a Custom Edition map from "
+             "the players, an MCC map from the host, after asking.", "desktop android"),
             ("HELP SEND MAPS", "network.map_seed", ON_OFF,
              "In another player's game, sends its map to the players who join without it, as a torrent's peers "
              "do.", "desktop android"),
@@ -1168,6 +1179,11 @@ PAGES = {
             ("MODS FOLDER", None, None,
              "Each mod is a folder in the mods folder, beside the maps folder, with its mod.toml and its tags. "
              "Mods are turned on and off from the main menu's Settings, not in a game.", None, "mods_folder"),
+            # (Online's MAP SHARING has no room for it: MCC_PACKAGES)
+            (SECTION, "MASTER CHIEF COLLECTION"),
+            ("MCC PACKAGES ›", None, _page_screen(*MCC_PACKAGES),
+             "The Master Chief Collection's maps: finding them, their campaign missions and collections, and "
+             "the copies downloaded from hosts.", None),
         ],
     },
     # ---- the pages the rows open
@@ -1496,6 +1512,11 @@ PAGES = {
             # (an action's: its name, button and words controller_remap_menu.inl's)
             *[("", None, None, "", None, f"pad_{n}", "port controller bind", REMAP_HANDLERS)
               for n in range(1, REMAP_ROWS + 1)],
+            # (the Controller page has no room for it: CONTROLLER_BUTTONS)
+            (SECTION, "BUTTON PICTURES"),
+            ("CONTROLLER BUTTONS ›", None, _page_screen(*CONTROLLER_BUTTONS),
+             "The HUD's buttons drawn as your controller has them, Xbox, PlayStation or Switch, and the style "
+             "of each.", None),
         ],
     },
     KEY_BINDINGS[0]: {
@@ -1652,6 +1673,47 @@ PAGES = {
             ("GAME TYPE", "network.browser_game_type", BROWSER_GAME_TYPES,
              "Lists only the games of this type.|Slayer is free for all; SWAT, Infection and Gun Game are "
              "GOAT H1's. Pro 2v2 is PRO 2V2's games.", None),
+        ],
+    },
+    CONTROLLER_BUTTONS[0]: {
+        "screen": CONTROLLER_BUTTONS[1], "title": "CONTROLLER BUTTONS",
+        "rows": [
+            (SECTION, "DETECTION"),
+            ("AUTO DETECTION", "input.auto_button_detection", ON_OFF,
+             "Draws the HUD's buttons as the controller you play with has them: Xbox, PlayStation or Switch, in "
+             "the styles below. Off: Interface's BUTTON STYLE for every controller.|Needs HIGH-RES HUD.", None),
+            (SECTION, "STYLES"),
+            ("XBOX", "display.hud_button_style_xbox",
+             [("CLASSIC", "classic"), ("GEMS", "gems"), ("DARK GEMS", "menu_gems"), ("MODERN", "xbox_modern")],
+             "An Xbox controller's buttons. Modern: today's Xbox controller's.", None),
+            ("PLAYSTATION", "display.hud_button_style_ps",
+             [("CLASSIC", "ps_classic"), ("GEMS", "ps_gems"), ("DARK GEMS", "ps_dark_gems"), ("MODERN", "ps_modern")],
+             "A PlayStation controller's buttons.", None),
+            ("SWITCH", "display.hud_button_style_switch",
+             [("CLASSIC", "switch_classic"), ("GEMS", "switch_gems"), ("MODERN", "switch_modern")],
+             "A Switch controller's buttons.", None),
+            ("BUMPERS", "display.hud_bumper_style", [("ORIGINAL XBOX", "original"), ("MODERN XBOX", "modern")],
+             "The Xbox's bumpers as the original controller's black and white buttons, or as LB and RB.", None),
+        ],
+    },
+    MCC_PACKAGES[0]: {
+        "screen": MCC_PACKAGES[1], "title": "MCC PACKAGES",
+        "rows": [
+            # (port/linux/src/steam_workshop.c and port/linux/game/mcc_maps.c)
+            (SECTION, "MCC MAPS"),
+            ("STEAM DISCOVERY", "game.workshop_maps", ON_OFF,
+             "Finds the Halo CE Workshop maps Steam has installed on this computer. The MCC packages in the "
+             "game's own folder come first.", "desktop"),
+            ("CAMPAIGN MISSIONS", "game.mcc_campaigns", ON_OFF,
+             "Uses a package's campaign details for its missions' order and progress. Online, the host chooses "
+             "the next map.", None),
+            ("COLLECTION FOLDERS", "game.mcc_collections", ON_OFF,
+             "Groups the installed MCC packages into folders, by the collection list the game comes with. Works "
+             "without Steam.", None),
+            (SECTION, "DOWNLOADED"),
+            ("MCC DOWNLOADS ›", None, f"{MCC_DOWNLOADS}/screen",
+             "The MCC maps downloaded from hosts: their space, and removing them. The original packages and "
+             "saved games are kept.", None),
         ],
     },
     DISCORD_ACCOUNT[0]: {
@@ -2950,9 +3012,73 @@ def settings_files() -> dict:
     files[SETTINGS.replace("/", ".") + ".xml"] = _settings_shared()
     files[SETTINGS_SEARCH.replace("/", ".") + ".xml"] = _settings_search()
     files[f"{PE}/vr_controls".replace("/", ".") + ".xml"] += _vr_item()
+    files[MCC_DOWNLOADS.replace("/", ".") + ".xml"] = _mcc_downloads()
+    files[MCC_DOWNLOAD.replace("/", ".") + ".xml"] = _mcc_download()
     return {name: ['<?xml version="1.0" encoding="UTF-8"?>',
                    "<!-- The port's settings screen, in the PC version's style (tools/port_settings.py) -->",
                    "<menus>", *lines, "</menus>", ""] for name, lines in files.items()}
+
+
+def _mcc_screen(base: str, title: str, text: str, handlers: list, rows: list) -> list:
+    """an MCC screen of words and a column of choices (MCC DOWNLOADS, a host's
+    MCC map's question): its title, its words (the game's, its input text
+    each frame, wrapped to the box), and its choices (name, words, what A
+    does, place), each a row of the menus' lists; menu_functions.c's "port
+    mcc ... update" shows those that can be chosen and puts the focus on one,
+    by its place among the list's children (the words first)"""
+    children = [f'<child widget="{base}/description" x="40" y="80"/>'] + \
+        [f'<child widget="{base}/{name}" x="{x}" y="{y}"/>' for name, _, _, (x, y) in rows] + \
+        [f'<child widget="{base}/title" x="40" y="24"/>']
+    lines = _widget(f"{base}/screen", [("type", "column_list"), ("width", 640), ("height", 480),
+                                       ("bitmap", "bitmaps/gradient"),
+                                       ("flags", "pass_unhandled_to_focused_child up_down_tabs_children")],
+                    handlers + children)
+    lines += _widget(f"{base}/title", [("type", "text"), ("width", 560), ("height", 40), ("text", title),
+                                       ("font", "ui\\large_ui"), ("color", "#FFFFFFFF"),
+                                       ("text_flags", "no_focus_test")], [])
+    lines += _widget(f"{base}/description", [("type", "text"), ("controller", 1), ("width", 560), ("height", 200),
+                                             ("font", "ui\\small_ui"), ("color", "#FFFFFFFF")],
+                     [f'<data input="{text}"/>'])
+    for name, words, handler, _ in rows:
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("width", 250), ("height", 28),
+                                            ("bitmap", "bitmaps/list_item_bkd"), ("text", words or None),
+                                            ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("align", "center"),
+                                            ("text_y", 4)],
+                         [f'<on event="a" {handler}/>', f'<on event="start" {handler}/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>'])
+    return lines
+
+
+def _mcc_download() -> list:
+    """a host's MCC map this machine does not have (mcc_share.c opens it by its
+    name, over the game's join, which goes on behind it): what it is and its
+    size, DOWNLOAD FROM HOST, OPEN IN STEAM (its Workshop page, where Steam
+    is), OPEN IN BROWSER, and CANCEL (and B)"""
+    return _mcc_screen(MCC_DOWNLOAD, "MCC MAP DOWNLOAD", "port mcc share text",
+                       ['<on event="b" run="port mcc share cancel"/>',
+                        '<on event="back" run="port mcc share cancel"/>',
+                        '<on event="deleted" run="port mcc share closed"/>',
+                        '<data input="port mcc share update"/>'],
+                       [("download", "DOWNLOAD FROM HOST", 'run="port mcc share download"', (195, 300)),
+                        ("workshop", "OPEN IN STEAM", 'run="port mcc share workshop"', (195, 334)),
+                        ("browser", "OPEN IN BROWSER", 'run="port mcc share browser"', (195, 368)),
+                        ("cancel", "CANCEL", 'run="port mcc share cancel"', (195, 402))])
+
+
+def _mcc_downloads() -> list:
+    """Online's MCC PACKAGES' MCC DOWNLOADS: the MCC maps downloaded from
+    hosts, one at a time (its name, its size and the space they all take),
+    PREVIOUS and NEXT through them, REMOVE SELECTED (asking again first: its
+    words are menu_functions.c's, which a text of its own would take the
+    place of each frame), and BACK (and B)"""
+    return _mcc_screen(MCC_DOWNLOADS, "MCC DOWNLOADS", "port mcc downloads text",
+                       ['<on event="created" run="port mcc downloads open"/>',
+                        '<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                        '<data input="port mcc downloads update"/>'],
+                       [("previous", "PREVIOUS", 'run="port mcc downloads previous"', (60, 300)),
+                        ("next", "NEXT", 'run="port mcc downloads next"', (330, 300)),
+                        ("remove", None, 'run="port mcc downloads remove"', (195, 340)),
+                        ("back", "BACK", 'back="true"', (195, 390))])
 
 
 def replaced(folder: str) -> bool:
@@ -3168,6 +3294,10 @@ PLAYER_OPTIONS_ROWS = ['number_of_lives', 'maximum_health', 'shields', 'respawn_
 # GUN TURRETS and CUSTOM (menu_functions.c's VEHICLE_PRESET_PC), and its help
 # among the sets' (its rows' values' in turn: gametype_option_help)
 VEHICLE_EDIT = "main_menu/settings_select/multiplayer_setup/vehicle_options_edit"
+# the gametype's VEHICLE RIDING (vehicle_riding.c), a row of the vehicle
+# options (_vehicle_options_extras), and its help (its values' in turn:
+# gametype_option_help)
+VEHICLE_RIDING_HELP = "Players standing on a vehicle are carried by it.\\nOff: as the original game, riders slide off."
 AIM_ASSIST_HELP = [
     "Players keep their current mouse aim assist setting.",
     "Disable mouse aim assist for mouse/keyboard players.\\nController and touch aim assist are unchanged.",
@@ -3285,9 +3415,10 @@ STRING_INSERTS = {
                                                                for text in helps])]
        for folder, screen in GAMETYPE_RULES_EXTRAS.items()},
     f"{VEHICLE_EDIT}/var_vehicle_set": [(8, ["PC"])],
+    f"{VEHICLE_EDIT}/vehicle_options_labels": [(9, ["VEHICLE RIDING:"])],
     f"{VEHICLE_EDIT}/cap_vehicle_options": [(17, [
         "Every vehicle the map places will spawn, as in\\nHalo PC.",
-    ])],
+    ]), (7, [VEHICLE_RIDING_HELP] * 2)],
     f"{SLAYER_EDIT}/cap_slayer": [(11, [
         "Seventy-five kills to win. Settle in for a long\\nfight.",
         "A hundred kills to win. Made for big games.",
@@ -3458,7 +3589,11 @@ WIDGET_PATCHES = {
     # reopen the main menu when it closes the last screen, as the lobby does.
     f"{MT}/connected/connected_map_select_wrapper": {"set": {
         "flags": "pass_unhandled_to_focused_child pause_game main_menu_if_no_history tag_controller_index force_handle_mouse",
-    }},
+    }, "handlers": [
+        # (B goes up out of an MCC collection's folder first: menu_functions.c's mcc_host_back)
+        '<on event="b" run="port mcc host folder back"/>',
+        '<on event="back" run="port mcc host folder back"/>',
+    ]},
     # (CAMPAIGN opens the port's Campaign menu, CONTINUE, CHOOSE MISSION and
     # CO-OP, and a new profile's campaign its difficulties, of the first
     # mission: _campaign_menu, _difficulties)
@@ -3486,6 +3621,9 @@ WIDGET_PATCHES = {
     # (Quit's game data input notes the main menu shown, over which the
     # update question opens: _update)
     "main_menu/main_menu_item_quit_game": {"inputs": ["port update question"]},
+    # (the gametype's VEHICLE RIDING, under RESPAWN TIME: _vehicle_options_extras)
+    f"{VEHICLE_EDIT}/vehicle_options_menu": {"insert_before": {
+        f"{VEHICLE_EDIT}/op_team": [f'<child widget="{VEHICLE_EDIT}/op_vehicle_riding" x="54" y="100"/>']}},
     f"{PLAYER_EDIT}/player_options_menu": {"insert_before": {
         f"{PLAYER_EDIT}/player_button_bar": [
             f'<child widget="{PLAYER_EDIT}/op_aim_assist" x="54" y="289"/>',
@@ -3584,7 +3722,26 @@ WIDGET_PATCHES = {
         '<on event="b" run="port map list back"/>',
         '<on event="back" run="port map list back"/>',
     ]},
-    "main_menu/solo_level_select/solo_level_select_list": {"swap": {"main_menu/new_select/list_item_0": MAP_KIND_CHOOSER}},
+    # (B goes up out of an MCC collection's folder first, on either list's
+    # screen: menu_functions.c's mcc_solo_back and mcc_host_back)
+    "main_menu/solo_level_select/solo_level_select_list": {
+        "swap": {"main_menu/new_select/list_item_0": MAP_KIND_CHOOSER}, "handlers": [
+            '<on event="created" run="initialize sp level list solo"/>',
+            '<on event="deleted" run="dispose sp level list"/>',
+            '<on event="custom_activation" run="solo level set map" '
+            'open="main_menu/difficulty_select/difficulty_select_list_screen"/>',
+            '<on event="b" run="port mcc solo folder back"/>',
+            '<on event="back" run="port mcc solo folder back"/>',
+        ]},
+    "main_menu/solo_level_select/solo_level_select_screen": {"handlers": [
+        '<on event="b" run="port mcc solo folder back"/>',
+        '<on event="back" run="port mcc solo folder back"/>',
+    ]},
+    f"{MT}/mp_map_select/mp_map_select_screen": {"handlers": [
+        '<on event="created" run="net server defer start"/>',
+        '<on event="b" run="port mcc host folder back"/>',
+        '<on event="back" run="port mcc host folder back"/>',
+    ]},
     # (their descriptions: the port's, _map_description)
     # (Item Options' loadout rows, over its buttons)
     "main_menu/settings_select/multiplayer_setup/item_options_edit/item_options_menu": {"insert_before": {
@@ -4067,7 +4224,7 @@ def _server_settings() -> list:
              for line in lines]
     # (co-op's options' screens and map sharing's)
     for key, title, _, screen_rows in [*COOP_SETUP_SCREENS, MAP_SHARE_SETUP]:
-        lines += _setup_option_screen(f"{base}/{key}", key, screen_rows)
+        lines += _setup_option_screen(f"{base}/{key}", key, screen_rows, fit=True)
     # (no Defaults: the bar is START and CANCEL; B cancels the name's edit
     # first)
     lines = [line.replace(f'<child widget="{base}/button_defaults" y="1"/>', "") for line in lines]
@@ -4087,12 +4244,19 @@ COOP_ENEMIES_MULTIPLIERS = [2, 4, 8, 16, 32]
 # and its rows (as TEAMPLAY_ROWS: each spinner's key, label, words and the
 # help of each of them; SETUP_ROW_SETTINGS gives their settings' values)
 COOP_SETUP_SCREENS = [
-    ("coop_options", "CO-OP OPTIONS", "Friendly fire, the enemies and player collisions,\\nfor this game.", [
+    ("coop_options", "CO-OP OPTIONS", "Team wipes, friendly fire, enemies and collisions,\\nfor this game.", [
         ("coop_friendly_fire", "FRIENDLY FIRE:", ["OFF", "ON", "SHIELD ONLY", "EXPLOSIVES ONLY"], [
             "Players can not be hurt by weapons and explosives\\nfired by the other players.",
             "Players can be hurt by weapons or explosives\\nfired by the other players.",
             "Damage from the other players will only reduce\\nshields. Health will be unaffected.",
             "Players can be hurt by damage from explosives\\nfired by the other players.",
+        ]),
+        # (network.coop_team_wipe: network_coop.c's checkpoint revert after a
+        # team wipe)
+        ("coop_team_wipe", "TEAM WIPE:", ["AUTO", "REVERT CHECKPOINT", "RESPAWN ONLY"], [
+            "Private games revert the checkpoint; public games\\nonly respawn. A changed team or missing save\\nalways uses respawn only.",
+            "Revert the checkpoint after everyone dies. A changed\\nteam or missing save uses respawn only.",
+            "Respawn at checkpoint positions after everyone dies.\\nThe world keeps its progress.",
         ]),
         ("coop_extra_enemies", "EXTRA ENEMIES:", ["PER PLAYER", "STATIC MULTIPLIER", "NONE"], [
             "Enemy squads grow with the players: by the value of\\n'Per Player' for each player past the first.",
@@ -4124,6 +4288,9 @@ COOP_SETUP_SCREENS = [
             "Players can hurt and kill their AI allies, as in\\nthe campaign.",
             "Players can not hurt their AI allies, so that no\\none can kill Keyes or the Marines a level needs.",
         ]),
+        # (network.vehicle_riding: vehicle_riding.c, as the gametype's VEHICLE
+        # RIDING is for multiplayer)
+        ("coop_vehicle_riding", "VEHICLE RIDING:", ["ON", "OFF"], [VEHICLE_RIDING_HELP] * 2),
     ]),
     ("voice_options", "VOICE AND VOTING", "Voice chat, text chat, pings and votes to kick a\\nplayer, for this game.",
      TEAMPLAY_ROWS),
@@ -4153,7 +4320,7 @@ TITLES.update({f"{MT}/server_settings/{key}/header_{key}": title
 SETUP_OPTION_SAME_PLACE = set()
 
 
-def _setup_option_screen(base: str, key: str, rows: list) -> list:
+def _setup_option_screen(base: str, key: str, rows: list, fit: bool = False) -> list:
     """a screen of options laid out as the gametype's are (Teamplay
     Options'), its spinners setting config.toml's settings (menu_functions.c's
     "port setup options init" and "port setup options save", OK), each
@@ -4169,11 +4336,15 @@ def _setup_option_screen(base: str, key: str, rows: list) -> list:
                                            ("font", "ui\\large_ui"), ("color", "#FFFFFFFF")], [])
     children = ['<data input="game settings lists text update"/>',
                 '<on event="created" run="port setup options init"/>']
+    # (with fit, closer than SETUP_OPTION_PITCH for more rows than fit at it, the last clear of the help at
+    # 341: CO-OP OPTIONS', all shown at once, which menu_functions.c packs at the same step)
+    places = len([row_key for row_key, *_ in rows if row_key not in SETUP_OPTION_SAME_PLACE])
+    pitch = min(SETUP_OPTION_PITCH, (341 - 1 - 73 - 28) // max(1, places - 1)) if fit else SETUP_OPTION_PITCH
     place = -1
     for row_key, *_ in rows:
         if row_key not in SETUP_OPTION_SAME_PLACE:
             place += 1
-        children.append(f'<child widget="{base}/op_{row_key}" x="54" y="{73 + SETUP_OPTION_PITCH * place}"/>')
+        children.append(f'<child widget="{base}/op_{row_key}" x="54" y="{73 + pitch * place}"/>')
     children.append(f'<child widget="{base}/{key}_button_bar" y="414"/>')
     lines += _widget(f"{base}/{key}_menu", [("type", "column_list"), ("width", 640), ("height", 480),
                                            ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
@@ -4185,13 +4356,13 @@ def _setup_option_screen(base: str, key: str, rows: list) -> list:
     lines += _button(f"{base}/{key}_button_ok", 1, ['<on event="a" run="port setup options save" back="true"/>',
                                                      '<on event="start" run="port setup options save" back="true"/>'])
     for index, (row_key, label, strings, _) in enumerate(rows):
-        lines += _option_row(f"{base}/op_{row_key}", SETUP_OPTION_PITCH,
+        lines += _option_row(f"{base}/op_{row_key}", pitch,
                              [f'<child widget="{base}/{row_key}_label"/>',
                               f'<child widget="{base}/{row_key}_spinner" x="{OPTION_VALUE_X}"/>'])
-        lines += _option_label(f"{base}/{row_key}_label", SETUP_OPTION_PITCH, OPTION_VALUE_X - 6,
+        lines += _option_label(f"{base}/{row_key}_label", pitch, OPTION_VALUE_X - 6,
                                [("string_list", f"{base}/{key}_labels"), ("string_index", index)])
         lines += _widget(f"{base}/{row_key}_spinner",
-                         [("type", "spinner"), *option_spinner_pairs(SETUP_OPTION_PITCH),
+                         [("type", "spinner"), *option_spinner_pairs(pitch),
                           ("string_list", f"{base}/var_{row_key}"), ("list_flags", "items_from_strings")],
                          ['<on event="left_mouse" run="mouse spinner 1wide click"/>'])
         lines += _strings(f"{base}/var_{row_key}", strings)
@@ -4289,6 +4460,8 @@ SETUP_ROW_SETTINGS = {
                                 [str(multiplier) for multiplier in COOP_ENEMIES_MULTIPLIERS]),
     "coop_player_collisions": ("network.coop_player_collisions", ["true", "false"]),
     "coop_ally_friendly_fire": ("network.coop_ally_friendly_fire", ["true", "false"]),
+    "coop_team_wipe": ("network.coop_team_wipe", ["auto", "revert", "respawn"]),
+    "coop_vehicle_riding": ("network.vehicle_riding", ["true", "false"]),
     "map_share": ("network.map_share", ["true", "false"]),
     "map_share_upload": ("network.map_share_upload", [str(kb) for kb in MAP_SHARE_UPLOADS]),
 }
@@ -4912,6 +5085,29 @@ def _item_options_extras() -> list:
     return lines
 
 
+def _vehicle_options_extras() -> list:
+    """the gametype's VEHICLE RIDING, a row of the vehicle options, under
+    RESPAWN TIME (WIDGET_PATCHES)"""
+    base = VEHICLE_EDIT
+    key = "vehicle_riding"
+    lines = _widget(f"{base}/op_{key}", [("width", 512), ("height", 28),
+        ("flags", "pass_unhandled_to_focused_child"), ("bitmap", "bitmaps/option_bkds"),
+        ("color", "#FF2896FF")], [f'<child widget="{base}/{key}_label"/>',
+        f'<child widget="{base}/{key}_spinner" x="286" y="1"/>'])
+    lines += _widget(f"{base}/{key}_label", [("type", "text"), ("controller", 1),
+        ("width", 280), ("height", 22), ("string_list", f"{base}/vehicle_options_labels"),
+        ("string_index", 9), ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+        ("text_x", 13), ("text_y", 4)], [])
+    lines += _widget(f"{base}/{key}_spinner", [("type", "spinner"), ("top", 2),
+        ("width", 206), ("height", 20), ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+        ("string_list", f"{base}/var_{key}"), ("font", "ui\\large_ui"),
+        ("color", "#FF2896FF"), ("align", "center"), ("text_y", 4),
+        ("list_flags", "items_from_strings"), ("header_bitmap", "bitmaps/arrow_sm_left"),
+        ("footer_bitmap", "bitmaps/arrow_sm_right"), ("header_bounds", "7 -13 19 -7"),
+        ("footer_bounds", "7 208 19 214")], ['<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    return lines + _strings(f"{base}/var_{key}", ["ON", "OFF"])
+
+
 def _player_options_extras() -> list:
     """The host's aim-assist policy and shield effects, hidden while editing
     saved gametypes."""
@@ -5060,8 +5256,11 @@ def _map_kind() -> list:
                       ("footer_bounds", f"{arrow_top} {MAP_KIND_ROW[0] - MAP_KIND_ARROW_INSET - left - ARROW_SM_WIDTH} "
                                         f"{arrow_top + 12} {MAP_KIND_ROW[0] - MAP_KIND_ARROW_INSET - left}")],
                      ['<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    # (and the MCC maps installed, of either kind: menu_functions.c's MCC
+    # browsers, mcc_maps.c)
     lines += _strings("main_menu/new_select/var_map_kinds",
-                      ["SINGLEPLAYER", "MULTIPLAYER", "CUSTOM SINGLEPLAYER", "CUSTOM MULTIPLAYER"])
+                      ["SINGLEPLAYER", "MULTIPLAYER", "CUSTOM SINGLEPLAYER", "CUSTOM MULTIPLAYER", "MCC SINGLEPLAYER",
+                       "MCC MULTIPLAYER"])
     return lines
 
 
@@ -5120,6 +5319,7 @@ def _map_description(kind: str) -> list:
         children += [f'<child widget="{folder}/difficulty_indicator" x="{badges_left + MAP_DESC_BADGE_STEP * index}" '
                      f'y="{badges_top}"/>' for index in range(3)]
     children += [f'<child widget="{other[0]}/{other[1]}_right_{part}"/>' for part in ("name", "pic", "data")]
+    children += [f'<child widget="main_menu/new_select/mcc_folder_{part}"/>' for part in ("name", "help")]
     lines = _widget(f"{folder}/{description}", [("width", 640), ("height", 480)],
                     ['<child widget="main_menu/current_profile_name"/>', f'<child widget="{item}"/>'])
     lines += _widget(item, [("controller", 1), ("left", x), ("top", top), ("width", width), ("height", bottom - top)],
@@ -5139,6 +5339,16 @@ def _map_description(kind: str) -> list:
     # (New Game's words end above its badges; the Map screen's, which has none, at the column's foot)
     words_bottom = badges_top - MAP_DESC_GAP if kind == "solo" else bottom
     lines += words("data", words_top, words_bottom - words_top, f"{folder}/map_data", "ui\\small_ui")
+    # (an MCC collection's folder, in the place of a map: its name and what
+    # to do, menu_functions.c's mcc_browser_description; the solo list's
+    # description has them, which the Map screen's shows too)
+    if kind == "solo":
+        for part, part_top, part_bottom, font in (("name", name_top, words_top, "ui\\large_ui"),
+                                                  ("help", words_top, words_bottom, "ui\\small_ui")):
+            lines += _widget(f"main_menu/new_select/mcc_folder_{part}",
+                             [("type", "text"), ("controller", 1), ("left", x), ("top", part_top), ("width", width),
+                              ("height", part_bottom - part_top), ("font", font), ("color", SETTINGS_BLUE),
+                              ("align", "center"), ("text_flags", "wrap")], [])
     return lines
 
 
@@ -9007,6 +9217,7 @@ def multiplayer_files() -> dict:
            _map_description(kind) + ["</menus>", ""] for kind in MAP_DESCRIPTIONS},
         "main_menu/settings_select/multiplayer_setup/item_options_edit".replace("/", ".") + ".port.xml": head + _item_options_extras() + ["</menus>", ""],
         PLAYER_EDIT.replace("/", ".") + ".port.xml": head + _player_options_extras() + ["</menus>", ""],
+        VEHICLE_EDIT.replace("/", ".") + ".port.xml": head + _vehicle_options_extras() + ["</menus>", ""],
         TEAMPLAY_EDIT.replace("/", ".") + ".port.xml": head + _teamplay_options_extras() + ["</menus>", ""],
         **{folder.replace("/", ".") + ".port.xml": head + _gametype_rules_extras(folder) + ["</menus>", ""]
            for folder in GAMETYPE_RULES_EXTRAS},

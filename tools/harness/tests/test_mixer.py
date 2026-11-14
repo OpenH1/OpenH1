@@ -24,7 +24,7 @@ from harness import CHECK_FAILED, build, function, mutated, read, run  # noqa: E
 from harness import skip_without_32_bit_abi  # noqa: E402
 
 SOURCE = "port/linux/src/dsound_sdl.c"
-CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "doppler-step",
+CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "cut", "cuts", "adpcm", "doppler", "doppler-step",
          "parameter-ramp", "block-size",
          "limiter", "obstruction", "room-send", "room-send-images", "quiet-levels", "quiet-levels-3d", "resampler-xbox", "resampler-xbox-images", "channels", "surround", "lfe", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch",
          "dry-2d",
@@ -39,6 +39,16 @@ NEGATIVE_CONTROLS = {
                            "for (phase = 0; phase <= RESAMPLER_TABLE_STEPS; phase += 2)"), "impulse"),
     "no-stretch": (("#define RESAMPLER_MAXIMUM_STRETCH 2", "#define RESAMPLER_MAXIMUM_STRETCH 1"), "aliases"),
     "linear-nearest": (("left_frames[0] + (left_frames[1] - left_frames[0]) * fraction", "left_frames[0]"), "linear"),
+    # a voice cut off: stopped dead (as it was), not faded, not cut at the hand-off, or a cut playing over the
+    # earlier one read past what is left of it
+    "cut-dead": (("mix_voice(stream, output, send, CUT_FADE_FRAMES);", "return;"), "cut"),
+    "cut-not-faded": (("float fade = 0.5f + 0.5f * (float)cos(3.14159265358979 * (double)(frame + 1) / CUT_FADE_FRAMES);",
+                       "float fade = 1.0f;"), "cut"),
+    "cut-not-at-hand-off": (("\t\tvoice_cut(stream);\n\t\tstream->mixing_count = 0;",
+                             "\t\tstream->mixing_count = 0;"), "cut"),
+    "cut-past-the-earlier": (("(frame < left ? stream->cut_send[stream->cut_played + frame] : 0.0f)",
+                              "(frame < left ? 1.0f : 0.0f) * stream->cut_send[(stream->cut_played + frame) % CUT_FADE_FRAMES]"),
+                             "cuts"),
     # Xbox ADPCM: the high nibble first, the header's sample left out (all 64 nibbles decoded), the step index held a
     # step short, the channels' words not interleaved
     "adpcm-high-nibble-first": (("ima_expand(nibbles[byte] & 0xf, &predictor, &index)",

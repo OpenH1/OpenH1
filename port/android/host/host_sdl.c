@@ -462,6 +462,31 @@ uint32_t host_sdl_input_held(uint8_t *keys, int count)
 	return buttons;
 }
 
+/* ---------- text input (Android's keyboard while a name is typed:
+sdl_platform.c). What it types arrives as key events, which the guest reads;
+its text events are not (their text is a pointer) */
+
+int host_sdl_text_input(uint32_t window, int type)
+{
+	SDL_Window *object = host_sdl_handle_get(window, _handle_window);
+	SDL_PropertiesID properties;
+
+	if (!object)
+		return 0;
+	if (type < 0)
+	{
+		SDL_StopTextInput(object);
+		return 0;
+	}
+	properties = SDL_CreateProperties();
+	SDL_SetNumberProperty(properties, SDL_PROP_TEXTINPUT_TYPE_NUMBER, type);
+	SDL_SetBooleanProperty(properties, SDL_PROP_TEXTINPUT_MULTILINE_BOOLEAN, false);
+	SDL_SetBooleanProperty(properties, SDL_PROP_TEXTINPUT_AUTOCORRECT_BOOLEAN, false);
+	SDL_StartTextInputWithProperties(object, properties);
+	SDL_DestroyProperties(properties);
+	return SDL_TextInputActive(object) ? 1 : 0;
+}
+
 /* ---------- gamepads */
 
 int host_sdl_get_gamepads(uint32_t *ids, int capacity)

@@ -54,6 +54,12 @@ unsigned int halo_gpu_journal_form(void);
 the objects not found */
 int halo_gpu_journal_replay(unsigned int const *words, unsigned int count,
 	struct halo_gpu_journal_bitmaps const *bitmaps, unsigned int *unknown);
+/* Discard measured listener motion at camera cuts and lifecycle boundaries
+(source/sound/sound_manager.c). NONE resets every local listener. */
+void sound_listener_motion_reset(short local_player_index);
+
+/* MCC weapon-deletion notification (port/linux/game/mcc_first_person.inl). */
+void mcc_first_person_weapon_deleted(long weapon_index);
 
 /* frames between the 30 Hz ticks (port/linux/game/render_interpolation.c);
 the platform layer reads the display.interpolation setting */
@@ -297,6 +303,11 @@ gauge (port/linux/game/weapon_gauge.c) */
 float weapon_gauge_meter_value(long object_index, short value_source, float meter_value);
 /* while TRUE, drawing shifts right to center 640-column layouts */
 void halo_screen_ui_offset(unsigned char centered);
+/* the same for a player's view of a split screen (its width): a half
+screen's 640 columns are centred as the screen's, a quarter's 320 in the
+quarter; the shift in effect */
+void halo_screen_ui_offset_view(long view_width);
+long halo_screen_ui_offset_current(void);
 /* names a model lighting vertex program, whose draws can be lit for each
 pixel (port/linux/src/d3d8_device.c, display.per_pixel_lighting) */
 void halo_vertex_shader_lighting(unsigned long handle);
@@ -452,6 +463,10 @@ void input_trace_player(int controller, int substep, float forward, float strafe
 void input_trace_aim(int controller, int modern, int accelerating, float acceleration_seconds);
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
+/* the debug camera's mouse and keys (source/camera/director.c): whether the
+middle button, R and F are held, and the wheel's notches since the last call
+(port/linux/src/xinput_sdl.c) */
+int halo_linux_debug_camera_input(int *middle, int *up, int *down, float *wheel);
 
 /* replaces the file at to with the one at from, at once (a rename: on POSIX
 rename(2), on Windows MoveFileEx's replace), both Xbox paths; FALSE if it
