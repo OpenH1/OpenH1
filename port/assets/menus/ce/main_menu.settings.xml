@@ -50,7 +50,7 @@
 	</widget>
 	<widget name="main_menu/settings/panel_name" type="text" controller="1" width="200" height="38" color="#FF6F9CD0" wide="0 -32" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_shared/_settings_text">
 	</widget>
-	<widget name="main_menu/settings/panel_value" type="text" controller="1" width="200" height="76" font="ui\large_ui" color="#FFFFFFFF" wide="0 -32" source="tools/port_settings.py settings_files/_settings_shared/_settings_text">
+	<widget name="main_menu/settings/panel_value" type="text" controller="1" width="200" height="128" font="ui\large_ui" color="#FFFFFFFF" wide="0 -32" source="tools/port_settings.py settings_files/_settings_shared/_settings_text">
 	</widget>
 	<widget name="main_menu/settings/panel_text" type="text" controller="1" width="200" height="220" color="#FF2896FF" wide="0 -32" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_shared/_settings_text">
 	</widget>

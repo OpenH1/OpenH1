@@ -361,9 +361,9 @@ SETTINGS_PANEL_X, SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_BOTTOM = 388, 224, 400
 SETTINGS_PANEL_INSET = 12
 SETTINGS_PANEL_WORDS = SETTINGS_PANEL_WIDTH - 2 * SETTINGS_PANEL_INSET
 # (the room under the panel's name and value for their lines past the first,
-# wrapped: the name's one more of small_ui's 20, the value's two more of
+# wrapped: the name's one more of small_ui's 20, the value's four more of
 # large_ui's 26; menu_functions.c's SETTINGS_PANEL_NAME_LINES, _VALUE_LINES)
-SETTINGS_PANEL_NAME_MORE, SETTINGS_PANEL_VALUE_MORE = 1 * 20, 2 * 26
+SETTINGS_PANEL_NAME_MORE, SETTINGS_PANEL_VALUE_MORE = 1 * 20, 4 * 26
 # the footer's band (bitmaps/gradient's line, at 409, over Defaults, OK and
 # Cancel): a page's rows, packed for any platform, end above it
 # (test_port_settings.py's test_settings_rows_fit). The list does not scroll

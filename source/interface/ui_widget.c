@@ -5728,25 +5728,29 @@ static boolean widget_instance_port_in_row(
 			(parent->parent && parent->parent->type == _ui_widget_type_column_list)));
 }
 
-/* port: whether a widget's row has the focus: the widget the focus ends at
-(down the screen's focused children) is the widget, or its parent (a row
-it is a text of, as a table's cells), or a spinner beside it in its parent
-(a settings row's spinner, beside its label); not a screen's own texts.
-Only that row's lines scroll: a panel the focus passes through does not */
+/* port: whether a widget's row has the focus: in a list, its row (the
+list's child it is in, or is) on the path the focus takes (a settings row:
+its label, its spinner's value); elsewhere, the widget the focus ends at
+(down the screen's focused children) is the widget or its parent (a
+hand-written table's row, its cells). Not a screen's own texts, nor a
+panel's the focus passes through: only the focused row's lines scroll */
 static boolean widget_instance_port_row_focused(
 	struct widget_instance *widget)
 {
-	struct widget_instance *end = widget;
+	struct widget_instance *row, *end = widget;
 
 	if (!widget->parent)
 		return FALSE;
+	for (row = widget; row->parent; row = row->parent)
+	{
+		if (row->parent->type == _ui_widget_type_column_list)
+			return widget_instance_port_on_focus_path(row);
+	}
 	while (end->parent)
 		end = end->parent;
 	while (end->focused_child)
 		end = end->focused_child;
-	return end == widget ||
-		(widget->parent->parent && (end == widget->parent ||
-			(end->type == _ui_widget_type_spinner_list && end->parent == widget->parent)));
+	return end == widget || (widget->parent->parent && end == widget->parent);
 }
 
 /* port: a line of a menu's text too long for its box (issue 899:
