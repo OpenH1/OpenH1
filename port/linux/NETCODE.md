@@ -743,7 +743,7 @@ in an OpenH1 game"):
 The host welcomes OpenCE players (`port/linux/game/network_welcome.c`,
 `network.opence_welcome`): a few seconds after a client machine has loaded
 the game (its client ready), the host sends it two notices of the text
-chat, "This server runs OpenH1." and "Get it free at openh1.com for
+chat, "This server runs GOAT H1." and "Get it free at openh1.com for
 smoother 60 and 120 tick games.", once a player (their machine's real
 address and hardware id) while it hosts. A notice is OpenCE's own
 `_distributed_message_chat_down` with `_chat_line_notice_bit`, which

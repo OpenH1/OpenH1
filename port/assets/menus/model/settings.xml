@@ -1341,7 +1341,7 @@
 		</row>
 		<row key="browser_game_type" kind="choice" setting="network.browser_game_type" label="GAME TYPE" crumb="ONLINE › SERVER BROWSER FILTERS" search_choices="any slayer team capture the flag oddball king of hill race swat infection gun game co op pro 2v2">
 			<help>Lists only the games of this type.</help>
-			<note>Slayer is free for all; SWAT, Infection and Gun Game are OpenCE's. Pro 2v2 is PRO 2V2's games.</note>
+			<note>Slayer is free for all; SWAT, Infection and Gun Game are GOAT H1's. Pro 2v2 is PRO 2V2's games.</note>
 			<choice shown="ANY" value="any"/>
 			<choice shown="SLAYER" value="slayer"/>
 			<choice shown="TEAM SLAYER" value="team_slayer"/>

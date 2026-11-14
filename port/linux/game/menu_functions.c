@@ -7174,6 +7174,39 @@ static void gametype_bank_read(short bank)
 	multiplayer.gametype_chosen = 0;
 }
 
+/* the frame of a game engine's picture in the gametypes' pictures
+(bitmaps/game_type_grafix, Game Options' rules_options): the PC version's
+order (ui_widget_game_data_input_functions.c's multiplayer_game_bitmap_frame),
+not the engines', with the unknown one's (game_type_grafix's "?") last */
+enum
+{
+	_gametype_picture_ctf = 0,
+	_gametype_picture_king,
+	_gametype_picture_slayer,
+	_gametype_picture_oddball,
+	_gametype_picture_race,
+	_gametype_picture_unknown,
+};
+
+static short gametype_picture_frame(long engine)
+{
+	switch (engine)
+	{
+	case game_engine_ctf:
+		return _gametype_picture_ctf;
+	case game_engine_king:
+		return _gametype_picture_king;
+	case game_engine_slayer:
+		return _gametype_picture_slayer;
+	case game_engine_oddball:
+		return _gametype_picture_oddball;
+	case game_engine_race:
+		return _gametype_picture_race;
+	default:
+		return _gametype_picture_unknown;
+	}
+}
+
 /* a gametype's kind and rules, for the description beside a list: its game
 engine's name (or its OpenCE gametype's), teams, and what wins */
 static void gametype_rules_text(long profile_index, wchar_t *text, short size)
@@ -7311,10 +7344,8 @@ static void gametype_list_update(struct widget_instance *list)
 		text_set(named(description, "gametype_right_name", 0), text);
 		if (playlist_profile_get(multiplayer.gametypes[multiplayer.bank[multiplayer.gametype_chosen]], &variant))
 		{
-			long engine = PIN(variant.game_engine_index, 0, 5);
-
 			if ((widget = named(description, "gametype_right_pic", 0)) != NULL)
-				widget->animation.current_frame_index = (short)engine;
+				widget->animation.current_frame_index = gametype_picture_frame(variant.game_engine_index);
 			gametype_rules_text(multiplayer.gametypes[multiplayer.bank[multiplayer.gametype_chosen]], text,
 				NUMBEROF(text));
 			text_set(named(description, "gametype_right_data", 0), text);
@@ -14516,10 +14547,8 @@ static void gametype_edit_list_update(struct widget_instance *list)
 		text_set(named(description, "gametype_right_name", 0), text);
 		if (playlist_profile_get(profile_index, &variant))
 		{
-			long engine = PIN(variant.game_engine_index, 0, 5);
-
 			if ((widget = named(description, "gametype_right_pic", 0)) != NULL)
-				widget->animation.current_frame_index = (short)engine;
+				widget->animation.current_frame_index = gametype_picture_frame(variant.game_engine_index);
 			gametype_rules_text(profile_index, text, NUMBEROF(text));
 			text_set(named(description, "gametype_right_data", 0), text);
 		}
@@ -14528,24 +14557,31 @@ static void gametype_edit_list_update(struct widget_instance *list)
 }
 
 /* "port playlist edit desc" (after the PC version's "playlist settings menu
-update desc"): the gametype editor's OPENCE OPTIONS, its eighth row, has its
-own words (the list's ninth) over GAME OPTIONS' picture, and the buttons
-after it SAVE CHANGES' */
+update desc"): the gametype editor's GOAT H1 OPTIONS, its eighth row, has
+its own words (the list's ninth), and the buttons after it SAVE CHANGES';
+the picture, on every row, is the gametype's own (Game Options' pictures:
+tools/port_settings.py's WIDGET_PATCHES), none for an unknown engine */
 #define PLAYLIST_EDIT_OPENCE_ROW 7
 #define PLAYLIST_EDIT_OPENCE_WORDS 8
-#define PLAYLIST_EDIT_GAME_OPTIONS_PICTURE 1
 
 static void playlist_edit_description(struct widget_instance *list)
 {
 	struct widget_instance *description = list->parameters.list.extended_description;
+	struct widget_instance *picture;
+	struct game_variant *variant = edit_variant();
 	short index = list->focused_child ? ui_widget_port_list_index(list) : NONE;
+	short frame;
 
-	if (!description || !description->child || !description->child->next || index < PLAYLIST_EDIT_OPENCE_ROW)
+	if (!description || !description->child || !description->child->next)
+		return;
+	picture = description->child->next;
+	frame = variant ? gametype_picture_frame(variant->game_engine_index) : _gametype_picture_unknown;
+	visible_set(picture, frame != _gametype_picture_unknown);
+	picture->animation.current_frame_index = frame == _gametype_picture_unknown ? 0 : frame;
+	if (index < PLAYLIST_EDIT_OPENCE_ROW)
 		return;
 	description->child->parameters.text_box.string_list_index =
 		index == PLAYLIST_EDIT_OPENCE_ROW ? PLAYLIST_EDIT_OPENCE_WORDS : (short)(index - 1);
-	description->child->next->animation.current_frame_index =
-		index == PLAYLIST_EDIT_OPENCE_ROW ? PLAYLIST_EDIT_GAME_OPTIONS_PICTURE : (short)(index - 1);
 }
 
 /* "mp profile begin editing" (the list's custom activation: OK, a row's A) */
