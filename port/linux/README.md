@@ -691,8 +691,9 @@ browser, direct IP and server setup, the gametype editor, and the profile's
 settings: controls, gamepads, mouse, audio, video, network and colour),
 laid out as it has them. Their pictures are the high-res redraws; the few
 that are not yet (3D renders, screenshots) are drawn from the Xbox's own
-menus where it has the same, else a placeholder, listed in
-`port/assets/menus/NON_HANDDRAWN.md`.
+menus where it has the same, else left empty (no picture shows there), listed
+in `port/assets/menus/NON_HANDDRAWN.md`. The gametype editor's panel shows the
+gametype's own picture, as Game Options' list has it.
 
 The campaign is wired: Campaign, on player 1's profile (the one last used),
 continues its saved game, starts a level it has reached at a difficulty (New
@@ -725,6 +726,31 @@ controller chooses the level and the difficulty. A co-op game does
 not continue a saved game of one player. Multiplayer > ONLINE CO-OP hosts
 the campaign over the Internet instead: it is Create Game > Internet with
 the map list on the campaign's levels, and friends join by the invite link.
+
+Under the new menus, co-op has one screen, CO-OP, whichever way you come:
+Campaign > CO-OP, the server browser's CO-OP tab, or Multiplayer > CO-OP
+CAMPAIGN. It has three cards:
+
+- HOST: choose the mission and the difficulty (Choose Mission and Choose
+  Difficulty, as the campaign has them), then WHO CAN JOIN: FRIENDS (the
+  default: your friends see the game in their co-op list and join it;
+  strangers do not), ANYONE (also listed in everyone's co-op list and the
+  server browser) or INVITE ONLY (only people with the invite link). The
+  game is hosted at once, and the lobby says who can see it, shows the
+  invite link (Y copies it, INVITE FRIENDS invites a friend), and says in
+  plain words what keeps people from finding it, with a button that fixes
+  it: Internet play off (TURN ON INTERNET PLAY), the game list not reached
+  (RETRY), public games turned off, or appearing offline to friends (SHOW
+  ME ONLINE). The choice is kept (`network.coop_join`).
+- JOIN: one list of co-op games: your friends' first (under YOUR
+  FRIENDS' GAMES), then the public ones, each with its host, mission,
+  difficulty, players and ping. A friend's game that is not listed is
+  joined through their party, which follows them in. With no game, the list
+  says why (Internet play off, the game list not reached, no friends
+  hosting and no public co-op games), with a button that fixes it. JOIN BY
+  LINK joins a copied invite link. An invite accepted still goes straight
+  to that game.
+- SPLIT SCREEN: Multiplayer > SPLIT-SCREEN CO-OP, as above.
 
 Network games have split screen too: up to 4 players on each computer. In
 the game lobby, another controller presses START to join, and the new
@@ -1214,7 +1240,7 @@ real machines alone.
 ## OpenCE gametypes
 
 Create Game's Select Gametype screen has a bank between STANDARD and
-CUSTOM: OPENCE, the port's own gametypes (`game/game_modes.c`).
+CUSTOM: GOAT H1, the port's own gametypes (`game/game_modes.c`).
 
 | Gametype | Rules |
 | --- | --- |
@@ -1223,7 +1249,7 @@ CUSTOM: OPENCE, the port's own gametypes (`game/game_modes.c`).
 | Gun Game | Free for all Slayer. Everyone starts with the first weapon of a list (the rocket launcher, the shotgun, the sniper rifle, the plasma rifle, the assault rifle, the needler, the plasma pistol, the pistol, of those the map has); each kill gives the killer the next, and a kill with the last wins. No one picks up a weapon, a weapon emptied is refilled, and a melee kill takes the victim back a weapon (`game/gun_game.c`). |
 | Hardcore Slayer, Hardcore CTF, Hardcore Oddball, Hardcore King | The team gametypes with Hardcore's rules: no motion sensor (the flag, the ball and the hill keep their nav points), no aim assist (no autoaim nor magnetism, for controllers and the mouse alike), friendly fire on, and a kill restores the killer's health, and their shields unless an overshield has them past full. |
 
-Edit Gametypes edits them as any gametype, and its OPENCE OPTIONS screen
+Edit Gametypes edits them as any gametype, and its GOAT H1 OPTIONS screen
 (after TEAMPLAY OPTIONS) gives any gametype these rules: its MODE (NONE,
 SWAT, INFECTION or GUN GAME: Slayer only; Infection is played on teams and
 Gun Game free for all, which the screen's OK sets), HARDCORE (any game
@@ -1404,6 +1430,7 @@ the setting for one start of the game. It has priority over the file.
 | `audio.resampler` | `"xbox"` | `HALO_AUDIO_RESAMPLER` | How the sounds are converted to the output's rate (48 kHz): `"xbox"` as the Xbox did, through its short low pass (eight taps, at the sound's own Nyquist rate, as recorded on an Xbox), which lets a little of the images above the sound's own rate through; `"sinc"` with a band-limited low pass, which keeps out the images above the sound's own rate; `"linear"` between neighbouring samples, which lets some of them through and sounds brighter for it. Audio Setup's SOUND PROCESSING screen sets it, with `audio.reverb`. |
 | `audio.voice_chat` | `"push_to_talk"` | `HALO_VOICE_CHAT` | How you talk in voice chat: `"push_to_talk"` (while `controls.push_to_talk` is held; the microphone opens when you first press it), `"open_mic"` (when the microphone hears speech), or `"off"`. You hear the other players in every case. Refer to "Voice chat". |
 | `audio.voice_volume` | `1.0` | `HALO_VOICE_VOLUME` | The volume of the voices of the other players, `0` to `2`. |
+| `audio.hit_sounds` | `false` | `HALO_HIT_SOUNDS` | Multiplayer: a short beep each time you damage another player, as Halo PC played one (Settings > Audio's HIT SOUNDS). Only damage the host dealt sounds: a client's comes with the host's damage of the hit (the damage events the host sends the shooter's machine), not with the hit it shows at once, so a hit the host refuses is silent; there is none for hitting yourself, for a teammate whom the gametype's friendly fire spares (no damage is dealt), or for anything but a player (vehicles, the campaign's actors). Hits less than 50 ms apart (a shotgun's pellets) beep once. It plays through the game's sound buffers, dry, under `audio.effects_volume`. Each player's own: a player profile may keep its own value, so a split screen's players each choose theirs (their hits beep for whoever has it on). A host may forbid it (`network.allow_hit_sounds`). The beep is a placeholder (`port/assets/sounds`, made by `tools/hit_sound_asset.py`). |
 | `audio.output_device`, `audio.input_device` | `"default"` | `HALO_AUDIO_OUTPUT_DEVICE`, `HALO_AUDIO_INPUT_DEVICE` | The speakers and the microphone, by the name that Settings > Audio shows, or `"default"` for the device of the system. If the device is not found, the game uses the device of the system. Not on Android. |
 | `audio.loose_sounds` | `false` | `HALO_LOOSE_SOUNDS` | For those who make sounds. `true`: each sound of a map that has a sound tag file of its name in `tags/` in the data root (for example `tags/sound/sfx/weapons/assault rifle/fire.sound`) plays from that file. The files are Halo PC tag files, as the Halo Editing Kit and Invader write them. At the console, `loose_sounds_reload` reads the files again, and `loose_sounds false` plays the mod packs' or map's sounds again. Loose files take priority over mod packs, independently of `mods_enable`. When a file changes, all sounds stop. |
 | `input.mouse_sensitivity` | `5.73` | `HALO_MOUSE_SENSITIVITY` | The mouse's aim on Counter-Strike 2's scale: each count the mouse reports turns the view 0.022 degrees (CS2's `m_yaw` and `m_pitch`) times this, so the number you play CS2 with turns the same here (1.7: 0.0374 degrees a count). It is linear, with no acceleration, whatever the field of view, the resolution or the frame rate: the counts are SDL's relative motion, the mouse's own on Windows (raw input), on Linux (XInput2's raw events, Wayland's unaccelerated motion), and on macOS the GameController framework's GCMouse counts in place of the system's accelerated pointer (`port/macos/host_raw_mouse.m`; a trackpad, which is no GCMouse, keeps the pointer's motion). The default, 5.73, turns as the older versions' default did. A file of an older version, whose scale was 0.0022 radians a count, has a value of its own converted once, times 5.7296, so that it turns as before (and the vertical one made a multiplier). Settings > Controls has a slider of it and a field to type a value in (Enter keeps it). Controllers, the touch controls and VR have their own sensitivity. |
@@ -1486,7 +1513,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.game_mode` | `"openh1"` | `HALO_NET_GAME_MODE` | When you host: `"openh1"`, an OpenH1 game ("OpenH1 60 Tick" and the like) at the tick rate `network.sim_rate` sets, which OpenCE players can join too, at 30, with `network.allow_opence`; `"legacy"`, OpenCE's netcode at 30 ticks a second for everyone. `"standard"` is the same as `"openh1"`. Server Setup's GAME row (OPENH1 30 TICK, OPENH1 60 TICK, OPENH1 120 TICK or LEGACY) writes it and `network.sim_rate`. Read when hosting starts, and again when the game is started from Server Setup if no one has joined yet. Refer to "OpenH1 and Legacy games" in NETCODE.md. |
 | `network.sim_rate` | `120` | `HALO_NET_SIM_RATE` | When you host an OpenH1 game: its tick rate, `30`, `60` or `120`. Every machine in the game uses it from the start of the game to its end, and each player's sub-step inputs go to every machine (NETCODE.md, "Sub-step inputs"). The server browser shows it before each game's gametype ("60 SLAYER"; a Legacy game's 30). |
 | `network.allow_opence` | `false` | `HALO_NET_ALLOW_OPENCE` | When you host an OpenH1 game: `true` lets OpenCE players join it too (`false`, the default: OpenH1 players only; a Legacy game, `network.game_mode`, is the one to play with OpenCE players). They play at 30 ticks a second, as they do in a Legacy game, while OpenH1 players play at `network.sim_rate`. OpenCE players see the game as any game of OpenCE's; the host sends them exactly what a Legacy host sends. Read with `network.game_mode`. Refer to "OpenCE players in an OpenH1 game" in NETCODE.md. |
-| `network.opence_welcome` | `true` | `HALO_NET_OPENCE_WELCOME` | When you host: tell each OpenCE player, a few seconds after they load into a game, "This server runs OpenH1." and "Get it free at openh1.com for smoother 60 and 120 tick games.", in the text chat as lines from no player. Once a player while you host, in any kind of game. OpenH1 players don't see it, and OpenCE shows no chat in a public game joined from its server browser. `false`: no welcome. Refer to "OpenH1 and Legacy games" in NETCODE.md. |
+| `network.opence_welcome` | `true` | `HALO_NET_OPENCE_WELCOME` | When you host: tell each OpenCE player, a few seconds after they load into a game, "This server runs GOAT H1." and "Get it free at openh1.com for smoother 60 and 120 tick games.", in the text chat as lines from no player. Once a player while you host, in any kind of game. OpenH1 players don't see it, and OpenCE shows no chat in a public game joined from its server browser. `false`: no welcome. Refer to "OpenH1 and Legacy games" in NETCODE.md. |
 | `network.coop_friendly_fire` | `"on"` | `HALO_NET_COOP_FRIENDLY_FIRE` | Whether the players of an online co-op game hurt each other: `"off"`, `"on"`, `"shields_only"` or `"explosives_only"`. FRIENDLY FIRE in co-op's Server Setup > Co-op Options writes its choice here. Their AI allies they hurt as `network.coop_ally_friendly_fire` says. |
 | `network.coop_ally_friendly_fire` | `true` | `HALO_NET_COOP_ALLY_FRIENDLY_FIRE` | Whether the players of an online co-op game hurt their AI allies (the Marines, Captain Keyes, the Sentinels while they are allies), as in the campaign. `false`: the players' weapons, grenades, melee and vehicles do them no harm, so that no player can kill the allies a level needs. The allies' and enemies' own damage is unchanged. ALLY FRIENDLY FIRE in co-op's Server Setup > Co-op Options writes its choice here; the host sends it with the game's settings. |
 | `network.coop_own_friendly_fire` | `true` | `HALO_NET_COOP_OWN_FRIENDLY_FIRE` | Whether this machine's players hurt, and are hurt by, the other players of an online co-op game. Two players hurt each other only if both have it `true`, and then as the host's `network.coop_friendly_fire` says. FRIENDLY FIRE in that game's pause menu writes its choice here. A player away from the controls for over 70 seconds is hurt by every player, whatever either chose. |
@@ -1512,6 +1539,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.votekick_minutes` | `5` | `HALO_NET_VOTEKICK_MINUTES` | When you host: the minutes that a player must play on the server before the player can start a vote to kick (`0` to `60`). To vote, a player must play for 2 minutes, or for this time if it is less. |
 | `network.votekick_ban_minutes` | `30` | `HALO_NET_VOTEKICK_BAN_MINUTES` | When you host: the minutes that a player who is kicked by a vote cannot join again (`1` to `1440`). |
 | `network.shield_effects` | `overshield` | `HALO_NET_SHIELD_EFFECTS` | Host: the shield effects every player of a network game sees, whatever their own settings, so that none sees what another does not: `stock`, `glow` (`display.shield_glow`), `light_show` (its Light Show intensity), `overshield` (`display.overshield_effect`), `glow_overshield` or `light_show_overshield`; or `players`, not synced: each player sees their own settings' (PLAYERS' OWN). The default, `overshield`, shows every player the overshield effect and no shield glow, the same for all. Sent to each client when it is ready and when it changes (`network_shield_effects.c`); a client draws stock until it has it. An online co-op game is always each player's own, whatever the host chose: the players play together. SHIELD EFFECTS in Server Setup > Player Options writes its choice here. |
+| `network.allow_hit_sounds` | `true` | `HALO_NET_ALLOW_HIT_SOUNDS` | Host: whether the players of your games may hear their hit sounds (`audio.hit_sounds`, each player's own; Settings > Audio's ALLOW HIT SOUNDS). `false` forbids them for your own players and, in an OpenH1 game, its OpenH1 clients: the game record carries it, read in the lobby as `game.auto_pickup` is (`_network_game_no_hit_sounds_bit`, `network_standard_hit_sounds_allowed`, OpenH1 protocol version 30). A Legacy game's clients cannot be told, and may hear them. |
 | `network.fire_origins` | `true` | `HALO_NET_FIRE_ORIGINS` | Host: whether a client's reported hit that the shooter's camera had no line of sight to may still count from where the client says its player's shots leave, when that is not the camera (distributed message 93: a VR build's weapon hand, which may be past a corner the camera is behind). The hand must be within 0.4 world units of the camera, no more than 0.05 behind the eye along the line to the target, 0.2 to its side and 0.1 above it, with the line from the eye to it clear; the host logs how many hits counted only that way. `false`: from the camera and vehicles' guns only (`network_damage.c`). |
 | `network.predict_hits` | `true` | `HALO_NET_PREDICT_HITS` | Client of an OpenH1 game (not co-op): its own players' hits on other players on foot are shown at once, dealt to its copy of the target with the least damage the weapon's roll gives (the shield's flare and break, blood, the flinch and pain sound, the death and the body's fall), and the host's states of the target are taken less what those hits took until the host's word on them comes. The host still decides: a kill is announced, with the host's killer and score, when its killing blow comes, and a hit whose word has not come a round trip and half a second on is undone (a player shown dead stands again where they fell, with their weapons). `false`: what a hit does is shown when the host's word comes (`network_damage.c`, `port/linux/NETCODE.md`). |
 | `network.block_mouse_aim_assist` | `false` | `HALO_NET_BLOCK_MOUSE_AIM_ASSIST` | Host: Player Options > Aim Assist, Allowed or Block M+KB. Block overrides optional mouse magnetism while mouse/keyboard aims, including on the host, without changing the saved preference. Controllers and touch retain their existing behavior; bullet autoaim is unchanged. |
@@ -1520,7 +1548,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.map_seed` | `true` | `HALO_NET_MAP_SEED` | When you play in the game of another machine: help send its map to players who join without it. HELP SEND MAPS in Settings > Network Setup > Map Sharing. |
 | `network.map_seed_upload` | `256` | `HALO_NET_MAP_SEED_UPLOAD` | When you play in the game of another machine: the most kilobytes per second that the game sends of maps to other players (`16` to `10240`, 10 MB/s). UPLOAD LIMIT in Settings > Network Setup > Map Sharing. |
 | `network.map_download` | `true` | `HALO_NET_MAP_DOWNLOAD` | When you join a game on a Custom Edition map that you do not have: download it from the players of the game. `false`: leave the game and show which map is missing. DOWNLOAD MAPS in Settings > Network Setup > Map Sharing. |
-| `network.coop_public` | `false` | `HALO_NET_COOP_PUBLIC` | `true`: an online co-op game (Create Game > ONLINE CO-OP, or Internet with a SINGLEPLAYER map) starts as PUBLIC. `false`: it starts as PRIVATE. LISTING in co-op's Server Setup writes its choice here. Refer to "Server browser". |
+| `network.coop_join` | `"friends"` | `HALO_NET_COOP_JOIN` | Who can join an online co-op game you host: `"friends"`, your friends see it in their co-op list and join it (it is not listed for strangers); `"anyone"`, it is also listed in everyone's co-op list and the server browser (PUBLIC); `"invite"`, only people with its invite link (your friends are offered no JOIN). Co-op > HOST's WHO CAN JOIN writes its choice here, and LISTING in co-op's Server Setup writes `"anyone"` (PUBLIC) or `"friends"` (PRIVATE). Replaces `network.coop_public`, which most hosts never saw leave PRIVATE. Refer to "Server browser". |
 | `network.brokers_file` | `"brokers.txt"` | `HALO_NET_BROKERS_FILE` | The file of the public MQTT brokers that let the machines of an invite find each other, and that carry the listings of the server browser: next to `config.toml` (else the release's, `share/openh1/brokers.txt`), unless a full path. One `host:port` on each line, up to 4; `#` starts a comment. |
 | `network.stun_servers` | Google and Cloudflare | `HALO_NET_STUN` | The public STUN servers (`host:port`, with commas between them) that give the internet address of a machine. |
 | `network.client_timeout_seconds` | `15` | `HALO_NET_CLIENT_TIMEOUT_SECONDS` | Hosting: the seconds the host waits for a machine it hears nothing from before it drops it (5 to 300; the stock game waits 15). The same seconds are how long each machine's reliable stream waits for its peer to read before it gives up, and how long a host in a game waits for its own network to come back (an address renewed, a wifi drop) before it ends the game; each machine reads its own setting. A longer wait keeps players whose connection stalls (a browser tab in the background), but a machine that is really gone leaves its players frozen for longer. |
@@ -1674,6 +1702,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.voice_test` | `false` | `HALO_VOICE_TEST` | Automatic tests of voice chat: a tone replaces the microphone, and each voice that the game hears is written to the log once each second. |
 | `debug.bsp_switch_test` | `0.0` | `HALO_BSP_SWITCH_TEST` | Every this many seconds of a campaign level, the game switches to the scenario's next structure BSP (as a load zone does), puts the first player on the first cutscene flag inside it, and logs the frame the switch was in, the longest frame of the three seconds after it, and the longest and median frames before it (`bsp switch test:` lines, `game/bsp_switch_test.c`); `0` never. |
 | `debug.setting_test` | `""` | `HALO_SETTING_TEST` | `<setting>=<value>@<seconds>`: that many seconds into a level (of its game time), the setting is written as Settings' OK writes it, so that a change in play can be timed (`game/bsp_switch_test.c`); `""` never. |
+| `debug.audio_device_name` | `""` | `HALO_AUDIO_DEVICE_NAME` | A device of this name listed first in Settings > Audio's OUTPUT DEVICE and INPUT DEVICE, as if the system had it (choosing it plays on the device of the system), so that a long name's row and panel can be tested; `""` none. Not on Android. |
 | `debug.latency_log` | `""` | `HALO_LATENCY_LOG` | A file to write a line to for each press of the fire control and each move from standing of the first player, on the controller (`fire`, `move`) and on the mouse (`click`), and each turn of the mouse from still (`turn`), in milliseconds: the press to the reading of the controller or the mouse, the reading to the simulation step that acts on it (the weapon fires, the unit moves; for a turn, the view takes it), that step to the first frame drawn after it, that frame to the first frame that shows it (the frames draw a tick behind: "Frame rate"), and that frame's drawing and handing on, and whether the player sat in a vehicle (a move of the vehicle, a shot of its gun: `game/latency_log.c`). A press in a menu (the D-pad, A or the left stick, `menu`) is acted on when the menu takes it (the selection moved, an item chosen). A rumble from rest gets a `rumble` line: the step that made it to the first write of the motors (the SDL call), its time on, and the time the game gave it. `tools/latency_summary.py` gives each stage's median and 95th percentile, those in a vehicle apart. A shot's sound gets a line of its own, from the step to the sound heard ("Sound delay"). `debug.test_input = "latency:<seed>"` pulls the fire control, pushes the stick, clicks the mouse and moves it in turn on the real clock, so the presses fall anywhere in a tick (`"latency:<seed>:fire,click,turn"` plays those kinds only, and `"latency:<seed>:menu"` the D-pad down and up in a menu; the mouse's come as its events do); with `debug.network_test = "local:bloodgulch:swat"` the player holds SWAT's pistol, which fires as the control is pulled (the plasma pistol a multiplayer game starts with otherwise fires as it is let go). The way to the screen after that is the renderer's (`HALO_METAL_STATS` on the Mac; with Vulkan, `HALO_VULKAN_FRAME_LOG`, which `tools/latency_summary.py --frames` joins to the presses by the two times each line ends with, the press and the showing frame's input read in nanoseconds of `CLOCK_MONOTONIC`, for the press to that frame's present and to its time on screen). |
 | `debug.determinism_log` | `""` | `HALO_DETERMINISM_LOG` | A file to write a line a tick to: a hash of the game state as the tick left it, the random seeds, and every taker of a seed since the line before by its call site (in the tick, in the frames, on other threads). Two runs of the same input compared with `tools/determinism_compare.py` first differ where something besides the input reached the game. |
 | `debug.demo_quit` | `false` | `HALO_DEMO_QUIT` | Quit when the demo played (`demo.play`, `--demo`) ends, or cannot be played, for tests. |
@@ -1681,7 +1710,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.demo_verify` | `false` | `HALO_DEMO_VERIFY` | The demo played is compared with each of its snapshots as it reaches them (record with a small `demo.snapshot_seconds`), and the first bytes apart are logged, by allocation (an object's by its tag and offset), to find where a playback parts. |
 | `debug.demo_log` | `false` | `HALO_DEMO_LOG` | Log each whole game state the demo being recorded takes, and why (`docs/demos.md`). |
 | `debug.determinism_dump` | `0` | `HALO_DETERMINISM_DUMP` | With `debug.determinism_log`, the tick after which to write the game state too, counted as logged from 1 (its allocations in order, to `<log>.<count>.bin`), to find where two runs' game states differ (`tools/determinism_compare.py --dump`), and that tick's first frame as `<log>.<count>.bmp`; `0` none. |
-| `debug.trace`, `debug.trace_seconds`, `debug.trace_mutation` | `""`, `0.0`, `""` | `HALO_TRACE`, `HALO_TRACE_SECONDS`, `HALO_TRACE_MUTATION` | A file to write a line a simulation step to (`game/sim_trace.c`): the players' place, velocity and aim, each projectile's, and the step's shots, projectiles made, strikes and detonations, timed in seconds from the scenario's start; quit once the scenario has run `debug.trace_seconds`; `debug.trace_mutation` puts a known bug in on purpose (`head_start`, `jump`, `speed`), which the scorecard must catch (`tools/scorecard`). Off, it costs a test a call. `HALO_GUEST_IMAGE` (the environment only) runs another guest image in the game's place: StageKit's map writer (`tools/stagekit`). |
+| `debug.trace`, `debug.trace_seconds`, `debug.trace_mutation` | `""`, `0.0`, `""` | `HALO_TRACE`, `HALO_TRACE_SECONDS`, `HALO_TRACE_MUTATION` | A file to write a line a simulation step to (`game/sim_trace.c`): the players' place, velocity and aim, each projectile's, and the step's shots, projectiles made, strikes and detonations, timed in seconds from the scenario's start; quit once the scenario has run `debug.trace_seconds`; `debug.trace_mutation` puts a known bug in on purpose (`head_start`, `jump`, `speed`), which the scorecard must catch (`tools/scorecard`), or `unseeded`, a draw of the game's seed by the host's clock, which `tools/scorecard/identity.py --repeat` must catch. Off, it costs a test a call. `HALO_GUEST_IMAGE` (the environment only) runs another guest image in the game's place: StageKit's map writer (`tools/stagekit`). |
 | `debug.fresh_memory_fill` | `""` | `HALO_FRESH_MEMORY_FILL` | `"zero"` or `"pattern"` (0xAA): what the allocators give out without clearing it (the game state's and the caches' memory, the game's `malloc` and `realloc`, `GlobalAlloc`) is filled with that, to find reads of memory never written ("Determinism"); empty as the game always has. |
 | `debug.frame_time` | `0.0` | `HALO_FRAME_TIME` | Seconds of game time each frame runs, whatever time it took, so that two runs of the same input run the same frames (the determinism check, with `debug.determinism_log`); the sound is timed by the frames too, mixed with no device; `0` the time each frame took. |
 | `debug.bots_tactics_team` | `-1` | `HALO_BOTS_TACTICS_TEAM` | With `bots.tactics`, only this team's bots (`0` red, `1` blue) play together, the other team's each on its own, to measure what the team play is worth (the bots' minute line gives each team's kills); `-1` both teams'. |
@@ -3313,19 +3342,24 @@ an image of its own at the size it has on the screen (`port/linux/src/d3d8_devic
 extra views), without the anti-aliasing pass, multisampling, the world's
 ambient occlusion, the objects' shadows, lens flares or the weather, so the
 frame pays for about one small view whatever the number of feeds; with the
-link hidden, nothing. The weapon and arms are posed in their idle
-animation (not the teammate's reloads or shots). Not yet in VR, nor on the
-touch controls (`port/linux/game/spartan_link.c`).
+link hidden, nothing. The weapon and arms move as on the teammate's own
+screen: each shot's kick, a melee, a reload, a grenade's throw, a weapon
+put away and readied, a plasma weapon overheating and venting, a charge,
+walking's sway; while they zoom the weapon is hidden, as for them. This
+computer plays each teammate's weapon from what it already knows of them
+(`source/interface/first_person_weapons.c`'s feeds' slots), making no sound
+or effect of it. Not yet in VR, nor on the touch controls
+(`port/linux/game/spartan_link.c`).
 
 ### Voice chat
 
 Network games have voice chat, on the local network and on the internet.
 Hold V (`controls.push_to_talk`, Settings > Controls Setup) to talk, or set
-VOICE CHAT in Settings > Audio to OPEN MIC. VOICE VOLUME sets the volume of
+VOICE CHAT in Settings > Audio > VOICE CHAT to OPEN MIC. VOICE VOLUME there sets the volume of
 the other players. On Android, set VOICE CHAT to OPEN MIC to talk: the game
 then asks for the microphone.
 
-OUTPUT DEVICE and INPUT DEVICE in Settings > Audio select the speakers and
+OUTPUT DEVICE in Settings > Audio and INPUT DEVICE in its VOICE CHAT page select the speakers and
 the microphone (SYSTEM DEFAULT, the default, follows the system). The list
 has the devices that the computer had when the game started.
 
@@ -3370,8 +3404,9 @@ Server Setup in Create Game > Internet has a LISTING row:
 - PRIVATE: only players with the invite link can join.
 
 Each new game starts as PUBLIC (`network.host_public = false` makes new
-games start as PRIVATE). An online co-op game starts as PRIVATE, and keeps
-the last choice of its LISTING (`network.coop_public`). A LAN game is never listed. `network.public_lobby = false` turns the server browser off.
+games start as PRIVATE). An online co-op game is listed as its WHO CAN JOIN
+says (`network.coop_join`: ANYONE is PUBLIC, FRIENDS and INVITE ONLY are
+PRIVATE); its LISTING writes ANYONE or FRIENDS there. A LAN game is never listed. `network.public_lobby = false` turns the server browser off.
 
 A PUBLIC game can also have a PASSWORD (a row of Server Setup, below
 LISTING). The Server Browser shows a lock at the left of a game with a

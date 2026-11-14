@@ -86,6 +86,32 @@ top.
 A row's label can be a binding's (`{pause.friendly_fire}`), read again each
 frame.
 
+### A pop-up: `<dialog>`
+
+A screen with a `<dialog>` is a question in a box in the middle of the
+screen, drawn as the Quit question is (the PC version's `quit_screen`: its
+`alert_bkd` box with its blue border and bands): its title in the box's top
+band, its words under it, and its `<list>`'s items its choices, side by side
+in the box's bottom band, each a button of Quit's OK and BACK. The box is
+Quit's width, or wider for three or four choices (its picture's ends kept),
+and as tall as its words' lines need (up to 4): the box's picture cut above
+its bottom band, and that band drawn under the cut (`dialog/dialog_foot`,
+`tools/port_settings.py`'s `dialog_foot_svg`). Behind it is the screen it was
+opened from, as it was, dimmed and taking no input (where that is a generated
+screen: the gametype editor; Quit's is over the menus' scene, its main menu
+being a hand-written screen). Left and right (the d-pad, the stick, the arrow keys)
+step the choices, the pointer over one focuses it, and A, Start, a click or a
+tap does its `do`; B does the screen's `back`, else goes back. It is the same
+at every aspect ratio (in the menus' middle 640) and on a phone.
+
+| Element | Attributes | Meaning |
+| --- | --- | --- |
+| `<dialog>` | `title` (required), `text` | The box: its title and its words (wrapped to the box, bindings filled). A screen with one has nothing else but its `<list>` |
+| `<list>` | `focus` | (in a `<dialog>`) Its choices: 1 to 4 `<item>`s, `focus` the one focused as it opens (each opening asks anew) |
+
+`screens/quit.xml` (in place of the PC version's Quit question) and
+`screens/save_changes.xml` (below) are pop-ups.
+
 ### The tall layout: tabs, tables, panels and searches
 
 A screen with a `<table>` is laid out as Settings' and the server browser's
@@ -227,8 +253,10 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | `{browser.search.server}`, `{browser.search.map}`, `{browser.search.any}` | The searches' words (set as they are typed) |
 | `{browser.panel.title}` ... `{browser.panel.status}` | The chosen game's name (or the list's title), where (map and mode), kind (GOAT H1, LEGACY) and its `tone`, tick rate, OPENCE CAN JOIN, players, ping, and its status line |
 | `{browser.searched}`, `{browser.joinable}`, `{browser.server}`, `{browser.link}`, `{browser.filtered}` | (for `if`s) the searches hide every game; a game to join is chosen; the server browser's list; Join by Link's; a list filtered and searched (not Join by Link's) |
+| `{browser.fix}` | The co-op list's: its empty list's fix's words (`TURN IT ON`, `RETRY`, `SHOW THEM`, `HOST CO-OP`; refilled each frame); none while it lists a game, or elsewhere |
+| `{coop.listing}`, `{coop.link}`, `{coop.problem}`, `{coop.fix}` | A network co-op game's host's lobby: who can join and see it (`FRIENDS CAN JOIN: 3 friends online see it.`), the invite link (its start), what keeps people from finding it in plain words (`Internet play is off, so only players on your network can join.`) and its fix's words; none for anyone else |
 | `{pause.friendly_fire}` | Network co-op's FRIENDLY FIRE row's words, `FRIENDLY FIRE ON` or `OFF` (this machine's choice); none elsewhere |
-| `{pause.host_controls}`, `{pause.end_game}`, `{pause.chapters}` | (for `if`s) the pause menu's HOST CONTROLS (a network game's host's), END GAME (the host of a game of this machine alone) and CHAPTERS (Basic Training's), as `menu_tags.c` adds them to the map's |
+| `{pause.host_controls}`, `{pause.end_game}`, `{pause.chapters}` | (for `if`s) the pause menu's HOST CONTROLS (a network game's host's), END GAME (the host of a game of this machine alone) and CHAPTERS (Basic Training's), as `menu_tags.c` adds them to the map's; the host machine's first local player's alone (split screen's player 1: the screen's own player), an admin's too |
 | `{profile.title}` | Select Profile's chosen row: its profile's name, or `Create New Player Profile` on the row that makes one |
 | `{profile.name}`, `{profile.controls}`, `{profile.difficulty}`, `{profile.level}` | The chosen profile's name, controls (`Default`, `Inverted`), best difficulty finished (none before a level is) and current level (`The Pillar of Autumn`); none on the row that makes one |
 | `{profile.color}`, `{profile.chosen}` | (for a `<spartan>`'s color and `if`s) the chosen profile's color's number, or `random`; whether a profile (not the row that makes one) is chosen |
@@ -263,11 +291,20 @@ sounds and the fades are the game's.
 | Action | Does |
 | --- | --- |
 | `open campaign` | The Campaign screen, as the PC version's CAMPAIGN opens it (a profile made first if there is none) |
-| `open multiplayer`, `open coop` | The server browser, as Multiplayer's SERVER BROWSER opens it (`open coop`: on its CO-OP tab, this visit) |
-| `open host`, `open host coop` | Multiplayer's hub (the server browser's HOST & MORE), its co-op page (HOST CO-OP) |
+| `open multiplayer` | The server browser, as Multiplayer's SERVER BROWSER opens it |
+| `open coop`, `open host coop` | Co-op's screen (`screens/coop.xml`, below: "Co-op") |
+| `open host` | Multiplayer's hub (the server browser's HOST & MORE) |
+| `coop host` | HOST: Choose Mission, as the campaign's (a profile made first if there is none), HOST's choosing begun (its Choose Difficulty's PLAY opens WHO CAN JOIN) |
+| `coop join`, `coop split` | JOIN: the co-op list (`screens/coop_join.xml`); SPLIT SCREEN: the hub's SPLIT-SCREEN CO-OP (`port coop begin`) |
+| `coop host friends`, `coop host anyone`, `coop host invite` | WHO CAN JOIN's cards: the choice kept (`network.coop_join`), the game hosted, the lobby |
+| `coop fix`, `coop join link` | The co-op list's: its empty list's fix (HOST CO-OP's: `coop host`); Join by Link |
+| `lobby fix` | The lobby's fix of what keeps people from finding a co-op game (`coop.fix`) |
 | `open settings` | Settings, as the main menu's SETTINGS opens it |
 | `open training` | The VR tutorial (Basic Training's chapters) |
 | `quit` | The quit question, as the main menu's QUIT and B open it |
+| `quit game` | The game quit (the quit question's OK) |
+| `back` | Back to the screen before, as B goes (a pop-up's BACK and CANCEL) |
+| `edit save`, `edit discard` | Back to the editor the question was opened from, its changes then saved as its OK saves them (a built-in gametype's new name asked first), or let go of, and the editor closed (below) |
 | `search next` | The next of the screen's searches typed into (the first, if none is) |
 | `search clear` | Every search's words cleared, as a table's CLEAR SEARCH |
 | `browser back` | The browser's back (its own: `gamespy back handler`) |
@@ -282,6 +319,7 @@ sounds and the fades are the game's.
 | `open host controls` | Host Controls, as the pause menu's HOST CONTROLS opens it |
 | `pause leave` | The player out of the game, as the multiplayer pause menu's LEAVE GAME (`mp game player quit`), and the screen closed |
 | `pause end game` | The game ended as its time limit would (END GAME) |
+| `pause chapters` | Basic Training's chapters, as the pause menu's CHAPTERS opens them (the host's first local player's alone) |
 | `pause friendly fire` | This machine's friendly fire in network co-op on or off (FRIENDLY FIRE) |
 | `pause revert`, `pause restart` | The campaign's questions for REVERT TO SAVED and RESTART LEVEL (the map's) |
 | `pause quit` | SAVE AND QUIT: the main menu, as the campaign's pause menu's |
@@ -311,8 +349,8 @@ place of Join Game's screen (`main_menu/multiplayer_type_select/join_game/
 join_game_screen`) in each of its modes, by `{browser.*}` bindings and `if`s:
 
 - the server browser (the main menu's MULTIPLAYER), with its HOST & MORE;
-- on its CO-OP tab (Campaign's CO-OP, `open coop`: the tab this visit, not
-  the player's own kept), with HOST CO-OP;
+  its CO-OP tab opens co-op's own screen ("Co-op", below), whose co-op list
+  (`screens/coop_join.xml`) is this model's too;
 - LOCAL NETWORK (Multiplayer's hub, which HOST & MORE opens): the games on
   this network, its favorites offline after them; no REFRESH nor HOST;
 - JOIN BY LINK (the hub): the invites taken; no tabs, searches, FILTERS nor
@@ -471,6 +509,56 @@ shows the other's. The host's Host Controls has LOBBY TEXT CHAT and LOBBY
 VOICE CHAT (`network.lobby_text_chat`, `network.voice_lobby`), on or off for
 everyone at once.
 
+## Co-op
+
+`screens/coop.xml` is co-op's one screen, every way in landing on it:
+Campaign's CO-OP (`open coop`), the server browser's CO-OP tab (`open
+coop`: the tab is a door, the browser opening on ALL where it was kept on
+CO-OP) and Multiplayer's CO-OP CAMPAIGN (it takes the hub's co-op page's
+place, `main_menu/multiplayer_type_select/hub/coop_screen`). CO-OP in the
+band, three cards as the Campaign screen's, and the bar:
+
+- HOST (`coop host`): Choose Mission and Choose Difficulty, the campaign's
+  own (no saved game offered: a co-op game does not continue one), then
+  `screens/coop_who.xml`, WHO CAN JOIN: FRIENDS (friends see the game in
+  their co-op list and join it; strangers do not), ANYONE (listed in
+  everyone's co-op list and the server browser too) or INVITE ONLY (only
+  its invite link joins: `p2p_friends_set_game_closed`, its presence offers
+  no JOIN), the choice kept focused (`network.coop_join`). A card hosts the
+  game at once as Create Game's ONLINE CO-OP and Server Setup's START would
+  (its name the player's, its most players co-op's, no password) and opens
+  the lobby. The lobby's panel then says who can join and see it
+  (`{coop.listing}`), its invite link (`{coop.link}`; Y, COPY LINK, copies
+  it; INVITE FRIENDS as ever), and what keeps people from finding it
+  (`{coop.problem}`: internet play off, the brokers not reached, public
+  games off, appearing offline to friends, no friends yet), with the button
+  that fixes it (`{coop.fix}`, `lobby fix`). TURN ON INTERNET PLAY starts
+  internet play while the game runs (`xnet_internet_play_start`; the
+  game's sockets were told it while it was off: `p2p_socket_port`).
+- JOIN (`coop join`): `screens/coop_join.xml`, the co-op list. It is the
+  server browser's model (`browser.games` and the `browser.*` bindings and
+  actions) on its co-op list while its screen is open (its stand-in's
+  `port coop join init` and `dispose`): only co-op games, none hidden by the
+  browser's filters, searches or tab, in two groups: the player's friends'
+  (each a friend online whose presence says they host a co-op game they
+  offer JOIN to, `Co-op Heroic on The Silent Cartographer`, lobby_menu.inc's
+  `lobby_presence_tell`; a public game of their name is taken into their
+  row and joined as any listing, else the row is joined through their party,
+  `p2p_friends_join`, which follows them in), then the public ones. Each row
+  its host, mission, difficulty (the listing's
+  gametype's end, `Co-op Heroic`), players and ping. With none, the list
+  says why in plain words, with its fix in a button under the words
+  (`{browser.fix}`, `coop fix`): `Internet play is off` (TURN IT ON),
+  `Can't reach the game list` (RETRY), `No friends are hosting co-op
+  right now, and there are no public co-op games` (HOST CO-OP). JOIN BY LINK
+  (Y) opens Join by Link, which joins an invite link copied at once. An
+  invite accepted (a link opened, a friend's, Discord's) goes to its game
+  as before.
+- SPLIT SCREEN (`coop split`): the hub's SPLIT-SCREEN CO-OP.
+
+What it does is menu_functions.c's `coop_menu.inc`. The classic engine
+keeps Multiplayer's co-op page, ONLINE CO-OP's map list and Server Setup.
+
 ## The profile color screen
 
 `screens/profile_color.xml` takes the place of Settings' COLOR screen
@@ -509,6 +597,21 @@ deletes the chosen one, B goes back. The list's model is the generated screen's 
 `profile_list`: the profiles read, the row chosen, its scroll), and the
 actions run the generated screen's functions and open its screens. The
 classic engine keeps its own screen and the original pictures.
+
+## Leaving an editor with changes not saved
+
+The gametype editor (Edit Gametypes' EDIT, a generated screen) takes B, Back
+and its CANCEL with `port edit leave` (`tools/port_settings.py`'s
+`WIDGET_PATCHES`, `menu_functions.c`'s `edit_leave_ask`): with nothing
+changed it goes back, as before; with changes it opens
+`screens/save_changes.xml`, a pop-up of its own (`screens/save_changes`, a
+stand-in in `blocks.xml`), the editor kept in the history. SAVE saves them as
+the editor's OK does (a built-in gametype asks for a new name first, the
+editor kept for its OK), DON'T SAVE lets them go, and CANCEL (or B) goes back
+to the editor, the changes kept (`pc_menu_edit_leave`). Another generated
+editor opts in with the same handler. The editor's Step 1 (its GAME TYPE)
+shows the gametype's own type while its BACK is focused, not the PC version's
+picture of a SAVE CHANGES question, which looked like one BACK asked (#901).
 
 ## The pause menu
 
@@ -556,8 +659,9 @@ steps rebuild them:
 - PRO 2V2's own screen (matchmaking a 2v2, hosting one). Its games stay
   findable through the server browser's `pro_2v2` game type filter.
 
-Co-op stays reachable: CAMPAIGN, then CO-OP, opens the co-op page (online
-co-op hosting and split-screen co-op).
+Co-op stays reachable: CAMPAIGN, then CO-OP, opens co-op's screen (HOST,
+JOIN and SPLIT SCREEN: "Co-op", above), as the server browser's CO-OP tab
+does.
 
 There are two temporary ways in. `display.menu_engine = "classic"` has the old
 main menu. `debug.menu_open =

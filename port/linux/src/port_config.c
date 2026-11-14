@@ -614,6 +614,14 @@ static const struct config_setting config_settings[] =
 		"voices play whatever this is (audio.voice_volume 0 silences them)." },
 	{ "audio.voice_volume", _config_real, "1.0", "HALO_VOICE_VOLUME", _environment_value, _platform_all,
 		"The volume of the other players' voices (0 to 2)." },
+	{ "audio.hit_sounds", _config_boolean, "false", "HALO_HIT_SOUNDS", _environment_value, _platform_all,
+		"Multiplayer: a short beep each time you damage another player, as Halo\n"
+		"PC played one: only for damage the host dealt (none for hitting\n"
+		"yourself, nor teammates whom friendly fire spares), at the effects\n"
+		"volume. A network game's host may forbid them\n"
+		"(network.allow_hit_sounds). Each player's own: in a split screen, a\n"
+		"player's hits beep if that player's is on. The beep is a placeholder\n"
+		"for now.", _scope_player },
 	{ "audio.output_device", _config_string, "\"default\"", "HALO_AUDIO_OUTPUT_DEVICE", _environment_value,
 		_platform_desktop,
 		"Where the game's sound and the voices play: a device's name as Settings >\n"
@@ -1033,6 +1041,12 @@ static const struct config_setting config_settings[] =
 		"that is not the camera (a VR build's hand: past a corner the camera is\n"
 		"behind), no further than a player leaning out and an arm, and in front\n"
 		"of the eye. false: from the camera and vehicles' guns only." },
+	{ "network.allow_hit_sounds", _config_boolean, "true", "HALO_NET_ALLOW_HIT_SOUNDS", _environment_value,
+		_platform_all,
+		"Host: whether the players of your games may hear their hit sounds\n"
+		"(audio.hit_sounds, each player's own). false forbids them, for your\n"
+		"players and an OpenH1 game's clients (the game's settings carry it,\n"
+		"read in the lobby); a Legacy game's clients cannot be told." },
 	{ "network.predict_hits", _config_boolean, "true", "HALO_NET_PREDICT_HITS", _environment_value, _platform_all,
 		"Client of a GOAT H1 game: show your hits on other players at once\n"
 		"(the shield's flare and break, the flinch, the death), before the\n"
@@ -1659,10 +1673,13 @@ static const struct config_setting config_settings[] =
 		"download it (and the resource maps it needs) from the game's players\n"
 		"into custom_maps, if its host shares it (network.map_share); false\n"
 		"leaves the game, saying which map is missing." },
-	{ "network.coop_public", _config_boolean, "false", "HALO_NET_COOP_PUBLIC", _environment_value, _platform_all,
-		"Whether an online co-op game (Create Game > Internet, a SINGLEPLAYER\n"
-		"map) starts as PUBLIC or, false, PRIVATE: Server Setup's LISTING in\n"
-		"co-op, which writes its choice here." },
+	{ "network.coop_join", _config_string, "\"friends\"", "HALO_NET_COOP_JOIN", _environment_value, _platform_all,
+		"Who can join an online co-op game this machine hosts (Co-op > HOST's\n"
+		"WHO CAN JOIN writes its choice here): \"friends\" (friends see it in\n"
+		"their co-op list and join it; strangers do not), \"anyone\" (listed\n"
+		"in everyone's co-op list and server browser too) or \"invite\" (only\n"
+		"those with its invite link). Server Setup's LISTING in co-op writes\n"
+		"\"anyone\" (PUBLIC) or \"friends\" (PRIVATE)." },
 	{ "network.coop_friendly_fire", _config_string, "\"on\"", "HALO_NET_COOP_FRIENDLY_FIRE", _environment_value,
 		_platform_all,
 		"Whether the players of an online co-op game hurt each other: \"off\",\n"
@@ -2151,6 +2168,12 @@ static const struct config_setting config_settings[] =
 		"\"<setting>=<value>@<seconds>\": that many seconds into a level (of its\n"
 		"game time), the setting is written as Settings' OK writes it, so that\n"
 		"a change in play can be timed (game/bsp_switch_test.c); \"\" never." },
+	{ "debug.audio_device_name", _config_string, "\"\"", "HALO_AUDIO_DEVICE_NAME", _environment_value,
+		_platform_desktop,
+		"A device of this name listed first in Settings > Audio's OUTPUT DEVICE\n"
+		"and INPUT DEVICE, as if the system had it (choosing it plays on the\n"
+		"system's default), so that a long name's row and panel can be tested;\n"
+		"\"\" none." },
 	{ "debug.network_test_pickup", _config_real, "0.0", "HALO_NETWORK_TEST_PICKUP", _environment_value, _platform_all,
 		"This many seconds into an automated test game the host stands its last\n"
 		"player on a weapon, which a joining player then picks up; 0 never." },
@@ -3101,6 +3124,9 @@ static const char *const config_retired_settings[] =
 	"network.browser_show_oddball",
 	"network.browser_show_king",
 	"network.browser_show_race",
+	/* (online co-op's PUBLIC or PRIVATE, which most never saw change from
+	PRIVATE: who can join it, network.coop_join) */
+	"network.coop_public",
 	NULL,
 };
 
@@ -4472,6 +4498,7 @@ static const struct
 	{ "network.browser_tick", { "any", "30", "60", "120", "legacy", NULL }, "any" },
 	{ "network.browser_game_type", { "any", "slayer", "team_slayer", "ctf", "oddball", "king", "race", "swat",
 		"infection", "gun_game", "coop", "pro_2v2", NULL }, "any" },
+	{ "network.coop_join", { "friends", "anyone", "invite", NULL }, "friends" },
 	{ "network.browser_tab", { "all", "dedicated", "openh1", "legacy", "coop", "favorites", NULL }, "all" },
 	{ "network.browser_sort", { "players", "ping", "server", "map", "mode", NULL }, "players" },
 	{ "server.game_mode", { "openh1_120", "openh1_60", "openh1_30", "legacy", NULL }, NULL },

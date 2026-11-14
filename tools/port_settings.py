@@ -360,6 +360,11 @@ SETTINGS_PANEL_X, SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_BOTTOM = 388, 224, 400
 # (its words SETTINGS_PANEL_INSET in from its sides)
 SETTINGS_PANEL_INSET = 12
 SETTINGS_PANEL_WORDS = SETTINGS_PANEL_WIDTH - 2 * SETTINGS_PANEL_INSET
+# (the room under the panel's name and value for their lines past the first,
+# wrapped: the name's one more of small_ui's 20, the value's six more of
+# large_ui's 26, a device's longest name; menu_functions.c's
+# SETTINGS_PANEL_NAME_LINES, _VALUE_LINES)
+SETTINGS_PANEL_NAME_MORE, SETTINGS_PANEL_VALUE_MORE = 1 * 20, 6 * 26
 # the footer's band (bitmaps/gradient's line, at 409, over Defaults, OK and
 # Cancel): a page's rows, packed for any platform, end above it
 # (test_port_settings.py's test_settings_rows_fit). The list does not scroll
@@ -760,6 +765,8 @@ CONTROL_COMMAND_ROWS = {f"command_{n}" for n in range(1, CONTROL_ROWS + 1)}
 # (an action's row: its name, then its two bindings' columns, to the row's end)
 CONTROL_BINDINGS_X, CONTROL_BINDING_WIDTH = (136, 240), 104
 STREAMER = ("interface_settings/streamer_mode", "streamer_mode_screen")
+# (Audio's voice chat, a page of its own)
+VOICE_CHAT = ("audio_settings/voice_chat", "voice_chat_screen")
 # (Online's Discord account: port/linux/src/player_link.c)
 DISCORD_ACCOUNT = ("network_setup/discord_account", "discord_account_screen")
 # (the server browsers' Filters, which their FILTERS opens too: menu_functions.c's
@@ -918,6 +925,24 @@ PAGES = {
             ("MUSIC VOLUME", "audio.music_volume", VOLUMES, "The music's volume.", None),
             ("EFFECTS VOLUME", "audio.effects_volume", VOLUMES,
              "Every other sound: weapons, vehicles, the world and the characters' speech.", None),
+            (SECTION, "MULTIPLAYER"),
+            # (voice chat: this machine's own, port/linux/game/network_voice.c)
+            ("VOICE CHAT ›", None, _page_screen(*VOICE_CHAT),
+             "Talking to the other players in network games, your microphone and their voices' volume.", None,
+             "voice_chat_settings"),
+            # (port/linux/game/hit_sounds.c, and the host's rule for its
+            # games: network_standard.c's network_standard_hit_sounds_allowed)
+            ("HIT SOUNDS", "audio.hit_sounds", ON_OFF,
+             "A short beep each time you damage another player, as the host dealt it. A host may forbid them in "
+             "its games.|The beep is a placeholder for now.", None),
+            ("ALLOW HIT SOUNDS", "network.allow_hit_sounds", YES_NO,
+             "In the games you host, whether the players may hear their hit sounds. A Legacy game's players "
+             "cannot be told.", None),
+        ],
+    },
+    VOICE_CHAT[0]: {
+        "screen": VOICE_CHAT[1], "title": "VOICE CHAT",
+        "rows": [
             # voice chat: this machine's own (port/linux/game/network_voice.c)
             (SECTION, "VOICE CHAT"),
             ("VOICE CHAT", "audio.voice_chat",
@@ -1626,7 +1651,7 @@ PAGES = {
              "games are OpenCE's netcode.", None),
             ("GAME TYPE", "network.browser_game_type", BROWSER_GAME_TYPES,
              "Lists only the games of this type.|Slayer is free for all; SWAT, Infection and Gun Game are "
-             "OpenCE's. Pro 2v2 is PRO 2V2's games.", None),
+             "GOAT H1's. Pro 2v2 is PRO 2V2's games.", None),
         ],
     },
     DISCORD_ACCOUNT[0]: {
@@ -2696,9 +2721,15 @@ def _settings_shared(g: SettingsLayout = SETTINGS_CLASSIC) -> list:
     # (the words' box as tall as the panel's room for them: settings_panel_show
     # cuts them to it)
     text_height = 220 if g is SETTINGS_CLASSIC else g.panel_bottom - g.tab_top - 52 - 6
-    lines += _settings_text(f"{SETTINGS}/panel_name", [("width", SETTINGS_PANEL_WORDS), ("height", 18), ("color", SETTINGS_DIM),
+    # (the name and the value wrapped, as many lines as settings_panel_show
+    # gives them, SETTINGS_PANEL_NAME_LINES and _VALUE_LINES: a long device's
+    # name whole, issue 899; the value SETTINGS_PANEL_VALUE_UNDER_NAME under
+    # the name)
+    lines += _settings_text(f"{SETTINGS}/panel_name", [("width", SETTINGS_PANEL_WORDS),
+                                                      ("height", 18 + SETTINGS_PANEL_NAME_MORE), ("color", SETTINGS_DIM),
                                                       ("wide", grown), ("past", grown_past)])
-    lines += _settings_text(f"{SETTINGS}/panel_value", [("width", SETTINGS_PANEL_WORDS), ("height", 24), ("font", "ui\\large_ui"),
+    lines += _settings_text(f"{SETTINGS}/panel_value", [("width", SETTINGS_PANEL_WORDS),
+                                                       ("height", 24 + SETTINGS_PANEL_VALUE_MORE), ("font", "ui\\large_ui"),
                                                        ("color", "#FFFFFFFF"), ("wide", grown), ("past", grown_past)])
     lines += _settings_text(f"{SETTINGS}/panel_text", [("width", SETTINGS_PANEL_WORDS), ("height", text_height), ("color", SETTINGS_BLUE),
                                                       ("wide", grown), ("past", grown_past)])
@@ -3192,6 +3223,10 @@ OPENCE_ROWS = [
         "A melee kill takes the victim back a weapon."]),
 ]
 OPENCE_ITEM = f"{PLAYLIST_EDIT}/playlist_edit_opence_item"
+# the game's name, as players read it (#1031), and the editor's row and
+# header for these rules (its widgets keep their opence_ names)
+GOAT_H1 = "GOAT H1"
+OPENCE_OPTIONS = f"{GOAT_H1} OPTIONS"
 
 # Capture the Flag's KILLS SCORE and KILLS PER CAPTURE (game_engine_ctf.c)
 # and King of the Hill's MULTI-HILL (game_engine_king.c), OpenCE's (#467):
@@ -3232,10 +3267,10 @@ GAMETYPE_RULES_EXTRAS = {
 GAMETYPE_RULES_STEP = 30
 
 STRING_INSERTS = {
-    # (the gametype editor's OPENCE OPTIONS' words, after the PC version's:
+    # (the gametype editor's GOAT H1 OPTIONS' words, after the PC version's:
     # menu_functions.c's playlist_edit_description)
     f"{PLAYLIST_EDIT}/playlist_edit_list_extended_dsc_text": [(8, [
-        "Choose the rules of OpenCE's\\ngametypes: SWAT, Infection,\\nGun Game and Hardcore.\\nThis gametype:"])],
+        f"Choose the rules of {GOAT_H1}'s\\ngametypes: SWAT, Infection,\\nGun Game and Hardcore.\\nThis gametype:"])],
     f"{PLAYER_EDIT}/player_options_labels": [(8, ["AIM ASSIST:", "SHIELD EFFECTS:"])],
     f"{PLAYER_EDIT}/cap_player_options": [(28, AIM_ASSIST_HELP + SHIELD_EFFECTS_HELP)],
     # (Teamplay Options' voice chat and vote kick rows, after its own:
@@ -3296,8 +3331,9 @@ STRING_OVERRIDES.update({
         "Play Slayer against computer\\nplayers, alone or with\\nfriends on this screen.",
         "Make your own gametypes:\\nthe rules, weapons and\\nvehicles, kept for next time.",
     ],
-    # (and the port's OPENCE: OpenCE's gametypes, port/linux/game/game_modes.c)
-    "main_menu/gametype_select/var_gametype_banks": ["STANDARD", "OPENCE", "CUSTOM"],
+    # (and the port's own gametypes, port/linux/game/game_modes.c, by the
+    # game's name: GOAT_H1)
+    "main_menu/gametype_select/var_gametype_banks": ["STANDARD", GOAT_H1, "CUSTOM"],
     # (the PC's weapon sets, then the Xbox's NO GRENADES: menu_functions.c's
     # gametype_options maps them to the engine's)
     "main_menu/settings_select/multiplayer_setup/item_options_edit/item_options_labels": ["INFINITE GRENADES:", "WEAPON SET:", "VEHICLE SET:", "STARTING EQUIPMENT:",
@@ -3461,6 +3497,25 @@ WIDGET_PATCHES = {
     f"{PLAYLIST_EDIT}/edit_playlist_select_list": {
         "insert_before": {f"{PLAYLIST_EDIT}/playlist_edit_button_bar": [f'<child widget="{OPENCE_ITEM}"/>']},
         "inputs": ["port playlist edit desc"]},
+    # (the gametype editor left with changes not saved: B, Back and CANCEL ask
+    # first, the hand-written question, screens/save_changes.xml; with
+    # nothing changed they go back as before: menu_functions.c's
+    # edit_leave_ask)
+    f"{PLAYLIST_EDIT}/gametype_edit_screen": {"handlers": [
+        '<on event="created" run="close if not editing profile"/>',
+        '<on event="b back" run="port edit leave" open="screens/save_changes"/>']},
+    # (Step 1's BACK: the gametype's type's words and picture, not the PC
+    # version's SAVE CHANGES question's: gametype_select_description)
+    f"{PLAYLIST_EDIT}/game_type_select/gametype_select_list": {"inputs": ["port gametype select desc"]},
+    # (its panel's picture: the gametype's own, as Game Options' list shows
+    # it (game_type_select's rules_options, a frame for each game type),
+    # whichever row has the focus; the PC version's pictures of the rows
+    # have no redraw. Its icon (up to 172 units wide and high, from the
+    # frame's top) in the middle of the panel, above the words:
+    # menu_functions.c's playlist_edit_description)
+    f"{PLAYLIST_EDIT}/playlist_edit_ext_desc_pic": {"set": {
+        "bitmap": f"{PLAYLIST_EDIT}/game_type_select/rules_options",
+        "left": 307, "top": 82, "width": 256, "height": 190}},
     # (the profile settings' picture: on Gamepad Setup's row, the profile's
     # button settings, BITMAP_FRAMES; menu_functions.c's
     # profile_gamepad_layout)
@@ -3708,7 +3763,25 @@ def pause_pictures() -> list:
                                                  4 if piece == "center" else 16, 256)
                                                 for height in PAUSE_BOX_EXTRA_HEIGHTS])
                  for piece in ("left", "center", "right")]
+    pictures += [("dialog/dialog_foot", [(dialog_foot_svg(), 256, DIALOG_FOOT)])]
     return pictures
+
+
+# a pop-up's box (the hand-written screens' <dialog>, menu_screen.c): the
+# Quit question's alert_bkd, cut above its bottom band, and its foot, this
+# tall from this row of it (the bottom band's line 2 rows down), drawn
+# under the cut so that the box is as tall as its words need
+DIALOG_FOOT = 32
+DIALOG_FOOT_ROW = 128
+
+
+def dialog_foot_svg() -> str:
+    """the foot of the Quit question's box (alert_bkd's redraw): its bottom
+    band, its border's bottom and corners"""
+    svg = (Path(__file__).resolve().parent.parent / "port/assets/menus/svg/shell/bitmaps/alert_bkd.svg").read_text()
+    head = svg[:svg.index(">") + 1]
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="256" '
+            f'height="{DIALOG_FOOT}" viewBox="0 {DIALOG_FOOT_ROW} 256 {DIALOG_FOOT}">' + svg[len(head):])
 
 
 # the button bars' buttons (bitmaps/text_button_background: the PC version's
@@ -4866,7 +4939,7 @@ def _player_options_extras() -> list:
 
 
 def _opence_options() -> list:
-    """the gametype editor's OPENCE OPTIONS: its row, after the editor's own
+    """the gametype editor's GOAT H1 OPTIONS (OPENCE_OPTIONS): its row, after the editor's own
     (as they are laid out), and its screen, as the gametype's options' are
     (_setup_option_screen), its spinners the gametype's (menu_functions.c's
     gametype_options), its header its words (no picture of its own)"""
@@ -4874,10 +4947,10 @@ def _opence_options() -> list:
     lines = [line.replace("port setup options init", "mp profile init opence options")
              .replace("port setup options save", "mp profile set opence options")
              .replace(f'bitmap="{OPENCE_EDIT}/header_opence"',
-                      'type="text" text="OPENCE OPTIONS" font="ui\\large_ui" color="#FFFFFFFF" text_x="13" text_y="16"')
+                      f'type="text" text="{OPENCE_OPTIONS}" font="ui\\large_ui" color="#FFFFFFFF" text_x="13" text_y="16"')
              for line in lines]
     lines += _widget(OPENCE_ITEM, [("type", "text"), ("left", 51), ("top", 309), ("width", 232), ("height", 32),
-                                   ("bitmap", "bitmaps/list_item_bkd"), ("text", "OPENCE OPTIONS"),
+                                   ("bitmap", "bitmaps/list_item_bkd"), ("text", OPENCE_OPTIONS),
                                    ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 5)],
                      [f'<on event="a" open="{OPENCE_EDIT}/opence_screen"/>',
                       f'<on event="start" open="{OPENCE_EDIT}/opence_screen"/>',

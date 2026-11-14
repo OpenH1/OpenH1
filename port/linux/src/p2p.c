@@ -2349,7 +2349,9 @@ void p2p_socket_port(int socket, int stream, int listening, unsigned short port)
 	struct game_port *entry = NULL;
 	int index;
 
-	if (!p2p.running || !port)
+	/* (kept while internet play is off too: turned on later, the menus'
+	TURN ON INTERNET PLAY, it knows the ports the game has already) */
+	if (!port)
 		return;
 	pthread_mutex_lock(&p2p_lock);
 	for (index = 0; index < MAXIMUM_GAME_PORTS; index++)
@@ -2393,8 +2395,20 @@ void p2p_socket_closed(int socket, unsigned short datagram_port)
 {
 	int index;
 
+	/* (the game's ports kept while internet play is off: p2p_socket_port) */
 	if (!p2p.running)
+	{
+		pthread_mutex_lock(&p2p_lock);
+		for (index = 0; index < MAXIMUM_GAME_PORTS; index++)
+		{
+			if (p2p.game_ports[index].port && p2p.game_ports[index].socket == socket)
+				memset(&p2p.game_ports[index], 0, sizeof(p2p.game_ports[index]));
+		}
+		if (p2p.hosting_socket == socket)
+			p2p.hosting_socket = -1;
+		pthread_mutex_unlock(&p2p_lock);
 		return;
+	}
 	pthread_mutex_lock(&p2p_lock);
 	/* (a port it sent peers datagrams from, which the system gives again) */
 	for (index = 0; index < MAXIMUM_SENT_PORTS && datagram_port; index++)
@@ -3273,14 +3287,17 @@ int p2p_join_invite(const char *text)
 	/* (a party's link joins the party: p2p_party.c) */
 	if (p2p_party_join_link(text))
 	{
-		if (!p2p.running)
+		if (!p2p.running && !config_boolean("network.online"))
 			p2p_log("Internet play is off (network.online in config.toml): the party's link is ignored");
 		return 1;
 	}
 	pthread_mutex_lock(&p2p_lock);
 	result = join_invite(text);
 	pthread_mutex_unlock(&p2p_lock);
-	if (result > 0 && !p2p.running)
+	/* (an invite taken before internet play starts, the link the game was
+	opened with, waits for it, and is joined as it starts: p2p_initialize.
+	Only internet play turned off ignores it) */
+	if (result > 0 && !p2p.running && !config_boolean("network.online"))
 		p2p_log("Internet play is off (network.online in config.toml): the invite is ignored");
 	return result > 0;
 }

@@ -7,7 +7,9 @@
    coordinator's: a unit's tags once it has landed), so that the rates the swarm has not converted yet do not stop
    every branch; holdouts too, when the SCORECARD_HOLDOUTS_JSON secret has them (their measures not shown);
 4. the known bugs, each of which must be caught;
-5. the 30 Hz gate: on master, this build's determinism logs recorded as the baseline (BASELINE, which the workflow
+5. two runs of this build alike, tick for tick (identity.py --repeat), and an unseeded draw caught (its negative
+   control);
+6. the 30 Hz gate: on master, this build's determinism logs recorded as the baseline (BASELINE, which the workflow
    keeps in its cache); elsewhere, this build against the latest master's (none yet: a note).
 
     python tools/scorecard/ci.py
@@ -27,13 +29,14 @@ ROOT = HERE.parents[1]
 BASELINE = ROOT / ".scorecard-baseline"
 
 
-def step(title, command, hard=True):
+def step(title, command, hard=True, expect=0):
+    """a check run; expect, the exit status that passes it (a negative control's: 1, the check failing)"""
     print(f"\n=== {title}\n$ {' '.join(command)}", flush=True)
     started = time.monotonic()
     status = subprocess.run(command, cwd=ROOT).returncode
-    print(f"--- {title}: {'passed' if status == 0 else 'FAILED' if hard else 'failed (reported only)'} "
+    print(f"--- {title}: {'passed' if status == expect else 'FAILED' if hard else 'failed (reported only)'} "
           f"({time.monotonic() - started:.1f} s)", flush=True)
-    return status == 0 or not hard
+    return status == expect or not hard
 
 
 def main():
@@ -56,6 +59,9 @@ def main():
                             scorecard + holdouts + ["--tags", ",".join(enforced)]))
     results.append(step("known bugs caught", scorecard + ["--mutation-checks"]))
     identity = [python, str(HERE / "identity.py")]
+    results.append(step("determinism: two runs alike", identity + ["--repeat"]))
+    results.append(step("determinism: an unseeded draw caught", identity + ["--repeat", "--mutation", "unseeded"],
+                        expect=1))
     if os.environ.get("GITHUB_REF") == "refs/heads/master":
         results.append(step("30 Hz gate: master's baseline recorded", identity + ["--record", str(BASELINE)]))
     else:

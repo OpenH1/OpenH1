@@ -2122,8 +2122,10 @@ static void scoreboard_menu_items(
 	}
 	/* (the host's, as Host Controls has them for the player:
 	network_host_controls.c) */
-	/* port: and a dedicated server's admin's (network_admin.c) */
-	if (network_host_controls_available() || network_admin_remote())
+	/* port: and a dedicated server's admin's (network_admin.c), their
+	machine's first local player's alone (a split screen's player 1) */
+	if ((network_host_controls_available() || network_admin_remote()) &&
+		network_host_controls_local_player((short)(scoreboard_menu - scoreboard_views)))
 	{
 		unsigned long actions = network_host_controls_player_actions(scoreboard_menu->player_index);
 		struct player_datum *player = player_try_and_get(scoreboard_menu->player_index);
