@@ -1404,7 +1404,10 @@ static void first_person_weapon_predict(
 {
 	struct first_person_weapon *first_person_weapon= first_person_weapon_get(local_player_index);
 
-	if (first_person_weapon->weapon_index!=NONE)
+	/* port: not a feed's: its loads (the texture cache's, reading the clock)
+	would be the tick's, which the link's being open must not change; the
+	feed's drawing loads what it draws, as every other object's does */
+	if (first_person_weapon->weapon_index!=NONE && !FIRST_PERSON_WEAPON_FEED_SLOT(local_player_index))
 	{
 		struct weapon_datum *weapon= weapon_get(first_person_weapon->weapon_index);
 		struct weapon_definition *weapon_definition= weapon_definition_get(weapon->definition_index);
