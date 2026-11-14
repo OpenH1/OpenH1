@@ -83,6 +83,38 @@ def test_host_log_ring(tmp_path, broken):
         run_test(tmp_path, "host_log_ring_test", [TESTS / "host_log_ring_test.c"], [tmp_path])
 
 
+def host_crash_record():
+    """the crash record and host_abort, as host_common.c has them"""
+    text = (HOST / "host_common.c").read_text()
+    record = text[text.index("/* ---------- the crash record */"):text.index("void host_fatal(")]
+    abort = text[text.index("/* (the record is the SIGABRT's"):text.index("void host_exit(")]
+    return record + abort
+
+
+@pytest.mark.parametrize("broken", [False, True])
+def test_host_crash_signal(tmp_path, broken):
+    """a fatal signal writes the crash record (host_memory_watch.c's handlers):
+    abort(), the guest's raise(), host_abort, a SIGABRT sent from outside and a
+    segmentation fault, each with its frames, the process then ended by the
+    signal; an exit writes none. The negative control leaves SIGABRT
+    unhandled, as it was: no record for an abort"""
+    if platform.system() not in ("Linux", "Darwin"):
+        pytest.skip("the POSIX hosts' handlers (Windows's are host_memory_watch_win.c's)")
+    (tmp_path / "host_crash_record.inc").write_text(host_crash_record())
+    watch = HOST / "host_memory_watch.c"
+    if broken:
+        text = watch.read_text()
+        assert ", SIGABRT," in text
+        watch = tmp_path / "host_memory_watch.c"
+        watch.write_text(text.replace(", SIGABRT,", ",").replace('#include "host', f'#include "{HOST}/host'))
+    sources = [TESTS / "host_crash_signal_test.c", HOST / "host_arch.c", watch, HOST / "host_watch_hash.c"]
+    if not broken:
+        run_test(tmp_path, "host_crash_signal_test", sources, [tmp_path], [str(tmp_path)])
+        return
+    with pytest.raises(AssertionError):
+        run_test(tmp_path, "host_crash_signal_test", sources, [tmp_path], [str(tmp_path)])
+
+
 def test_frame_pacing_divisor(tmp_path):
     """battery saver's frames a second at each display's refresh rate
     (port/linux/src/frame_pacing.h, frame_pacing_divisor)"""

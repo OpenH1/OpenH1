@@ -5,9 +5,10 @@ Guest memory write tracking (the interface of port/linux/src/memory_watch.c)
 and the host's fault handlers.
 
 The renderer write-protects the pages behind the textures it caches, and
-the fault handler here records the first write to each. Other faults are
-reported (with guest-relative addresses) and passed on to the previous
-handler. Under ARM translation (the x86 emulator) page faults cannot be
+the fault handler here records the first write to each. Other faults, and
+every other signal that ends the process (an abort's too), are reported
+(with guest-relative addresses; the crash record written) and passed on to
+the previous handler. Under ARM translation (the x86 emulator) page faults cannot be
 caught, and the tracking compares page contents instead
 (host_watch_hash.c).
 
@@ -167,7 +168,16 @@ int host_memory_watch_fault(uintptr_t address)
 host_memory_watch_win.c) */
 #ifndef _WIN32
 
-static struct sigaction previous_segv, previous_bus, previous_ill;
+/* the signals reported as a crash: every one whose default action ends the
+process with a core: the write tracking's SIGSEGV (and on macOS SIGBUS),
+first taken as its faults, and SIGABRT among the others: abort(), a failed
+assert, the C library's heap checks, and the guest's abort (its raise() a
+tgkill the host's kernel takes as it is, host_syscall.c; on macOS
+host_abort's abort()) */
+static const int crash_signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGTRAP, SIGSYS };
+#define CRASH_SIGNAL_COUNT (int)(sizeof(crash_signals) / sizeof(crash_signals[0]))
+/* what handled each before */
+static struct sigaction previous_actions[CRASH_SIGNAL_COUNT];
 /* where the host's own code is loaded, and its file's name, found as the
 handlers are installed: a crash's frames in the host are placed in its file
 by it (tools/symbolize_crash.py) */
@@ -200,6 +210,17 @@ static void report_crash(int signal_number, siginfo_t *information, void *contex
 		(unsigned long long)sp, (unsigned long long)fp);
 	host_log(HOST_LOG_ERROR, line);
 	host_crash_record_begin(line);
+	/* (a signal sent, not a fault: by this process, as abort() raises it,
+	or by another, which ended it from outside) */
+	if (information->si_code <= 0)
+	{
+		if (information->si_pid == getpid())
+			snprintf(line, sizeof(line), "  raised by the game itself (code %d)", information->si_code);
+		else
+			snprintf(line, sizeof(line), "  sent by process %d (code %d)", (int)information->si_pid,
+				information->si_code);
+		crash_line(line);
+	}
 	if (host_guest_base)
 	{
 		snprintf(line, sizeof(line), "  guest memory at %016llx", (unsigned long long)host_guest_base);
@@ -252,45 +273,40 @@ static void chain(struct sigaction *previous, int signal_number, siginfo_t *info
 	}
 }
 
-/* (each handler keeps the interrupted code's errno: a write tracking fault
-can come between any call and its errno check) */
-static void segv_handler(int signal_number, siginfo_t *information, void *context)
+static int crash_signal_index(int signal_number)
 {
-	int saved_errno = errno;
+	int index;
 
-	if (host_memory_watch_fault((uintptr_t)information->si_addr))
+	for (index = 0; index < CRASH_SIGNAL_COUNT; index++)
+	{
+		if (crash_signals[index] == signal_number)
+			return index;
+	}
+	return -1;
+}
+
+/* (it keeps the interrupted code's errno: a write tracking fault can come
+between any call and its errno check) */
+static void crash_handler(int signal_number, siginfo_t *information, void *context)
+{
+	int saved_errno = errno, index = crash_signal_index(signal_number);
+
+	if (signal_number == SIGSEGV && host_memory_watch_fault((uintptr_t)information->si_addr))
 	{
 		errno = saved_errno;
 		return;
 	}
-	report_crash(signal_number, information, context);
-	chain(&previous_segv, signal_number, information, context);
-	errno = saved_errno;
-}
-
-static void bus_handler(int signal_number, siginfo_t *information, void *context)
-{
-	int saved_errno = errno;
-
 #ifdef __APPLE__
 	/* (macOS raises SIGBUS for a write to a read-only page) */
-	if (host_memory_watch_fault((uintptr_t)information->si_addr))
+	if (signal_number == SIGBUS && host_memory_watch_fault((uintptr_t)information->si_addr))
 	{
 		errno = saved_errno;
 		return;
 	}
 #endif
 	report_crash(signal_number, information, context);
-	chain(&previous_bus, signal_number, information, context);
-	errno = saved_errno;
-}
-
-static void ill_handler(int signal_number, siginfo_t *information, void *context)
-{
-	int saved_errno = errno;
-
-	report_crash(signal_number, information, context);
-	chain(&previous_ill, signal_number, information, context);
+	if (index >= 0)
+		chain(&previous_actions[index], signal_number, information, context);
 	errno = saved_errno;
 }
 
@@ -298,6 +314,7 @@ void host_install_signal_handlers(void)
 {
 	struct sigaction action;
 	Dl_info module;
+	int index;
 
 	if (dladdr((const void *)report_crash, &module) && module.dli_fbase)
 	{
@@ -311,12 +328,9 @@ void host_install_signal_handlers(void)
 	memset(&action, 0, sizeof(action));
 	action.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;
 	sigemptyset(&action.sa_mask);
-	action.sa_sigaction = segv_handler;
-	sigaction(SIGSEGV, &action, &previous_segv);
-	action.sa_sigaction = bus_handler;
-	sigaction(SIGBUS, &action, &previous_bus);
-	action.sa_sigaction = ill_handler;
-	sigaction(SIGILL, &action, &previous_ill);
+	action.sa_sigaction = crash_handler;
+	for (index = 0; index < CRASH_SIGNAL_COUNT; index++)
+		sigaction(crash_signals[index], &action, &previous_actions[index]);
 }
 
 #endif
