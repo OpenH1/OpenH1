@@ -3,6 +3,7 @@
 <model>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/streamer_mode_screen" picture="main_menu/parts/background_tall">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/header_streamer_mode" x="0" y="0"/>
+		<at widget="main_menu/settings/profile" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/options_menu" x="0" y="0"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/header_streamer_mode" type="text" box="24 0 616 40" wide="-106 0" past="-143 0">
@@ -17,7 +18,7 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/op_insults" x="28" y="175"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_bar" x="0" y="448"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_bar" role="buttons" type="column_list" box="0 0 640 28">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_bar" role="buttons" type="column_list" box="0 0 640 28" place="foot">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_defaults" x="24" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_ok" x="358" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_cancel" x="488" y="1"/>

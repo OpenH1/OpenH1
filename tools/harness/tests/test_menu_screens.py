@@ -31,6 +31,69 @@ NEGATIVE_CONTROLS = {
                     "\t\tmemset(&screens.screens[0], 0, sizeof(screens.screens[0]));\n", "kept"),
     # a list's focus not checked: one naming no item read
     "no-focus-check": ("focus_found = !list->focus;", "focus_found = 1;", "items"),
+    # a <spartan>'s players not checked: five read
+    "players-unchecked": ("spartan->players < 1 || spartan->players > 4", "spartan->players < 1", "spartan"),
+    # a table's row source not checked: one the game has not got read
+    "no-source-check": ("\t\t\telse\n\t\t\t\tsource_check(reader, table->source);\n", "\n", "table"),
+    # a tab with no id read
+    "tab-no-id": ("\t\t\tif (!tab->id || !tab->id[0])\n\t\t\t\treader_problem(reader, \"<tab> has no id\", NULL);\n"
+                  "\t\t\telse if", "\t\t\tif", "tabs"),
+    # a binding named alone (an if, a tabs' current) not checked
+    "binding-unchecked": ("\telse if (screen_names && !name_known(screen_names->bindings, screen_names->binding_count, "
+                          "name, strlen(name)))", "\telse if (0)", "tabs"),
+    # a <spartan>'s color binding not checked: one the game has not got read
+    "spartan-color-unchecked": ("\t\t\t\tbinding_check(reader, values[4]);\n", "\n", "spartan"),
+    # a panel's text's if not checked: a binding the game has not got taken
+    "panel-if-unchecked": ("shown_check(reader, text->condition, text->when);", "shown_check(reader, NULL, text->when);",
+                           "panel"),
+    # a column's touch place's numbers not counted: "1 2" taken
+    "touch-short": ("if (count != 5 || *at", "if (*at", "table"),
+    # a <lane> taken in a table of no lanes
+    "lane-unlaned": ("if (!reader->failed && table->lanes < 2)", "if (0)", "lanes"),
+    # a table of lanes taken with fewer <lane>s than its lanes
+    "lanes-uncounted": ("if (lanes && lanes != screen->blocks[self].lanes)", "if (lanes > 99)", "lanes"),
+    # a table's left not checked: an action the game has not got taken
+    "table-left-unchecked": ("\t\t\t\taction_check(reader, table->left_action);\n", "\n", "lanes"),
+    # a dot's column refused (the kinds counted short)
+    "dot-unknown": ("for (kind = 0; kind < 6 && values[2]; kind++)", "for (kind = 0; kind < 4 && values[2]; kind++)",
+                    "lanes"),
+    # a swatch's column refused (the kinds counted short): Profile Color's file refused
+    "swatch-unknown": ("for (kind = 0; kind < 6 && values[2]; kind++)",
+                       "for (kind = 0; kind < 5 && values[2]; kind++)", "profile_color"),
+    # a choice with no right taken
+    "choice-no-right": ("else if (!choice->left_action || !choice->right_action)", "else if (!choice->left_action)",
+                        "choice"),
+    # a chat's source not checked: one the game has not got taken
+    "chat-source-unchecked": ("else if (screen_names && !name_known(screen_names->chats, screen_names->chat_count, "
+                              "chat->source,", "else if (0 && !name_known(screen_names->chats, screen_names->chat_count, "
+                              "chat->source,", "chat"),
+    # a second chat taken
+    "chat-two": ("one_check(reader, MENU_SCREEN_CHAT, \"chat\");", "(void)0;", "chat"),
+    # a screen's start not checked: an action the game has not got taken
+    "start-unchecked": ("\t\tif (!reader->failed && screen->start)\n\t\t\taction_check(reader, screen->start);",
+                        "(void)0;", "actions"),
+    # a choice's dim not checked
+    "choice-dim-unchecked": ("if (!reader->failed && choice->dim)\n\t\t\t\tbinding_check(reader, choice->dim);",
+                             "(void)0;", "choice"),
+    # an item's if not checked: a binding the game has not got taken
+    "item-if-unchecked": ("\t\t\tif (!reader->failed && item->condition)\n\t\t\t\tbinding_check(reader, item->condition);\n",
+                          "\n", "box"),
+    # a picture's set not checked: "photos" taken
+    "picture-set-unchecked": ("(strcmp(picture->picture, \"maps\") && strcmp(picture->picture, \"missions\"))", "0",
+                              "picture"),
+    # a picture's frame's binding not checked
+    "picture-frame-unchecked": ("\t\t\telse\n\t\t\t\tbinding_check(reader, picture->value);\n", "\n", "picture"),
+    # a panel's second <spartan> taken
+    "panel-spartans-uncounted": ("screen->blocks[index].parent == parent_block)\n", "screen->blocks[index].parent == -99)\n",
+                                 "spartan"),
+    # a fifth <panel> taken
+    "panels-uncounted": ("kind_count(screen, MENU_SCREEN_PANEL) >= MENU_SCREEN_MAXIMUM_PANELS",
+                         "kind_count(screen, MENU_SCREEN_PANEL) > 99", "panels"),
+    # a lineup taken over a table without lanes
+    "lineup-unlaned": ("screen->blocks[index].parent < 0 && lanes < 2)", "screen->blocks[index].parent < 0 && lanes < 0)",
+                       "panels"),
+    # a box's align not checked: "bottom" taken
+    "box-align-unchecked": ("values[3] && strcmp(values[3], \"top\") && strcmp(values[3], \"middle\")", "0", "box"),
 }
 
 
@@ -54,9 +117,13 @@ def game_names():
     """the game's actions and bindings (menu_screen.c's screen_action_names and screen_binding_names), as C"""
     source = read("port/linux/game/menu_screen.c")
     lines = []
-    for table, name in (("screen_action_names", "game_actions"), ("screen_binding_names", "game_bindings")):
+    for table, name in (("screen_action_names", "game_actions"), ("screen_binding_names", "game_bindings"),
+                        ("screen_source_names", "game_sources"), ("screen_chat_names", "game_chats")):
         body = re.search(r"static char const \*const " + table + r"\[\] =\n\{\n(.*?)\n\};", source, re.S).group(1)
-        lines.append(f"static char const *const {name}[] =\n{{\n{body}\n}};")
+        # (and the test's own: a binding of a value and a row source, for the blocks' cases)
+        extra = {"game_bindings": '"test.value", "test.flag",', "game_sources": '"test.rows",',
+                 "game_chats": '"test.chat",'}.get(name, "")
+        lines.append(f"static char const *const {name}[] =\n{{\n{extra}\n{body}\n}};")
     return "\n".join(lines) + "\n"
 
 
@@ -94,7 +161,20 @@ def built(fault=None):
     (work / "under_test.inc").write_text(under_test(fault))
     (work / "names.inc").write_text(game_names())
     (work / "main_xml.inc").write_text("static char const main_xml[] =\n" +
-                                       c_string((ROOT / "port/assets/menus/screens/main.xml").read_bytes()) + ";\n")
+                                       c_string((ROOT / "port/assets/menus/screens/main.xml").read_bytes()) + ";\n" +
+                                       "static char const browser_xml[] =\n" +
+                                       c_string((ROOT / "port/assets/menus/screens/browser.xml").read_bytes()) + ";\n" +
+                                       "static char const profile_select_xml[] =\n" +
+                                       c_string((ROOT / "port/assets/menus/screens/profile_select.xml").read_bytes()) +
+                                       ";\n" + "static char const profile_color_xml[] =\n" +
+                                       c_string((ROOT / "port/assets/menus/screens/profile_color.xml").read_bytes()) +
+                                       ";\n" + "static char const lobby_xml[] =\n" +
+                                       c_string((ROOT / "port/assets/menus/screens/lobby.xml").read_bytes()) +
+                                       ";\n" + "static char const pause_xml[] =\n" +
+                                       c_string((ROOT / "port/assets/menus/screens/pause.xml").read_bytes()) + ";\n" +
+                                       "static char const pause_campaign_xml[] =\n" +
+                                       c_string((ROOT / "port/assets/menus/screens/pause_campaign.xml").read_bytes()) +
+                                       ";\n")
     (work / "menu_screens.h").write_text(read("port/linux/include/menu_screens.h"))
     executable = work / "menu_screens"
     command = ["clang", *ABI_FLAGS, "-std=gnu99", "-O1", "-Wall", "-Werror", "-Wno-unused-function",
@@ -106,7 +186,9 @@ def built(fault=None):
     return executable
 
 
-CASES = ["main", "hints", "good", "syntax", "elements", "items", "actions", "bindings", "when", "kept"]
+CASES = ["main", "hints", "good", "syntax", "elements", "spartan", "items", "actions", "bindings", "when",
+         "kept", "browser", "profile_select", "profile_color", "tabs", "table", "panel", "buttons", "lanes", "choice", "lobby", "chat",
+         "box", "picture", "panels"]
 
 
 @pytest.mark.parametrize("case", CASES)
@@ -129,11 +211,38 @@ def test_actions_registered():
     table = re.search(r"static struct screen_action const screen_actions\[\] =\n\{\n(.*?)\n\};", source, re.S).group(1)
     runs = set(re.findall(r'^\t\{ "([^"]+)"', table, re.M))
     assert names == runs, (names, runs)
-    # (and the bindings it fills, each named by screen_value)
+    # (and the bindings it fills, each named by screen_value, the server browser's by menu_functions.c's
+    # pc_menu_browser_value, Select Profile's by its pc_menu_profile_value; and every row source a file may name, one
+    # it has)
     value = re.search(r"static int screen_value\(.*?\n\}\n", source, re.S).group(0)
+    functions = read("port/linux/game/menu_functions.c")
+    browser = re.search(r"\nint pc_menu_browser_value\(.*?\n\}\n", functions, re.S).group(0)
+    profile = re.search(r"\nint pc_menu_profile_value\(.*?\n\}\n", functions, re.S).group(0)
+    color = re.search(r"\nint pc_menu_color_value\(.*?\n\}\n", functions, re.S).group(0)
+    # (the lobby's in its pc_menu_lobby_value, or its cards' and friends' values: lobby_card_value, lobby_friends_value)
+    lobby = re.search(r"\nint pc_menu_lobby_value\(.*?\n\}\n", read("port/linux/game/lobby_menu.inc"), re.S).group(0)
+    for function in ("lobby_card_value", "lobby_friends_value"):
+        lobby += re.search(r"\nstatic int " + function + r"\(.*?\n\}\n", read("port/linux/game/lobby_menu.inc"),
+                           re.S).group(0)
     bindings = set(re.findall(r'"([^"]+)"', re.search(r"screen_binding_names\[\] =\n\{\n(.*?)\n\};", source,
                                                         re.S).group(1)))
-    assert all(f'"{binding}"' in value for binding in bindings), bindings
+    for binding in bindings:
+        if binding.startswith("browser.search."):
+            assert '"browser.search."' in browser, binding
+        elif binding.startswith("browser."):
+            assert f'"{binding}"' in browser, binding
+        elif binding.startswith("profile."):
+            assert f'"{binding}"' in profile, binding
+        elif binding.startswith("color."):
+            assert f'"{binding}"' in color, binding
+        elif binding.startswith("lobby."):
+            assert f'"{binding}"' in lobby, binding
+        else:
+            assert f'"{binding}"' in value, binding
+    sources = re.findall(r'"([^"]+)"', re.search(r"screen_source_names\[\] =\n\{\n(.*?)\n\};", source,
+                                                 re.S).group(1))
+    table = re.search(r"screen_sources\[\] =\n\{\n(.*?)\n\};", source, re.S).group(1)
+    assert len(sources) == len(re.findall(r"&\w+", table)), (sources, table)
 
 
 def test_main_menu_files_listed():
@@ -141,6 +250,9 @@ def test_main_menu_files_listed():
     blocks' file as menus but no screen file"""
     import json
     listed = json.loads(read("port/assets/menus/menus.json"))["files"]
-    assert "screens/main.xml" in listed and "screens/blocks.xml" in listed
+    assert "screens/main.xml" in listed and "screens/blocks.xml" in listed and "screens/browser.xml" in listed
+    assert "screens/profile_select.xml" in listed and "screens/lobby.xml" in listed
+    assert "screens/profile_color.xml" in listed
+    assert "screens/pause.xml" in listed and "screens/pause_campaign.xml" in listed
     files = read("port/linux/src/menu_files.c")
     assert 'strncmp(files[index].path, "screens/", 8) || !strcmp(files[index].path, "screens/blocks.xml")' in files

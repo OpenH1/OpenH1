@@ -51,7 +51,7 @@ ICON = "openh1-icon"
 # links have
 URL_SCHEME = "openh1"
 # what the README says of the project
-COPYRIGHT = ("OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox "
+COPYRIGHT = ("GOAT H1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox "
              "Game Studios, Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft "
              "Corporation. No game data is included: you need your own copy of the game.")
 
@@ -133,7 +133,7 @@ def credits_html(build: int, flavor: str) -> str:
     (source/main/main.c)"""
     label = f"build {build} ({flavor})" if build > 0 else f"local build ({flavor})"
     return ("<html><body style=\"font: 11px -apple-system; text-align: center\">"
-            f"<p>OpenH1 macOS | {label}</p>"
+            f"<p>GOAT H1 macOS | {label}</p>"
             "<p>The Halo: Combat Evolved decompilation (Xbox build 01.01.14.2342), ported.<br>"
             "<a href=\"https://github.com/OpenH1/goath1\">github.com/OpenH1/goath1</a></p>"
             "</body></html>\n")

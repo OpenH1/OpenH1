@@ -191,14 +191,14 @@
 	<look name="main_menu/doubles/browser/doubles_friends_empty" type="text" box="0 0 148 40" wide="0 68" past="0 92">
 		<text font="ui\small_ui" color="#FF2896FF" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/doubles/browser/doubles_panel" box="440 74 612 436" wide="38 68" past="51 92" picture="main_menu/parts/panel_172x362">
+	<look name="main_menu/doubles/browser/doubles_panel" box="440 74 612 436" wide="38 68" past="51 92" place="above_foot" picture="main_menu/parts/panel_172x362">
 		<at widget="main_menu/multiplayer_type_select/join_game/panel_title" x="452" y="84"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/panel_where" x="452" y="114"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/panel_status" x="452" y="154"/>
 		<at widget="main_menu/doubles/browser/doubles_friends_title" x="452" y="220"/>
 		<at widget="main_menu/doubles/browser/doubles_friends_empty" x="452" y="240"/>
 	</look>
-	<look name="main_menu/doubles/browser/doubles_prompts" type="column_list" box="0 0 640 28">
+	<look name="main_menu/doubles/browser/doubles_prompts" type="column_list" box="0 0 640 28" place="foot">
 		<at widget="main_menu/doubles/browser/prompt_refresh" x="24" y="1"/>
 		<at widget="main_menu/doubles/browser/prompt_join" x="24" y="1"/>
 		<at widget="main_menu/doubles/browser/prompt_invite" x="24" y="1"/>

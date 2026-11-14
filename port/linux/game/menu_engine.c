@@ -4,8 +4,9 @@ MENU_ENGINE.C
 The port's menu engine (docs/menu_engine.md), under display.menu_engine
 "new": the generated screens of the PC menus (port/assets/menus, the widgets
 menu_tags.c builds) run from the menus' model (port/assets/menus/model,
-halo_menus.h), the in-game pause menu and the Xbox's menus (display.menus
-"xbox") still the game's.
+halo_menus.h), the in-game pause menu a hand-written screen in place of the
+map's (menu_screen.c), and the Xbox's menus (display.menus "xbox") still the
+game's.
 
 A screen is one widget of the game's with no parent, its stand-in, which
 ui_widget.c opens, keeps in its history and closes as its own (its hooks:
@@ -41,6 +42,7 @@ the game's), in place of its definition's.
 
 #include "halo_menus.h"
 #include "menu_engine.h"
+#include "menu_spartan.h"
 #include "menu_search.h"
 #include "menu_widget.h"
 
@@ -410,7 +412,7 @@ static void engine_settings_layout(struct engine_screen *screen, struct widget_i
 	/* (scrolled: the rows up by as much, those out of the room drawn cut,
 	or not at all: engine_draw) */
 	screen->rows_top = top;
-	screen->rows_bottom = (short)geometry->rows_bottom;
+	screen->rows_bottom = (short)menu_engine_geometry_bottom(geometry, geometry->rows_bottom);
 	screen->rows_end = (short)(y - geometry->row_step + geometry->row_height);
 	if (geometry->scrolls)
 		engine_scroll(screen, focus_top, focus_bottom);
@@ -589,7 +591,8 @@ long menu_engine_search_find(struct widget_instance *list, char const *typed, me
 		boolean group = !index || !row->crumb || !engine.model->rows[ordered[index - 1].row].crumb ||
 			strcmp(row->crumb, engine.model->rows[ordered[index - 1].row].crumb);
 		long top = y + (group ? (rows_above ? geometry->section_gap : 0) + geometry->section_step : 0);
-		long room = geometry->rows_bottom - (index + 1 < engine.search.matched ? geometry->row_step : 0);
+		long room = menu_engine_geometry_bottom(geometry, geometry->rows_bottom) -
+			(index + 1 < engine.search.matched ? geometry->row_step : 0);
 		long tag;
 		struct widget_instance *made;
 
@@ -787,6 +790,9 @@ static void engine_draw(struct engine_screen *screen, struct widget_instance *wi
 	boolean children;
 	boolean rows;
 
+	/* (a hand-written screen's own draws in a widget's place: menu_screen.c) */
+	if (screen->hand_written)
+		menu_screen_widget_drawing(widget, offset);
 	if (!ui_widget_port_render_node(widget, clip, offset, focus, nifty, &children_offset, &children))
 		return;
 	engine_layout(screen, widget);
@@ -1280,6 +1286,9 @@ boolean menu_engine_screen_draw(struct widget_instance *screen, rectangle2d *cli
 	struct engine_screen *owned = engine_screen_of(screen);
 	struct widget_instance *previous = engine.drawing;
 
+	/* (the menus' Spartans asked for in the frame before made and placed,
+	those no screen asked for deleted: menu_spartan.c) */
+	menu_spartan_frame();
 	if (!owned || engine.drawing == screen)
 		return FALSE;
 	engine.drawing = screen;
@@ -1290,6 +1299,11 @@ boolean menu_engine_screen_draw(struct widget_instance *screen, rectangle2d *cli
 	engine_draw(owned, screen, clip, offset, focus, nifty);
 	engine.drawing = previous;
 	return TRUE;
+}
+
+boolean menu_engine_screen_owned(struct widget_instance const *screen)
+{
+	return screen && engine_screen_of(screen) != NULL;
 }
 
 boolean menu_engine_screen_event(struct widget_instance *screen, struct event_record *event, boolean *deleted)
@@ -1395,6 +1409,11 @@ boolean menu_engine_lays_out(struct widget_instance *widget)
 	while (screen && screen->parent)
 		screen = screen->parent;
 	return engine_lays_out(engine_screen_of(screen), widget);
+}
+
+long menu_engine_geometry_bottom(struct halo_menu_model_geometry const *geometry, long bottom)
+{
+	return geometry->scrolls ? bottom - ui_widget_port_foot_lift() : bottom;
 }
 
 struct halo_menu_model_geometry const *menu_engine_settings_geometry(struct widget_instance *widget)

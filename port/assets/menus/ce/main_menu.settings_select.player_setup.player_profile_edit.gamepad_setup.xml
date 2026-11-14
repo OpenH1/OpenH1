@@ -6,6 +6,7 @@
 		<on event="back" run="port settings page cancel" back="true"/>
 		<on event="y" run="port settings search"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/header_gamepad_setup"/>
+		<child widget="main_menu/settings/profile"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/options_menu"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/header_gamepad_setup" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/header_gamepad_setup" wide="-106 0" source="tools/port_settings.py settings_files/_settings_page">
@@ -252,7 +253,7 @@
 		<string text="How fast the right stick turns the view."/>
 		<string text="Pushing the right stick up looks down."/>
 		<string text="Pushing the right stick right turns the view left. For every controller on this device."/>
-		<string text="Aim by turning a controller that has a gyroscope, and the right stick as a flick stick."/>
+		<string text="Aim by turning a controller that has a gyroscope; the right stick's aim style (Classic or Modern), and the right stick as a flick stick."/>
 		<string text="Flying vehicles pitch as aircraft do: pushing up flies down."/>
 		<string text="Levels the view while you walk."/>
 		<string text=""/>

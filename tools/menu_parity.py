@@ -72,7 +72,10 @@ DELIBERATE = [("profile_settings", _shows_menu_engine)]
 # PC version's. Each side must have drawn its own: the classic engine the screen's widgets, the new engine the
 # hand-written screen's blocks (pc\screens\...), not the classic's. They are checked by screenshots and scripted
 # runs instead
-HAND_WRITTEN = re.compile(r"^main_menu/main_menu$")
+HAND_WRITTEN = re.compile(r"^main_menu/main_menu$|^main_menu/multiplayer_type_select/join_game/join_game_screen$"
+                          r"|^main_menu/settings_select/player_setup/player_profile_edit/color_edit/color_select_screen$"
+                          r"|^main_menu/profile_manager/player_profile_manager$"
+                          r"|^main_menu/multiplayer_type_select/lobby/lobby_screen$")
 
 
 def is_hand_written(screen: str, classic: dict, new: dict) -> bool:

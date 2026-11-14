@@ -637,13 +637,16 @@ middle (port/linux/include/panini_projection.h): by its magnification there,
 middle keeps its sharpness, the screen is supersampled by as much, as
 display.supersampling supersamples it (the display blit scales it down), at
 most twice the pixels each way: the magnification at the widest of
-display.fov's and display.vehicle_fov's views on the display's shape, or
-display.supersampling's where that is more. Not on Android, Metal (the Mac
+display.fov's and display.vehicle_fov's views on the display's shape (of
+any local player's, each their profile's), or display.supersampling's where
+that is more. Not on Android, Metal (the Mac
 and iOS) or VR, which draw only the supersampling the player chooses (the
 Mac's: display.supersampling) or none; there the middle is drawn from the
 pixels the view has. */
 
 #define PANINI_SUPERSAMPLING_MOST 2.0f
+/* (split screen's players, each of whose settings may be their own) */
+#define PANINI_LOCAL_PLAYERS 4
 
 /* a field of view in degrees across 16:9 as the tangent of half the
 vertical (view_fov.c's fov_tangent), or the stock view's (the cyborg's 70
@@ -664,33 +667,51 @@ static float panini_supersampling(long display_width, long display_height)
 	(void)display_height;
 	return 1.0f;
 #else
+	/* (each local player's own settings, their profile's: the most any of
+	them needs, the screen being one target for every view of a split
+	screen) */
 	static long read_at = -1;
-	static float strength, tangent;
-	float factor;
+	static float strengths[PANINI_LOCAL_PLAYERS], tangents[PANINI_LOCAL_PLAYERS];
+	float most = 1.0f;
+	int player;
 
 	if (read_at != (long)config_changes())
 	{
 		read_at = (long)config_changes();
-		strength = (float)config_real("display.panini");
-		if (strength > 0.0f)
+		for (player = 0; player < PANINI_LOCAL_PLAYERS; player++)
 		{
-			const char *vehicle = config_string("display.vehicle_fov");
-			double foot = config_real("display.fov");
-			char *end;
-			double degrees = strtod(vehicle, &end);
-			float seated;
+			strengths[player] = (float)config_player_real(player, "display.panini");
+			if (strengths[player] > 0.0f)
+			{
+				const char *vehicle = config_player_string(player, "display.vehicle_fov");
+				double foot = config_player_real(player, "display.fov");
+				char *end;
+				double degrees = strtod(vehicle, &end);
+				float seated;
 
-			tangent = panini_vertical_tangent(foot);
-			/* ("default": the stock view; "match": display.fov's) */
-			seated = !strcmp(vehicle, "match") ? tangent : panini_vertical_tangent(end != vehicle ? degrees : 0.0);
-			if (seated > tangent)
-				tangent = seated;
+				tangents[player] = panini_vertical_tangent(foot);
+				/* ("default": the stock view; "match": display.fov's) */
+				seated = !strcmp(vehicle, "match") ? tangents[player] :
+					panini_vertical_tangent(end != vehicle ? degrees : 0.0);
+				if (seated > tangents[player])
+					tangents[player] = seated;
+			}
 		}
 	}
-	if (!(strength > 0.0f) || display_height <= 0)
+	if (display_height <= 0)
 		return 1.0f;
-	factor = panini_projection_scale(strength, tangent * (float)display_width / (float)display_height);
-	return factor < PANINI_SUPERSAMPLING_MOST ? factor : PANINI_SUPERSAMPLING_MOST;
+	for (player = 0; player < PANINI_LOCAL_PLAYERS; player++)
+	{
+		float factor;
+
+		if (!(strengths[player] > 0.0f))
+			continue;
+		factor = panini_projection_scale(strengths[player], tangents[player] * (float)display_width /
+			(float)display_height);
+		if (factor > most)
+			most = factor;
+	}
+	return most < PANINI_SUPERSAMPLING_MOST ? most : PANINI_SUPERSAMPLING_MOST;
 #endif
 }
 
@@ -945,6 +966,32 @@ long halo_shadow_map_scale(void)
 void halo_screen_ui_offset(unsigned char centered)
 {
 	ui_offset = centered ? (halo_screen_width() - 640) / 2 : 0;
+}
+
+/* the menus' centring offset while a split screen's view draws a screen in
+it (port/linux/game/menu_view.c: its canvas's left, at its scale) */
+void halo_screen_ui_offset_to(long offset)
+{
+	ui_offset = offset;
+}
+
+/* where the first player's menus were drawn last, for the pointer
+(ui_point_from_window_on): in a split screen's view (set), the view's
+origin, the scale the menus were drawn at and the canvas's left of the
+menus' 0 (port/linux/game/menu_view.c); else centred on the whole screen */
+static struct
+{
+	int set;
+	float x0, y0, scale, left;
+} ui_pointer_view;
+
+void halo_screen_ui_pointer_view(int set, float x0, float y0, float scale, float left)
+{
+	ui_pointer_view.set = set && scale > 0.0f;
+	ui_pointer_view.x0 = x0;
+	ui_pointer_view.y0 = y0;
+	ui_pointer_view.scale = scale;
+	ui_pointer_view.left = left;
 }
 /* ---------- state the XDK header's inline functions read and write */
 
@@ -2323,6 +2370,14 @@ static void ui_point_from_window_on(float window_x, float window_y, int centered
 	top = top < 0 ? (pixel_height - height) / 2 : top < pixel_height - height ? top : pixel_height - height;
 	screen_x = (window_x * pixel_width / window_width - left) * (float)back_buffer->target.width / (float)width;
 	screen_y = (window_y * pixel_height / window_height - top) * (float)back_buffer->target.height / (float)height;
+	if (centered && ui_pointer_view.set)
+	{
+		/* (the first player's view in split screen, its menus scaled into
+		it: port/linux/game/menu_view.c) */
+		*x = (short)floorf((screen_x - ui_pointer_view.x0) / ui_pointer_view.scale - ui_pointer_view.left);
+		*y = (short)floorf((screen_y - ui_pointer_view.y0) / ui_pointer_view.scale);
+		return;
+	}
 	*x = (short)floorf(screen_x - (centered ? (float)(halo_screen_width() - 640) / 2.0f : 0.0f));
 	*y = (short)floorf(screen_y);
 }
@@ -5688,6 +5743,14 @@ void halo_screen_panini(short x0, short y0, short x1, short y1, const float proj
 	frame's resolve would put that over the pass) */
 	view_corners(target, x0, y0, x1, y1, corners);
 	xgpu_backend_panini(target->target.number, corners, projection);
+}
+
+/* display.hdr: the draws from now on the HUD's and the menus' again, after
+a view of the world's drawn among them (the menus' Spartan's own view:
+port/linux/game/menu_spartan.c), whose models' draws were the 3D view's */
+void halo_hdr_interface(void)
+{
+	hdr.view = FALSE;
 }
 
 /* display.hdr's tone map of a window's 3D view (source/render/render.c),

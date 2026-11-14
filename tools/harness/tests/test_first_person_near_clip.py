@@ -104,5 +104,5 @@ def test_what_it_is_taken_from():
         begin.index("global_window_parameters.camera.vertical_field_of_view = angle;")
     # the weapon's move recorded each frame, none when it has no offset
     apply = function(code, "viewmodel_offset_apply")
-    assert apply.index("applied_forwards[local_player_index] = 0.0f;") < apply.index("viewmodel_offset(weapon_index")
+    assert apply.index("applied_forwards[local_player_index] = 0.0f;") < apply.index("viewmodel_offset(local_player_index, weapon_index")
     assert "applied_forwards[local_player_index] = offset.forward;" in apply

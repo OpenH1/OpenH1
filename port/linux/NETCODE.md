@@ -68,9 +68,13 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   movement and none of its loading zones, and after any switch no loading
   zone switches again until every machine has the new BSP (ten seconds at
   most). Only the host's crossing of a loading zone switches the BSP, and
-  it brings every player to the host, however far behind, so no one
+  it brings to the host every player outside the new BSP, however far
+  behind, and anyone standing on one of its loading zones, so no one
   running ahead or doubling back drags the team through the level (while
-  none of the host's players are alive, anyone's crossing does); a client
+  none of the host's players are alive, anyone's crossing does); a player
+  still inside the new BSP, as at the seam between two areas, stays where
+  they are. The host alone decides who moves: clients take the positions
+  it sends. A client
   standing on a loading zone is told it waits for the host. Where there is
   no room beside the host or a teammate who is in, the player is tried in
   the host, the two passing through each other until they are apart. A
@@ -584,6 +588,26 @@ names of the network game's players, which the lobby has too), nor takes
 their pings ("Pings"). A machine's own scoreboard mute stays its own: it
 plays none of that machine's voice and shows none of its players' lines or
 pings, and tells no one.
+The lobby has a text chat of its own (the hand-written lobby's chat area,
+`docs/menu_screens.md`), on the same three messages: a line with
+`_chat_line_lobby_bit` set is the lobby's, its sender the slot of a player in
+the network game's record (the lobby has no game's players), its name and
+team the record's. It has one channel (everyone, as the lobby's voice), and
+the host takes it as a game's line (the sender's own machine's player and
+stream, the rate, the text cut, the settings' links, the word filter, the
+host's mutes by name) and sends it on to every OpenH1 machine
+(`network_standard_machine_is_openh1`); OpenCE's machines are sent none,
+nor the lobby's settings (OpenCE's lobby has no chat: their players see no
+lines and send none). The host's settings go to the OpenH1 machines in the
+lobby too, with `_chat_config_lobby_bit` (`network.lobby_text_chat`, Host
+Controls' LOBBY TEXT CHAT); a client that has none (an OpenCE host's, an
+older OpenH1's) has no lobby chat. The lobby's lines and settings are handled
+before a game's checks (`network_chat_handles_lobby_message`, in the lobby
+too), and kept apart: a game's HUD never shows a lobby's line, nor the lobby
+a game's. The messages' layout is as before (a flag bit of each, which an
+older OpenH1 build ignores: it drops a lobby's line outside a game), so the
+protocol version is not raised.
+
 The host's chat settings (`network.text_chat`: on, links allowed, or off,
 listed in the server browser or not) go to every client in
 `_distributed_message_chat_config` (one byte of flags), reliably, as they
@@ -684,8 +708,8 @@ in an OpenH1 game"):
   lists the game and refuses to join it ("The host is using a newer version
   of the network code"). Its server browser hides the game, and says
   "games are on a newer version" when nothing else is listed.
-  `HALO_PORT_STANDARD_REFUSAL` ("This is an OpenH1 60 Tick game; join a
-  Legacy game or get OpenH1", with the game's rate) is the text an OpenCE
+  `HALO_PORT_STANDARD_REFUSAL` ("This is a GOAT H1 60 Tick game; join a
+  Legacy game or get GOAT H1", with the game's rate) is the text an OpenCE
   build that knows of OpenH1 games would show for one. No game needs it
   otherwise: everything an OpenH1 game plays, OpenCE players join. A build without that change
   can show only its own messages: join refusals are codes, and host text
@@ -1414,7 +1438,10 @@ change:
   token, which a status left empty before); the host sends the codes on to
   the same machines in `_distributed_message_friend_players` (130, reliably,
   when they change: an entry each, its format byte, the player and the
-  code). Older builds send no code, never set the bit, and drop 130 as a
+  code). The host also lists the game's record's players (format 2, the
+  player its slot of the record: the lobby's, which have no datum yet), for
+  a lobby's player card's ADD FRIEND; an older build drops format 2's
+  entries as another format's. Older builds send no code, never set the bit, and drop 130 as a
   kind they do not know: nothing they read changed, so the network version
   stays. The friends themselves (requests, presence, invites) go through the
   signalling brokers, never the game's connection.
@@ -1560,6 +1587,22 @@ machine:
   no OpenCE machine in it, whose machines all play the host's protocol (their
   join token says so): an OpenCE machine would keep the player on the old
   team. The player respawns on the new team; their score goes with them.
+- BRING TO ME and GO TO <NAME> (network co-op only, under the player's
+  TELEPORT...) move a player as a BSP switch does, in the host's simulation
+  (`players.c`'s `players_coop_host_teleport`): out of any seat, beside the
+  other player (or the vehicle they ride), facing their way, else, with no
+  room, in them (the two passing through each other until apart), never onto
+  a loading zone. Every machine sees the move as the host's word on the
+  player's unit. The player's machine, an OpenH1 one, is told
+  (`_distributed_message_host_teleport`, 143, reliably, OpenH1 protocol
+  version 29: the player, the host's player and the brought player's facing,
+  with a format byte), which a client takes only from the host's stream in
+  an OpenH1 co-op game under way: it turns a brought player's view the
+  host's way (its own input drives its facing, which the host's word does not
+  change) and shows "Brought to <host>" or "<host> joined you" on their
+  screen. Offered for another machine's living player who is not away, with
+  the host's player in the level, and GO TO only to a player who is in it;
+  never in a versus game, nor to a dedicated server's admins.
 - RULES (`network_host_rules.c`) changes the gametype's rules. In the lobby
   it is the lobby's game record, which every machine takes. In a game it
   changes the host's game and record (a player who joins takes the record).

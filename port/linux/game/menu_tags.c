@@ -54,6 +54,8 @@ looks", below).
 #include "network_host_controls.h"
 #include "basic_training.h"
 #include "halo_keyboard.h"
+#include "menu_models.h"
+#include "menu_view.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -361,8 +363,9 @@ static char const *const widget_flag_names[] =
 	/* (the PC version's, which this engine has no use for) */
 	"force_handle_mouse", "no_widescreen_fill",
 	/* (the port's: ui_widget_port_anchor_offset, ui_widget_port_stretch,
-	ui_widget_port_keep_ends, ui_widget_port_wheel_sideways) */
-	"anchor_left", "anchor_right", "stretch", "keep_ends", "wheel_sideways",
+	ui_widget_port_keep_ends, ui_widget_port_wheel_sideways,
+	ui_widget_port_foot_offset; above_foot, look_make) */
+	"anchor_left", "anchor_right", "stretch", "keep_ends", "wheel_sideways", "foot", "above_foot",
 };
 
 /* the port's widget flags' bits (widget_flag_names) */
@@ -371,6 +374,16 @@ static char const *const widget_flag_names[] =
 #define WIDGET_FLAG_STRETCH 19
 #define WIDGET_FLAG_KEEP_ENDS 20
 #define WIDGET_FLAG_WHEEL_SIDEWAYS 21
+#define WIDGET_FLAG_FOOT 22
+#define WIDGET_FLAG_ABOVE_FOOT 23
+
+/* how far the tall layout's footer is raised on a touchscreen
+(port_settings.py's TALL_FOOT_LIFT): its prompts' words, which end 11 units
+above the screen's foot, to above a phone's safe area there (an iPhone's 21
+points: menu_layout.c's MENU_LAYOUT_PHONE_FOOT, 25.6 units) */
+#define TALL_FOOT_LIFT 16
+/* (a picture's name and _touch) */
+#define HALO_MENU_TOUCH_NAME 300
 
 /* whether the menus are laid out for a touchscreen: the touchscreens'
 builds, or debug.touch_menus (read again when a setting changes: the menu
@@ -400,7 +413,8 @@ short ui_widget_port_anchor_extra(void)
 {
 	if (!ui_widget_port_touch_menus())
 		return 0;
-	return (short)MAX((halo_screen_width() - 640) / 2, 0);
+	/* (the canvas the menus are drawn in: menu_view.c's) */
+	return (short)MAX(menu_view_side(), 0);
 }
 
 /* anchor_left: the widget (and what is in it) moved to the screen's left
@@ -439,6 +453,20 @@ right (ui_widget.c's ui_mouse_wheel_widget) */
 boolean ui_widget_port_wheel_sideways(long flags)
 {
 	return (flags & FLAG(WIDGET_FLAG_WHEEL_SIDEWAYS)) != 0;
+}
+
+/* how far the tall layout's footer is raised: TALL_FOOT_LIFT on a
+touchscreen, else 0 (the computer's layout as it is) */
+short ui_widget_port_foot_lift(void)
+{
+	return ui_widget_port_touch_menus() ? TALL_FOOT_LIFT : 0;
+}
+
+/* foot: the widget (and what is in it) moved up by the footer's lift, as it
+is drawn and tapped (the tall layout's footer: its prompts and buttons) */
+short ui_widget_port_foot_offset(long flags)
+{
+	return flags & FLAG(WIDGET_FLAG_FOOT) ? (short)-ui_widget_port_foot_lift() : 0;
 }
 
 static char const *const widget_type_names[] = { "container", "text", "spinner", "column_list" };
@@ -606,8 +634,9 @@ static char const *const port_function_names[] =
 	/* (the main menu's 2V2 browser: doubles_browser.inc) */
 	"port doubles init", "port doubles dispose", "port doubles host", "port doubles find", "port doubles friend",
 	"port doubles join", "port doubles invite", "port doubles x",
-	/* (a hand-written screen's item: its action, menu_screen.c) */
-	"port screen do",
+	/* (a hand-written screen's item: its action; and a prompt of its button
+	bar: its key; left and right on a row or a choice, menu_screen.c) */
+	"port screen do", "port screen key", "port screen left", "port screen right",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -659,6 +688,8 @@ static char const *const port_game_data_input_names[] =
 	"port campaign restart update",
 	/* (the main menu's 2V2 browser: doubles_browser.inc) */
 	"port doubles update",
+	/* (Settings' band's right: the profile it edits) */
+	"port settings profile",
 };
 
 /* a pause box made wider while the keyboard plays (pause_boxes_fit) */
@@ -1970,8 +2001,14 @@ static void *widget_build(long widget_index)
 	reference_clear(&definition->background_bitmap, BITMAP_GROUP_TAG);
 	if (source->bitmap)
 	{
+		char touch[HALO_MENU_TOUCH_NAME];
+
+		/* (on a touchscreen, its <bitmap>_touch where the menus have one, as
+		a look's picture is: look_make) */
+		snprintf(touch, sizeof(touch), "%s_touch", source->bitmap);
 		reference_set(&definition->background_bitmap, BITMAP_GROUP_TAG,
-			tag_named(BITMAP_GROUP_TAG, source->bitmap, source->file, source->line));
+			tag_named(BITMAP_GROUP_TAG, ui_widget_port_foot_lift() && !strchr(source->bitmap, '\\') &&
+				bitmap_named(touch) != NONE ? touch : source->bitmap, source->file, source->line));
 	}
 	/* the game data inputs */
 	for (count = 0, input = source->first_input; input != HALO_MENU_NONE; input = menus->inputs[input].next)
@@ -2382,9 +2419,11 @@ model has not got, or whose look names what is not there, is drawn from its
 definition, and logged (look_missing): tools/menu_parity.py fails on it. */
 
 /* the widget flags that are its look (widget_flag_names): flash_bitmap,
-nifty_fx, anchor_left, anchor_right, stretch and keep_ends */
+nifty_fx, anchor_left, anchor_right, stretch, keep_ends, foot and
+above_foot */
 #define LOOK_FLAGS (FLAG(2) | FLAG(13) | FLAG(WIDGET_FLAG_ANCHOR_LEFT) | FLAG(WIDGET_FLAG_ANCHOR_RIGHT) | \
-	FLAG(WIDGET_FLAG_STRETCH) | FLAG(WIDGET_FLAG_KEEP_ENDS))
+	FLAG(WIDGET_FLAG_STRETCH) | FLAG(WIDGET_FLAG_KEEP_ENDS) | FLAG(WIDGET_FLAG_FOOT) | \
+	FLAG(WIDGET_FLAG_ABOVE_FOOT))
 
 /* a widget drawn from its definition, not its look, and why */
 static void look_missing(char const *name, char const *why, char const *detail)
@@ -2624,11 +2663,19 @@ static boolean look_make(struct menu_look *made, long tag_index)
 		look->line) & LOOK_FLAGS;
 	definition->flags |= flags_parse(look->effects, widget_flag_names, NUMBEROF(widget_flag_names), look->file,
 		look->line) & LOOK_FLAGS;
-	if (!look_reference(&definition->background_bitmap, BITMAP_GROUP_TAG, look->picture, ""))
+	/* (on a touchscreen, its picture the menus' <picture>_touch where they
+	have one: the tall layout's drawn for its footer's lift; and above_foot,
+	a widget that reaches down to the footer, the lift shorter) */
+	if (!(look->picture && ui_widget_port_foot_lift() &&
+			look_tag(BITMAP_GROUP_TAG, look->picture, "_touch") != NONE &&
+			look_reference(&definition->background_bitmap, BITMAP_GROUP_TAG, look->picture, "_touch")) &&
+		!look_reference(&definition->background_bitmap, BITMAP_GROUP_TAG, look->picture, ""))
 	{
 		look_missing(made->name, "there is no picture", look->picture);
 		return FALSE;
 	}
+	if (definition->flags & FLAG(WIDGET_FLAG_ABOVE_FOOT))
+		definition->bounds.y1 = (short)(definition->bounds.y1 - ui_widget_port_foot_lift());
 	made->radius = (short)look->radius;
 	if (!look_text(definition, look))
 	{
@@ -2732,6 +2779,8 @@ static void menu_tags_release(void)
 			rasterizer_bitmap_delete(menu_tags.bitmaps[index]);
 	}
 	halo_menus_art_forget();
+	/* (the menus' models' tags, with ours: menu_models.c) */
+	menu_models_tags_release();
 	if (menu_tags.original_instances)
 		cache_files_set_tag_instances(menu_tags.original_instances, menu_tags.original_count);
 	/* (the game's free takes no NULL: settings is, with no setting spinners) */
@@ -2776,6 +2825,33 @@ void const *menu_tags_behaviour_handlers(
 	return menu_tags.behaviour_handlers[index];
 }
 
+/* the model's behaviours made (menu_tags_behaviour_handlers_at's indices) */
+long menu_tags_behaviour_count(
+	void)
+{
+	return menu_tags.loaded && menu_tags.behaviour_model && menu_tags.behaviour_handlers ?
+		menu_tags.behaviour_model->behaviour_count : 0;
+}
+
+/* the handlers of the model's behaviour of the index, by which the engine
+takes their widget's events, and the widget's name: saving_screens.c's,
+which skips their saving screens as it does the widgets' own (NULL: none) */
+void *menu_tags_behaviour_handlers_at(
+	long index,
+	long *count,
+	char const **name)
+{
+	struct halo_menu_model const *model = menu_tags.behaviour_model;
+
+	*count = 0;
+	*name = NULL;
+	if (index < 0 || index >= menu_tags_behaviour_count())
+		return NULL;
+	*count = menu_tags.behaviour_handler_counts[index];
+	*name = model->behaviours[index].name;
+	return menu_tags.behaviour_handlers[index];
+}
+
 /* the screen of the name (the menus' files', "main_menu/campaign/campaign_screen")
 opened from the widget, as a handler's open opens it (its history, its sound):
 the hand-written screens' actions (menu_screen.c); FALSE if there is no such
@@ -2792,7 +2868,9 @@ boolean menu_tags_open(
 	size_t index;
 
 	*deleted = FALSE;
-	snprintf(name, sizeof(name), PC_MENU_TAG_PREFIX "%s", screen);
+	/* (a map's own screen by its tag's name, with its backslashes: the
+	campaign's questions, which the pause menu opens) */
+	snprintf(name, sizeof(name), strchr(screen, '\\') ? "%s" : PC_MENU_TAG_PREFIX "%s", screen);
 	for (index = 0; name[index]; index++)
 	{
 		if (name[index] == '/')
@@ -2807,6 +2885,69 @@ boolean menu_tags_open(
 	SET_FLAG(handler.flags, _event_handler_open_widget_bit, TRUE);
 	ui_widget_port_handler_run(widget, event, &handler, deleted);
 	return TRUE;
+}
+
+/* a widget definition's flags (its pause_game: whether a pause menu
+pauses the game, menu_screen.c's menu_screen_pause_name), 0 for none */
+long menu_tags_flags(
+	long tag_index)
+{
+	struct ui_widget_definition const *definition = tag_index != NONE ?
+		tag_get(UI_WIDGET_DEFINITION_TAG, tag_index) : NULL;
+
+	return definition ? definition->flags : 0;
+}
+
+/* a widget's background's bitmap tag, NONE for none: the hand-written tall
+screens' (menu_screen.c), which make the tall layout's where the screen they
+take the place of has none */
+long menu_tags_background(
+	long tag_index)
+{
+	struct ui_widget_definition const *definition = tag_index != NONE ?
+		tag_get(UI_WIDGET_DEFINITION_TAG, tag_index) : NULL;
+
+	return definition ? definition->background_bitmap.index : NONE;
+}
+
+/* a widget's background made another's (a hand-written tall screen's of
+background="tall": the tall layout's in place of the PC version's
+gradient, whose band's line is lower, so that one band's line is drawn, as
+the server browser's generated screen has it) */
+void menu_tags_background_set(
+	long tag_index,
+	long background_tag_index)
+{
+	struct ui_widget_definition *definition = tag_index != NONE ?
+		tag_get(UI_WIDGET_DEFINITION_TAG, tag_index) : NULL;
+	struct ui_widget_definition const *background = background_tag_index != NONE ?
+		tag_get(UI_WIDGET_DEFINITION_TAG, background_tag_index) : NULL;
+	/* (and the menu engine's, which it draws: its look's) */
+	struct ui_widget_definition *look = tag_index != NONE ? pc_menu_look_definition(tag_index) : NULL;
+
+	if (!background)
+		return;
+	if (definition)
+		definition->background_bitmap = background->background_bitmap;
+	if (look)
+		look->background_bitmap = background->background_bitmap;
+}
+
+/* the screen before the widget's gone back to, as a handler's back goes (its
+history, its sound): the hand-written screens' actions (menu_screen.c) */
+void menu_tags_back(
+	struct widget_instance *widget,
+	struct event_record *event,
+	boolean *deleted)
+{
+	struct ui_widget_event_handler_reference handler;
+
+	*deleted = FALSE;
+	memset(&handler, 0, sizeof(handler));
+	reference_clear(&handler.sound_effect, SOUND_TAG);
+	reference_clear(&handler.widget_tag, UI_WIDGET_DEFINITION_TAG);
+	SET_FLAG(handler.flags, _event_handler_go_back_to_previous_widget_bit, TRUE);
+	ui_widget_port_handler_run(widget, event, &handler, deleted);
 }
 
 short menu_tags_handler_event(
@@ -3252,6 +3393,41 @@ static short pause_legends_growth(long legends_tag)
 	return growth;
 }
 
+/* how much wider a pause box is made for the legends' row under it while
+the keyboard's keys are drawn in it (pause_legends_growth), for the
+hand-written pause menu's box (menu_screen.c) */
+short menu_tags_legend_growth(
+	long legends_tag)
+{
+	return legends_tag == NONE ? 0 : pause_legends_growth(legends_tag);
+}
+
+/* the rows the pause menu adds for this machine, as pause_patch and
+pause_campaign_patch add them to the map's (network_host_controls_pause_rows_for):
+the hand-written pause menu's (menu_screen.c's pause.* bindings) */
+static boolean network_coop_campaign_map(void);
+
+unsigned long menu_tags_pause_rows(void)
+{
+	struct host_controls_pause_view view;
+	/* (a network co-op game's map: its pause menu's FRIENDLY FIRE too) */
+	boolean coop = network_coop_campaign_map();
+	/* (the screens by their tags: the menus' files are let go of once their
+	tags are made) */
+	boolean host_controls = tag_loaded(UI_WIDGET_DEFINITION_TAG,
+		PC_MENU_TAG_PREFIX "main_menu\\host_controls\\host_controls_screen") != NONE;
+	boolean training = tag_loaded(UI_WIDGET_DEFINITION_TAG, PC_MENU_TAG_PREFIX "main_menu\\training\\training_screen") != NONE;
+
+	view.host = coop ? global_network_game_server_get() != NULL : global_network_game_server_get() != NULL ||
+		(network_admin_was_remote() && host_controls);
+	view.coop = coop;
+	view.local = network_game_is_splitscreen_local();
+	view.training = basic_training_active();
+	view.host_controls_screen = host_controls;
+	view.training_screen = training;
+	return network_host_controls_pause_rows_for(&view);
+}
+
 static void pause_patch(struct cache_file_tag_instance *instances)
 {
 	long collection = tag_loaded('Soul', MULTIPLAYER_COLLECTION);
@@ -3686,7 +3862,8 @@ void menu_tags_loaded(
 {
 	struct halo_menus const *menus;
 	struct cache_file_tag_instance *instances;
-	long widget_count, own_lists = 0, total, index, large_font;
+	long widget_count, own_lists = 0, total, index, large_font, model_count = 0;
+	long model_tags[MENU_MODELS_MAXIMUM_TAGS];
 	boolean locale;
 
 	boolean game_map = strcmp(map_name, "ui") != 0;
@@ -3733,8 +3910,11 @@ void menu_tags_loaded(
 	knows by its own name, and draws in OpenCE where it is on; the bitmap
 	font's letters, as large_ui's, where it is off) */
 	large_font = tag_loaded(FONT_TAG, "ui\\large_ui");
+	/* (ui.map's: the menus' models' tags, the Spartan's, read and checked,
+	menu_models.c) */
+	model_count = game_map ? 0 : menu_models_tags_load();
 	total = (large_font != NONE) + widget_count + own_lists + menus->string_list_count + menus->bitmap_count +
-		(game_map ? PAUSE_PATCH_TAGS : 0);
+		model_count + (game_map ? PAUSE_PATCH_TAGS : 0);
 	instances = build.failed ? NULL : instances_grow(total, &build.first_index, &build.first_salt);
 	if (!instances)
 		goto failed;
@@ -3767,6 +3947,13 @@ void menu_tags_loaded(
 			build.heading_tag = next_tag();
 			instance_set(instances, FONT_TAG, build.heading_tag, "heading", "", heading);
 		}
+	}
+	/* (the menus' models', checked: theirs at once) */
+	if (model_count > 0 && model_count <= MENU_MODELS_MAXIMUM_TAGS)
+	{
+		for (index = 0; index < model_count; index++)
+			model_tags[index] = next_tag();
+		menu_models_tags_add(instances, model_tags);
 	}
 	/* the tags: the bitmaps and strings first, which the widgets name; the
 	widgets' names in the table before any is built, which they find there */

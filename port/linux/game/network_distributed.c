@@ -1857,6 +1857,17 @@ boolean distributed_machine_sees_player(
 		TEST_FLAG(distributed_sends[machine_index][player_index], _distributed_send_sees_bit);
 }
 
+long distributed_machine_ping(
+	long machine_index)
+{
+	if (game_connection() != _game_connection_network_server || machine_index < 0 ||
+		machine_index >= HALO_PORT_MAXIMUM_NETWORK_MACHINES || !distributed_round_trips[machine_index].valid)
+	{
+		return NONE;
+	}
+	return (long)(distributed_round_trips[machine_index].average * 1000.0f / TICKS_PER_SECOND + 0.5f);
+}
+
 long distributed_player_ping(
 	short player_index)
 {
@@ -6858,6 +6869,14 @@ void network_distributed_handle_message(
 	if (network_voice_handles_message(message, size))
 	{
 		network_voice_handle_message(machine_index, message, size);
+		return;
+	}
+	/* (the lobby's text chat, apart from a game's, over the stream alone:
+	network_chat.c) */
+	if (network_chat_handles_lobby_message(message, size))
+	{
+		network_chat_handle_lobby_message(machine_index, message, size, machine_index != NONE ?
+			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
 		return;
 	}
 	/* (map sharing's, in the lobby too, over the host's connection alone:

@@ -93,6 +93,7 @@ their handlers open opens.
 #include "interface/player_ui.h"
 #include "interface/ui_widget.h"
 #include "interface/ui_widget_event_handler_functions.h"
+#include "interface/ui_widget_game_data_input_functions.h"
 #include "main/main.h"
 #include "networking/network_game_manager.h"
 #include "saved games/player_profile.h"
@@ -109,6 +110,7 @@ their handlers open opens.
 #include "game_modes.h"
 #include "network_voice.h"
 #include "network_chat.h"
+#include "network_party.h"
 #include "network_host_controls.h"
 #include "network_admin.h"
 #include "network_host_rules.h"
@@ -120,6 +122,7 @@ their handlers open opens.
 #include "text/draw_string.h"
 #include "halo_keyboard.h"
 #include "menu_search.h"
+#include "menu_table.h"
 /* (internet play's server browser: the platform layer's) */
 #include "../src/p2p.h"
 #include "../src/browser_favorites.h"
@@ -161,6 +164,16 @@ char const *config_graphics_setting(int entry);
 #define CONFIG_WEAPON_VALUES 6
 int config_viewmodel_weapon(char const *path, double values[CONFIG_WEAPON_VALUES]);
 int config_viewmodel_weapon_write(char const *path, double const values[CONFIG_WEAPON_VALUES]);
+int config_profile_viewmodel_weapon(char const *folder, char const *path, double values[CONFIG_WEAPON_VALUES]);
+int config_profile_viewmodel_weapon_write(char const *folder, char const *path,
+	double const values[CONFIG_WEAPON_VALUES]);
+/* a player profile's own values of the settings that are each player's
+(port_config.h; player_settings.c names its folder) */
+int config_per_player(char const *name);
+int config_keyboard_setting(char const *name);
+int config_profile_text(char const *folder, char const *name, char *text, unsigned int size);
+int config_profile_write(char const *folder, char const *name, char const *value);
+int player_settings_profile_folder(long profile_index, char *folder, unsigned long size);
 long pc_menu_widget_string_list(long definition_index);
 boolean ui_widget_port_switch(struct widget_instance *widget, char const *name, boolean *widget_deleted);
 char const *config_string(char const *name);
@@ -508,6 +521,21 @@ static short settings_weapon_value(char const *name)
 	return NONE;
 }
 
+static boolean settings_profile_folder(char *folder, unsigned long size);
+
+/* the weapon's offsets: the profile's edited, its own (each a player's, as
+the settings below are), else config.toml's */
+static void settings_weapon_values(double values[CONFIG_WEAPON_VALUES])
+{
+	char folder[1024];
+
+	if (!settings_profile_folder(folder, sizeof(folder)) ||
+		!config_profile_viewmodel_weapon(folder, settings_weapon, values))
+	{
+		config_viewmodel_weapon(settings_weapon, values);
+	}
+}
+
 static boolean settings_weapon_text(short value, char *text, unsigned int size, boolean default_value)
 {
 	double values[CONFIG_WEAPON_VALUES];
@@ -517,7 +545,7 @@ static boolean settings_weapon_text(short value, char *text, unsigned int size, 
 	if (default_value)
 		values[value] = 0.0;
 	else
-		config_viewmodel_weapon(settings_weapon, values);
+		settings_weapon_values(values);
 	snprintf(text, size, "%g", values[value]);
 	return TRUE;
 }
@@ -525,20 +553,78 @@ static boolean settings_weapon_text(short value, char *text, unsigned int size, 
 static boolean settings_weapon_write(short value, char const *text)
 {
 	double values[CONFIG_WEAPON_VALUES];
+	char folder[1024];
 
 	if (!settings_weapon[0])
 		return FALSE;
-	config_viewmodel_weapon(settings_weapon, values);
+	settings_weapon_values(values);
 	values[value] = atof(text);
+	if (settings_profile_folder(folder, sizeof(folder)))
+		return config_profile_viewmodel_weapon_write(folder, settings_weapon, values) != 0;
 	return config_viewmodel_weapon_write(settings_weapon, values) != 0;
 }
 
+/* ---------- the settings that are each player's (port_config.c's table
+marks them _scope_player: the field of view, First Person's): Settings
+shows and sets the values of the profile it edits, the player's who opened
+it (pc_menu_profile_edit_begin), their profile's own, kept in its folder;
+config.toml's where it has none of its own, or no profile is edited, and
+there they are set (every player without a value of their own has it) */
+
+/* the folder of the profile being edited, FALSE with none */
+static boolean settings_profile_folder(char *folder, unsigned long size)
+{
+	return player_ui_get_edit_player_profile() &&
+		player_settings_profile_folder(player_ui_get_edit_profile_index(), folder, size);
+}
+
+/* the folder of the profile a setting that is each player's is set in: the
+profile being edited's; the keyboard and mouse's, which only player 1
+plays with, player 1's (config_keyboard_setting), whoever opened Settings;
+and its name (whose: ROW_TEXT_LENGTH, or NULL); FALSE with none */
+static boolean settings_setting_folder(char const *name, char *folder, unsigned long size, wchar_t *whose)
+{
+	struct player_profile profile, *edited;
+	long profile_index;
+
+	if (config_keyboard_setting(name))
+	{
+		profile_index = player_ui_get_active_player_profile_index(0);
+		if (!player_settings_profile_folder(profile_index, folder, size))
+			return FALSE;
+		/* (the profile player 1 holds, not read again from its file: each frame
+		the panel shows it) */
+		if (whose)
+		{
+			player_ui_get_active_player_profile(0, &profile);
+			ustrncpy(whose, profile.player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
+			whose[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
+		}
+		return TRUE;
+	}
+	if (!settings_profile_folder(folder, size))
+		return FALSE;
+	if (whose && (edited = player_ui_get_edit_player_profile()) != NULL)
+	{
+		ustrncpy(whose, edited->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
+		whose[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
+	}
+	return TRUE;
+}
+
 /* a setting's value as text, or (default_value) its default: config.toml's,
-or the profile's */
+or the profile's: its controller's, or its own of a setting that is each
+player's */
 static boolean setting_text(char const *name, char *text, unsigned int size, boolean default_value)
 {
+	char folder[1024];
 	short index;
 
+	if (!default_value && config_per_player(name) && settings_setting_folder(name, folder, sizeof(folder), NULL) &&
+		config_profile_text(folder, name, text, size))
+	{
+		return TRUE;
+	}
 	if (settings_weapon_value(name) != NONE)
 		return settings_weapon_text(settings_weapon_value(name), text, size, default_value);
 	if (!strcmp(name, RENDER_RESOLUTION_SETTING))
@@ -597,8 +683,11 @@ static boolean setting_text(char const *name, char *text, unsigned int size, boo
 
 static boolean setting_write(char const *name, char const *value)
 {
+	char folder[1024];
 	short index;
 
+	if (config_per_player(name) && settings_setting_folder(name, folder, sizeof(folder), NULL))
+		return config_profile_write(folder, name, value);
 	if (settings_weapon_value(name) != NONE)
 		return settings_weapon_write(settings_weapon_value(name), value);
 	if (!strcmp(name, RENDER_RESOLUTION_SETTING))
@@ -741,9 +830,9 @@ static boolean setting_save(struct widget_instance *widget)
 		return FALSE;
 	if (widget->parameters.list.selected_index == setting->loaded_index)
 		return TRUE;
-	if (!config_write(setting->setting, setting->values[widget->parameters.list.selected_index]))
+	if (!setting_write(setting->setting, setting->values[widget->parameters.list.selected_index]))
 	{
-		platform_log("menus: could not write %s to config.toml", setting->setting);
+		platform_log("menus: could not write %s", setting->setting);
 		return FALSE;
 	}
 	platform_log("menus: %s = %s (from the next start)", setting->setting, setting->values[widget->parameters.list.selected_index]);
@@ -825,12 +914,43 @@ static void server_browser_initialize(struct widget_instance *screen)
 	}
 }
 
-/* begins editing player 1's profile (as the campaign has it); FALSE if
-there is none */
+/* the local player whose profile Settings edits: in a game, the one whose
+controller opened it (split screen's players each their own); else player
+1 */
+static short settings_local_player;
+
+static void settings_local_player_set(short controller)
+{
+	short local_player_index = NONE;
+
+	if (!main_menu_is_active() && controller >= 0 && controller < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS)
+	{
+		local_player_index = player_ui_get_single_player_local_player_from_controller(controller);
+		/* (a split screen game's players: by their controllers) */
+		if (local_player_index == NONE && player_ui_get_active_player_profile_index(controller) != NONE)
+			local_player_index = controller;
+	}
+	settings_local_player = local_player_index == NONE ? 0 : local_player_index;
+}
+
+/* begins editing the profile of the player Settings is for
+(settings_local_player): player 1's as the campaign has it, another's
+their own; FALSE if there is none */
 boolean pc_menu_profile_edit_begin(void)
 {
 	struct player_profile profile;
+	long profile_index;
 
+	if (main_menu_is_active())
+		settings_local_player = 0;
+	if (settings_local_player > 0)
+	{
+		profile_index = player_ui_get_active_player_profile_index(settings_local_player);
+		if (profile_index == NONE || !player_profile_get(profile_index, &profile))
+			return FALSE;
+		player_ui_begin_editing_profile(profile_index);
+		return TRUE;
+	}
 	if (!campaign_profile(0, &profile))
 		return FALSE;
 	player_ui_begin_editing_profile(player_ui_get_active_player_profile_index(0));
@@ -863,6 +983,7 @@ and only fails. */
 static boolean profile_edit_begin(struct widget_instance *widget, struct event_record *event,
 	boolean *widget_deleted)
 {
+	settings_local_player_set(event_controller(widget, event));
 	if (pc_menu_profile_edit_begin())
 		return TRUE;
 	/* (a press: the profile is made on its controller) */
@@ -1203,10 +1324,9 @@ static void level_description(struct widget_instance *description, char const *p
 	}
 }
 
-/* player 1's profile's name (the active one, else the one used last: the
-main menu clears the active ones), on the descriptions'
-current_profile_name */
-static void profile_name_show(struct widget_instance *description)
+/* player 1's profile (the active one, else the one used last: the main menu
+clears the active ones), NULL for none */
+static struct player_profile const *profile_current(void)
 {
 	/* (the profile read from its file at most once a second) */
 	static struct player_profile profile;
@@ -1215,15 +1335,13 @@ static void profile_name_show(struct widget_instance *description)
 	static boolean read_good;
 	long index = player_ui_get_active_player_profile_index(0);
 
-	if (!description)
-		return;
 	if (index != NONE)
 	{
 		player_ui_get_active_player_profile(0, &profile);
 		read_index = NONE;
 	}
 	else if ((index = player_ui_get_player1_last_used_profile_index()) == NONE)
-		return;
+		return NULL;
 	else
 	{
 		/* (one that cannot be read too: tried again a second later) */
@@ -1234,9 +1352,18 @@ static void profile_name_show(struct widget_instance *description)
 			read_time = system_milliseconds();
 		}
 		if (!read_good)
-			return;
+			return NULL;
 	}
-	text_set(named(description, "current_profile_name", 0), profile.player_name);
+	return &profile;
+}
+
+/* player 1's profile's name, on the descriptions' current_profile_name */
+static void profile_name_show(struct widget_instance *description)
+{
+	struct player_profile const *profile = description ? profile_current() : NULL;
+
+	if (profile)
+		text_set(named(description, "current_profile_name", 0), profile->player_name);
 }
 
 /* (Campaign's menu) "campaign menu init": player 1's profile and saved
@@ -2095,9 +2222,8 @@ static void viewmodel_weapon_rows_show(struct widget_instance *list)
 
 	if (!reset)
 		return;
-	local_player_index = player_ui_get_single_player_local_player_from_controller(controller_of(screen_of(list)));
-	if (local_player_index == NONE)
-		local_player_index = 0;
+	/* (the weapon of the player whose profile Settings edits) */
+	local_player_index = settings_local_player;
 	held = !main_menu_is_active() && viewmodel_held_weapon(local_player_index, path, sizeof(path));
 	snprintf(settings_weapon, sizeof(settings_weapon), "%s", held ? path : "");
 	if (held)
@@ -2464,6 +2590,10 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 	if (!strcmp(name, "begin"))
 	{
 		settings_pending_clear();
+		/* (the screen's player, where it has one; else the one whose press
+		opened it: profile_edit_begin) */
+		if (screen_of(widget)->local_player_index >= 0 && screen_of(widget)->local_player_index < 4)
+			settings_local_player_set(screen_of(widget)->local_player_index);
 		pc_menu_profile_edit_begin();
 	}
 	else if (!strcmp(name, "tab"))
@@ -2636,11 +2766,8 @@ static boolean settings_condition_term(struct widget_instance *list, char const 
 	if (!strcmp(name, "weapon_held"))
 	{
 		char path[sizeof(settings_weapon)];
-		short local_player_index =
-			player_ui_get_single_player_local_player_from_controller(controller_of(screen_of(list)));
 
-		return !main_menu_is_active() &&
-			viewmodel_held_weapon(local_player_index == NONE ? 0 : local_player_index, path, sizeof(path));
+		return !main_menu_is_active() && viewmodel_held_weapon(settings_local_player, path, sizeof(path));
 	}
 	if (!strcmp(name, "discord_linked"))
 		return discord_linked();
@@ -3368,10 +3495,10 @@ static boolean gyro_found_panel(struct widget_instance *row, wchar_t const **hel
 	if (!settings_row_is(row, "gyro_found") || halo_gyro_found() != 1)
 		return FALSE;
 	discord_widen(halo_steam_deck() ?
-		"Steam Input has the controls: it passes no gyro to OpenH1.|To aim with the Steam Deck's gyro: Steam > "
-		"OpenH1 > controller icon > Disable Steam Input, then start OpenH1 again." :
-		"Steam Input has the controller: it passes no gyro to OpenH1.|To aim with its gyro: in Steam, OpenH1's "
-		"Properties > Controller > Disable Steam Input, then start OpenH1 again.", words, SETTINGS_PANEL_TEXT_LENGTH);
+		"Steam Input has the controls: it passes no gyro to GOAT H1.|To aim with the Steam Deck's gyro: Steam > "
+		"GOAT H1 > controller icon > Disable Steam Input, then start GOAT H1 again." :
+		"Steam Input has the controller: it passes no gyro to GOAT H1.|To aim with its gyro: in Steam, GOAT H1's "
+		"Properties > Controller > Disable Steam Input, then start GOAT H1 again.", words, SETTINGS_PANEL_TEXT_LENGTH);
 	*help = words;
 	return TRUE;
 }
@@ -3721,7 +3848,7 @@ static void settings_words_add(wchar_t *words, wchar_t const *more)
 }
 
 /* the panel's facts of a row: their names and values */
-#define SETTINGS_FACTS_MOST 2
+#define SETTINGS_FACTS_MOST 3
 /* (the room kept between a fact's name and its value on one line) */
 #define SETTINGS_FACTS_GAP 8
 struct settings_facts
@@ -3740,19 +3867,43 @@ static void settings_fact_add(struct settings_facts *facts, wchar_t const *name,
 	facts->count++;
 }
 
+/* a setting's fact of whose value it is, if it is each player's: the
+profile's edited (first), or every player's, config.toml's (last) */
+static void settings_profile_fact(char const *name, struct settings_facts *facts, boolean first)
+{
+	char folder[1024];
+	wchar_t whose[ROW_TEXT_LENGTH] = { 0 };
+	boolean own;
+
+	/* (a weapon's own offsets are each player's too) */
+	if (!name || (!config_per_player(name) && settings_weapon_value(name) == NONE))
+		return;
+	own = settings_setting_folder(name, folder, sizeof(folder), whose);
+	if (own != first)
+		return;
+	if (!own)
+		settings_wide_copy(whose, L"ALL PLAYERS", ROW_TEXT_LENGTH);
+	settings_fact_add(facts, L"PROFILE", whose);
+}
+
 /* the facts of a row of a setting for the panel: the value its default
-shows, and the host's choice online where its help says so (taken out of
-its words) */
+shows, the host's choice online where its help says so (taken out of its
+words), and whose value it is of a setting that is each player's: the
+profile's edited (settings_profile_folder), or every player's (config.toml's) */
 static void settings_facts_of(struct widget_instance *row, struct widget_instance *spinner, wchar_t *words,
 	struct settings_facts *facts)
 {
 	struct settings_slider const *slider = settings_slider_of(row);
 	struct pc_menu_setting *setting = spinner ? settings_setting_of(spinner) : NULL;
+	char const *name = setting && setting->setting ? setting->setting : slider ? settings_slider_setting(slider) : NULL;
 	char text[300];
 	wchar_t shown[ROW_TEXT_LENGTH] = { 0 };
 	double number;
 
 	facts->count = 0;
+	/* (a profile's own first: whose value it is, where the panel has room
+	for one fact) */
+	settings_profile_fact(name, facts, TRUE);
 	if (setting && setting->setting && setting_text(setting->setting, text, sizeof(text), TRUE))
 		settings_wide_copy(shown, settings_widget_text(spinner, setting_value_index(setting, text)), ROW_TEXT_LENGTH);
 	else if (slider && setting_text(settings_slider_setting(slider), text, sizeof(text), TRUE) &&
@@ -3769,6 +3920,7 @@ static void settings_facts_of(struct widget_instance *row, struct widget_instanc
 		settings_fact_add(facts, L"DEFAULT", shown);
 	if (settings_host_choice_cut(words))
 		settings_fact_add(facts, L"ONLINE", L"HOST'S CHOICE");
+	settings_profile_fact(name, facts, FALSE);
 }
 
 /* the width of words in a font, as drawn */
@@ -4024,12 +4176,21 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		short name_top = settings_part(panel, "panel name")->vertical_offset;
 		struct halo_menu_model_geometry const *geometry = menu_engine_settings_geometry(list);
 		/* (the panel's bottom in the geometry its screen is laid out in: the
-		tall layout's lower) */
-		short bottom = (short)(geometry && geometry->panel_bottom ? geometry->panel_bottom : SETTINGS_PANEL_BOTTOM);
+		tall layout's lower, and raised with the footer on a touchscreen) */
+		short bottom = (short)(geometry && geometry->panel_bottom ?
+			menu_engine_geometry_bottom(geometry, geometry->panel_bottom) : SETTINGS_PANEL_BOTTOM);
 		short room = (short)(bottom - SETTINGS_PANEL_TEXT_MARGIN - name_top);
 		short top = stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : picture ? SETTINGS_PANEL_TEXT_UNDER_PICTURE :
 			SETTINGS_PANEL_TEXT_TOP;
 
+		/* (the last facts left out first: the first is kept where it fits) */
+		while (facts && facts_values && row_facts.count > 1 &&
+			settings_panel_height(lines, note_lines, line) + line / 2 + fact_lines * line > room - top)
+		{
+			row_facts.count--;
+			fact_lines = settings_facts_lines(&row_facts, ui_widget_port_text_box_font(facts, &facts_width),
+				facts_width, fact_names, fact_values);
+		}
 		if (!facts || !facts_values ||
 			settings_panel_height(lines, note_lines, line) + line / 2 + fact_lines * line > room - top)
 		{
@@ -4432,8 +4593,9 @@ static short profile_list_rows(void)
 	return (short)MIN(profile_list.count + 1, PROFILE_ROWS);
 }
 
-/* "player profile list initialize": on player 1's profile */
-static boolean profile_list_initialize(struct widget_instance *list)
+/* the profiles read again, player 1's chosen, and the list's first row with
+it in its middle (of rows rows) */
+static void profile_list_open(short rows)
 {
 	long active = player_ui_get_active_player_profile_index(0);
 	short index;
@@ -4447,8 +4609,13 @@ static boolean profile_list_initialize(struct widget_instance *list)
 		if (profile_list.indices[index] == active)
 			profile_list.chosen = index;
 	}
-	profile_list.first = (short)PIN(profile_list.chosen - PROFILE_ROWS / 2, 0,
-		MAX(0, profile_list.count + 1 - PROFILE_ROWS));
+	profile_list.first = (short)PIN(profile_list.chosen - rows / 2, 0, MAX(0, profile_list.count + 1 - rows));
+}
+
+/* "player profile list initialize": on player 1's profile */
+static boolean profile_list_initialize(struct widget_instance *list)
+{
+	profile_list_open(PROFILE_ROWS);
 	focus_row(list, (short)(profile_list.chosen - profile_list.first));
 	return TRUE;
 }
@@ -4767,10 +4934,11 @@ static boolean controls_load(boolean defaults)
 	{
 		char text[128];
 
+		/* (the profile's edited, each a player's: setting_text) */
 		if (defaults)
 			config_default(controls[control].setting, text, sizeof(text));
-		else
-			snprintf(text, sizeof(text), "%s", config_string(controls[control].setting));
+		else if (!setting_text(controls[control].setting, text, sizeof(text), FALSE))
+			text[0] = 0;
 		control_bindings_read(control, text);
 	}
 	controls_screen.capturing_control = NONE;
@@ -4785,12 +4953,14 @@ static boolean controls_save(void)
 
 	for (control = 0; control < NUMBEROF(controls); control++)
 	{
-		char text[128];
+		char text[128], shown[128];
 
 		control_bindings_text(control, text, sizeof(text));
-		if (strcmp(text, config_string(controls[control].setting)))
+		if (!setting_text(controls[control].setting, shown, sizeof(shown), FALSE))
+			shown[0] = 0;
+		if (strcmp(text, shown))
 		{
-			if (config_write(controls[control].setting, text))
+			if (setting_write(controls[control].setting, text))
 				platform_log("menus: %s = %s", controls[control].setting, text);
 			else
 				result = FALSE;
@@ -5653,7 +5823,13 @@ Xbox's networking, run by the engine's port entry points
 speaker icon, either lobby's */
 #define LOBBY_BOARD_ROWS 13
 #define LOBBY_BOARD_COLUMNS 2
-#define LOBBY_ICON_ROWS (LOBBY_BOARD_ROWS * LOBBY_BOARD_COLUMNS)
+/* (and the hand-written lobby's lanes' rows, at most: lobby_menu.inc's
+lobby_board_lay_out_rows) */
+#define LOBBY_LAYOUT_ROWS 16
+#define LOBBY_ICON_ROWS (LOBBY_LAYOUT_ROWS * LOBBY_BOARD_COLUMNS)
+/* (the game's data input "net splitscreen prejoin players", by its index:
+menu_tags.c's game_data_input_names) */
+#define LOBBY_PREJOIN_FUNCTION 12
 #define TEXT_FIELD_LENGTH 128
 #define PLAYLIST_READ_ONLY_BIT 0x40000000UL
 /* (a key stroke's modifier, as input_xbox.c has them: shift, control) */
@@ -7555,11 +7731,23 @@ static short menu_text_box_fit(struct widget_instance *box, wchar_t const *text,
 
 /* a text box's text wrapped to its width, `lines` lines at most: the last
 of them, if there is more, the rest of the text fitted to it with "..." */
+static void menu_text_box_wrap_width(struct widget_instance *box, wchar_t const *text, short lines, short width);
+
 static void menu_text_box_wrap(struct widget_instance *box, wchar_t const *text, short lines)
 {
+	short width;
+
+	ui_widget_port_text_box_font(box, &width);
+	menu_text_box_wrap_width(box, text, lines, width);
+}
+
+/* ... to a width of its own (a hand-written screen's box, wider than its
+definition on a wide screen) */
+static void menu_text_box_wrap_width(struct widget_instance *box, wchar_t const *text, short lines, short width)
+{
 	wchar_t wrapped[SETTINGS_PANEL_TEXT_LENGTH], last[SETTINGS_PANEL_TEXT_LENGTH];
-	short width, line = 1, index, start = 0;
-	long font = ui_widget_port_text_box_font(box, &width);
+	short line = 1, index, start = 0, box_width;
+	long font = ui_widget_port_text_box_font(box, &box_width);
 
 	if (!box)
 		return;
@@ -7782,7 +7970,7 @@ static void lobby_browser_begin(void);
 static void list_focus_child(struct widget_instance *list, struct widget_instance *focused);
 static boolean direct_link_from_clipboard(void);
 static void lobby_browser_update(struct widget_instance *list);
-static boolean lobby_browser_select(struct widget_instance *widget, short controller, short row,
+static boolean lobby_browser_select(struct widget_instance *widget, short controller, short row, boolean button,
 	boolean *widget_deleted);
 static void browser_prompts_show(struct widget_instance *list);
 static void browser_filters_refresh(void);
@@ -8326,7 +8514,7 @@ static wchar_t const *browser_group_heading(short group)
 	switch (group)
 	{
 	case _browser_group_dedicated:
-		return L"OpenH1 Dedicated Servers";
+		return L"GOAT H1 Dedicated Servers";
 	case _browser_group_hosted:
 		return L"Hosted Servers";
 	default:
@@ -8911,7 +9099,7 @@ static void browser_empty_text(short mode, short tab, boolean online, boolean pu
 {
 	static wchar_t const *const kinds[NUMBER_OF_BROWSER_TABS] =
 	{
-		L"", L"dedicated server ", L"OpenH1 ", L"Legacy ", L"co-op ", L"",
+		L"", L"dedicated server ", L"GOAT H1 ", L"Legacy ", L"co-op ", L"",
 	};
 	boolean server_browser = mode == _multiplayer_mode_server_browser;
 
@@ -8952,7 +9140,7 @@ static void browser_empty_text(short mode, short tab, boolean online, boolean pu
 	else if (newer)
 	{
 		/* (an old build sees none of the games: it says why) */
-		usnprintf(text, size - 1, L"%d %s on a newer version.\r\nUpdate OpenH1 to join %s.", newer,
+		usnprintf(text, size - 1, L"%d %s on a newer version.\r\nUpdate GOAT H1 to join %s.", newer,
 			newer == 1 ? L"game is" : L"games are", newer == 1 ? L"it" : L"them");
 	}
 	else
@@ -9349,7 +9537,7 @@ static void browser_panel_show(struct widget_instance *list, struct browser_row 
 	if ((pill = named(panel, "panel_kind", 0)) != NULL)
 	{
 		pill->animation.current_frame_index = row->openh1 ? 0 : 1;
-		text_set(pill, row->openh1 ? L"OPENH1" : L"LEGACY");
+		text_set(pill, row->openh1 ? L"GOAT H1" : L"LEGACY");
 	}
 	if ((pill = named(panel, "panel_tick", 0)) != NULL)
 	{
@@ -10313,6 +10501,60 @@ static struct advertised_game *lobby_browser_joined_game(void)
 	return NULL;
 }
 
+/* what the browsers show besides their rows, as their model works it out each
+frame (lobby_browser_model, local_browser_model) for their view: the
+generated screen's list (lobby_browser_update, browser_update) or a
+hand-written screen's table (pc_menu_browser_source): the panel's game (if
+one is chosen), its title and status line, the words for no rows, and the
+counts */
+static struct
+{
+	boolean row_shown;
+	struct browser_row row;
+	wchar_t title[32];
+	wchar_t status[SETTINGS_PANEL_TEXT_LENGTH];
+	wchar_t empty[SETTINGS_PANEL_TEXT_LENGTH];
+	short games;
+	long players;
+	short rows;
+} browser_display;
+
+/* a list's view (menu_table.h's) of the generated screen's list: its rows,
+the row focused, whether its titles are shown */
+static void browser_view_of(struct widget_instance *list, struct menu_table_view *view)
+{
+	struct widget_instance *titles = named(list, "join_game_header", 0);
+
+	csmemset(view, 0, sizeof(*view));
+	view->screen = list;
+	view->shown = browser_rows_of(list);
+	view->focused = browser_row_index(list->focused_child);
+	view->hover = ui_widget_port_hover_focused();
+	view->titles = titles && titles->visible;
+	view->focus = NONE;
+	view->chosen = NONE;
+}
+
+static void lobby_browser_focus_row(struct widget_instance *list, short row);
+
+/* ... its answer: the row the model focused, or the titles */
+static void browser_view_apply(struct widget_instance *list, struct menu_table_view const *view)
+{
+	if (view->focus_titles)
+		list_focus_child(list, named(list, "join_game_header", 0));
+	else if (view->focus != NONE)
+	{
+		char name[16];
+		struct widget_instance *row;
+
+		sprintf(name, "server_item_%d", view->focus + 1);
+		row = named(list, name, 0);
+		if (row)
+			row->visible = TRUE;
+		lobby_browser_focus_row(list, view->focus);
+	}
+}
+
 /* the focus on a game's row (0 to BROWSER_ROWS - 1) */
 static void lobby_browser_focus_row(struct widget_instance *list, short row)
 {
@@ -10337,43 +10579,40 @@ keyboard moved it there: on the game after it, or the game before it if
 the focus came up from below (over a heading at the top, the column
 titles); the row then focused (NONE: the titles). A row the pointer is on
 keeps it: the heading is not chosen (lobby_browser_update) */
-static short lobby_browser_off_heading(struct widget_instance *list, short focused, short shown)
+static short lobby_browser_off_heading(struct menu_table_view *view, short focused, short shown)
 {
 	short index = (short)(lobby_browser.first + focused);
 
-	if (focused == NONE || ui_widget_port_hover_focused() || !lobby_browser_heading(index))
+	if (focused == NONE || view->hover || !lobby_browser_heading(index))
 		return focused;
-	if (lobby_browser.chosen > index && index == 0)
+	if (lobby_browser.chosen > index && index == 0 && view->titles)
 	{
-		struct widget_instance *titles = named(list, "join_game_header", 0);
-
-		if (titles && titles->visible)
-		{
-			list_focus_child(list, titles);
-			return NONE;
-		}
+		view->focus_titles = TRUE;
+		view->focus = NONE;
+		return NONE;
 	}
 	/* (a heading is never the last: its group has a game) */
 	index = (short)(lobby_browser.chosen > index && index > 0 ? index - 1 : index + 1);
 	lobby_browser.first = (short)PIN(lobby_browser.first, index - shown + 1, index);
 	focused = (short)(index - lobby_browser.first);
-	lobby_browser_focus_row(list, focused);
+	view->focus = focused;
+	view->focus_titles = FALSE;
 	return focused;
 }
 
-/* "gamespy screen update" for the server browser: the rows (scrolled on
-at their ends; the groups' headings passed over), the panel, the counts
-and tabs over them */
-static void lobby_browser_update(struct widget_instance *list)
+/* the server browser's model, each frame: its games found and ordered, the
+rows' first and the game chosen (scrolled on at the ends; the groups'
+headings passed over), a join under way, and what the panel and the words
+over the list show (browser_display); for its view's look this frame, which
+it answers (the row it focused) */
+static void lobby_browser_model(struct menu_table_view *view)
 {
-	struct widget_instance *row;
-	short focused = browser_row_index(list->focused_child);
+	short focused = view->focused;
 	wchar_t text[SETTINGS_PANEL_TEXT_LENGTH];
 	unsigned long now = system_milliseconds();
-	short chosen, rows, shown = browser_rows_of(list);
+	short chosen, rows, shown = view->shown;
 
-	/* (the searches' words typed this frame: the list filtered by them) */
-	browser_searches_show(list);
+	browser_shown_rows = shown ? shown : BROWSER_ROWS;
 	/* (this machine's party, as the rows count it) */
 	browser_party_size = browser_party_members();
 	lobby_browser.count = lobby_browser_valid_games(lobby_browser.games,
@@ -10407,7 +10646,7 @@ static void lobby_browser_update(struct widget_instance *list)
 				lobby_browser.chosen = index;
 				lobby_browser.first = (short)PIN(lobby_browser.first, index - shown + 1, index);
 				focused = (short)(index - lobby_browser.first);
-				lobby_browser_focus_row(list, focused);
+				view->focus = focused;
 				break;
 			}
 		}
@@ -10416,30 +10655,28 @@ static void lobby_browser_update(struct widget_instance *list)
 	if (focused == shown - 1 && lobby_browser.first + shown < rows && list_scrolls_at_end())
 	{
 		lobby_browser.first++;
-		lobby_browser_focus_row(list, --focused);
+		view->focus = --focused;
 	}
 	else if (focused == 0 && lobby_browser.first > 0 && list_scrolls_at_end())
 	{
 		lobby_browser.first--;
-		lobby_browser_focus_row(list, ++focused);
+		view->focus = ++focused;
 	}
 	lobby_browser.first = (short)PIN(lobby_browser.first, 0, MAX(0, rows - shown));
 	/* (the first game found takes the focus from the buttons, which had it
 	while there were none) */
 	if (rows && !lobby_browser.shown)
 	{
-		struct widget_instance *first_row = named(list, "server_item_1", 0);
-
 		lobby_browser.shown = TRUE;
-		if (first_row)
+		if (shown)
 		{
-			first_row->visible = TRUE;
-			lobby_browser_focus_row(list, 0);
+			view->focus = 0;
+			view->focus_titles = FALSE;
 			focused = 0;
 			lobby_browser.chosen = lobby_browser.first;
 		}
 	}
-	focused = lobby_browser_off_heading(list, focused, shown);
+	focused = lobby_browser_off_heading(view, focused, shown);
 	if (focused != NONE && !ui_widget_port_hover_focused() &&
 		!lobby_browser_heading((short)(lobby_browser.first + focused)))
 	{
@@ -10455,29 +10692,6 @@ static void lobby_browser_update(struct widget_instance *list)
 		!lobby_browser.games[chosen].failed)
 	{
 		p2p_probe_keep(&lobby_browser.games[chosen]);
-	}
-	for (row = list->child; row; row = row->next)
-	{
-		short index = browser_row_index(row);
-		short row_index = index;
-		struct browser_row shown;
-
-		if (index == NONE)
-			continue;
-		index = (short)(index + lobby_browser.first);
-		row->visible = index < rows;
-		if (index >= rows)
-			continue;
-		if (lobby_browser_heading(index))
-		{
-			browser_heading_show(row, row_index, browser_group_heading((short)(lobby_browser.headed[index] - 1)));
-			continue;
-		}
-		if (index >= lobby_browser.count)
-			browser_offline_row(browser_favorites_get(browser_offline[index - lobby_browser.count]), &shown);
-		else
-			browser_listing_row(&lobby_browser.games[index], &shown);
-		browser_row_show(row, row_index, &shown, index < lobby_browser.count && browser_listed_favorite[index]);
 	}
 	/* joining: once the host is reached, its game joined (by an A press, on
 	its row); given up after a while */
@@ -10506,7 +10720,8 @@ static void lobby_browser_update(struct widget_instance *list)
 					!memcmp(lobby_browser.games[index].identifier, lobby_browser.identifier, 6) &&
 					index >= lobby_browser.first && index < lobby_browser.first + shown)
 				{
-					lobby_browser_focus_row(list, (short)(index - lobby_browser.first));
+					view->focus = (short)(index - lobby_browser.first);
+					view->focus_titles = FALSE;
 				}
 			}
 			lobby_browser.ready_time = now;
@@ -10582,11 +10797,15 @@ static void lobby_browser_update(struct widget_instance *list)
 		else
 		{
 			usnprintf(text, NUMBEROF(text) - 1, browser_doubles_playlist != NONE ?
-				L"Choose a game to join it, or host one." : L"Every public game on the Internet, OpenH1 and Legacy.");
+				L"Choose a game to join it, or host one." : L"Every public game on the Internet, GOAT H1 and Legacy.");
 		}
 		text[NUMBEROF(text) - 1] = 0;
-		browser_panel_show(list, chosen < rows ? &shown : NULL,
-			browser_doubles_playlist != NONE ? browser_doubles_name : L"SERVER BROWSER", text);
+		browser_display.row_shown = chosen < rows;
+		if (chosen < rows)
+			browser_display.row = shown;
+		settings_wide_copy(browser_display.title, browser_doubles_playlist != NONE ? browser_doubles_name :
+			L"SERVER BROWSER", NUMBEROF(browser_display.title));
+		settings_wide_copy(browser_display.status, text, NUMBEROF(browser_display.status));
 		for (index = 0; index < lobby_browser.count; index++)
 			players += lobby_browser.games[index].player_count;
 		browser_empty_text(multiplayer.mode, browser_tab, config_boolean("network.online"),
@@ -10599,9 +10818,64 @@ static void lobby_browser_update(struct widget_instance *list)
 		{
 			doubles_browser_empty(text, NUMBEROF(text));
 		}
-		browser_header_show(list, (short)(lobby_browser.count - lobby_browser.headings), players, rows, text);
-		browser_clear_show(list, rows);
+		settings_wide_copy(browser_display.empty, text, NUMBEROF(browser_display.empty));
+		browser_display.games = (short)(lobby_browser.count - lobby_browser.headings);
+		browser_display.players = players;
+		browser_display.rows = rows;
 	}
+	view->count = rows;
+	view->first = lobby_browser.first;
+	view->chosen = chosen < rows ? chosen : NONE;
+}
+
+/* the server browser's rows, each its game's (or its group's heading), in
+the generated screen's list */
+static void lobby_browser_rows_show(struct widget_instance *list, short rows)
+{
+	struct widget_instance *row;
+
+	for (row = list->child; row; row = row->next)
+	{
+		short index = browser_row_index(row);
+		short row_index = index;
+		struct browser_row shown;
+
+		if (index == NONE)
+			continue;
+		index = (short)(index + lobby_browser.first);
+		row->visible = index < rows;
+		if (index >= rows)
+			continue;
+		if (lobby_browser_heading(index))
+		{
+			browser_heading_show(row, row_index, browser_group_heading((short)(lobby_browser.headed[index] - 1)));
+			continue;
+		}
+		if (index >= lobby_browser.count)
+			browser_offline_row(browser_favorites_get(browser_offline[index - lobby_browser.count]), &shown);
+		else
+			browser_listing_row(&lobby_browser.games[index], &shown);
+		browser_row_show(row, row_index, &shown, index < lobby_browser.count && browser_listed_favorite[index]);
+	}
+}
+
+/* "gamespy screen update" for the server browser: the model (above), the
+rows, the panel, the counts and tabs over them */
+static void lobby_browser_update(struct widget_instance *list)
+{
+	struct menu_table_view view;
+
+	/* (the searches' words typed this frame: the list filtered by them) */
+	browser_searches_show(list);
+	browser_view_of(list, &view);
+	lobby_browser_model(&view);
+	browser_view_apply(list, &view);
+	lobby_browser_rows_show(list, view.count);
+	browser_panel_show(list, browser_display.row_shown ? &browser_display.row : NULL, browser_display.title,
+		browser_display.status);
+	browser_header_show(list, browser_display.games, browser_display.players, browser_display.rows,
+		browser_display.empty);
+	browser_clear_show(list, browser_display.rows);
 	browser_focus(list, browser_chosen_row());
 }
 
@@ -10627,7 +10901,7 @@ static boolean lobby_browser_join(struct p2p_listing const *game, short controll
 game's invite, a game with a password once its
 screen has it; the A press posted once its host is reached joins its game
 (or shows its lobby, if under way) */
-static boolean lobby_browser_select(struct widget_instance *widget, short controller, short row,
+static boolean lobby_browser_select(struct widget_instance *widget, short controller, short row, boolean button,
 	boolean *widget_deleted)
 {
 	struct p2p_listing const *game;
@@ -10656,7 +10930,7 @@ static boolean lobby_browser_select(struct widget_instance *widget, short contro
 			return FALSE;
 		return advertised_join(widget, found, widget_deleted);
 	}
-	if (row == NONE && !strstr(widget->name, "button_join"))
+	if (row == NONE && !button)
 		return TRUE;
 	if (lobby_browser.joining)
 		return TRUE;
@@ -10790,7 +11064,7 @@ static boolean password_screen_edit(struct widget_instance *row, boolean *widget
 (Direct Link's games are invites': none is listed offline); the game
 starred or unstarred last chosen again (scrolled to), and the game chosen
 kept among them; returns how many there are */
-static short local_browser_favorites(struct widget_instance *list)
+static short local_browser_favorites(struct menu_table_view *view)
 {
 	static struct browser_favorite favorites[MAXIMUM_ADVERTISED_GAMES];
 	static struct browser_sort_entry entries[MAXIMUM_ADVERTISED_GAMES];
@@ -10850,7 +11124,7 @@ static short local_browser_favorites(struct widget_instance *list)
 			{
 				multiplayer.game_chosen = index;
 				multiplayer.game_first = (short)PIN(multiplayer.game_first, index - browser_shown_rows + 1, index);
-				lobby_browser_focus_row(list, (short)(index - multiplayer.game_first));
+				view->focus = (short)(index - multiplayer.game_first);
 				break;
 			}
 		}
@@ -10861,64 +11135,37 @@ static short local_browser_favorites(struct widget_instance *list)
 	return rows;
 }
 
-/* "gamespy screen update": the games' rows, the one chosen's details in the
-panel, the counts and tabs over them (the server browser's: above) */
-static void browser_update(struct widget_instance *list)
+/* the local network's and Join by Link's model, each frame (as
+lobby_browser_model's): its games ordered, the rows' first and the game
+chosen, and what the panel and the words over the list show */
+static void local_browser_model(struct menu_table_view *view)
 {
-	struct widget_instance *row;
-	short focused = browser_row_index(list->focused_child);
+	short focused = view->focused;
 	short rows, chosen;
 	struct browser_row shown;
 	wchar_t text[SETTINGS_PANEL_TEXT_LENGTH];
 	long players = 0;
-	short index, shown_rows = browser_rows_of(list);
+	short index, shown_rows = view->shown;
 
-	/* (the browsers' keys, while one is shown: Tab sorts, E is the next tab
-	alone; halo_keyboard_browser_keys) */
-	halo_keyboard_browser_keys();
-	/* (the Party screen may open over it: a party's link joined by JOIN BY
-	LINK, party_menu.inc) */
-	party_screen_noted(list);
-	if (multiplayer.mode == _multiplayer_mode_server_browser)
-	{
-		lobby_browser_update(list);
-		return;
-	}
-	browser_searches_show(list);
+	browser_shown_rows = shown_rows ? shown_rows : BROWSER_ROWS;
 	browser_games_read();
-	rows = local_browser_favorites(list);
+	rows = local_browser_favorites(view);
 	/* (more than its rows: scrolled on at their ends, as the server
 	browser's) */
 	if (focused == shown_rows - 1 && multiplayer.game_first + shown_rows < rows && list_scrolls_at_end())
 	{
 		multiplayer.game_first++;
-		lobby_browser_focus_row(list, --focused);
+		view->focus = --focused;
 	}
 	else if (focused == 0 && multiplayer.game_first > 0 && list_scrolls_at_end())
 	{
 		multiplayer.game_first--;
-		lobby_browser_focus_row(list, ++focused);
+		view->focus = ++focused;
 	}
 	multiplayer.game_first = (short)PIN(multiplayer.game_first, 0, MAX(0, rows - shown_rows));
-	if (focused != NONE && multiplayer.game_first + focused < rows && !ui_widget_port_hover_focused())
+	if (focused != NONE && multiplayer.game_first + focused < rows && !view->hover)
 		multiplayer.game_chosen = (short)(multiplayer.game_first + focused);
 	chosen = multiplayer.game_chosen;
-	for (row = list->child; row; row = row->next)
-	{
-		short row_index = browser_row_index(row);
-
-		if (row_index == NONE)
-			continue;
-		index = (short)(multiplayer.game_first + row_index);
-		row->visible = index < rows;
-		if (index >= rows)
-			continue;
-		if (index >= multiplayer.game_count)
-			browser_offline_row(browser_favorites_get(browser_offline[index - multiplayer.game_count]), &shown);
-		else
-			browser_advertised_row(multiplayer.games[index], &shown);
-		browser_row_show(row, row_index, &shown, index < multiplayer.game_count && browser_listed_favorite[index]);
-	}
 	if (chosen < multiplayer.game_count)
 	{
 		browser_advertised_row(multiplayer.games[chosen], &shown);
@@ -10937,14 +11184,70 @@ static void browser_update(struct widget_instance *list)
 			L"Games hosted on your Wi-Fi or local network.");
 		text[NUMBEROF(text) - 1] = 0;
 	}
-	browser_panel_show(list, chosen < rows ? &shown : NULL,
-		multiplayer.mode == _multiplayer_mode_direct_link ? L"JOIN BY LINK" : L"LOCAL NETWORK", text);
+	browser_display.row_shown = chosen < rows;
+	if (chosen < rows)
+		browser_display.row = shown;
+	settings_wide_copy(browser_display.title, multiplayer.mode == _multiplayer_mode_direct_link ? L"JOIN BY LINK" :
+		L"LOCAL NETWORK", NUMBEROF(browser_display.title));
+	settings_wide_copy(browser_display.status, text, NUMBEROF(browser_display.status));
 	for (index = 0; index < multiplayer.game_count; index++)
 		players += multiplayer.games[index]->player_count;
 	browser_empty_text(multiplayer.mode, browser_tab, TRUE, TRUE, FALSE, 0, browser_filtered_count,
 		browser_searched_count, text, NUMBEROF(text));
-	browser_header_show(list, multiplayer.game_count, players, rows, text);
-	browser_clear_show(list, rows);
+	settings_wide_copy(browser_display.empty, text, NUMBEROF(browser_display.empty));
+	browser_display.games = multiplayer.game_count;
+	browser_display.players = players;
+	browser_display.rows = rows;
+	view->count = rows;
+	view->first = multiplayer.game_first;
+	view->chosen = chosen < rows ? chosen : NONE;
+}
+
+/* "gamespy screen update": the games' rows, the one chosen's details in the
+panel, the counts and tabs over them (the server browser's: above) */
+static void browser_update(struct widget_instance *list)
+{
+	struct widget_instance *row;
+	struct menu_table_view view;
+	struct browser_row shown;
+	short index;
+
+	/* (the browsers' keys, while one is shown: Tab sorts, E is the next tab
+	alone; halo_keyboard_browser_keys) */
+	halo_keyboard_browser_keys();
+	/* (the Party screen may open over it: a party's link joined by JOIN BY
+	LINK, party_menu.inc) */
+	party_screen_noted(list);
+	if (multiplayer.mode == _multiplayer_mode_server_browser)
+	{
+		lobby_browser_update(list);
+		return;
+	}
+	browser_searches_show(list);
+	browser_view_of(list, &view);
+	local_browser_model(&view);
+	browser_view_apply(list, &view);
+	for (row = list->child; row; row = row->next)
+	{
+		short row_index = browser_row_index(row);
+
+		if (row_index == NONE)
+			continue;
+		index = (short)(multiplayer.game_first + row_index);
+		row->visible = index < view.count;
+		if (index >= view.count)
+			continue;
+		if (index >= multiplayer.game_count)
+			browser_offline_row(browser_favorites_get(browser_offline[index - multiplayer.game_count]), &shown);
+		else
+			browser_advertised_row(multiplayer.games[index], &shown);
+		browser_row_show(row, row_index, &shown, index < multiplayer.game_count && browser_listed_favorite[index]);
+	}
+	browser_panel_show(list, browser_display.row_shown ? &browser_display.row : NULL, browser_display.title,
+		browser_display.status);
+	browser_header_show(list, browser_display.games, browser_display.players, browser_display.rows,
+		browser_display.empty);
+	browser_clear_show(list, browser_display.rows);
 	browser_focus(list, browser_chosen_row());
 }
 
@@ -11582,14 +11885,24 @@ static boolean browser_refresh(struct widget_instance *widget, short controller,
 
 /* "gamespy select item" (a row: chooses its game, or joins it once chosen)
 and "gamespy select button" (Join) */
+static boolean browser_select_row(struct widget_instance *widget, short controller, short row, boolean button,
+	boolean *widget_deleted);
+
 static boolean browser_select(struct widget_instance *widget, struct event_record *event, short controller,
 	boolean *widget_deleted)
 {
 	short row = browser_row_index(widget);
 
+	(void)event;
 	if (row != NONE && !lobby_browser.ready && browser_click_on_star(widget))
 		return browser_favorite_toggle(row);
+	return browser_select_row(widget, controller, row, strstr(widget->name, "button_join") != NULL, widget_deleted);
+}
 
+/* ... its row's (0 up, on the list: NONE for JOIN GAME's, button) */
+static boolean browser_select_row(struct widget_instance *widget, short controller, short row, boolean button,
+	boolean *widget_deleted)
+{
 	/* (a row not chosen, clicked after the pointer passed over it: chosen,
 	as Custom Edition's; a click on it chosen, a double click, A or JOIN
 	joins its game. Not the A press a join posts: lobby_browser_select) */
@@ -11603,10 +11916,10 @@ static boolean browser_select(struct widget_instance *widget, struct event_recor
 		return TRUE;
 	}
 	if (multiplayer.mode == _multiplayer_mode_server_browser)
-		return lobby_browser_select(widget, controller, row, widget_deleted);
+		return lobby_browser_select(widget, controller, row, button, widget_deleted);
 	if (row != NONE)
 		multiplayer.game_chosen = (short)(multiplayer.game_first + row);
-	if (row != NONE || strstr(widget->name, "button_join"))
+	if (row != NONE || button)
 	{
 		/* (a game under way: its lobby first, then JOIN GAME) */
 		if (multiplayer.game_chosen < multiplayer.game_count &&
@@ -11626,21 +11939,720 @@ static boolean browser_select(struct widget_instance *widget, struct event_recor
 	return TRUE;
 }
 
+/* ---- the hand-written browser's (screens/browser.xml: menu_screen.c and
+menu_table.h): the browsers' model as a table's row source, its bindings and
+actions */
+
+static void text_utf8(wchar_t const *text, char *out, long size);
+
+/* the row of the list's index (a game found, or a favorite offline) as the
+rows and the panel show it, and whether it is a favorite; FALSE for none */
+static boolean browser_source_row(short index, struct browser_row *row, boolean *favorite)
+{
+	boolean server_browser = multiplayer.mode == _multiplayer_mode_server_browser;
+	short count = server_browser ? lobby_browser.count : multiplayer.game_count;
+
+	*favorite = FALSE;
+	if (index < 0 || index >= count + browser_offline_count || (server_browser && lobby_browser_heading(index)))
+		return FALSE;
+	if (index >= count)
+		browser_offline_row(browser_favorites_get(browser_offline[index - count]), row);
+	else if (server_browser)
+		browser_listing_row(&lobby_browser.games[index], row);
+	else
+		browser_advertised_row(multiplayer.games[index], row);
+	*favorite = (index < count && browser_listed_favorite[index]) || row->offline;
+	return TRUE;
+}
+
+static void browser_source_update(struct menu_table_view *view)
+{
+	halo_keyboard_browser_keys();
+	if (view->screen)
+		party_screen_noted(view->screen);
+	if (multiplayer.mode == _multiplayer_mode_server_browser)
+		lobby_browser_model(view);
+	else
+		local_browser_model(view);
+}
+
+static int browser_source_heading(short index, unsigned short *words, short size)
+{
+	if (multiplayer.mode != _multiplayer_mode_server_browser || !lobby_browser_heading(index))
+		return FALSE;
+	settings_wide_copy((wchar_t *)words, browser_group_heading((short)(lobby_browser.headed[index] - 1)), size);
+	return TRUE;
+}
+
+/* a colour of menu_functions.c's (0xRRGGBBFF) for a cell */
+static void browser_source_cell(short index, char const *column, int focused, struct menu_table_cell *cell)
+{
+	static short cached_index = NONE;
+	static unsigned long cached_frame;
+	static struct browser_row row;
+	static boolean favorite, found;
+	wchar_t *text = (wchar_t *)cell->text;
+
+	/* (a row read once for its cells) */
+	if (index != cached_index || cached_frame != system_milliseconds())
+	{
+		found = browser_source_row(index, &row, &favorite);
+		cached_index = index;
+		cached_frame = system_milliseconds();
+	}
+	cell->frame = NONE;
+	if (!found)
+		return;
+	if (row.offline)
+		cell->color = PLAYERS_COLOR_CLOSED;
+	if (!strcmp(column, "favorite"))
+		cell->frame = (short)(row.offline ? 2 : favorite ? 1 : focused ? 3 : 0);
+	else if (!strcmp(column, "server"))
+	{
+		settings_wide_copy(text, row.name, MENU_TABLE_TEXT_LENGTH);
+		if (row.openh1 && !row.offline)
+		{
+			usnprintf((wchar_t *)cell->badge, MENU_TABLE_BADGE_LENGTH - 1, L"%d", row.rate);
+			cell->badge[MENU_TABLE_BADGE_LENGTH - 1] = 0;
+		}
+		cell->lock = row.locked;
+	}
+	else if (!strcmp(column, "map"))
+		settings_wide_copy(text, row.map, MENU_TABLE_TEXT_LENGTH);
+	else if (!strcmp(column, "mode"))
+		settings_wide_copy(text, row.mode, MENU_TABLE_TEXT_LENGTH);
+	else if (!strcmp(column, "players"))
+	{
+		if (row.offline)
+			usnprintf(text, MENU_TABLE_TEXT_LENGTH - 1, L"OFFLINE");
+		else
+			usnprintf(text, MENU_TABLE_TEXT_LENGTH - 1, L"%d/%d", row.players, row.maximum_players);
+		text[MENU_TABLE_TEXT_LENGTH - 1] = 0;
+		if ((!row.open && !row.offline) || row.party_room == _browser_party_no_room)
+			cell->color = PLAYERS_COLOR_CLOSED;
+	}
+	else if (!strcmp(column, "ping"))
+	{
+		short ping = row.ping_state == _browser_ping_measured ? row.ping : -1;
+
+		if (row.offline)
+		{
+			text[0] = 0;
+			return;
+		}
+		browser_ping_cell(row.ping_state, row.ping, text, MENU_TABLE_TEXT_LENGTH);
+		cell->frame = browser_ping_bars(ping);
+		if (ping >= 0 || row.ping_state == _browser_ping_measuring)
+			cell->color = ping < 0 ? PING_COLOR_MEASURING : ping < PING_GOOD ? PING_COLOR_GOOD : ping < PING_FAIR ?
+				PING_COLOR_FAIR : PING_COLOR_POOR;
+	}
+}
+
+struct menu_table_source const pc_menu_browser_source =
+{
+	browser_source_update, browser_source_heading, browser_source_cell,
+};
+
+/* the panel's line of where the game is: its map and mode, and its
+gametype's own name if it has another */
+static void browser_where_text(struct browser_row const *row, wchar_t *text, short size)
+{
+	if (row->gametype[0] && browser_wide_compare(row->gametype, row->mode))
+		usnprintf(text, size - 1, L"%s \x00B7 %s (%s)", row->map, row->mode, row->gametype);
+	else
+		usnprintf(text, size - 1, L"%s \x00B7 %s", row->map, row->mode);
+	text[size - 1] = 0;
+}
+
+int pc_menu_browser_value(char const *name, char *value, unsigned long size)
+{
+	wchar_t text[SETTINGS_PANEL_TEXT_LENGTH];
+	struct browser_row const *row = browser_display.row_shown ? &browser_display.row : NULL;
+	boolean link = multiplayer.mode == _multiplayer_mode_direct_link;
+	short index;
+
+	text[0] = 0;
+	value[0] = 0;
+	if (!strcmp(name, "browser.title"))
+	{
+		settings_wide_copy(text, multiplayer.mode == _multiplayer_mode_lan ? L"LOCAL NETWORK" : link ?
+			L"JOIN BY LINK" : L"SERVER BROWSER", NUMBEROF(text));
+	}
+	else if (!strcmp(name, "browser.counts"))
+	{
+		short games = browser_display.games;
+		long players = browser_display.players;
+
+		/* (as the generated list's: browser_header_show) */
+		if (browser_filtering && browser_filtered_count > 0)
+		{
+			usnprintf(text, NUMBEROF(text) - 1, L"%d OF %d GAMES    %ld %s", games, games + browser_filtered_count,
+				players, players == 1 ? L"PLAYER" : L"PLAYERS");
+		}
+		else
+		{
+			usnprintf(text, NUMBEROF(text) - 1, L"%d %s    %ld %s", games, games == 1 ? L"GAME" : L"GAMES", players,
+				players == 1 ? L"PLAYER" : L"PLAYERS");
+		}
+	}
+	else if (!strcmp(name, "browser.empty"))
+		settings_wide_copy(text, browser_display.empty, NUMBEROF(text));
+	else if (!strcmp(name, "browser.searched"))
+	{
+		if (browser_display.rows == 0 && browser_searched_count > 0 && !link)
+			settings_wide_copy(text, L"1", NUMBEROF(text));
+	}
+	else if (!strcmp(name, "browser.host"))
+		settings_wide_copy(text, pc_menu_browser_visit_kind() == 2 ? L"HOST CO-OP" : L"HOST & MORE", NUMBEROF(text));
+	else if (!strcmp(name, "browser.tab"))
+		snprintf(value, size, "%s", browser_tab_words[PIN(browser_tab, 0, NUMBER_OF_BROWSER_TABS - 1)]);
+	else if (!strcmp(name, "browser.sort"))
+		snprintf(value, size, "%s %s", browser_sort_words[PIN(browser_sort_column, 0, NUMBER_OF_BROWSER_SORTS - 1)],
+			browser_sort_descending ? "down" : "up");
+	else if (!strcmp(name, "browser.sort.title"))
+		settings_wide_copy(text, browser_sorts[PIN(browser_sort_column, 0, NUMBER_OF_BROWSER_SORTS - 1)].title,
+			NUMBEROF(text));
+	else if (!strncmp(name, "browser.search.", 15))
+	{
+		for (index = 0; index < NUMBER_OF_BROWSER_SEARCHES; index++)
+		{
+			if (!strcmp(name + 15, browser_search_columns[index]) ||
+				(index == _browser_search_server && !strcmp(name + 15, "server")))
+				snprintf(value, size, "%s", browser_searches[index]);
+		}
+	}
+	else if (!strcmp(name, "browser.panel.title"))
+		settings_wide_copy(text, row ? row->name : browser_display.title, NUMBEROF(text));
+	else if (!strcmp(name, "browser.panel.status"))
+		settings_wide_copy(text, browser_display.status, NUMBEROF(text));
+	else if (!strcmp(name, "browser.panel.where") && row)
+		browser_where_text(row, text, NUMBEROF(text));
+	else if (!strcmp(name, "browser.panel.kind") && row && !row->offline)
+		settings_wide_copy(text, row->openh1 ? L"GOAT H1" : L"LEGACY", NUMBEROF(text));
+	else if (!strcmp(name, "browser.panel.kind.tone") && row)
+		settings_wide_copy(text, row->openh1 ? L"0" : L"1", NUMBEROF(text));
+	else if (!strcmp(name, "browser.panel.tick") && row && !row->offline)
+		usnprintf(text, NUMBEROF(text) - 1, L"%d TICK", row->rate ? row->rate : 30);
+	else if (!strcmp(name, "browser.panel.opence") && row && !row->offline && (!row->openh1 || row->mixed))
+		settings_wide_copy(text, L"OPENCE CAN JOIN", NUMBEROF(text));
+	else if (!strcmp(name, "browser.panel.players") && row)
+	{
+		if (row->offline)
+			usnprintf(text, NUMBEROF(text) - 1, L"Offline");
+		else if (row->bots)
+			usnprintf(text, NUMBEROF(text) - 1, L"%d/%d \x00B7 %d BOT%s", row->players, row->maximum_players,
+				row->bots, row->bots == 1 ? L"" : L"S");
+		else
+			usnprintf(text, NUMBEROF(text) - 1, L"%d/%d", row->players, row->maximum_players);
+	}
+	else if (!strcmp(name, "browser.panel.ping") && row)
+		browser_ping_text(row, text, NUMBEROF(text));
+	else if (!strcmp(name, "browser.joinable"))
+	{
+		if (row && !row->offline)
+			settings_wide_copy(text, L"1", NUMBEROF(text));
+	}
+	else if (!strcmp(name, "browser.server"))
+	{
+		if (multiplayer.mode == _multiplayer_mode_server_browser)
+			settings_wide_copy(text, L"1", NUMBEROF(text));
+	}
+	else if (!strcmp(name, "browser.link"))
+	{
+		if (link)
+			settings_wide_copy(text, L"1", NUMBEROF(text));
+	}
+	else if (!strcmp(name, "browser.filtered"))
+	{
+		if (!link)
+			settings_wide_copy(text, L"1", NUMBEROF(text));
+	}
+	else
+		return FALSE;
+	text[NUMBEROF(text) - 1] = 0;
+	if (text[0])
+		text_utf8(text, value, (long)size);
+	return value[0] != 0;
+}
+
+void pc_menu_browser_search_set(char const *name, char const *text)
+{
+	short index;
+
+	if (!name || strncmp(name, "browser.search.", 15))
+		return;
+	for (index = 0; index < NUMBER_OF_BROWSER_SEARCHES; index++)
+	{
+		if (!strcmp(name + 15, browser_search_columns[index]) ||
+			(index == _browser_search_server && !strcmp(name + 15, "server")))
+			snprintf(browser_searches[index], sizeof(browser_searches[0]), "%s", text ? text : "");
+	}
+}
+
+boolean pc_menu_browser_tab(char const *word)
+{
+	return browser_tab_choose(browser_word_index(word, browser_tab_words, NUMBER_OF_BROWSER_TABS));
+}
+
+boolean pc_menu_browser_sort(char const *word)
+{
+	if (!word)
+		return browser_sort_choose(_browser_sort_players, TRUE);
+	return browser_sort_choose(browser_word_index(word, browser_sort_words, NUMBER_OF_BROWSER_SORTS), FALSE);
+}
+
+boolean pc_menu_browser_favorite(short row)
+{
+	return browser_favorite_toggle(row);
+}
+
+boolean pc_menu_browser_select(struct widget_instance *widget, struct event_record *event, short row,
+	boolean *deleted)
+{
+	*deleted = FALSE;
+	return browser_select_row(widget, event_controller(widget, event), row, row == NONE, deleted);
+}
+
+/* ---- the hand-written Select Profile's (screens/profile_select.xml:
+menu_screen.c and menu_table.h): the profile list's model (profile_list, as
+the generated screen's list has it: "3wide player profile list update") as a
+table's row source, the chosen profile's details as the profile.* bindings,
+and the row an action is for chosen. The chosen row is the focused one, as
+the generated list's description follows its focus */
+
+static struct
+{
+	/* (the screen opened: its first frame puts the focus on the chosen row) */
+	boolean opened;
+} profile_source;
+
+static void profile_source_opened(void)
+{
+	profile_source.opened = TRUE;
+	profile_list_read(TRUE);
+}
+
+static void profile_source_update(struct menu_table_view *view)
+{
+	short shown = view->shown, focused = view->focused;
+	short rows;
+
+	profile_list_read(FALSE);
+	rows = (short)(profile_list.count + 1);
+	/* (as it opens: player 1's profile chosen, in the table's middle) */
+	if (profile_source.opened && shown)
+	{
+		profile_source.opened = FALSE;
+		profile_list_open(shown);
+		focused = (short)(profile_list.chosen - profile_list.first);
+		view->focus = focused;
+	}
+	/* (the focus kept off the table's ends while there is more past them,
+	the rows moving instead: list_scroll's) */
+	if (focused == shown - 1 && profile_list.first + shown < rows && list_scrolls_at_end())
+	{
+		profile_list.first++;
+		view->focus = --focused;
+	}
+	else if (focused == 0 && profile_list.first > 0 && list_scrolls_at_end())
+	{
+		profile_list.first--;
+		view->focus = ++focused;
+	}
+	profile_list.first = (short)PIN(profile_list.first, 0, MAX(0, rows - shown));
+	if (focused != NONE && focused >= 0 && focused < shown)
+		profile_list.chosen = (short)PIN(profile_list.first + focused, 0, rows - 1);
+	profile_list.chosen = (short)PIN(profile_list.chosen, 0, rows - 1);
+	view->count = rows;
+	view->first = profile_list.first;
+	view->chosen = profile_list.chosen;
+}
+
+static int profile_source_heading(short index, unsigned short *words, short size)
+{
+	(void)index;
+	(void)words;
+	(void)size;
+	return FALSE;
+}
+
+/* a row's name: its profile's, or the row that makes one's words (the
+generated list's: profile_row_text) */
+static void profile_source_cell(short index, char const *column, int focused, struct menu_table_cell *cell)
+{
+	wchar_t text[ROW_TEXT_LENGTH];
+
+	(void)focused;
+	cell->frame = NONE;
+	if (strcmp(column, "name") || index < 0 || index > profile_list.count)
+		return;
+	profile_row_text((short)(index - profile_list.first), text);
+	settings_wide_copy((wchar_t *)cell->text, text, MENU_TABLE_TEXT_LENGTH);
+}
+
+struct menu_table_source const pc_menu_profile_source =
+{
+	profile_source_update, profile_source_heading, profile_source_cell, profile_source_opened,
+};
+
+/* a profile.* binding's value (UTF-8; nonzero if it has one): the chosen
+row's profile's name, current level, best difficulty, controls and color
+(the generated screen's description's: profile_list_update), the row's
+title, whether a profile is chosen, and player 1's profile's name */
+int pc_menu_profile_value(char const *name, char *value, unsigned long size)
+{
+	wchar_t text[ROW_TEXT_LENGTH];
+	struct player_profile const *chosen = profile_list.chosen < profile_list.count ?
+		&profile_list.profiles[profile_list.chosen] : NULL;
+
+	text[0] = 0;
+	value[0] = 0;
+	if (!strcmp(name, "profile.title"))
+	{
+		if (chosen)
+			settings_wide_copy(text, chosen->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1);
+		else
+			profile_row_text((short)(profile_list.chosen - profile_list.first), text);
+	}
+	else if (!strcmp(name, "profile.current"))
+	{
+		struct player_profile const *current = profile_current();
+
+		if (current)
+			settings_wide_copy(text, current->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1);
+	}
+	else if (!chosen)
+		return FALSE;
+	else if (!strcmp(name, "profile.name"))
+		settings_wide_copy(text, chosen->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1);
+	else if (!strcmp(name, "profile.chosen"))
+		snprintf(value, size, "yes");
+	else if (!strcmp(name, "profile.color"))
+	{
+		if (chosen->primary_color_index >= 0 && chosen->primary_color_index < COLOR_COUNT)
+			snprintf(value, size, "%d", chosen->primary_color_index);
+		else
+			snprintf(value, size, "random");
+	}
+	else if (!strcmp(name, "profile.level"))
+	{
+		string_get("pc\\main_menu\\map_list",
+			(short)PIN(chosen->last_single_player_map_played, 0, NUMBER_OF_SINGLE_PLAYER_LEVELS - 1), text);
+	}
+	else if (!strcmp(name, "profile.difficulty"))
+	{
+		short level, difficulty;
+
+		player_profile_get_highest_completed_solo_level((struct player_profile *)chosen, &level, &difficulty);
+		if (level != NONE)
+			string_get("pc\\main_menu\\player_profiles_select\\difficulty_names", difficulty, text);
+	}
+	else if (!strcmp(name, "profile.controls"))
+	{
+		string_get("pc\\main_menu\\player_profiles_select\\joystick_set_defaults_descriptions",
+			(short)(chosen->controller_settings.invert_look ? 1 : 0), text);
+	}
+	else
+		return FALSE;
+	text[NUMBEROF(text) - 1] = 0;
+	if (text[0])
+		text_utf8(text, value, (long)size);
+	return value[0] != 0;
+}
+
+/* "profile select" (A, a click or a tap on a row, or OK): the row's
+profile (the chosen one's, for NONE) made player 1's, as the generated
+list's "profile manager select"; FALSE for the row that makes one */
+int pc_menu_profile_choose(struct widget_instance *widget, struct event_record *event, short row)
+{
+	if (row != NONE)
+		profile_list.chosen = (short)PIN(profile_list.first + row, 0, profile_list.count);
+	return profile_choose(event_controller(widget, event));
+}
+
+/* ---- the hand-written Profile Color's (screens/profile_color.xml:
+menu_screen.c and menu_table.h): the profile's colors as a table's row
+source, the PC version's picker's 18 (colors_list's names, in their colors)
+and after them Random (the profile's color NONE: a new profile's, the host
+giving the player a color no one else has, network_server_manager.c's
+get_unique_random_color); the focused row's color as the color.* bindings,
+and the row an action is for chosen for the profile being edited. The chosen
+row is the focused one, as Select Profile's */
+
+#define COLOR_RANDOM_ROW COLOR_COUNT
+#define COLOR_SOURCE_ROWS (COLOR_COUNT + 1)
+
+static struct
+{
+	/* (the screen opened: its first frame puts the focus on the profile's
+	color) */
+	boolean opened;
+	short first;
+	short chosen;
+} color_source;
+
+/* a profile color's row: its own, Random's for NONE (or one past the
+colors) */
+static short color_source_row(short color)
+{
+	return color >= 0 && color < COLOR_COUNT ? color : COLOR_RANDOM_ROW;
+}
+
+/* the row of the edited profile's color: NONE without a profile */
+static short color_source_saved(void)
+{
+	struct player_profile const *profile = player_ui_get_edit_player_profile();
+
+	return profile ? color_source_row(profile->primary_color_index) : NONE;
+}
+
+static void color_source_name(short row, wchar_t *text)
+{
+	if (row == COLOR_RANDOM_ROW)
+		settings_wide_copy(text, L"Random", ROW_TEXT_LENGTH);
+	else
+	{
+		string_get("pc\\main_menu\\settings_select\\player_setup\\player_profile_edit\\color_edit\\colors_list",
+			row, text);
+	}
+}
+
+static void color_source_opened(void)
+{
+	color_source.opened = TRUE;
+}
+
+static void color_source_update(struct menu_table_view *view)
+{
+	short shown = view->shown, focused = view->focused;
+	short rows = COLOR_SOURCE_ROWS;
+
+	/* (as it opens: the profile's color chosen, the table from its top
+where the focus is on it (off its last row, which would scroll), else the
+chosen row in its middle) */
+	if (color_source.opened && shown)
+	{
+		short saved = color_source_saved();
+
+		color_source.opened = FALSE;
+		color_source.chosen = saved != NONE ? saved : 0;
+		color_source.first = color_source.chosen < shown - 1 ? 0 :
+			(short)PIN(color_source.chosen - shown / 2, 0, MAX(0, rows - shown));
+		focused = (short)(color_source.chosen - color_source.first);
+		view->focus = focused;
+	}
+	/* (the focus kept off the table's ends while there is more past them,
+	the rows moving instead: list_scroll's) */
+	if (focused == shown - 1 && color_source.first + shown < rows && list_scrolls_at_end())
+	{
+		color_source.first++;
+		view->focus = --focused;
+	}
+	else if (focused == 0 && color_source.first > 0 && list_scrolls_at_end())
+	{
+		color_source.first--;
+		view->focus = ++focused;
+	}
+	color_source.first = (short)PIN(color_source.first, 0, MAX(0, rows - shown));
+	if (focused != NONE && focused >= 0 && focused < shown)
+		color_source.chosen = (short)(color_source.first + focused);
+	color_source.chosen = (short)PIN(color_source.chosen, 0, rows - 1);
+	view->count = rows;
+	view->first = color_source.first;
+	view->chosen = color_source.chosen;
+}
+
+static int color_source_heading(short index, unsigned short *words, short size)
+{
+	(void)index;
+	(void)words;
+	(void)size;
+	return FALSE;
+}
+
+/* a row's swatch (its frame: the color's, Random's after them) and its
+name in its color (black's lifted to a grey, to be read, as the <colors>
+items'; Random's the table's own) */
+static void color_source_cell(short index, char const *column, int focused, struct menu_table_cell *cell)
+{
+	wchar_t text[ROW_TEXT_LENGTH];
+
+	(void)focused;
+	cell->frame = NONE;
+	if (index < 0 || index >= COLOR_SOURCE_ROWS)
+		return;
+	if (!strcmp(column, "swatch"))
+		cell->frame = index;
+	else if (!strcmp(column, "name"))
+	{
+		color_source_name(index, text);
+		settings_wide_copy((wchar_t *)cell->text, text, MENU_TABLE_TEXT_LENGTH);
+		if (index != COLOR_RANDOM_ROW)
+		{
+			real_rgb_color rgb = player_profile_get_rgb_color(index);
+
+			cell->color = ((unsigned long)(MAX(rgb.red, 0.3f) * 255.0f + 0.5f) << 24) |
+				((unsigned long)(MAX(rgb.green, 0.3f) * 255.0f + 0.5f) << 16) |
+				((unsigned long)(MAX(rgb.blue, 0.3f) * 255.0f + 0.5f) << 8) | 0xFFUL;
+		}
+	}
+}
+
+struct menu_table_source const pc_menu_color_source =
+{
+	color_source_update, color_source_heading, color_source_cell, color_source_opened,
+};
+
+/* a color.* binding's value (UTF-8; nonzero if it has one): the edited
+profile's name, the chosen row's color's name, its word for a <spartan>
+(its number, or random), Current color while it is the profile's own, and a line
+of what it does */
+int pc_menu_color_value(char const *name, char *value, unsigned long size)
+{
+	wchar_t text[ROW_TEXT_LENGTH];
+	struct player_profile const *profile = player_ui_get_edit_player_profile();
+	short chosen = (short)PIN(color_source.chosen, 0, COLOR_SOURCE_ROWS - 1);
+
+	text[0] = 0;
+	value[0] = 0;
+	if (!strcmp(name, "color.profile"))
+	{
+		if (profile)
+			settings_wide_copy(text, profile->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1);
+	}
+	else if (!strcmp(name, "color.title"))
+		color_source_name(chosen, text);
+	else if (!strcmp(name, "color.spartan"))
+	{
+		if (chosen == COLOR_RANDOM_ROW)
+			snprintf(value, size, "random");
+		else
+			snprintf(value, size, "%d", chosen);
+	}
+	else if (!strcmp(name, "color.current"))
+	{
+		if (chosen == color_source_saved())
+			snprintf(value, size, "Current color");
+	}
+	else if (!strcmp(name, "color.about"))
+	{
+		snprintf(value, size, "%s", chosen == COLOR_RANDOM_ROW ?
+			"Each game picks a color no one else has." : "Your armor in multiplayer games.");
+	}
+	else
+		return FALSE;
+	text[NUMBEROF(text) - 1] = 0;
+	if (text[0])
+		text_utf8(text, value, (long)size);
+	return value[0] != 0;
+}
+
+/* "profile color" (A, a click or a tap on a row, or SELECT): the row's
+color (the chosen one's, for NONE) made the edited profile's, as the PC
+version's picker's player_profile_color_picker_select_color (Random: NONE,
+a new profile's); FALSE with no profile being edited */
+int pc_menu_color_choose(short row)
+{
+	struct player_profile *profile = player_ui_get_edit_player_profile();
+
+	if (row != NONE)
+		color_source.chosen = (short)PIN(color_source.first + row, 0, COLOR_SOURCE_ROWS - 1);
+	if (!profile)
+		return FALSE;
+	profile->primary_color_index = color_source.chosen == COLOR_RANDOM_ROW ? (short)NONE : color_source.chosen;
+	return TRUE;
+}
+
+/* ---- the hand-written screens' (menu_screen.c and menu_table.h): the text
+fields and text of the menus', for their searches and their tables */
+
+void pc_menu_text_field_begin(struct widget_instance *field, char const *text, short maximum,
+	void (*done)(char const *text))
+{
+	text_field_begin(field, text, maximum, done);
+	text_field.enter_ends = TRUE;
+}
+
+int pc_menu_text_field_editing(struct widget_instance *field)
+{
+	return text_field_editing(field);
+}
+
+void pc_menu_text_field_end(int keep)
+{
+	text_field_end(keep != 0);
+}
+
+void pc_menu_text_field_show(struct widget_instance *field, char const *text, int editing)
+{
+	text_field_show(field, text, editing != 0);
+}
+
+char const *pc_menu_text_field_words(void)
+{
+	return text_field.text;
+}
+
+short pc_menu_text_fit(struct widget_instance *box, unsigned short const *text, short width)
+{
+	wchar_t fitted[ROW_TEXT_LENGTH];
+	short box_width;
+	long font = ui_widget_port_text_box_font(box, &box_width);
+
+	if (!box)
+		return 0;
+	menu_text_fit(font, (wchar_t const *)text, fitted, NUMBEROF(fitted), width > 0 ? width : box_width);
+	text_set(box, fitted);
+	return font != NONE ? settings_text_width(font, fitted) : 0;
+}
+
+void pc_menu_text_wrap(struct widget_instance *box, unsigned short const *text, short width, short lines)
+{
+	menu_text_box_wrap_width(box, (wchar_t const *)text, lines, width);
+}
+
+short pc_menu_text_lines(struct widget_instance *box, unsigned short const *text, short width, short lines)
+{
+	wchar_t wrapped[SETTINGS_PANEL_TEXT_LENGTH];
+	short box_width;
+	long font = ui_widget_port_text_box_font(box, &box_width);
+
+	if (!box || !text || !text[0])
+		return 0;
+	return (short)MIN(settings_text_wrap((wchar_t const *)text, wrapped, NUMBEROF(wrapped), font,
+		width > 0 ? width : box_width), lines);
+}
+
+short pc_menu_text_width(struct widget_instance *box, unsigned short const *text)
+{
+	short width;
+	long font = ui_widget_port_text_box_font(box, &width);
+
+	return font != NONE && text ? settings_text_width(font, (wchar_t const *)text) : 0;
+}
+
 /* "player profile save changes" (Settings' OK, the profile being edited):
-saved if it has changes, as the Xbox's (the saving screen follows); if it
-has none (the settings' own screens write theirs to config.toml as their OK
-is chosen), editing ends and the previous screen comes back, as CANCEL
-(the Xbox's called that a failure, and closed every screen) */
+saved if it has changes, as the Xbox's; if it has none (the settings' own
+screens write theirs to config.toml as their OK is chosen), editing ends.
+Either way the previous screen comes back, as CANCEL (the Xbox's called no
+changes a failure, and closed every screen). The Xbox's saving screen
+followed a save, and the screen came back after it only to close itself,
+no longer editing ("close if not editing profile"): the save takes a few
+hundredths of a second here (saving_screens.c) */
 static boolean profile_save_changes(struct widget_instance *widget, boolean *widget_deleted)
 {
 	if (player_ui_edit_profile_is_dirty())
 	{
-		if (player_ui_save_profile())
-			return TRUE;
-		platform_log("menus: could not save the profile's changes");
-		return campaign_fail();
+		if (!player_ui_save_profile())
+		{
+			platform_log("menus: could not save the profile's changes");
+			return campaign_fail();
+		}
 	}
-	player_ui_end_editing_profile();
+	else
+	{
+		player_ui_end_editing_profile();
+	}
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
 	ui_widget_port_go_back(widget);
 	*widget_deleted = TRUE;
@@ -11773,6 +12785,36 @@ static boolean coop_friendly_fire_change(void)
 		platform_log("menus: could not write network.coop_own_friendly_fire to config.toml");
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
 	return TRUE;
+}
+
+/* "port settings profile": Settings' band's right, the profile it edits:
+PROFILE: and its name, as Select Profile's band has player 1's; in a split
+screen game, the player whose it is, PLAYER 2 and its name; nothing with no
+profile. Each frame, so a profile chosen or renamed shows at once */
+static void settings_profile_text(struct widget_instance *widget)
+{
+	struct player_profile const *profile = player_ui_get_edit_player_profile();
+	wchar_t text[ROW_TEXT_LENGTH];
+	wchar_t name[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1];
+	char prefix[32];
+	long length = 0, index;
+
+	text[0] = 0;
+	if (profile)
+	{
+		settings_wide_copy(name, profile->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH + 1);
+		name[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
+		if (!main_menu_is_active() && players_port_local_player_count() > 1)
+			snprintf(prefix, sizeof(prefix), "PLAYER %d \xB7 ", settings_local_player + 1);
+		else
+			snprintf(prefix, sizeof(prefix), "PROFILE: ");
+		for (index = 0; prefix[index] && length < ROW_TEXT_LENGTH - 1; index++)
+			text[length++] = (wchar_t)(unsigned char)prefix[index];
+		for (index = 0; name[index] && length < ROW_TEXT_LENGTH - 1; index++)
+			text[length++] = name[index];
+		text[length] = 0;
+	}
+	text_set(widget, text);
 }
 
 /* "port coop friendly fire text": the button's text, ON or OFF */
@@ -13378,6 +14420,14 @@ boolean pc_menu_event_function_invoke(
 		{
 			return menu_screen_do(widget, event, widget_deleted);
 		}
+		else if (!strcmp(name, "port screen key"))
+		{
+			return menu_screen_key(widget, event, widget_deleted, controller);
+		}
+		else if (!strcmp(name, "port screen left") || !strcmp(name, "port screen right"))
+		{
+			return menu_screen_step(widget, event, widget_deleted, (short)(!strcmp(name, "port screen left") ? -1 : 1));
+		}
 		else if (!strcmp(name, "profile set edit begin"))
 		{
 			return profile_edit_begin(widget, event, widget_deleted);
@@ -13427,7 +14477,7 @@ boolean pc_menu_event_function_invoke(
 				/* (said on the screen too: not a silent dead end) */
 				display_error_text_deferred(player_ui_get_active_player_profile_index(0) == NONE ?
 					L"Choose a player profile\r\nfirst (Profiles, on the\r\nmain menu)." :
-					L"Couldn't start the game.\r\nClose any other copy of\r\nOpenH1 or Halo, then try\r\nagain.",
+					L"Couldn't start the game.\r\nClose any other copy of\r\nGOAT H1 or Halo, then try\r\nagain.",
 					NONE);
 				return campaign_fail();
 			}
@@ -14045,6 +15095,8 @@ void pc_menu_game_data_function_invoke(
 		profile_gamepad_layout(widget);
 	else if (!strcmp(name, "port coop friendly fire text"))
 		coop_friendly_fire_text(widget);
+	else if (!strcmp(name, "port settings profile"))
+		settings_profile_text(widget);
 	else if (!strcmp(name, "port multiplayer status"))
 		multiplayer_status_update(widget);
 	else if (!strcmp(name, "port party update"))

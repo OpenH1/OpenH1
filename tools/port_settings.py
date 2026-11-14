@@ -413,6 +413,9 @@ SETTINGS_STILL_RADIUS, SETTINGS_STILL_RIM = 4.75, 1.5
 SETTINGS_PICTURE_RIM = "#2995ff"
 SETTINGS_BLUE = "#FF2896FF"
 SETTINGS_DIM = "#FF6F9CD0"
+# the profile Settings edits, in its title's band: its words' box, at the band's right (as the hand-written
+# screens' <header detail=>: menu_screen_tall.inc's TALL_DETAIL_X and _Y)
+SETTINGS_PROFILE_X, SETTINGS_PROFILE_Y, SETTINGS_PROFILE_WIDTH = 372, 11, 240
 SETTINGS = "main_menu/settings"
 SETTINGS_TITLE = f"{SETTINGS}/header_settings"
 # (Settings' tabs' prompts, its own: _settings_shared)
@@ -520,9 +523,15 @@ SEGMENT_NOT = {"display.vrr", "display.resolution", "display.window_size", "disp
 #   at 16:9 and wider, in between on a screen between them (menu_tags.c's pc_menu_text_scale); laid out in its
 #   font and drawn larger by the high-res text's distance fields (rasterizer_text_set_scale), about its box's
 #   middle
+# - on a touchscreen, the footer raised TALL_FOOT_LIFT (tall_foot): its line (TALL_BACKGROUND's _touch picture), what
+#   is placed in its band (flagged foot) and the panels that reach down to it (flagged above_foot, the lift shorter,
+#   their pictures' _touch), so that its prompts' words clear a phone's safe area at the screen's foot
 # Settings' tabs and pages are laid out in it (SETTINGS_TALL); another screen opts in by writing its widgets in
 # it too (tall_widgets).
 TALL_BAND, TALL_FOOTER = 40, 37
+# (the footer's prompts' words end 11 units above the screen's foot, a phone's safe area there 25.6: menu_tags.c's
+# TALL_FOOT_LIFT, menu_layout.c's MENU_LAYOUT_PHONE_FOOT)
+TALL_FOOT_LIFT = 16
 TALL_BACKGROUND = "main_menu/parts/background_tall"
 TALL_TITLE_SCALE = 1.4
 # (the words of the titles that are the PC version's pictures, not TITLES')
@@ -535,6 +544,40 @@ PAST_HALF = PAST_EXTRA // 2
 def past(dx: float = 0, dw: float = 0):
     """a widget's past attribute: moved dx, dw wider, on a 21:9 screen past 16:9 (None: neither)"""
     return f"{round(dx)} {round(dw)}" if round(dx) or round(dw) else None
+
+
+def touch_picture(name: str) -> str:
+    """the picture a look's picture is on a touchscreen, where the menus have it (menu_tags.c's look_make): the
+    tall layout's drawn for its footer's lift"""
+    return f"{name}_touch"
+
+
+def _flagged(element, flag: str) -> None:
+    flags = (element.get("flags") or "").split()
+    if flag not in flags:
+        element.set("flags", " ".join([*flags, flag]))
+
+
+def tall_foot(widgets: dict) -> None:
+    """the tall layout's footer raised on a touchscreen (TALL_FOOT_LIFT), in widgets (<widget> elements by name, all
+    in the tall layout): the bars placed in its band (a list placed at or below its line, 480 - TALL_FOOTER: not
+    the rows the engine lays out past it, scrolled) flagged foot, moved up by the lift there (and what is in it: menu_tags.c's ui_widget_port_foot_offset); a panel that reaches
+    down to its line (its foot within the lift above it) flagged above_foot, the lift shorter there, its picture's
+    _touch (tall_foot_pictures)"""
+    line = 480 - TALL_FOOTER
+    for element in widgets.values():
+        for child in element.iter("child"):
+            if int(child.get("y", 0)) >= line and child.get("widget") in widgets and \
+                    widgets[child.get("widget")].get("type") == "column_list":
+                _flagged(widgets[child.get("widget")], "foot")
+    for element in widgets.values():
+        if element.get("bitmap") and int(element.get("height", 480)) >= TALL_PANEL_LEAST and \
+                line - TALL_FOOT_LIFT < int(element.get("top", 0)) + int(element.get("height", 480)) <= line:
+            _flagged(element, "above_foot")
+
+
+# (a panel, not a row: tall_foot's above_foot)
+TALL_PANEL_LEAST = 100
 
 
 def tall_title(name: str, strings: str, index: int) -> list:
@@ -611,6 +654,11 @@ SETTINGS_PAST_VALUES = SETTINGS_PAST_ROWS - SETTINGS_PAST_LABELS
 DISPLAY_MODES = [("FULLSCREEN", "fullscreen"), ("BORDERLESS", "borderless"), ("WINDOWED", "windowed")]
 # input.left_stick_dead_zone's and right's: the game's own (-1), or a part of
 # the stick's travel
+# Modern aim's acceleration zone (input.aim_style "modern"): its angle from
+# side to side, in degrees, and the push that starts it, in percent of the
+# stick's travel (-1 the game's own)
+MODERN_AIM_ANGLES = [(str(degrees), str(degrees)) for degrees in range(0, 46, 5)]
+MODERN_AIM_THRESHOLDS = [("DEFAULT", "-1")] + [(f"{percent}%", str(percent)) for percent in range(50, 101, 5)]
 STICK_DEAD_ZONES = [("DEFAULT (27%)", "-1")] + [(f"{percent}%", str(percent)) for percent in range(0, 51, 5)]
 # display.fov's stops: the game's own (0), or degrees; any of 20 to 160
 # typed, above 150 drawn only with Panini Projection on (panini_projection.h's
@@ -722,7 +770,7 @@ BROWSER_PINGS = [("ANY", "0")] + [(f"UNDER {ms} MS", str(ms)) for ms in (300, 25
 # the Filters page's TICK RATE and GAME TYPE (network.browser_tick and
 # network.browser_game_type: menu_functions.c's browser_tick_words and
 # browser_type_words, in their order)
-BROWSER_TICKS = [("ANY", "any"), ("OPENH1 30", "30"), ("OPENH1 60", "60"), ("OPENH1 120", "120"),
+BROWSER_TICKS = [("ANY", "any"), ("GOAT H1 30", "30"), ("GOAT H1 60", "60"), ("GOAT H1 120", "120"),
                  ("LEGACY", "legacy")]
 BROWSER_GAME_TYPES = [("ANY", "any"), ("SLAYER", "slayer"), ("TEAM SLAYER", "team_slayer"),
                       ("CAPTURE THE FLAG", "ctf"), ("ODDBALL", "oddball"), ("KING OF THE HILL", "king"),
@@ -1077,8 +1125,8 @@ PAGES = {
              "GitHub issue filled in with it: say what happened, drag in the report's file, submit. F8 does the "
              "same in a game, its screenshot that moment.", None, "report", "port settings report"),
             (SECTION, "ABOUT"),
-            ("OPENH1", None, None,
-             "Halo: Combat Evolved, the Xbox game, on this computer, played from your own copy of its maps. OpenH1 "
+            ("GOAT H1", None, None,
+             "Halo: Combat Evolved, the Xbox game, on this computer, played from your own copy of its maps. GOAT H1 "
              "is a free fan project.", None, "about"),
         ],
     },
@@ -1162,7 +1210,7 @@ PAGES = {
             ("TICK RATE", "game.sim_rate", [("ORIGINAL (30)", "30"), ("60", "60"), ("120", "120")],
              "How often the world updates each second, in games on this device (campaign, split screen, bots). "
              "60 and 120 respond faster and take more of the processor. Online games play at their host's tick "
-             "rate: an OpenH1 game's (OpenH1 60 Tick), a Legacy game's 30.", None),
+             "rate: a GOAT H1 game's (GOAT H1 60 Tick), a Legacy game's 30.", None),
             # (game.enhanced_animations: the preset's, Classic's off, as the
             # Xbox played; a network game's turning is its host's:
             # network_standard_turns_with_aim)
@@ -1379,7 +1427,8 @@ PAGES = {
             ("INVERT TURNING", "input.invert_look_horizontal", YES_NO,
              "Pushing the right stick right turns the view left. For every controller on this device.", None),
             ("GYRO & FLICK STICK ›", None, _page_screen(*GYRO),
-             "Aim by turning a controller that has a gyroscope, and the right stick as a flick stick.", None),
+             "Aim by turning a controller that has a gyroscope; the right stick's aim style (Classic or "
+             "Modern), and the right stick as a flick stick.", None),
             ("INVERT FLIGHT", "profile.flight_inversion", YES_NO,
              "Flying vehicles pitch as aircraft do: pushing up flies down.", None),
             ("AUTO-CENTER LOOK", "profile.autocenter", YES_NO, "Levels the view while you walk.", None),
@@ -1458,7 +1507,7 @@ PAGES = {
             (SECTION, "GYRO AIMING"),
             ("GYRO", None, None,
              "Whether a controller with a gyroscope is connected: a DualSense, a DualShock 4, a Switch Pro "
-             "Controller or Joy-Cons, a Steam Deck.|With Steam Input, turn it off for OpenH1.", None, "gyro_found"),
+             "Controller or Joy-Cons, a Steam Deck.|With Steam Input, turn it off for GOAT H1.", None, "gyro_found"),
             ("GYRO AIMING", "input.gyro_aim",
              [("OFF", "off"), ("ALWAYS ON", "on"), ("HOLD TO AIM", "hold"), ("HOLD TO PAUSE", "pause"),
               ("THUMB ON STICK", "touch")],
@@ -1486,6 +1535,16 @@ PAGES = {
              "for a second and a half.|It also does so whenever it is held still.", None,
              "gyro_calibrate", "port settings gyro calibrate"),
             (SECTION, "RIGHT STICK"),
+            ("AIM STYLE", "input.aim_style", [("CLASSIC", "classic"), ("MODERN", "modern")],
+             "Classic aims as the original: a diagonal turns faster, and can speed up the turn as a full push "
+             "does. Modern aims as MCC's: the same speed whichever way you push, and only a push straight to the "
+             "side speeds up the turn.|The mouse and touch controls are not changed.", None),
+            ("ACCELERATION ANGLE", "input.modern_aim_acceleration_angle", MODERN_AIM_ANGLES,
+             "Modern aim: how far from straight to the side, in degrees, a full push still speeds up the turn. "
+             "Lower keeps more diagonals from speeding it up.", None),
+            ("ACCELERATION START", "input.modern_aim_acceleration_threshold", MODERN_AIM_THRESHOLDS,
+             "Modern aim: how far you push the stick before the turn speeds up. Default is the game's own, as "
+             "Classic's.", None),
             ("FLICK STICK", "input.flick_stick", ON_OFF,
              "Point the right stick and you turn at once to face that way: right, a quarter turn; down, about "
              "face. Turn it round its rim and you turn with it. Aim up and down with the gyro.|With the default "
@@ -1563,7 +1622,7 @@ PAGES = {
              "network game's, a dedicated server's, one still being timed.", None),
             (SECTION, "GAME"),
             ("TICK RATE", "network.browser_tick", BROWSER_TICKS,
-             "Lists only the games of this tick rate.|OpenH1 games play at 30, 60 or 120 ticks a second; Legacy "
+             "Lists only the games of this tick rate.|GOAT H1 games play at 30, 60 or 120 ticks a second; Legacy "
              "games are OpenCE's netcode.", None),
             ("GAME TYPE", "network.browser_game_type", BROWSER_GAME_TYPES,
              "Lists only the games of this type.|Slayer is free for all; SWAT, Infection and Gun Game are "
@@ -1688,6 +1747,8 @@ SETTINGS_SEARCH_WORDS = {
     "crosshair": ["lowered_reticle", "lowered_reticle_amount"],
     "viewmodel": ["viewmodel_visible", "viewmodel_fov", "weapon_position"],
     "gun": ["viewmodel_visible", "viewmodel_fov", "weapon_position"],
+    "aim": ["aim_style", "modern_aim_acceleration_angle", "modern_aim_acceleration_threshold"],
+    "acceleration": ["aim_style", "modern_aim_acceleration_angle", "modern_aim_acceleration_threshold"],
     "deadzone": ["stick_dead_zones", "left_stick_dead_zone", "right_stick_dead_zone"],
     "rumble": ["vibration"],
     "keybinds": ["key_bindings"], "keys": ["key_bindings"],
@@ -2222,6 +2283,9 @@ SETTINGS_ROW_ENABLED = {
     # while it is on)
     "vrr": "!vrr_system",
     "vrr_cap_margin": "vrr=on+!vrr_system vrr=auto+vrr_found+!vrr_system",
+    # (Modern aim's tunables only while it aims: input.aim_style)
+    "modern_aim_acceleration_angle": "aim_style=modern",
+    "modern_aim_acceleration_threshold": "aim_style=modern",
 }
 
 
@@ -2490,6 +2554,8 @@ def _settings_page(folder: str, page: dict, g: SettingsLayout = SETTINGS_CLASSIC
                       # (the search, the menu engine's: SETTINGS_SEARCH)
                       '<on event="y" run="port settings search"/>',
                       f'<child widget="{header}"/>',
+                      # (the profile it edits, at the title's right: SETTINGS_PROFILE)
+                      f'<child widget="{SETTINGS}/profile"/>',
                       *([f'<child widget="{SETTINGS_TAB_PROMPTS}/tab_prompt_previous" x="{WIDE_MARGIN}" '
                          f'y="{g.tabs_top}"/>',
                          f'<child widget="{SETTINGS_TAB_PROMPTS}/tab_prompt_next" '
@@ -2589,6 +2655,15 @@ def _settings_shared(g: SettingsLayout = SETTINGS_CLASSIC) -> list:
     else:
         lines = _widget(SETTINGS_TITLE, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
                                          ("bitmap", SETTINGS_TITLE), ("wide", WIDE_LEFT)], [])
+    # the profile Settings edits, at the right of its title's band, as Select Profile's band has player 1's
+    # (menu_functions.c's settings_profile_text: PROFILE: and its name; a split screen game's player's,
+    # PLAYER 2 and its name), past 16:9 at the screen's right as the title is at its left
+    lines += _settings_text(f"{SETTINGS}/profile", [("left", SETTINGS_PROFILE_X), ("top", SETTINGS_PROFILE_Y),
+                                                    ("width", SETTINGS_PROFILE_WIDTH), ("height", 18),
+                                                    ("color", SETTINGS_DIM), ("align", "right"),
+                                                    ("text_flags", "no_focus_test"), ("wide", WIDE_RIGHT),
+                                                    ("past", gp(PAST_HALF))],
+                            ['<data input="port settings profile"/>'])
     for kind, top in (("tab", g.tab_top), ("page", g.page_top)):
         # (menu_functions.c's settings_panel_show fills it in, and shows the
         # Quality row's pictures)
@@ -2823,8 +2898,15 @@ def tall_widgets() -> list:
     lines = []
     for folder, page in PAGES.items():
         lines += _settings_page(folder, page, SETTINGS_TALL)
-    return lines + _settings_shared(SETTINGS_TALL) + _settings_search(SETTINGS_TALL) + _browser_tall_widgets() + \
-        _missions_tall_widgets()
+    # (Settings' footer raised on a touchscreen: tall_foot)
+    root = ElementTree.fromstring("<menus>" + "\n".join(lines + _settings_shared(SETTINGS_TALL) +
+                                                       _settings_search(SETTINGS_TALL)) + "</menus>")
+    tall_foot({element.get("name"): element for element in root.iter("widget")})
+    settings = []
+    for element in root:
+        element.tail = None
+        settings.append(ElementTree.tostring(element, encoding="unicode"))
+    return settings + _browser_tall_widgets() + _missions_tall_widgets()
 
 
 def settings_files() -> dict:
@@ -2865,11 +2947,12 @@ def _svg(width: int, height: int, body: list) -> str:
                       f'viewBox="0 0 {width} {height}">', *body, "</svg>", ""])
 
 
-def tall_background_svg() -> str:
+def tall_background_svg(footer_height: int = TALL_FOOTER) -> str:
     """the tall layout's background (TALL_BACKGROUND), as bitmaps/gradient is drawn (4 wide, repeated across;
     its 512 rows the screen's 480 and room under them): the slim header's band, dark, its line under it, the
-    gradient's body to the footer's line, and the footer's band, as bitmaps/gradient's are"""
-    footer = 480 - TALL_FOOTER
+    gradient's body to the footer's line, and the footer's band, as bitmaps/gradient's are (footer_height: the
+    footer's, its touch picture's raised by TALL_FOOT_LIFT)"""
+    footer = 480 - footer_height
     return "\n".join([
         '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="512" viewBox="0 0 4 512">', "<defs>",
         f'<linearGradient id="g0" gradientUnits="userSpaceOnUse" x1="0" y1="{TALL_BAND + 1}" x2="0" y2="{footer}">',
@@ -2962,10 +3045,13 @@ def settings_pictures() -> list:
                                                        "#2299ff", 2)]), SEGMENT_LEAST, tall_segment)]),
     ]
     for kind, top in (("tab", tall.tab_top), ("page", tall.page_top)):
-        height = tall.panel_bottom - top
-        pictures.append((tall.panel_picture.format(kind=kind), [(_svg(SETTINGS_PANEL_WIDTH, height, [
-            _rounded(SETTINGS_PANEL_WIDTH, height, 1, 9.5, "#000e23", 0.88, "#2995ff", 2)]),
-            SETTINGS_PANEL_WIDTH, height)]))
+        # (and on a touchscreen the footer's lift shorter: tall_foot)
+        for name, height in ((tall.panel_picture.format(kind=kind), tall.panel_bottom - top),
+                             (touch_picture(tall.panel_picture.format(kind=kind)),
+                              tall.panel_bottom - top - TALL_FOOT_LIFT)):
+            pictures.append((name, [(_svg(SETTINGS_PANEL_WIDTH, height, [
+                _rounded(SETTINGS_PANEL_WIDTH, height, 1, 9.5, "#000e23", 0.88, "#2995ff", 2)]),
+                SETTINGS_PANEL_WIDTH, height)]))
     pictures.append((f"{SETTINGS}/still_frame", [
         (_svg(still_w, still_h, [_rounded(still_w, still_h, rim / 2, radius - rim / 2, stroke="#1d4f8a",
                                           stroke_width=rim)]), still_w, still_h),
@@ -3794,9 +3880,9 @@ def _password_screen() -> list:
 # (network.game_mode and network.sim_rate: menu_functions.c's
 # server_settings_game_modes, in this order), each choice's help
 GAME_MODES = [
-    ("OPENH1 30 TICK", "OpenH1 and OpenCE players, all at 30 ticks."),
-    ("OPENH1 60 TICK", "OpenH1 players at 60 ticks, OpenCE players at 30."),
-    ("OPENH1 120 TICK", "OpenH1 players at 120 ticks, OpenCE players at 30."),
+    ("GOAT H1 30 TICK", "GOAT H1 and OpenCE players, all at 30 ticks."),
+    ("GOAT H1 60 TICK", "GOAT H1 players at 60 ticks, OpenCE players at 30."),
+    ("GOAT H1 120 TICK", "GOAT H1 players at 120 ticks, OpenCE players at 30."),
     ("LEGACY", "OpenCE's own netcode for everyone, at 30 ticks."),
 ]
 # (each one line: the help shows one)
@@ -5168,7 +5254,7 @@ def part_dot(size: int) -> str:
 # the list's left and width, its rows, the details panel beside it, and each
 # column's place and width in a row (menu_functions.c's browser_row_show
 # places the tick badge and the lock after the name)
-BROWSER_TABS = [("tab_all", "ALL"), ("tab_dedicated", "DEDICATED"), ("tab_openh1", "OPENH1"),
+BROWSER_TABS = [("tab_all", "ALL"), ("tab_dedicated", "DEDICATED"), ("tab_openh1", "GOAT H1"),
                 ("tab_legacy", "LEGACY"), ("tab_coop", "CO-OP"), ("tab_favorites", "FAVORITES")]
 BROWSER_LIST_X, BROWSER_LIST_WIDTH = 28, 404
 BROWSER_HEADERS_TOP = 104
@@ -5358,7 +5444,7 @@ LOBBY_PROMPTS = [
 ]
 # the items' descriptions, in menu_functions.c's _multiplayer_item_* order
 HUB_DESCRIPTIONS = [
-    "Every public game on the Internet, OpenH1 and Legacy. Press %a-button to see them all.",
+    "Every public game on the Internet, GOAT H1 and Legacy. Press %a-button to see them all.",
     "Games hosted on your Wi-Fi or local network appear here as they open.",
     "Join a friend's game with the invite link they sent you.",
     "Host a game on the Internet: friends join with your invite link.",
@@ -5425,8 +5511,14 @@ def parts_pictures() -> list:
             'fill-opacity="0.45"/>']), HUB_ITEM[0], PART_SECTION_HEIGHT)]),
         *((part_panel(*panel[2:]), [(framed(*panel[2:], "#000e23", 0.88, "#2995ff", 9.5), *panel[2:])])
           for panel in (BROWSER_PANEL, BROWSER_TALL["BROWSER_PANEL"])),
-        # (the tall layout's background: BROWSER_TALL's)
+        # (and on a touchscreen the tall panel the footer's lift shorter: tall_foot)
+        (touch_picture(part_panel(*BROWSER_TALL["BROWSER_PANEL"][2:])),
+         [(framed(BROWSER_TALL["BROWSER_PANEL"][2], BROWSER_TALL["BROWSER_PANEL"][3] - TALL_FOOT_LIFT, "#000e23",
+                  0.88, "#2995ff", 9.5),
+           BROWSER_TALL["BROWSER_PANEL"][2], BROWSER_TALL["BROWSER_PANEL"][3] - TALL_FOOT_LIFT)]),
+        # (the tall layout's background: BROWSER_TALL's; and on a touchscreen its footer raised: tall_foot)
         (TALL_BACKGROUND, [(tall_background_svg(), 4, 512)]),
+        (touch_picture(TALL_BACKGROUND), [(tall_background_svg(TALL_FOOTER + TALL_FOOT_LIFT), 4, 512)]),
         (part_panel(*HUB_PANEL[2:]), [(framed(*HUB_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5), *HUB_PANEL[2:])]),
         *((part_pill(width), pill(width)) for width in (BROWSER_TICK_BADGE, BROWSER_PILL, BROWSER_WIDE_PILL)),
         (part_button(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
@@ -5435,6 +5527,7 @@ def parts_pictures() -> list:
                                            (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h),
                                            (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h)]),
         *lobby_pictures(framed, highlight),
+        *screen_pictures(framed, highlight),
         *touch_pictures(),
         # (the searches' fields, magnifying glass and X: Lucide's,
         # port/assets/icons/lucide)
@@ -5494,6 +5587,110 @@ def lobby_pictures(framed, highlight) -> list:
         (part_button(start_w, start_h), [(framed(start_w, start_h, "#1e5fd1", 0.9, "#5aa9ff"), start_w, start_h),
                                          (framed(start_w, start_h, "#2a6fe0", 1.0, "#b8dbff"), start_w, start_h)]),
     ]
+
+
+# the hand-written screens' tall layout's parts (port/linux/game/menu_screen_tall.inc): a table of lanes' (the
+# lobby's teams, screens/lobby.xml) width, its lanes' top and bottom, the gap between two lanes and their rows'
+# inset and height, on the computer and on a touchscreen; a panel's choice's size (its width the panel's inside)
+# and an outlined button's
+SCREEN_LANES = {"computer": (404, 74, 436), "touch": (364, 76, 410)}
+# (under a lineup, a tall screen's own <spartan>: the lobby's, on the computer, 80 tall and 4 over the lanes)
+SCREEN_LANES_LINEUP = {"computer": (404, 74 + 80 + 4, 436)}
+SCREEN_LANE_GAP, SCREEN_LANE_INSET, SCREEN_LANE_ROW = 12, 8, 18
+SCREEN_CHOICE_HEIGHTS = {"computer": (148, 22), "touch": (188, 32)}
+SCREEN_PANEL_BUTTON = (148, 24)
+# a chat under a table (<chat>: the lobby's, 3 lines), on the computer and on a touchscreen: its line's and its line
+# typed's heights, its inner margin and the gap over it (the table's foot over it)
+SCREEN_CHAT_LINES = (3,)
+SCREEN_CHAT = {"computer": (15, 20), "touch": (16, 40)}
+SCREEN_CHAT_INSET, SCREEN_CHAT_GAP = 6, 8
+
+
+def screen_chat_sizes() -> list:
+    """(layout, width, height) of each chat's panel, and (width, height) of its line typed, each layout's"""
+    sizes = []
+    for layout, (width, _, _) in SCREEN_LANES.items():
+        line, typed = SCREEN_CHAT[layout]
+        for lines in SCREEN_CHAT_LINES:
+            sizes.append((layout, width, 2 * SCREEN_CHAT_INSET + lines * line + typed + 2,
+                          (width - 2 * SCREEN_CHAT_INSET, typed)))
+    return sizes
+
+
+def screen_lane_sizes(lanes: int = 2) -> list:
+    """(table width, lane width, lanes' height, a lane's row's width) of a table of lanes, each layout's: alone,
+    over a chat, and under a lineup"""
+    sizes = []
+    for layout, (width, top, bottom) in [*SCREEN_LANES.items(), *SCREEN_LANES_LINEUP.items()]:
+        lane = (width - (lanes - 1) * SCREEN_LANE_GAP) // lanes
+        feet = [bottom] + [bottom - height - SCREEN_CHAT_GAP for chat_layout, _, height, _ in screen_chat_sizes()
+                           if chat_layout == layout]
+        for foot in feet:
+            sizes.append((width, lane, foot - top, lane - 2 * SCREEN_LANE_INSET))
+    return sizes
+
+
+def screen_pictures(framed, highlight) -> list:
+    """the hand-written screens' parts at their sizes: a table of lanes' panels (each a team's, red's edge then
+    blue's by the frame, and the panel across them), its rows (a player's, focused, marked as its own (framed),
+    and its own focused: the generated lobby's rows'), a panel's choices' rows (lit with the focus) and its
+    outlined buttons, and a touchscreen's panel beside the lanes"""
+    pictures = []
+    for _, width, height, (typed_w, typed_h) in screen_chat_sizes():
+        pictures.append((part_panel(width, height), [(framed(width, height, "#000e23", 0.88, "#2995ff", 9.5), width,
+                                                      height)]))
+        pictures.append((part_highlight(typed_w, typed_h), highlight(typed_w, typed_h)))
+    for width, lane, height, row in screen_lane_sizes():
+        pictures.append((part_team_panel(lane, height), [(framed(lane, height, "#081a40", 0.9, edge, 9.5), lane, height)
+                                                         for _, edge in LOBBY_TEAM_COLORS]))
+        pictures.append((part_panel(width, height), [(framed(width, height, "#081a40", 0.9, "#1f4f9a", 9.5), width,
+                                                      height)]))
+        if any(name == f"{PARTS}/lane_row_{row}x{SCREEN_LANE_ROW}" for name, _ in pictures):
+            continue
+        pictures.append((f"{PARTS}/lane_row_{row}x{SCREEN_LANE_ROW}", [
+            (framed(row, SCREEN_LANE_ROW, "#0b2252", 0.9, "none", 5), row, SCREEN_LANE_ROW),
+            (framed(row, SCREEN_LANE_ROW, "#002244", 0.9, "#2299ff", 5), row, SCREEN_LANE_ROW),
+            (framed(row, SCREEN_LANE_ROW, "#0e2a63", 1.0, "#3d8bff", 5), row, SCREEN_LANE_ROW),
+            (framed(row, SCREEN_LANE_ROW, "#0d3a7a", 1.0, "#b8dbff", 5), row, SCREEN_LANE_ROW)]))
+    for width, height in SCREEN_CHOICE_HEIGHTS.values():
+        pictures.append((part_highlight(width, height), highlight(width, height)))
+    button_w, button_h = SCREEN_PANEL_BUTTON
+    pictures.append((part_outline(button_w, button_h), [
+        (framed(button_w, button_h, "none", 1.0, "#2f7fff"), button_w, button_h),
+        (framed(button_w, button_h, "#0d3a7a", 0.9, "#b8dbff"), button_w, button_h)]))
+    # (a profile color's swatch, Profile Color's rows' (screens/cell_swatch): the colors' in their list's order, then
+    # random's, the colors in quarters)
+    pictures.append((part_swatch(SCREEN_SWATCH), swatch_frames(SCREEN_SWATCH)))
+    # (a touchscreen's panel beside the lanes, from their top: the touch layouts' own size, touch_pictures')
+    return pictures
+
+
+# the player profiles' colors (source/saved games/player_profile.c's profile_color_table), in the color picker's
+# order, and a swatch's size
+PROFILE_COLORS = ["#FFFFFF", "#000000", "#FE0000", "#0201E3", "#707E71", "#FFFF01", "#00FF01", "#FF56B9", "#AB10F4",
+                  "#01FFFF", "#6493ED", "#FF7F00", "#1ECC91", "#006401", "#603814", "#C69C6C", "#9D0B0E", "#F5999E"]
+SCREEN_SWATCH = 16
+
+
+def part_swatch(size: int) -> str:
+    """a profile color's swatch: each color's by the frame, then random's"""
+    return f"{PARTS}/swatch_{size}"
+
+
+def swatch_frames(size: int) -> list:
+    """part_swatch's frames: a rounded square of each profile color, edged so black's shows on the menus' blue; and
+    random's, four of the colors in its quarters"""
+    edge = '  <rect x="1" y="1" width="{0:g}" height="{0:g}" rx="3" fill="none" stroke="#C9DCF7" stroke-opacity="0.7" ' \
+        'stroke-width="1"/>'.format(size - 2)
+    frames = [(_svg(size, size, [_rounded(size, size, 1, 3, color), edge]), size, size) for color in PROFILE_COLORS]
+    half = size / 2
+    quarters = [f'  <rect x="{x:g}" y="{y:g}" width="{half:g}" height="{half:g}" fill="{color}" '
+                f'clip-path="url(#swatch)"/>' for (x, y), color in
+                zip(((0, 0), (half, 0), (0, half), (half, half)), ("#FE0000", "#FFFF01", "#0201E3", "#00FF01"))]
+    clip = (f'  <clipPath id="swatch"><rect x="1" y="1" width="{size - 2:g}" height="{size - 2:g}" rx="3"/>'
+            '</clipPath>')
+    frames.append((_svg(size, size, [clip, *quarters, edge]), size, size))
+    return frames
 
 
 def _part_text(name: str, pairs: list) -> list:
@@ -5993,6 +6190,7 @@ def _browser_tall_widgets() -> list:
     classic = parsed(_browsers())
     with _browser_geometry(BROWSER_TALL):
         tall = parsed(_browsers())
+    tall_foot(tall)
     lines = []
     for name, element in tall.items():
         if element.get("wide") and not element.get("past") and not BROWSER_TALL_CENTRED.search(name) and \
@@ -8195,6 +8393,7 @@ def _missions_tall_widgets() -> list:
                                                *CAMPAIGN_PROMPT_BACK[3:])]))
     finally:
         _MISSIONS_TALL = False
+    tall_foot(tall)
     # (past 16:9, the footer's prompts and the band's tabs to the screen's edges, as the title is)
     for name, dx in ((f"{CAMPAIGN}/prompt_back", -PAST_HALF), (f"{CAMPAIGN}/prompt_play", PAST_HALF),
                      (f"{CAMPAIGN}/tab_halo", PAST_HALF), (f"{CAMPAIGN}/tab_custom", PAST_HALF),
@@ -8684,12 +8883,23 @@ def model_files() -> dict:
     return {MODEL_FILE: lines + ["</model>", ""]}
 
 
+def _solo_new_profile() -> list:
+    """the new engine's SOLO with no profile (port/linux/game/menu_screen.c's "open solo"): the profile's name
+    asked, as the main menu's CAMPAIGN asks it ("new game if no plyr profiles"), then the profile made ("new campaign
+    decision") and Choose Mission opened at once, where SOLO goes with a profile. The classic engine's CAMPAIGN goes on
+    to the first mission's difficulties instead (main_menu/new_campaign_creating_profile)"""
+    return _widget(f"{CAMPAIGN}/solo_creating_profile",
+                   [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child no_history"),
+                    ("auto_close", 1)],
+                   [f'<on event="deleted" run="new campaign decision" open="{CAMPAIGN}/mission_screen"/>'])
+
+
 def campaign_files() -> dict:
     head = ['<?xml version="1.0" encoding="UTF-8"?>',
             "<!-- The campaign's screens: the Campaign menu, Choose Mission and Choose Difficulty "
             "(tools/port_settings.py) -->", "<menus>"]
     return {CAMPAIGN.replace("/", ".") + ".xml": head + _campaign_menu() + _missions() + _difficulties() +
-            ["</menus>", ""]}
+            _solo_new_profile() + ["</menus>", ""]}
 
 
 def multiplayer_files() -> dict:
@@ -9070,7 +9280,7 @@ def _crash() -> list:
     lines += _text_button(f"{base}/button_skip", "SKIP", [f'<on event="a" {dismiss}/>',
                                                           f'<on event="start" {dismiss}/>'])
     lines += _strings(f"{base}/crash_prompt",
-                      ["OpenH1 closed unexpectedly last time. Report it? A report is saved, and its GitHub issue "
+                      ["GOAT H1 closed unexpectedly last time. Report it? A report is saved, and its GitHub issue "
                        "opens for you to send."])
     return lines
 

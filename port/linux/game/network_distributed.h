@@ -235,6 +235,10 @@ enum
 	OpenH1 client, in place of _distributed_message_actor_states): each
 	without the parts at their defaults */
 	_distributed_message_actor_states_compact = 142,
+	/* a player the co-op host brought to its own player, or went to
+	(network_host_controls.c), reliably, to that player's OpenH1 machine:
+	the way the brought player faces, and the words on their screen */
+	_distributed_message_host_teleport = 143,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };
@@ -438,6 +442,10 @@ real distributed_own_round_trip_ticks(void);
 back, as the host measures it) in milliseconds: 0 for the host's own
 players, NONE before it is known */
 long distributed_player_ping(short player_index);
+/* (the host) a client machine's ping, as its players' messages measured it
+in a game (since it joined): NONE before it is (a new lobby's), or on a
+client (a player card's: lobby_menu.inc) */
+long distributed_machine_ping(long machine_index);
 /* the latency meter (latency_meter.c): the round trips above timed in
 milliseconds by when this machine sent the tick they come back naming,
 nothing more sent; what is shown of them is refreshed twice a second in the

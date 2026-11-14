@@ -82,5 +82,29 @@ int main(int argc, char **argv)
 		CHECK(!network_standard_enhanced_animations(), "a playback took this machine's setting");
 		CHECK(network_standard_turns_with_aim(0), "a playback of a Legacy game's players do not turn");
 	}
+	CASE("simulation-fixes")
+	{
+		/* OpenH1's fixes of the original's simulation (items.c's lift off
+		a surface): in every game but a Legacy one, whose OpenCE machines
+		play the original's; a playback's its recording's */
+		connection = _game_connection_local;
+		CHECK(network_standard_simulation_fixes(), "a game of one machine without the fixes");
+		connection = _game_connection_network_server;
+		network_standard_globals.hosting = TRUE;
+		CHECK(network_standard_simulation_fixes(), "an OpenH1 host without the fixes");
+		network_standard_globals.hosting = FALSE;
+		CHECK(!network_standard_simulation_fixes(), "a Legacy host with the fixes");
+		connection = _game_connection_network_client;
+		network_standard_globals.joined = TRUE;
+		CHECK(network_standard_simulation_fixes(), "an OpenH1 host's client without the fixes");
+		network_standard_globals.joined = FALSE;
+		CHECK(!network_standard_simulation_fixes(), "a Legacy host's client with the fixes");
+		connection = _game_connection_local;
+		demo_is_playing = TRUE;
+		demo_rules = 0;
+		CHECK(!network_standard_simulation_fixes(), "a Legacy game's playback with the fixes");
+		demo_rules = FLAG(_demo_rule_simulation_fixes_bit);
+		CHECK(network_standard_simulation_fixes(), "an OpenH1 game's playback without the fixes");
+	}
 	return 0;
 }

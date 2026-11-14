@@ -431,7 +431,7 @@ int main(int argc, char **argv)
 		printf("%s", text);
 		CHECK(strstr(text, "- Game: levels\\test\\bloodgulch\\bloodgulch (Slayer)\n"), "a multiplayer game");
 		CHECK(strstr(text, "- Player: dead\n") && !strstr(text, "- Player: at"), "a dead player's place");
-		CHECK(strstr(text, "- Network: hosting, OpenH1 60 Tick, 4 players, ping 48 ms (the slowest client's)\n"),
+		CHECK(strstr(text, "- Network: hosting, GOAT H1 60 Tick, 4 players, ping 48 ms (the slowest client's)\n"),
 			"the network game");
 		CHECK(strstr(text, "- Other machines' builds: build-812 x2, a local build, OpenCE, 1 not told\n"), "the builds");
 		CHECK(!strstr(text, "game_difficulty_set"), "a difficulty for a multiplayer game");

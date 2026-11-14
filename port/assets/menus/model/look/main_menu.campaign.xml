@@ -392,7 +392,7 @@
 	<look name="main_menu/campaign/mission_empty" type="text" box="80 170 560 250">
 		<text font="ui\large_ui" color="#FF2896FF" align="center" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/campaign/mission_prompts" type="column_list" box="0 0 640 28">
+	<look name="main_menu/campaign/mission_prompts" type="column_list" box="0 0 640 28" place="foot">
 		<at widget="main_menu/campaign/prompt_select" x="492" y="1"/>
 		<at widget="main_menu/campaign/prompt_back" x="24" y="1"/>
 		<at widget="main_menu/campaign/prompt_restart" x="360" y="1"/>
@@ -462,11 +462,12 @@
 	<look name="main_menu/campaign/difficulty_beaten" type="text" box="35 113 103 127" wide="26 0" picture="main_menu/campaign/beaten">
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 -2" flags="no_focus_test" text="BEATEN"/>
 	</look>
-	<look name="main_menu/campaign/difficulty_prompts" type="column_list" box="0 0 640 28">
+	<look name="main_menu/campaign/difficulty_prompts" type="column_list" box="0 0 640 28" place="foot">
 		<at widget="main_menu/campaign/prompt_play" x="492" y="1"/>
 		<at widget="main_menu/campaign/prompt_back" x="24" y="1"/>
 	</look>
 	<look name="main_menu/campaign/prompt_play" type="text" box="0 0 124 24" wide="106 0" past="143 0" picture="main_menu/parts/item_124x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%a-button PLAY"/>
 	</look>
+	<look name="main_menu/campaign/solo_creating_profile"/>
 </model>

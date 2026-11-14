@@ -6,6 +6,7 @@
 		<on event="back" run="port settings page cancel" back="true"/>
 		<on event="y" run="port settings search"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/header_browser_filters"/>
+		<child widget="main_menu/settings/profile"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/options_menu"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/header_browser_filters" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/multiplayer_type_select/join_game/filters/header_filters" wide="-106 0" source="tools/port_settings.py settings_files/_settings_page">
@@ -115,7 +116,7 @@
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_tick_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/labels" string_index="6" color="#FF2896FF" text_x="10" text_y="1" wide="0 20" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_tick_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ANY|OPENH1 30|OPENH1 60|OPENH1 120|LEGACY" setting="network.browser_tick" values="any|30|60|120|legacy" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="20 120" source="tools/port_settings.py settings_files/_settings_page">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_tick_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ANY|GOAT H1 30|GOAT H1 60|GOAT H1 120|LEGACY" setting="network.browser_tick" values="any|30|60|120|legacy" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="20 120" source="tools/port_settings.py settings_files/_settings_page">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_game_type" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 244" source="tools/port_settings.py settings_files/_settings_page">
@@ -145,7 +146,7 @@
 		<string text="Lists the games that need a password to join."/>
 		<string text="Lists only the games whose ping is under this.|A game whose ping is not known is listed: a local network game's, a dedicated server's, one still being timed."/>
 		<string text=""/>
-		<string text="Lists only the games of this tick rate.|OpenH1 games play at 30, 60 or 120 ticks a second; Legacy games are OpenCE's netcode."/>
+		<string text="Lists only the games of this tick rate.|GOAT H1 games play at 30, 60 or 120 ticks a second; Legacy games are OpenCE's netcode."/>
 		<string text="Lists only the games of this type.|Slayer is free for all; SWAT, Infection and Gun Game are OpenCE's. Pro 2v2 is PRO 2V2's games."/>
 	</strings>
 </menus>

@@ -50,7 +50,7 @@ def test_mouse_alone_uses_it():
     assert control.index("player_control_scale_look(player->unit_index, control->zoom_level, &look_delta);") < \
         control.index("if (halo_linux_mouse_look(gamepad_index, &mouse_yaw, &mouse_pitch))")
     fov = (ROOT / "port/linux/game/view_fov.c").read_text()
-    assert 'strcmp(config_string("input.zoom_sensitivity"), "halo")' in fov
+    assert 'strcmp(config_player_string(0, "input.zoom_sensitivity"), "halo")' in fov
 
 
 def test_menu_sliders_match_their_rows():

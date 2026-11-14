@@ -3134,8 +3134,8 @@ int p2p_invite_message(const char *text, char *message, int size)
 	if (p2p_party_parse_link(text, token))
 	{
 		p2p_hex(token, P2P_TOKEN_SIZE, hex);
-		snprintf(message, (size_t)size, "Join my OpenH1 party: %s#party=%s\n"
-			"Or paste this into OpenH1's Join by Link: " P2P_PARTY_LINK_PREFIX "%s", P2P_JOIN_PAGE, hex, hex);
+		snprintf(message, (size_t)size, "Join my GOAT H1 party: %s#party=%s\n"
+			"Or paste this into GOAT H1's Join by Link: " P2P_PARTY_LINK_PREFIX "%s", P2P_JOIN_PAGE, hex, hex);
 		return 1;
 	}
 	if (parse_invite(text, hash, token) <= 0)
@@ -3143,8 +3143,8 @@ int p2p_invite_message(const char *text, char *message, int size)
 	memcpy(bytes, hash, P2P_KEY_HASH_SIZE);
 	memcpy(bytes + P2P_KEY_HASH_SIZE, token, P2P_TOKEN_SIZE);
 	p2p_hex(bytes, sizeof(bytes), hex);
-	snprintf(message, (size_t)size, "Join my OpenH1 game: %s#join=%s\n"
-		"Or paste this into OpenH1's Join by Link: " P2P_JOIN_LINK_PREFIX "%s", P2P_JOIN_PAGE, hex, hex);
+	snprintf(message, (size_t)size, "Join my GOAT H1 game: %s#join=%s\n"
+		"Or paste this into GOAT H1's Join by Link: " P2P_JOIN_LINK_PREFIX "%s", P2P_JOIN_PAGE, hex, hex);
 	return 1;
 }
 
@@ -5113,7 +5113,7 @@ is dropped, so that OpenCE's copies have their links, and the game's are
 never opened by OpenCE (the game still takes a halo:// link it is given) */
 static void register_link_schemes(void)
 {
-	p2p_register_url_scheme(P2P_LINK_SCHEME, "OpenH1 invite");
+	p2p_register_url_scheme(P2P_LINK_SCHEME, "GOAT H1 invite");
 	p2p_forget_url_scheme(P2P_OLD_LINK_SCHEME);
 }
 #endif

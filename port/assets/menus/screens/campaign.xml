@@ -9,7 +9,7 @@ button bar at the bottom, BACK left and SELECT right. -->
 	<space/>
 	<cards focus="solo">
 		<card id="solo" title="SOLO" subtitle="Play the story on your own" picture="main_menu/campaign/art_146x119" frame="0" do="open solo"/>
-		<card id="coop" title="CO-OP" subtitle="Join a game or host one for friends" picture="main_menu/campaign/art_146x119" frame="3" do="open coop"/>
+		<card id="coop" title="CO-OP" subtitle="Host, play with friends, or join a public game" picture="main_menu/campaign/art_146x119" frame="3" do="open coop"/>
 	</cards>
 	<space/>
 	<buttons>

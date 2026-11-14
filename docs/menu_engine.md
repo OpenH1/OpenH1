@@ -15,8 +15,10 @@ a row-name predicate run each frame (`video_rows_show`, `gamma_row_show`,
 The menu engine renders the generators' model instead: what the generators
 already hold as data, written as data, read by the game, and drawn with
 Halo's own primitives so that the look is the same. `display.menu_engine`
-chooses it (`"classic"`, the default, or `"new"`). The map-tag menus (the
-in-game pause menu, `display.menus = "xbox"`) stay on Halo's engine.
+chooses it (`"classic"`, the default, or `"new"`). The map-tag menus
+(`display.menus = "xbox"`) stay on Halo's engine; the in-game pause menu is a
+hand-written screen in place of the map's ([menu_screens.md](menu_screens.md),
+"The pause menu").
 
 The engine also draws the hand-written screens
 ([menu_screens.md](menu_screens.md)): a screen of our own, one file in
@@ -24,6 +26,33 @@ The engine also draws the hand-written screens
 screen's (the main menu first), with its actions and bindings resolved in C.
 The generated screens are moved to them a few at a time, and then the engine
 no longer needs the generators.
+
+## Split screen
+
+In split screen each player's screen (the pause menu, and what it opens) is
+drawn in that player's view, a half or a quarter of the screen
+(`port/linux/game/menu_view.c`). It is laid out for the room it was made for
+(its widget's bounds: the menus' 640 by 480, the engine's screens always; the
+Xbox's own split screen pause menus 640 by 240 and 320 by 240), scaled to fit
+the view's height and width (never larger than it was made) and centred in
+it, so nothing of it is cut off. The view's room either side is its canvas:
+the wide layout reaches across it, and a dim that covers the screen's design
+(a pause menu's) covers the whole view. The game draws its menus in the units
+of the viewport it is told it has, so the scale is the viewport it is told
+of while the screen is drawn (the view's size divided by the scale), the
+GPU's staying the view. The first player's view is where the pointer is read
+back through. At full screen nothing changes.
+
+What a split screen player's pause menu opens, a screen of the engine's
+(Settings, Host Controls, Basic Training's chapters), is drawn full screen
+over every view instead (`menu_view_over_views`), once a frame in the whole
+screen's window after the views (`render.c`'s), and B brings back that
+player's pause menu in their view. It is still that player's: their
+controller drives it, and Settings edits their profile (`menu_functions.c`'s
+`settings_local_player`). Settings' band shows whose profile it edits at its
+right, `PROFILE: <name>` (as Select Profile's band has player 1's), and in a
+split screen game `PLAYER 2 · <name>` (`settings_profile_text`, each frame:
+a profile chosen or renamed shows at once; nothing without one).
 
 ## The model
 
@@ -402,6 +431,17 @@ looks are the tall ones. A screen opts in so:
   distance fields, about the text box's middle (`ui_widget.c`'s
   `ui_widget_port_text_scale_begin`, `rasterizer_text_set_scale`; a field
   typed into keeps its font's size, for its caret);
+- on a touchscreen, its footer raised `TALL_FOOT_LIFT` units, so that its
+  prompts' words clear a phone's safe area at the screen's foot
+  (`tall_foot`, which the generators run on every tall screen's widgets):
+  the bars placed in the footer's band flagged `foot` (moved up by the lift,
+  `menu_tags.c`'s `ui_widget_port_foot_offset`), the panels that reach down
+  to its line flagged `above_foot` (the lift shorter), the footer's line and
+  those panels drawn from their pictures' `_touch` versions (`look_make`),
+  the tall geometry's rows and panel ending the lift higher
+  (`menu_engine_geometry_bottom`), and Choose Mission's CONTINUE and cards
+  moved up into the room around them (`campaign_menu.inc`'s
+  `mission_resume_raise`); the computer's layout is as it was;
 - for a settings screen, its model's `geometry="tall"`, the model's
   `<geometry name="tall" ... scrolls="true">`, which the engine lays its rows
   out in (`engine_geometry`) and scrolls by (`engine_scroll`: its rows cut to

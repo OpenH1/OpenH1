@@ -73,6 +73,7 @@ def test_negative_control(before, after, case):
 
 def test_the_frames_take_it():
     # the frames drawn from the newest step pose the gun with the sways it gives
-    code = read("source/interface/first_person_weapons.c")
-    assert "first_person_weapon_springs_at(\n\t\t\t\t\t\tfirst_person_weapon,\n" \
-           "\t\t\t\t\t\t&first_person_weapon_sways_before[local_player_index]," in code
+    # (first_person_weapon_pose, which the frames and a state's blend share), at every phase of the newest step
+    pose = function(read("source/interface/first_person_weapons.c"), "first_person_weapon_pose")
+    assert re.search(r"if \(phase>=0\.0f\)\s*\{\s*first_person_weapon_springs_at\(\s*first_person_weapon,\s*"
+                     r"&first_person_weapon_sways_before\[local_player_index\],", pose)

@@ -64,7 +64,7 @@ static int test_input_menu_waiting;
 static unsigned long long test_input_menu_now(void) { return SDL_GetTicks(); }
 
 static void test_script_parse(char const *script) { (void)script; test_script_on = 1; }
-static void test_script_gamepad(XINPUT_GAMEPAD *pad) { (void)pad; }
+static void test_script_port_gamepad(int port, XINPUT_GAMEPAD *pad) { (void)port; (void)pad; }
 static void test_pad_gamepad(XINPUT_GAMEPAD *pad) { (void)pad; }
 static int test_latency_on(void) { return !strncmp(test_input_setting, "latency:", 8); }
 static void test_latency_gamepad(XINPUT_GAMEPAD *pad) { (void)pad; }

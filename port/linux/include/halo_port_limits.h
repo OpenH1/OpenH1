@@ -95,7 +95,7 @@ takes it for a newer version and does not join. Raise it with any change to
 what a Standard game's machines send each other, and with every raise of
 HALO_PORT_NETWORK_VERSION: HALO_PORT_STANDARD_BASE_VERSION is the network
 version it was last raised for, and the build fails until they agree. */
-#define HALO_PORT_STANDARD_NETWORK_VERSION 27
+#define HALO_PORT_STANDARD_NETWORK_VERSION 29
 /* (1: the rate agreed; 2: the players' sub-steps sent, network_substeps.c;
 3: OpenCE players in the game, network_standard.c's mixed games; 4: a
 player moved to the other team by the host, network_host_controls.c; 5:
@@ -153,9 +153,14 @@ Latency before) is, where it was at 30: the listing's playlist number and
 rate a search requires of a game (matchmaking.c's matchmaking_listing_of),
 which every machine must take alike, so a build of 26, whose Classic search
 and browser want 30, never sees a game of 27's Classic, and the other way
-round. Legacy
-games, and what an OpenCE
-machine sees, are unchanged) */
+round; 28: a loose item struck where it already was lifted 0.05 off
+the surface (items.c's item_move_substep, network_standard.c's
+network_standard_simulation_fixes), where it stayed pinned on a wall
+steeper than 45 degrees: every machine of the game moves its copies alike;
+29: a co-op player the host brought to its own player, or went to, told on
+their machine, the brought player turned the host's way
+(network_host_controls.c's _distributed_message_host_teleport).
+Legacy games, and what an OpenCE machine sees, are unchanged) */
 #define HALO_PORT_STANDARD_BASE_VERSION 41
 #define HALO_PORT_STANDARD_VERSION_BIT 0x8000
 #define HALO_PORT_STANDARD_ADVERTISED_VERSION (HALO_PORT_STANDARD_VERSION_BIT | HALO_PORT_STANDARD_NETWORK_VERSION)
@@ -166,7 +171,7 @@ machine sees, are unchanged) */
 joining one, with the game's rate (the advertisement's
 HALO_PORT_ADVERTISED_RATE_OFFSET): NETCODE.md, "OpenH1 and Legacy games".
 Players see Standard games as "OpenH1 <rate> Tick" */
-#define HALO_PORT_STANDARD_REFUSAL "This is an OpenH1 %u Tick game; join a Legacy game or get OpenH1"
+#define HALO_PORT_STANDARD_REFUSAL "This is a GOAT H1 %u Tick game; join a Legacy game or get GOAT H1"
 /* ... the host plays the distributed netcode (always, since the lockstep
 netcode was removed; hosts of version 4 built before then may not) */
 #define HALO_PORT_ADVERTISED_DISTRIBUTED_FLAG 0x01

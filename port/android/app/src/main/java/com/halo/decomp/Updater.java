@@ -211,8 +211,8 @@ final class Updater {
         if (activity.isFinishing())
             return;
         new AlertDialog.Builder(activity)
-            .setTitle("OpenH1: new version")
-            .setMessage("A new version of OpenH1 was detected (build " + latest + "; this is build "
+            .setTitle("GOAT H1: new version")
+            .setMessage("A new version of GOAT H1 was detected (build " + latest + "; this is build "
                 + BuildConfig.HALO_BUILD_NUMBER + ").\n\nDo you want to update? The game will close and start "
                 + "the new version.")
             .setCancelable(false)
@@ -224,7 +224,7 @@ final class Updater {
 
     private static void confirmNever(Activity activity) {
         new AlertDialog.Builder(activity)
-            .setTitle("OpenH1: new version")
+            .setTitle("GOAT H1: new version")
             .setMessage("Stop asking about new versions?\n\nTo ask again, set auto = true in the [update] section "
                 + "of config.toml.")
             .setCancelable(false)
@@ -260,7 +260,7 @@ final class Updater {
         layout.addView(status);
         layout.addView(bar);
         AlertDialog progress = new AlertDialog.Builder(activity)
-            .setTitle("OpenH1: new version")
+            .setTitle("GOAT H1: new version")
             .setView(layout)
             .setCancelable(false)
             .show();
@@ -292,7 +292,7 @@ final class Updater {
                 activity.runOnUiThread(() -> {
                     progress.dismiss();
                     new AlertDialog.Builder(activity)
-                        .setTitle("OpenH1: new version")
+                        .setTitle("GOAT H1: new version")
                         .setMessage("The update failed:\n\n" + e.getMessage())
                         .setPositiveButton("OK", null)
                         .show();

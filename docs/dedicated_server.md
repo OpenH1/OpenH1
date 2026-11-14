@@ -431,7 +431,7 @@ players their sub-steps as they came and send them on to the other
 clients, and it sends no live controls of its own. Its LAN advertisement
 and listing are an OpenH1 game's (OpenCE's network version with the rate
 and the OpenH1 protocol version beside it, which the server browser's
-OpenH1 tab lists as "OpenH1 120 Tick, OpenCE can join"; with
+OpenH1 tab lists as "GOAT H1 120 Tick, OpenCE can join"; with
 `network.allow_opence` off, the OpenH1 protocol version alone, which OpenCE
 does not list), with the dedicated flag as ever. Every rotation entry,
 gametype file, vote and the map vote play as in a Legacy game; a co-op
@@ -448,7 +448,7 @@ waits), and an OpenH1 game's rate changes from the next game, as a player's
 host changes it. `network.allow_opence` is taken at once: an OpenH1 game
 closed to OpenCE players keeps those in it. The status's `game_mode`,
 `game_mode_name`, `tick_rate` and `opence`, the lobby's log line
-(`lobby: hosting: OpenH1 120 Tick, OpenCE can join (server.game_mode)`) and
+(`lobby: hosting: GOAT H1 120 Tick, OpenCE can join (server.game_mode)`) and
 the `game_started` and `game_ended` events say what is hosted.
 
 A server takes nothing of a player's host's `network.game_mode` and
@@ -773,7 +773,7 @@ events) before they were asked for.
 ```json
 {"ok":true,"time":1760900000123,"name":"OpenCE Server","state":"playing",
  "build":"build-206","network_version":38,"openh1_version":11,"game_mode":"openh1_120",
- "game_mode_name":"OpenH1 120 Tick, OpenCE can join","tick_rate":120,"opence":true,
+ "game_mode_name":"GOAT H1 120 Tick, OpenCE can join","tick_rate":120,"opence":true,
  "uptime":3600,"games_hosted":4,
  "map":"bloodgulch","level":"levels\\test\\bloodgulch\\bloodgulch","gametype":"ctf","variant":"CTF","teams":true,
  "players":5,"max_players":16,"machines":5,"countdown":-1,"game_seconds":312,"team_scores":[2,1],
@@ -796,7 +796,7 @@ and the mean frame of the last minute (`tick_ms_avg` is the mean again, for
 older readers). `game_mode` is the kind of game hosted, as `server.game_mode`
 spells it (a change of the setting waits for the server to be empty: "OpenH1
 games"; before the server hosts, what the setting says), `game_mode_name`
-its name as the server browser says it (`Legacy`, `OpenH1 120 Tick, OpenCE
+its name as the server browser says it (`Legacy`, `GOAT H1 120 Tick, OpenCE
 can join`), `tick_rate` its tick rate (30 for a Legacy game), `opence` whether
 OpenCE players join it now, and `openh1_version` the build's OpenH1 protocol
 version (`network_version` its network version). `invite` is given to

@@ -79,6 +79,7 @@ symbols in this file:
 #include "tag_files/tag_files.h"
 #include "cache/cache_files.h" /* port: tag_iterator (hires_text_fonts_ahead) */
 #include "menu_layout.h" /* port: port/linux/game/menu_layout.c */
+#include "menu_view.h" /* port: port/linux/game/menu_view.c */
 wchar_t const *menu_studio_text(wchar_t const *text); /* port: port/linux/game/menu_studio.c */
 
 /* port: the high-res text (port/linux/src/text_hires.c): the text drawn with
@@ -525,7 +526,7 @@ rasterizer_draw_string(
 				a key cap's words in a prompt: ui_widget.c's
 				draw_string_and_hack_in_icons; the carnage report) */
 				viewport_bounds.x0 = (short)(viewport_bounds.x0 -
-					MAX(ui_widget_port_anchor_extra(), (halo_screen_width() - 640) / 2));
+					MAX(ui_widget_port_anchor_extra(), menu_view_side()));
 			}
 			else
 			{
@@ -535,7 +536,7 @@ rasterizer_draw_string(
 				widgets' own clip keeps the others in the 640 */
 				set_rectangle2d(
 					&viewport_bounds,
-					FLOOR(clip->x0, -MAX(ui_widget_port_anchor_extra(), (halo_screen_width() - 640) / 2)),
+					FLOOR(clip->x0, -MAX(ui_widget_port_anchor_extra(), menu_view_side())),
 					FLOOR(clip->y0, 0),
 					MIN(render.camera.viewport_bounds.x1 - render.camera.viewport_bounds.x0, clip->x1),
 					MIN(render.camera.viewport_bounds.y1 - render.camera.viewport_bounds.y0, clip->y1));
@@ -663,7 +664,7 @@ rasterizer_draw_unicode_string(
 				a key cap's words in a prompt: ui_widget.c's
 				draw_string_and_hack_in_icons; the carnage report) */
 				viewport_bounds.x0 = (short)(viewport_bounds.x0 -
-					MAX(ui_widget_port_anchor_extra(), (halo_screen_width() - 640) / 2));
+					MAX(ui_widget_port_anchor_extra(), menu_view_side()));
 			}
 			else
 			{
@@ -673,7 +674,7 @@ rasterizer_draw_unicode_string(
 				widgets' own clip keeps the others in the 640 */
 				set_rectangle2d(
 					&viewport_bounds,
-					FLOOR(clip->x0, -MAX(ui_widget_port_anchor_extra(), (halo_screen_width() - 640) / 2)),
+					FLOOR(clip->x0, -MAX(ui_widget_port_anchor_extra(), menu_view_side())),
 					FLOOR(clip->y0, 0),
 					MIN(render.camera.viewport_bounds.x1 - render.camera.viewport_bounds.x0, clip->x1),
 					MIN(render.camera.viewport_bounds.y1 - render.camera.viewport_bounds.y0, clip->y1));

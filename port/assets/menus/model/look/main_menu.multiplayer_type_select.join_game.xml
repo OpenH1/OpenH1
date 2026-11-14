@@ -64,7 +64,7 @@
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" text="DEDICATED"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/tab_openh1" type="text" box="0 0 86 22" wide="-21 0" place="keep_ends" picture="main_menu/parts/tab">
-		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" text="OPENH1"/>
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" text="GOAT H1"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/tab_legacy" type="text" box="0 0 86 22" wide="21 0" place="keep_ends" picture="main_menu/parts/tab">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" text="LEGACY"/>
@@ -345,7 +345,7 @@
 	<look name="main_menu/multiplayer_type_select/join_game/panel_opence" type="text" box="0 0 132 16" picture="main_menu/parts/pill_132">
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 -1" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/multiplayer_type_select/join_game/browser_panel" box="440 74 612 436" wide="38 68" past="51 92" picture="main_menu/parts/panel_172x362">
+	<look name="main_menu/multiplayer_type_select/join_game/browser_panel" box="440 74 612 436" wide="38 68" past="51 92" place="above_foot" picture="main_menu/parts/panel_172x362">
 		<at widget="main_menu/multiplayer_type_select/join_game/panel_title" x="452" y="86"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/panel_where" x="452" y="134"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/panel_players_label" x="452" y="228"/>
@@ -369,7 +369,7 @@
 	<look name="main_menu/multiplayer_type_select/join_game/button_clear_search" type="text" box="0 0 164 24" wide="-34 0" past="-46 0" picture="main_menu/parts/item_164x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%a-button CLEAR SEARCH"/>
 	</look>
-	<look name="main_menu/multiplayer_type_select/join_game/join_game_button_bar" type="column_list" box="0 0 640 28">
+	<look name="main_menu/multiplayer_type_select/join_game/join_game_button_bar" type="column_list" box="0 0 640 28" place="foot">
 		<at widget="main_menu/multiplayer_type_select/join_game/prompt_favorite" x="24" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/prompt_refresh" x="134" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/prompt_paste" x="134" y="1"/>

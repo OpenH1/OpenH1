@@ -106,6 +106,9 @@ in the tick), and how far the frame is past that, in ticks: -1 for a view
 drawn between the ticks (render_interpolation.c) */
 void render_interpolation_first_person_updated(void);
 float render_interpolation_first_person_phase(short local_player_index);
+/* ... and how far the step running now ends past it, the same way (0 to 1),
+for a state changed in it (first_person_weapon_start_interpolation) */
+float render_interpolation_first_person_step_phase(void);
 void render_interpolation_first_person(short local_player_index, struct real_matrix4x3 *node_matrices,
 	short node_count, struct render_camera const *camera);
 float render_interpolation_game_time_sec(long ticks);
@@ -227,6 +230,11 @@ short ui_widget_port_anchor_extra(void);
 the Android and iOS apps, or debug.touch_menus): their buttons then name no
 controller's key (port/linux/game/menu_tags.c) */
 int ui_widget_port_touch_menus(void);
+/* the tall layout's footer on a touchscreen, raised above a phone's safe
+area at the screen's foot: how far (0 elsewhere), and a widget's move up by
+it (its port flag foot) as it is drawn (port/linux/game/menu_tags.c) */
+short ui_widget_port_foot_lift(void);
+short ui_widget_port_foot_offset(long flags);
 /* the wide layout of the port's own screens (their widgets' wide attribute:
 port/linux/game/menu_tags.c): the extra width past the menus' 640 a view
 this wide lays them out in (to 16:9's), and a value's part of it; the
@@ -309,6 +317,9 @@ _end), and what the code drawing knows of them (HALO_HDR_KIND_*, 0 none) */
 void halo_screen_tone_map(short x0, short y0, short x1, short y1);
 void halo_hdr_category(int category);
 void halo_hdr_draw_kind(int kind);
+/* ... and the draws from now on the HUD's and menus' again, after a view of
+the world's drawn among them (port/linux/game/menu_spartan.c) */
+void halo_hdr_interface(void);
 /* debug.render_marks: what the draws that follow belong to, for the
 inspector's replay (port/linux/game/render_marks.c) */
 #include "render_marks.h"
@@ -411,13 +422,17 @@ once a frame (main_loop) */
 void map_cache_prefill_update(void);
 /* (port/linux/game/menu_pictures_render.c) the menus' pictures' pass runs */
 int menu_pictures_preparing(void);
-/* the deflection of a stick (0 the left, 1 the right) read as none, of
-32767: input.left_stick_dead_zone and input.right_stick_dead_zone, else the
-game's own (port/linux/src/xinput_sdl.c) */
-short halo_stick_dead_range(short stick);
-/* whether a controller's look turns the other way side to side:
+/* the deflection of a gamepad's stick (0 the left, 1 the right) read as
+none, of 32767: its player's input.left_stick_dead_zone and
+input.right_stick_dead_zone, else the game's own (port/linux/src/xinput_sdl.c) */
+short halo_stick_dead_range(short gamepad, short stick);
+/* whether a gamepad's look turns the other way side to side: its player's
 input.invert_look_horizontal (port/linux/src/xinput_sdl.c) */
-int halo_look_horizontal_inverted(void);
+int halo_look_horizontal_inverted(short gamepad);
+/* whether a local player's controller aims as Modern does (input.aim_style,
+the player's own), and Modern's acceleration angle, as its tangent, and the
+push that accelerates, or -1 for the game's own (source/game/player_control.c) */
+int player_control_aim_modern(short local_player_index, float *acceleration_tangent, float *acceleration_threshold);
 /* ... and whether a controller's right stick is the flick stick
 (input.flick_stick) */
 int halo_linux_flick_stick(void);
@@ -428,6 +443,8 @@ int platform_movie_skip_pressed(void);
 /* the player's move and look as the game read them, for the input trace
 (port/linux/src/input_trace.c): a frame's, or a sub-step's */
 void input_trace_player(int controller, int substep, float forward, float strafe, float yaw, float pitch);
+/* ... and the look stick's acceleration a tick (source/game/player_control.c) */
+void input_trace_aim(int controller, int modern, int accelerating, float acceleration_seconds);
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
 

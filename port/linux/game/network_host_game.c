@@ -1808,7 +1808,7 @@ boolean network_host_game_console(
 		*result = moved != NONE;
 		if (moved == NONE)
 		{
-			console_warning("%s: only in a team game you host, in its lobby or (an OpenH1 game without OpenCE "
+			console_warning("%s: only in a team game you host, in its lobby or (a GOAT H1 game without OpenCE "
 				"players) while it plays", how == _host_game_shuffle ? "host_shuffle_teams" : "host_balance_teams");
 		}
 		else

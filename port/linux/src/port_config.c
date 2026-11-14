@@ -77,6 +77,33 @@ enum
 	_platform_server = 64,
 };
 
+/* Whose a setting is. The machine's (_scope_machine, the table's default,
+left out) are config.toml's alone, the same for every player on it: what
+one screen cannot have two of (the window, the resolution, VSync and the
+frame rate, HDR, anti-aliasing and the rest of the drawing's quality), the
+sound, the network, the server's, and what the simulation's own effects
+follow (display.overshield_effect: a hit on an overshield plays an Elite's
+shield's effect). Settings sets them whoever opened it, as player 1's are. A player's own (_scope_player) may differ between the
+players of one split screen: each player profile can keep a value of its
+own (its settings.toml, beside its blam.sav: config_player_profile), which
+that profile's player sees and plays with (config_player_boolean and the
+rest); a profile without one, or a player without a profile, has
+config.toml's. So an older config.toml's values are every profile's until
+a profile is given one of its own, and nothing changes as a player
+upgrades. */
+enum config_scope
+{
+	_scope_machine,
+	_scope_player,
+	/* (a player's own, of the keyboard and mouse, which drive only player 1:
+	player 1's profile's, whoever opens Settings) */
+	_scope_keyboard,
+	/* (a player profile's alone, which config.toml never has: a profile's
+	own controller layout, input.controller, in place of the machine's
+	input.controller_p<n> its player would have otherwise) */
+	_scope_profile,
+};
+
 struct config_setting
 {
 	const char *name;
@@ -88,6 +115,8 @@ struct config_setting
 	enum config_environment environment_style;
 	unsigned platforms;
 	const char *comment;
+	/* whose it is (left out: the machine's) */
+	enum config_scope scope;
 };
 
 /* crouching's keys */
@@ -278,79 +307,79 @@ static const struct config_setting config_settings[] =
 		"first person, in degrees across at 16:9 (20 to 150, or to 160 with\n"
 		"display.panini on); 0 keeps the stock view. The third-person seats\n"
 		"take display.vehicle_fov's. Cinematics and scripted cameras keep\n"
-		"their own." },
+		"their own.", _scope_player },
 	{ "display.vehicle_fov", _config_string, "\"default\"", "HALO_VEHICLE_FOV", _environment_value, _platform_all,
 		"The view's field of view in a vehicle's seat seen in third person (a\n"
 		"driver's, a gunner's), getting in and out too: \"default\" keeps the\n"
 		"stock view, \"match\" takes display.fov's, and a number is degrees\n"
 		"across at 16:9 (20 to 150, or to 160 with display.panini on). A seat\n"
-		"seen in first person (a passenger's) takes display.fov's." },
+		"seen in first person (a passenger's) takes display.fov's.", _scope_player },
 	{ "display.scale_scoped_fov", _config_boolean, "false", "HALO_SCALE_SCOPED_FOV", _environment_value, _platform_all,
 		"Zoom a scope from the view's own field of view (display.fov,\n"
 		"display.vehicle_fov): each zoom level magnifies it as much as the\n"
 		"Xbox's magnifies the stock view (the tangent of half the angle\n"
 		"scaled by the player's over the stock one's). false keeps the\n"
-		"Xbox's: every zoom level is the weapon's own, whatever the view." },
+		"Xbox's: every zoom level is the weapon's own, whatever the view.", _scope_player },
 	{ "display.panini", _config_real, "0.0", "HALO_PANINI", _environment_value, _platform_all,
 		"Draw the 3D view through the Panini projection, at this strength\n"
 		"(Panini's d), 0 to 1; 0 off. At a wide field of view what is at the\n"
 		"sides keeps its shape instead of stretching: 1 keeps it true along\n"
 		"the horizon. The view sees as far to the sides; its middle is drawn\n"
-		"larger. The HUD and the menus are not curved. Not in the VR build." },
+		"larger. The HUD and the menus are not curved. Not in the VR build.", _scope_player },
 	{ "display.panini_vertical", _config_real, "0.0", "HALO_PANINI_VERTICAL", _environment_value, _platform_all,
 		"With display.panini, its vertical compression (Panini's s), 0 to 1:\n"
 		"0 keeps the shapes at the sides; more straightens the floors and\n"
-		"ceilings above and below the middle, stretching the sides taller." },
+		"ceilings above and below the middle, stretching the sides taller.", _scope_player },
 	{ "display.draw_distance", _config_real, "1024.0", "HALO_DRAW_DISTANCE", _environment_value, _platform_all,
 		"How far the world is drawn: the far clip plane, in world units\n"
 		"(about 3 m each), 1024 (the game's own) to 10000. Drawing alone: the\n"
-		"game plays the same. A script's nearer far clip is kept." },
+		"game plays the same. A script's nearer far clip is kept.", _scope_player },
 	{ "display.viewmodel_fov", _config_real, "0.0", "HALO_VIEWMODEL_FOV", _environment_value, _platform_all,
 		"The first-person weapon's and hands' field of view, in degrees across\n"
 		"at 16:9 (20 to 150); 0 keeps the weapon's stock view, also when\n"
-		"display.fov widens the world." },
+		"display.fov widens the world.", _scope_player },
 	{ "display.viewmodel_offset_x", _config_real, "0.0", "HALO_VIEWMODEL_OFFSET_X", _environment_value, _platform_all,
 		"The first-person weapon and hands moved right (negative: left) on\n"
 		"the screen, in centimeters (-20 to 20), for every weapon; 0 keeps them\n"
 		"where the game draws them. With display.viewmodel_fov, as far on the\n"
-		"screen as at the weapon's stock view. Not in VR." },
+		"screen as at the weapon's stock view. Not in VR.", _scope_player },
 	{ "display.viewmodel_offset_y", _config_real, "0.0", "HALO_VIEWMODEL_OFFSET_Y", _environment_value, _platform_all,
 		"The first-person weapon and hands moved up (negative: down), in\n"
 		"centimeters (-20 to 20), as far on the screen at any\n"
-		"display.viewmodel_fov; 0 keeps them where the game draws them." },
+		"display.viewmodel_fov; 0 keeps them where the game draws them.", _scope_player },
 	{ "display.viewmodel_offset_z", _config_real, "0.0", "HALO_VIEWMODEL_OFFSET_Z", _environment_value, _platform_all,
 		"The first-person weapon and hands moved forward, away from the view\n"
 		"(negative: closer), in centimeters (-20 to 20); 0 keeps them where\n"
-		"the game draws them." },
+		"the game draws them.", _scope_player },
 	{ "display.viewmodel_pitch", _config_real, "0.0", "HALO_VIEWMODEL_PITCH", _environment_value, _platform_all,
 		"The first-person weapon and hands turned, muzzle up (negative: down),\n"
 		"in degrees (-15 to 15), about their middle, for every weapon; 0 keeps\n"
 		"them as the game draws them. The aim does not move. Not in VR.\n"
 		"Each weapon's own offsets, added to these: [display.viewmodel_weapon.\n"
 		"\"<tag path>\"] tables of x, y, z, pitch, yaw and roll (Settings, in a\n"
-		"game: First Person's WEAPON POSITION, THIS WEAPON)." },
+		"game: First Person's WEAPON POSITION, THIS WEAPON).", _scope_player },
 	{ "display.viewmodel_yaw", _config_real, "0.0", "HALO_VIEWMODEL_YAW", _environment_value, _platform_all,
 		"The first-person weapon and hands turned, muzzle right (negative:\n"
-		"left), in degrees (-15 to 15); 0 keeps them as the game draws them." },
+		"left), in degrees (-15 to 15); 0 keeps them as the game draws them.", _scope_player },
 	{ "display.viewmodel_roll", _config_real, "0.0", "HALO_VIEWMODEL_ROLL", _environment_value, _platform_all,
 		"The first-person weapon and hands tilted, top to the right (negative:\n"
-		"left), in degrees (-15 to 15); 0 keeps them as the game draws them." },
+		"left), in degrees (-15 to 15); 0 keeps them as the game draws them.", _scope_player },
 	{ "display.lowered_reticle", _config_boolean, "false", "HALO_LOWERED_RETICLE", _environment_value, _platform_all,
 		"Draw the reticle below the middle of the view, as Halo 2 and 3 do\n"
 		"(display.lowered_reticle_amount: how far). The view looks a little\n"
 		"above the aim, so shots go where the reticle points; a scope's zoom\n"
 		"brings it back to the middle. Only this machine's view changes. Not\n"
-		"in VR." },
+		"in VR.", _scope_player },
 	{ "display.lowered_reticle_amount", _config_real, "10.0", "HALO_LOWERED_RETICLE_AMOUNT", _environment_value,
 		_platform_all,
 		"With display.lowered_reticle, how far below the middle the reticle\n"
 		"is, in percent of the view's height (0 to 30); 10 is about Halo 2's\n"
-		"and Halo 3's." },
+		"and Halo 3's.", _scope_player },
 	{ "display.viewmodel_visible", _config_boolean, "true", "HALO_VIEWMODEL_VISIBLE", _environment_value, _platform_all,
 		"Draw the first-person weapon, hands and what is attached to them.\n"
-		"Off, they are not drawn; firing, animation, sound and lights go on." },
+		"Off, they are not drawn; firing, animation, sound and lights go on.", _scope_player },
 	{ "display.passenger_third_person", _config_boolean, "false", "HALO_PASSENGER_THIRD_PERSON", _environment_value, _platform_all,
-		"Third-person Warthog and Scorpion passengers. Weapon zoom is disabled." },
+		"Third-person Warthog and Scorpion passengers. Weapon zoom is disabled.", _scope_player },
 	{ "display.high_res_hud", _config_boolean, "true", "HALO_HIGH_RES_HUD", _environment_value, _platform_all,
 		"Draw the HUD (meters, counters, panels, motion sensor, reticles,\n"
 		"waypoints, scopes, message icons) from the high-res assets: Aerocatia's\n"
@@ -365,7 +394,7 @@ static const struct config_setting config_settings[] =
 	{ "display.hud_button_style", _config_string, "\"classic\"", "HALO_HUD_BUTTON_STYLE", _environment_value, _platform_all,
 		"High-res gameplay controller buttons: classic uses the Xbox's stencils;\n"
 		"gems uses shaded Xbox faces; menu_gems uses the menu's button art.\n"
-		"Requires display.high_res_hud." },
+		"Requires display.high_res_hud.", _scope_player },
 	{ "display.menu_pictures", _config_boolean, "true", "HALO_MENU_PICTURES", _environment_value, _platform_desktop,
 		"Draw the menus' pictures of the missions and the multiplayer maps again,\n"
 		"sharp, from your own maps: once, as the main menu first shows (\"Preparing\n"
@@ -951,35 +980,35 @@ static const struct config_setting config_settings[] =
 		"A controller's or the keys' Crouch: \"hold\" crouches while it is held,\n"
 		"as Halo did; \"toggle\" crouches at a tap until Crouch is pressed again,\n"
 		"Jump is pressed, a vehicle's seat is taken or the player dies, and still\n"
-		"crouches while held." },
+		"crouches while held.", _scope_player },
 	{ "input.crouch_walk", _config_boolean, "false", "HALO_CROUCH_WALK", _environment_value, _platform_all,
 		"true: a crouched player stays crouched at a full push of a controller's\n"
 		"stick, walking at a crouch's speed; false: a full push stands them up,\n"
 		"as Halo did. The touch controls always stay crouched, and the keys walk\n"
-		"crouched as before." },
+		"crouched as before.", _scope_player },
 	{ "input.walk", _config_string, "\"hold\"", "HALO_WALK", _environment_value, _platform_all,
 		"The keys' Walk (controls.walk): \"hold\" walks while it is held;\n"
 		"\"toggle\" walks from one press to the next. Walking, the movement keys\n"
 		"move the player at input.walk_speed, as a stick pushed part of the way\n"
 		"does: the same input as a controller's, in every game. Crouched, the\n"
 		"slower of the two. On foot only; controllers and the touch controls\n"
-		"have their sticks." },
+		"have their sticks.", _scope_keyboard },
 	{ "input.walk_speed", _config_string, "\"tracker\"", "HALO_WALK_SPEED", _environment_value, _platform_all,
 		"How fast the keys walk: \"tracker\", as fast as a player can go and\n"
 		"stay off the enemies' motion trackers (the map's threshold, the\n"
-		"player's speeds); or a percentage of the full speed, 10 to 90." },
+		"player's speeds); or a percentage of the full speed, 10 to 90.", _scope_keyboard },
 	{ "input.mouse_sensitivity", _config_real, "5.73", "HALO_MOUSE_SENSITIVITY", _environment_value, _platform_desktop,
 		"How far the view turns for the mouse's movement, on " CONFIG_MOUSE_MARK " scale:\n"
 		"0.022 degrees a count of the mouse times this, with no acceleration,\n"
 		"whatever the field of view or the frame rate. The same number as in\n"
 		"CS2 turns the same. (Older versions' scale, 0.0022 radians a count,\n"
-		"was converted once: times 5.7296.)" },
+		"was converted once: times 5.7296.)", _scope_keyboard },
 	{ "input.zoom_sensitivity", _config_string, "\"cs2\"", "HALO_ZOOM_SENSITIVITY", _environment_value,
 		_platform_desktop,
 		"How the mouse turns while zoomed: \"cs2\", by the zoomed field of view\n"
 		"over the unzoomed one (CS2's zoom_sensitivity_ratio 1), at every zoom\n"
 		"of every weapon; \"halo\", by one over the zoom's magnification, as the\n"
-		"game turns. Controllers and the touch controls keep the game's." },
+		"game turns. Controllers and the touch controls keep the game's.", _scope_keyboard },
 	{ "input.playstation_kernel_driver", _config_boolean, "false", "HALO_PLAYSTATION_KERNEL_DRIVER",
 		_environment_value, _platform_desktop,
 		"Linux: a PlayStation controller (DualSense, DualShock 4) through the\n"
@@ -987,7 +1016,7 @@ static const struct config_setting config_settings[] =
 		"false: through SDL's own, which needs Steam's udev rules to open it. Read\n"
 		"at start-up." },
 	{ "input.invert_mouse", _config_boolean, "false", "HALO_MOUSE_INVERT", _environment_set_is_true, _platform_desktop,
-		"Moving the mouse forward looks down." },
+		"Moving the mouse forward looks down.", _scope_keyboard },
 	{ "network.block_mouse_aim_assist", _config_boolean, "false", "HALO_NET_BLOCK_MOUSE_AIM_ASSIST", _environment_value,
 		_platform_all, "Host: disable optional mouse magnetism for mouse/keyboard players. Controllers and touch keep their own assist." },
 	{ "network.shield_effects", _config_string, "\"overshield\"", "HALO_NET_SHIELD_EFFECTS", _environment_value, _platform_all,
@@ -1005,7 +1034,7 @@ static const struct config_setting config_settings[] =
 		"behind), no further than a player leaning out and an arm, and in front\n"
 		"of the eye. false: from the camera and vehicles' guns only." },
 	{ "network.predict_hits", _config_boolean, "true", "HALO_NET_PREDICT_HITS", _environment_value, _platform_all,
-		"Client of an OpenH1 game: show your hits on other players at once\n"
+		"Client of a GOAT H1 game: show your hits on other players at once\n"
 		"(the shield's flare and break, the flinch, the death), before the\n"
 		"host's word on them comes a round trip later. The host still decides:\n"
 		"the kill is announced when its word comes, and a hit it refuses is\n"
@@ -1015,12 +1044,12 @@ static const struct config_setting config_settings[] =
 		"Magnetism while aiming with the mouse, as with a controller: the view\n"
 		"slowed and dragged along by a target. The last of the mouse and the\n"
 		"right stick to move decides. The bullets' autoaim (bent toward the\n"
-		"target) stays either way." },
+		"target) stays either way.", _scope_keyboard },
 	{ "input.mouse_vertical_sensitivity", _config_real, "1.0", "HALO_MOUSE_VERTICAL_SENSITIVITY", _environment_value,
 		_platform_desktop,
 		"How far the view turns up and down for the mouse's movement, times\n"
 		"input.mouse_sensitivity (as CS2's m_pitch is of m_yaw): 1 the same as\n"
-		"side to side, 0.5 half as far." },
+		"side to side, 0.5 half as far.", _scope_keyboard },
 
 	{ "input.button_prompts", _config_string, "\"auto\"", "HALO_BUTTON_PROMPTS", _environment_value, _platform_all,
 		"The HUD's button prompts (\"Hold [X] to pick up\", \"Press [flashlight]\"):\n"
@@ -1030,7 +1059,7 @@ static const struct config_setting config_settings[] =
 		"touch controls) was; \"controller\" always the controller's buttons, as\n"
 		"the Xbox; \"keyboard\" always the keys. In VR (but \"controller\"):\n"
 		"what presses it on the controllers in the hands, as the runtime names\n"
-		"it (\"A Button\", \"Right Hand Trigger\"), or the gesture that does." },
+		"it (\"A Button\", \"Right Hand Trigger\"), or the gesture that does.", _scope_player },
 	{ "input.controller_p1", _config_string, "\"\"", "HALO_CONTROLLER_P1", _environment_value, _platform_all,
 		"P1 custom controller layout; empty uses the profile's preset. Edit in\n"
 		"Settings > Controls > Controller > Button Remapping. v4: 27 physical\n"
@@ -1044,19 +1073,38 @@ static const struct config_setting config_settings[] =
 		"P3 custom controller buttons, same format as controller_p1. Empty uses the profile." },
 	{ "input.controller_p4", _config_string, "\"\"", "HALO_CONTROLLER_P4", _environment_value, _platform_all,
 		"P4 custom controller buttons, same format as controller_p1. Empty uses the profile." },
+	{ "input.controller", _config_string, "\"\"", NULL, _environment_value, _platform_all,
+		"A player profile's own controller layout, in its settings.toml (Button\n"
+		"Remapping sets it), as input.controller_p1's; empty: the profile's\n"
+		"preset. A player whose profile has none has input.controller_p<n>'s.", _scope_profile },
 	{ "input.left_stick_dead_zone", _config_integer, "-1", "HALO_LEFT_STICK_DEAD_ZONE", _environment_value, _platform_all,
 		"How far the controller's left stick moves before it moves the player,\n"
 		"in percent of its travel (0 to 50): lower for finer control, higher for\n"
 		"a worn stick that drifts; -1 for the game's own (27%). On Android, the\n"
-		"touch controls' stick too." },
+		"touch controls' stick too.", _scope_player },
 	{ "input.right_stick_dead_zone", _config_integer, "-1", "HALO_RIGHT_STICK_DEAD_ZONE", _environment_value, _platform_all,
 		"How far the controller's right stick moves before it turns the view, in\n"
-		"percent of its travel (0 to 50); -1 for the game's own (27%)." },
+		"percent of its travel (0 to 50); -1 for the game's own (27%).", _scope_player },
 	{ "input.invert_look_horizontal", _config_boolean, "false", "HALO_INVERT_LOOK_HORIZONTAL", _environment_value,
 		_platform_all,
 		"A controller's look turns the other way: pushing the stick that looks to\n"
 		"the right turns the view left. The profile's INVERT LOOK is the up and\n"
-		"down; this is the side to side, for every controller." },
+		"down; this is the side to side, for every controller.", _scope_player },
+	{ "input.aim_style", _config_string, "\"classic\"", "HALO_AIM_STYLE", _environment_value, _platform_all,
+		"How a controller's look stick aims: \"classic\", the original's (each\n"
+		"direction curved on its own, so a diagonal turns faster, and pushed far\n"
+		"enough it accelerates the turn); \"modern\", as MCC's Modern aiming:\n"
+		"the push curved as one, the same speed whichever way it points, and the\n"
+		"turn accelerated only near side to side. The mouse and the touch\n"
+		"controls are not changed.", _scope_player },
+	{ "input.modern_aim_acceleration_angle", _config_integer, "20", "HALO_MODERN_AIM_ACCELERATION_ANGLE",
+		_environment_value, _platform_all,
+		"Modern aim: how far from side to side, in degrees (0 to 45), the look\n"
+		"stick can point and still accelerate the turn when pushed fully.", _scope_player },
+	{ "input.modern_aim_acceleration_threshold", _config_integer, "-1", "HALO_MODERN_AIM_ACCELERATION_THRESHOLD",
+		_environment_value, _platform_all,
+		"Modern aim: how far the look stick is pushed, in percent of its travel\n"
+		"(0 to 100), before the turn accelerates; -1 for the game's own.", _scope_player },
 	{ "input.gyro_aim", _config_string, "\"off\"", "HALO_GYRO_AIM", _environment_value, _platform_all,
 		"Aiming by turning a controller that has a gyroscope (a DualSense, a\n"
 		"DualShock 4, a Switch Pro Controller or Joy-Cons, a Steam Deck with\n"
@@ -1103,77 +1151,77 @@ static const struct config_setting config_settings[] =
 		"is the one in that place on any keyboard, which the menus show by its\n"
 		"own label. Buttons: \"Mouse Left\", \"Mouse Right\", \"Mouse Middle\",\n"
 		"\"Mouse 4\", \"Mouse 5\", \"Wheel\" (either way), \"Wheel Up\" and \"Wheel\n"
-		"Down\"; empty for none. Moving forward:" },
+		"Down\"; empty for none. Moving forward:", _scope_keyboard },
 	{ "controls.move_backward", _config_string, "\"S\"", "HALO_KEY_MOVE_BACKWARD", _environment_value, _platform_all,
-		"Moving backward." },
+		"Moving backward.", _scope_keyboard },
 	{ "controls.strafe_left", _config_string, "\"A\"", "HALO_KEY_STRAFE_LEFT", _environment_value, _platform_all,
-		"Moving left." },
+		"Moving left.", _scope_keyboard },
 	{ "controls.strafe_right", _config_string, "\"D\"", "HALO_KEY_STRAFE_RIGHT", _environment_value, _platform_all,
-		"Moving right." },
+		"Moving right.", _scope_keyboard },
 	{ "controls.jump", _config_string, "\"Space\"", "HALO_KEY_JUMP", _environment_value, _platform_all,
-		"Jumping (and skipping cutscenes)." },
+		"Jumping (and skipping cutscenes).", _scope_keyboard },
 	{ "controls.crouch", _config_string, CROUCH_KEYS, "HALO_KEY_CROUCH", _environment_value, _platform_all,
-		"Crouching." },
+		"Crouching.", _scope_keyboard },
 	{ "controls.fire", _config_string, "\"Mouse Left\"", "HALO_KEY_FIRE", _environment_value, _platform_all,
-		"Firing." },
+		"Firing.", _scope_keyboard },
 	{ "controls.throw_grenade", _config_string, "\"G\"", "HALO_KEY_THROW_GRENADE", _environment_value,
 		_platform_all,
-		"Throwing a grenade." },
+		"Throwing a grenade.", _scope_keyboard },
 	{ "controls.melee", _config_string, "\"F, Mouse 4\"", "HALO_KEY_MELEE", _environment_value, _platform_all,
-		"Melee attack." },
+		"Melee attack.", _scope_keyboard },
 	{ "controls.reload", _config_string, "\"R\"", "HALO_KEY_RELOAD", _environment_value, _platform_all,
-		"Reloading." },
+		"Reloading.", _scope_keyboard },
 	{ "controls.zoom", _config_string, "\"Mouse Right, Z\"", "HALO_KEY_ZOOM", _environment_value, _platform_all,
-		"Zooming the scope." },
+		"Zooming the scope.", _scope_keyboard },
 	{ "controls.switch_weapon", _config_string, "\"Wheel, 1\"", "HALO_KEY_SWITCH_WEAPON", _environment_value,
 		_platform_all,
-		"Switching weapons." },
+		"Switching weapons.", _scope_keyboard },
 	{ "controls.switch_grenade", _config_string, "\"X\"", "HALO_KEY_SWITCH_GRENADE", _environment_value, _platform_all,
-		"Switching grenades." },
+		"Switching grenades.", _scope_keyboard },
 	{ "controls.action", _config_string, "\"E\"", "HALO_KEY_ACTION", _environment_value, _platform_all,
 		"The action: picking up (held: swapping weapons), entering and leaving\n"
 		"vehicles, pressing switches; never reloading (the controller's X does\n"
-		"when there is nothing to act on)." },
+		"when there is nothing to act on).", _scope_keyboard },
 	{ "controls.flashlight", _config_string, "\"Q\"", "HALO_KEY_FLASHLIGHT", _environment_value, _platform_all,
-		"The flashlight." },
+		"The flashlight.", _scope_keyboard },
 	{ "controls.scoreboard", _config_string, "\"Tab\"", "HALO_KEY_SCOREBOARD", _environment_value, _platform_all,
-		"Showing the scores (the controller's Back)." },
+		"Showing the scores (the controller's Back).", _scope_keyboard },
 	{ "controls.pause", _config_string, "\"Escape\"", "HALO_KEY_PAUSE", _environment_value, _platform_all,
-		"The pause menu (the controller's Start)." },
+		"The pause menu (the controller's Start).", _scope_keyboard },
 	{ "controls.screenshot", _config_string, "\"F10\"", "HALO_KEY_SCREENSHOT", _environment_value, _platform_all,
-		"Save a PNG screenshot in screenshots/ beside maps/ (press once per capture)." },
+		"Save a PNG screenshot in screenshots/ beside maps/ (press once per capture).", _scope_keyboard },
 	{ "controls.report", _config_string, "\"F8\"", "HALO_KEY_REPORT", _environment_value, _platform_all,
 		"Report a problem: a zip in reports/ beside maps/ (the log, the settings,\n"
 		"the GPU, the frame times and a screenshot of that moment), and a GitHub\n"
-		"issue opened in the browser, filled in, for it to be dragged into." },
+		"issue opened in the browser, filled in, for it to be dragged into.", _scope_keyboard },
 	{ "controls.clip", _config_string, "\"F9\"", "HALO_KEY_CLIP", _environment_value, _platform_all,
 		"Clip: mark the demo being recorded at this moment, its last\n"
-		"demo.clip_seconds (docs/demos.md)." },
+		"demo.clip_seconds (docs/demos.md).", _scope_keyboard },
 	{ "controls.push_to_talk", _config_string, "\"V\"", "HALO_KEY_PUSH_TO_TALK", _environment_value, _platform_all,
-		"Voice chat: talk while it is held (audio.voice_chat \"push_to_talk\")." },
+		"Voice chat: talk while it is held (audio.voice_chat \"push_to_talk\").", _scope_keyboard },
 	{ "controls.chat", _config_string, "\"T\"", "HALO_KEY_CHAT", _environment_value, _platform_all,
 		"Network games' text chat: type a line to everyone (Enter sends it,\n"
-		"Escape lets it go)." },
+		"Escape lets it go).", _scope_keyboard },
 	{ "controls.team_chat", _config_string, "\"Y\"", "HALO_KEY_TEAM_CHAT", _environment_value, _platform_all,
-		"Network games' text chat: type a line to your team." },
+		"Network games' text chat: type a line to your team.", _scope_keyboard },
 	{ "controls.party_accept", _config_string, "\"J\"", "HALO_KEY_PARTY_ACCEPT", _environment_value, _platform_all,
 		"Network games: accept the party invite a player sent you (the\n"
-		"controller's D-pad Down)." },
+		"controller's D-pad Down).", _scope_keyboard },
 	{ "controls.vote_yes", _config_string, "\"F1\"", "HALO_KEY_VOTE_YES", _environment_value, _platform_all,
 		"Network games' votes (to kick a player, to end the game): vote yes in\n"
-		"the vote running, whose box shows at the left." },
+		"the vote running, whose box shows at the left.", _scope_keyboard },
 	{ "controls.vote_no", _config_string, "\"F2\"", "HALO_KEY_VOTE_NO", _environment_value, _platform_all,
-		"Network games' votes: vote no in the vote running." },
+		"Network games' votes: vote no in the vote running.", _scope_keyboard },
 	{ "controls.ping", _config_string, "\"Mouse Middle\"", "HALO_KEY_PING", _environment_value, _platform_all,
 		"Ping: mark what you aim at (a spot, an enemy, a vehicle, a weapon) for\n"
 		"your allies, with a nav point and its distance; again on the same spot\n"
-		"takes it away (the controller's D-pad Right)." },
+		"takes it away (the controller's D-pad Right).", _scope_keyboard },
 	{ "controls.walk", _config_string, "\"Left Shift\"", "HALO_KEY_WALK", _environment_value, _platform_all,
 		"Walking: the movement keys move the player slowly while it is held\n"
-		"(input.walk, input.walk_speed)." },
+		"(input.walk, input.walk_speed).", _scope_keyboard },
 	{ "controls.spartan_link", _config_string, "\"B\"", "HALO_KEY_SPARTAN_LINK", _environment_value, _platform_all,
 		"The Spartan link: your teammates' feeds in the HUD shown or hidden\n"
-		"(display.spartan_link)." },
+		"(display.spartan_link).", _scope_keyboard },
 
 	{ "game.console_log", _config_string, "\"important\"", "HALO_CONSOLE_LOG", _environment_value, _platform_all,
 		"What the game's console shows on screen of what it logs: \"important\"\n"
@@ -1202,7 +1250,7 @@ static const struct config_setting config_settings[] =
 		"and in the air (so shots after a turn in a jump go to the crosshair);\n"
 		"false: the original animations, which freeze the legs and stand a\n"
 		"rider up, and the body, so the campaign's AI plays as on the Xbox. A\n"
-		"rule of the game, read as its map begins: in an OpenH1 network game the\n"
+		"rule of the game, read as its map begins: in a GOAT H1 network game the\n"
 		"host's, on every machine (a Legacy game's players turn)." GRAPHICS_CHOOSES },
 	{ "game.campaign_difficulty", _config_integer, "1", "HALO_CAMPAIGN_DIFFICULTY", _environment_value, _platform_all,
 		"The difficulty Choose Difficulty opens on: the one chosen last (0 Easy,\n"
@@ -1213,7 +1261,7 @@ static const struct config_setting config_settings[] =
 		"made), 60 or 120, in steps inside the game's 30 ticks a second, which\n"
 		"everything else keeps. For games of this computer alone: the campaign,\n"
 		"split screen and games with bots. Network games play at the rate they\n"
-		"agreed on (a Legacy game's 30, an OpenH1 game's network.sim_rate), and\n"
+		"agreed on (a Legacy game's 30, a GOAT H1 game's network.sim_rate), and\n"
 		"saved films at 30, whatever this is." },
 	{ "game.priority", _config_string, "\"normal\"", "HALO_PRIORITY", _environment_value, _platform_guest,
 		"Linux: \"normal\" runs the game at the normal priority whatever its\n"
@@ -1297,7 +1345,7 @@ static const struct config_setting config_settings[] =
 		"The energy shield's flare on the first-person arms too, as on the body\n"
 		"(the stock game draws it on the body only): it shows as the shield\n"
 		"takes hits and fades after them; a full shield untouched shows none.\n"
-		"An overshield stays lit on the arms with display.overshield_effect." },
+		"An overshield stays lit on the arms with display.overshield_effect.", _scope_player },
 #ifdef HALO_VR
 	/* (the VR build's on: in the headset, your body under you, port/linux/README.md "Your body") */
 	{ "display.first_person_legs", _config_boolean, "true", "HALO_FIRST_PERSON_LEGS", _environment_value, _platform_all,
@@ -1305,7 +1353,7 @@ static const struct config_setting config_settings[] =
 	{ "display.first_person_legs", _config_boolean, "false", "HALO_FIRST_PERSON_LEGS", _environment_value, _platform_all,
 #endif
 		"Your own legs in first person, seen looking down: your body as others\n"
-		"see it, drawn from the belly down, moving as it moves, with its shadow." },
+		"see it, drawn from the belly down, moving as it moves, with its shadow.", _scope_player },
 	{ "display.overshield_effect", _config_boolean, "true", "HALO_OVERSHIELD_EFFECT", _environment_value, _platform_all,
 		"The overshield as this machine draws it: its flare lit as it charges\n"
 		"and staying lit for as long as it lasts, its energy slower, in its own\n"
@@ -1356,7 +1404,7 @@ static const struct config_setting config_settings[] =
 		"Your energy shield's color, as this machine draws it: \"default\" (the\n"
 		"shield's own) or a multiplayer armor color: white, black, red, blue,\n"
 		"gray, yellow, green, pink, purple, cyan, cobalt, orange, teal, sage,\n"
-		"brown, tan, maroon or salmon." },
+		"brown, tan, maroon or salmon.", _scope_player },
 
 	{ "game.unlock_all_levels", _config_boolean, "false", "HALO_UNLOCK_ALL_LEVELS", _environment_value, _platform_all,
 		"true: a profile made from now on starts with every campaign level\n"
@@ -1468,7 +1516,7 @@ static const struct config_setting config_settings[] =
 		"server's, one still being timed) is listed." },
 	{ "network.browser_tick", _config_string, "\"any\"", "HALO_NET_BROWSER_TICK", _environment_value, _platform_all,
 		"The server browsers list only games of this tick rate (their Filters\n"
-		"page): \"any\", \"30\", \"60\" or \"120\" (OpenH1 games at that rate),\n"
+		"page): \"any\", \"30\", \"60\" or \"120\" (GOAT H1 games at that rate),\n"
 		"or \"legacy\" (OpenCE's netcode)." },
 	{ "network.browser_game_type", _config_string, "\"any\"", "HALO_NET_BROWSER_GAME_TYPE", _environment_value,
 		_platform_all,
@@ -1498,25 +1546,25 @@ static const struct config_setting config_settings[] =
 		"PRIVATE (only players with its invite link can join). Server Setup's\n"
 		"LISTING changes it for each game." },
 	{ "network.game_mode", _config_string, "\"openh1\"", "HALO_NET_GAME_MODE", _environment_value, _platform_all,
-		"Hosting: \"openh1\", an OpenH1 game at the rate network.sim_rate picks,\n"
+		"Hosting: \"openh1\", a GOAT H1 game at the rate network.sim_rate picks,\n"
 		"which OpenCE players may join too at 30 (network.allow_opence), or\n"
 		"\"legacy\", OpenCE's netcode at 30 ticks a second for everyone. Read as\n"
 		"the game is hosted (\"standard\" is \"openh1\" too)." },
 	{ "network.sim_rate", _config_integer, "120", "HALO_NET_SIM_RATE", _environment_value, _platform_all,
-		"Hosting an OpenH1 game: its tick rate, 30, 60 or 120 (game.sim_rate's\n"
+		"Hosting a GOAT H1 game: its tick rate, 30, 60 or 120 (game.sim_rate's\n"
 		"steps), which every machine of it takes as the game starts. A Legacy game\n"
 		"plays at 30." },
 	{ "network.allow_opence", _config_boolean, "false", "HALO_NET_ALLOW_OPENCE", _environment_value, _platform_all,
-		"Hosting an OpenH1 game: true lets OpenCE players join it too. They play\n"
-		"at 30 ticks a second, as on their own machine, and OpenH1 players at\n"
-		"network.sim_rate. False: OpenH1 players only (a Legacy game,\n"
+		"Hosting a GOAT H1 game: true lets OpenCE players join it too. They play\n"
+		"at 30 ticks a second, as on their own machine, and GOAT H1 players at\n"
+		"network.sim_rate. False: GOAT H1 players only (a Legacy game,\n"
 		"network.game_mode, is the one to play with OpenCE players). Read with\n"
 		"network.game_mode." },
 	{ "network.opence_welcome", _config_boolean, "true", "HALO_NET_OPENCE_WELCOME", _environment_value,
 		_platform_all,
 		"Hosting: tell each OpenCE player, a few seconds after they load into a\n"
-		"game, that this server runs OpenH1 and where to get it (two lines of\n"
-		"the text chat, once a player). OpenH1 players do not see them." },
+		"game, that this server runs GOAT H1 and where to get it (two lines of\n"
+		"the text chat, once a player). GOAT H1 players do not see them." },
 	{ "network.voice_lobby", _config_boolean, "true", "HALO_NET_VOICE_LOBBY", _environment_value, _platform_all,
 		"Hosting: voice chat in the lobby, before and after a game, where every\n"
 		"player hears every other." },
@@ -1538,6 +1586,11 @@ static const struct config_setting config_settings[] =
 		"Hosting: the text chat: \"on\" (links in lines are refused), \"links\"\n"
 		"(links allowed) or \"off\", in either case; listed in the server\n"
 		"browser or not." },
+	{ "network.lobby_text_chat", _config_boolean, "true", "HALO_NET_LOBBY_TEXT_CHAT", _environment_value,
+		_platform_all,
+		"Hosting: the text chat in the lobby, before and after a game, where every\n"
+		"player reads every other (OpenH1's players: OpenCE's lobby has none); its\n"
+		"links as network.text_chat says (Host Controls' LOBBY TEXT CHAT)." },
 	{ "network.chat_channels", _config_string, "\"all\"", "HALO_NET_CHAT_CHANNELS", _environment_value,
 		_platform_all,
 		"The text chat's channel each local player chose last, which T\n"
@@ -1548,7 +1601,7 @@ static const struct config_setting config_settings[] =
 	{ "network.pings", _config_boolean, "true", "HALO_NET_PINGS", _environment_value, _platform_all,
 		"Hosting: let the players ping (controls.ping, a controller's D-pad\n"
 		"Right): what they aim at marked for their allies with a nav point and\n"
-		"its distance, in co-op and in games with teams (OpenH1 games only)." },
+		"its distance, in co-op and in games with teams (GOAT H1 games only)." },
 	{ "network.host_playlist", _config_string, "\"\"", "HALO_NET_HOST_PLAYLIST", _environment_value, _platform_all,
 		"Hosting: the games played one after another when you host, each after\n"
 		"the last one's scores (Host Controls' PLAYLIST): map[:gametype\n"
@@ -1719,7 +1772,7 @@ static const struct config_setting config_settings[] =
 		_environment_value, _platform_desktop,
 		"The Discord application your status, invites and asks to join go\n"
 		"through while the Discord desktop client runs (its name is what Discord\n"
-		"shows you playing): OpenH1's; empty for none." },
+		"shows you playing): GOAT H1's; empty for none." },
 	{ "discord.rich_presence", _config_boolean, "true", "HALO_DISCORD_RICH_PRESENCE", _environment_value,
 		_platform_desktop,
 		"Show what you are doing in Discord: in the menus, in a party, the game\n"
@@ -1740,7 +1793,7 @@ static const struct config_setting config_settings[] =
 		"Run as a dedicated server (as halo --server does): host games with no\n"
 		"window, sound or player of its own, one after another from\n"
 		"server.rotation (docs/dedicated_server.md)." },
-	{ "server.name", _config_string, "\"OpenH1 Server\"", "HALO_SERVER_NAME", _environment_value, _platform_server,
+	{ "server.name", _config_string, "\"GOAT H1 Server\"", "HALO_SERVER_NAME", _environment_value, _platform_server,
 		"The game's name in the lobby and the server browser: 15 characters of\n"
 		"printable ASCII." },
 	{ "server.max_players", _config_integer, "16", "HALO_SERVER_MAX_PLAYERS", _environment_value, _platform_server,
@@ -1790,15 +1843,15 @@ static const struct config_setting config_settings[] =
 		"sv_admin lists the players' key ids. Empty for none." },
 	{ "server.game_mode", _config_string, "\"openh1_120\"", "HALO_SERVER_GAME_MODE", _environment_value,
 		_platform_server,
-		"The games hosted: \"openh1_120\" or \"openh1_60\" (or \"openh1_30\"), an\n"
-		"OpenH1 game at that tick rate, which OpenCE players join too at 30 when\n"
+		"The games hosted: \"openh1_120\" or \"openh1_60\" (or \"openh1_30\"), a\n"
+		"GOAT H1 game at that tick rate, which OpenCE players join too at 30 when\n"
 		"network.allow_opence is true; or \"legacy\", OpenCE's netcode at 30 ticks\n"
 		"a second for everyone. A change waits for the server to be empty in its\n"
 		"lobby (players in it keep the kind they joined)." },
 	{ "server.frame_rate", _config_integer, "60", "HALO_SERVER_FRAME_RATE", _environment_value, _platform_server,
 		"Frames a second (30 to 120): how often the server reads what its\n"
 		"clients send, sends its own and runs what is due of the game's ticks\n"
-		"(and an OpenH1 game's sub-steps). An OpenH1 game's frames are at least\n"
+		"(and a GOAT H1 game's sub-steps). An GOAT H1 game's frames are at least\n"
 		"its tick rate. A server with no other machine runs 10." },
 	{ "server.console", _config_boolean, "true", "HALO_SERVER_CONSOLE", _environment_value, _platform_server,
 		"Take commands from the standard input." },
@@ -2035,7 +2088,7 @@ static const struct config_setting config_settings[] =
 		"never does, \"ask\" asks at the next crash and writes the answer here." },
 
 	{ "debug.join_legacy", _config_boolean, "false", "HALO_DEBUG_JOIN_LEGACY", _environment_value, _platform_all,
-		"Join every game as an OpenCE build joins it: an OpenH1 game that OpenCE\n"
+		"Join every game as an OpenCE build joins it: a GOAT H1 game that OpenCE\n"
 		"players join too (network.allow_opence) at 30 ticks a second, with the\n"
 		"Legacy game's join token. The tests' stand-in for an OpenCE machine." },
 	{ "debug.training", _config_string, "\"\"", "HALO_TRAINING", _environment_value, _platform_all,
@@ -2045,7 +2098,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test", _config_string, "\"\"", "HALO_NETWORK_TEST", _environment_value, _platform_all,
 		"Automated system link sessions for testing (port/linux/game/network_test.c):\n"
 		"\"host:<map>\" hosts a game on that map, \"local:<map>\" plays a local (split\n"
-		"screen) game on it, \"join\" joins the first game found,\n"
+		"screen) game on it, \"campaign:<level>\" the campaign's level in local\n"
+		"split screen co-op (SPLIT-SCREEN CO-OP's), \"join\" joins the first game found,\n"
 		"\"browse\" the one with the most players the server browser lists (not\n"
 		"co-op, if it can), \"follow\" its party leader's (debug.party), \"log\"\n"
 		"logs the game that runs (and runs its cues);\n"
@@ -2141,6 +2195,14 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test_name", _config_string, "\"\"", "HALO_NETWORK_TEST_NAME", _environment_value, _platform_all,
 		"The name this machine's player takes in an automated test game (ASCII);\n"
 		"empty keeps its profile's." },
+	{ "debug.network_test_profiles", _config_string, "\"\"", "HALO_NETWORK_TEST_PROFILES", _environment_value,
+		_platform_all,
+		"Each local player's own settings in an automated test game,\n"
+		"\"<player>:<setting>=<value>,...;...\" (\"2:display.fov=120\"; a weapon's own\n"
+		"offsets: display.viewmodel_weapon.<tag path>=<x>|<y>|<z>|<pitch>|<yaw>|<roll>): a player\n"
+		"named plays with a profile of their own (\"Player <n>\", made if they\n"
+		"have none) with those values in it, as Settings sets them; empty\n"
+		"none." },
 	{ "debug.network_test_pickup_weapon", _config_string, "\"\"", "HALO_NETWORK_TEST_PICKUP_WEAPON", _environment_value,
 		_platform_all,
 		"The weapon network_test_pickup stands the player on: the first whose tag\n"
@@ -2301,8 +2363,8 @@ static const struct config_setting config_settings[] =
 		"build has no build number; empty asks GitHub." },
 	{ "debug.update_key", _config_string, "\"\"", "HALO_UPDATE_KEY", _environment_value, _platform_server,
 		"A test's release key (its public key, 64 hex digits), trusted beside\n"
-		"OpenH1's to sign the releases of debug.update_url's server, and only\n"
-		"while debug.update_url is set; empty trusts OpenH1's alone." },
+		"GOAT H1's to sign the releases of debug.update_url's server, and only\n"
+		"while debug.update_url is set; empty trusts GOAT H1's alone." },
 	{ "debug.update_time_scale", _config_real, "1.0", "HALO_UPDATE_TIME_SCALE", _environment_value, _platform_server,
 		"How much faster than real time a dedicated server's server.auto_update\n"
 		"counts its minutes (between checks, empty, of a game), for tests." },
@@ -2817,6 +2879,9 @@ static struct config_value config_values[NUMBER_OF_CONFIG_SETTINGS];
 variable or by config_write; display.graphics chooses the others it covers
 (config_graphics_apply) */
 static unsigned char config_set[NUMBER_OF_CONFIG_SETTINGS];
+/* whether its environment variable sets it for this run: it wins over a
+player profile's own value too (config_player_read) */
+static unsigned char config_pinned[NUMBER_OF_CONFIG_SETTINGS];
 static int config_loaded = 0;
 static pthread_mutex_t config_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -3135,6 +3200,10 @@ static void config_append_setting(struct config_text *text, const struct config_
 		if (*line)
 			line++;
 	}
+	if (setting->scope == _scope_player)
+		config_append(text, "# A player profile may keep its own (Settings), in its settings.toml.\n");
+	else if (setting->scope == _scope_keyboard)
+		config_append(text, "# A player profile may keep its own (Settings), in its settings.toml: player 1's.\n");
 #ifndef HALO_ANDROID
 	/* (Android apps have no environment to set; a setting without a variable
 	names none) */
@@ -3189,7 +3258,7 @@ static char *config_default_text(void)
 		size_t length, other;
 		char buffer[64];
 
-		if (!(setting->platforms & CONFIG_PLATFORM) || !dot)
+		if (!(setting->platforms & CONFIG_PLATFORM) || !dot || setting->scope == _scope_profile)
 			continue;
 		length = (size_t)(dot - setting->name);
 		for (other = 0; other < index; other++)
@@ -3205,7 +3274,7 @@ static char *config_default_text(void)
 		config_append(&text, buffer);
 		for (other = index; other < NUMBER_OF_CONFIG_SETTINGS; other++)
 		{
-			if ((config_settings[other].platforms & CONFIG_PLATFORM) &&
+			if ((config_settings[other].platforms & CONFIG_PLATFORM) && config_settings[other].scope != _scope_profile &&
 				!strncmp(config_settings[other].name, setting->name, length + 1))
 				config_append_setting(&text, &config_settings[other]);
 		}
@@ -3633,7 +3702,8 @@ static char *config_add_missing(const char *text, toml_datum_t table)
 		const char *line;
 		const char *insert = NULL;
 
-		if (!(setting->platforms & CONFIG_PLATFORM) || !dot || toml_seek(table, setting->name).type != TOML_UNKNOWN)
+		if (!(setting->platforms & CONFIG_PLATFORM) || !dot || setting->scope == _scope_profile ||
+			toml_seek(table, setting->name).type != TOML_UNKNOWN)
 			continue;
 		/* (a commented default is the setting, at its default) */
 		snprintf(header, sizeof(header), "%.*s", (int)(dot - setting->name), setting->name);
@@ -3862,6 +3932,10 @@ static void config_set_from_table_text(struct config_value *value, enum config_t
 		config_set_from_text(value, type, text);
 }
 
+/* the file being read, for the log: config.toml, or a player profile's
+settings.toml (config_profile_read) */
+static const char *config_file_read_now = "config.toml";
+
 /* the value in the file, if it is there and of the setting's type: 1 if it
 was */
 static int config_set_from_file(struct config_value *value, const struct config_setting *setting,
@@ -3919,7 +3993,7 @@ static int config_set_from_file(struct config_value *value, const struct config_
 	{
 		static const char *const expected[] = { "true or false", "a whole number", "a number", "a quoted string" };
 
-		platform_log("config.toml line %d: %s should be %s; using %s", datum.lineno, setting->name,
+		platform_log("%s line %d: %s should be %s; using %s", config_file_read_now, datum.lineno, setting->name,
 			expected[setting->type], setting->default_value);
 	}
 	return !wrong_type;
@@ -4655,7 +4729,8 @@ static void config_apply_server_mode(void)
 }
 #endif
 
-static void config_weapons_read(toml_datum_t table);
+/* config.toml's weapons' tables read (config_weapons_read) */
+static void config_weapons_read_global(toml_datum_t table);
 
 static void config_load(void)
 {
@@ -4802,7 +4877,7 @@ static void config_load(void)
 			for (index = 0; index < NUMBER_OF_CONFIG_SETTINGS; index++)
 				config_set[index] = (unsigned char)config_set_from_file(&config_values[index], &config_settings[index],
 					result.toptab);
-			config_weapons_read(result.toptab);
+			config_weapons_read_global(result.toptab);
 #ifndef HALO_ANDROID
 			if (config_values[config_setting_index("server.enabled")].boolean && !config_probe_mode)
 				config_server_mode = 1;
@@ -4863,6 +4938,7 @@ static void config_load(void)
 			break;
 		}
 		config_set[index] = 1;
+		config_pinned[index] = 1;
 	}
 
 	{
@@ -5116,6 +5192,60 @@ static char *config_set_line(const char *text, const char *section, const char *
 	return out.buffer;
 }
 
+/* a setting's line in a file, "key = value" and its new line (its value as
+TOML has it: a string's quoted and escaped); line_size: at least
+strlen(key) + 6 times the value's length + 64 */
+static void config_value_line(long index, const struct config_value *value, const char *key, char *line_text,
+	size_t line_size)
+{
+	switch (config_settings[index].type)
+	{
+	case _config_boolean:
+		snprintf(line_text, line_size, "%s = %s\n", key, value->boolean ? "true" : "false");
+		break;
+	case _config_integer:
+		snprintf(line_text, line_size, "%s = %ld\n", key, value->integer);
+		break;
+	case _config_real:
+		/* (with its point: TOML reads 1 as an integer) */
+		snprintf(line_text, line_size, "%s = %.15g", key, value->real);
+		if (!strpbrk(line_text + strlen(key) + 3, ".en"))
+			strcat(line_text, ".0");
+		strcat(line_text, "\n");
+		break;
+	case _config_string:
+	{
+		char *end;
+		const char *character;
+
+		/* (a number unquoted, for one that takes a word or a number) */
+		if (config_string_takes_number(&config_settings[index]) &&
+			config_text_is_number(value->string))
+		{
+			snprintf(line_text, line_size, "%s = %s\n", key, value->string);
+			break;
+		}
+		end = line_text + snprintf(line_text, line_size, "%s = \"", key);
+
+		/* (a TOML basic string: quotes and backslashes escaped, and control
+		characters, so that a value cannot end its line) */
+		for (character = value->string; *character; character++)
+		{
+			if ((unsigned char)*character < 0x20 || *character == 0x7F)
+			{
+				end += sprintf(end, "\\u%04x", (unsigned)(unsigned char)*character);
+				continue;
+			}
+			if (*character == '"' || *character == '\\')
+				*end++ = '\\';
+			*end++ = *character;
+		}
+		strcpy(end, "\"\n");
+		break;
+	}
+	}
+}
+
 /* the longest string config_write takes */
 #define CONFIG_MAXIMUM_WRITTEN_STRING 4096
 
@@ -5162,52 +5292,7 @@ int config_write(const char *name, const char *value)
 	}
 	snprintf(section, sizeof(section), "%.*s", (int)(dot - name), name);
 	snprintf(key, sizeof(key), "%s", dot + 1);
-	switch (config_settings[index].type)
-	{
-	case _config_boolean:
-		snprintf(line_text, line_size, "%s = %s\n", key, config_values[index].boolean ? "true" : "false");
-		break;
-	case _config_integer:
-		snprintf(line_text, line_size, "%s = %ld\n", key, config_values[index].integer);
-		break;
-	case _config_real:
-		/* (with its point: TOML reads 1 as an integer) */
-		snprintf(line_text, line_size, "%s = %.15g", key, config_values[index].real);
-		if (!strpbrk(line_text + strlen(key) + 3, ".en"))
-			strcat(line_text, ".0");
-		strcat(line_text, "\n");
-		break;
-	case _config_string:
-	{
-		char *end;
-		const char *character;
-
-		/* (a number unquoted, for one that takes a word or a number) */
-		if (config_string_takes_number(&config_settings[index]) &&
-			config_text_is_number(config_values[index].string))
-		{
-			snprintf(line_text, line_size, "%s = %s\n", key, config_values[index].string);
-			break;
-		}
-		end = line_text + snprintf(line_text, line_size, "%s = \"", key);
-
-		/* (a TOML basic string: quotes and backslashes escaped, and control
-		characters, so that a value cannot end its line) */
-		for (character = config_values[index].string; *character; character++)
-		{
-			if ((unsigned char)*character < 0x20 || *character == 0x7F)
-			{
-				end += sprintf(end, "\\u%04x", (unsigned)(unsigned char)*character);
-				continue;
-			}
-			if (*character == '"' || *character == '\\')
-				*end++ = '\\';
-			*end++ = *character;
-		}
-		strcpy(end, "\"\n");
-		break;
-	}
-	}
+	config_value_line(index, &config_values[index], key, line_text, line_size);
 	/* (one display.graphics chooses, at the value it gives it: left to it,
 	commented out) */
 	config_set[index] = 1;
@@ -5277,16 +5362,9 @@ int config_write_boolean(const char *name, int value)
 	return index >= 0 && config_settings[index].type == _config_boolean && config_write(name, value ? "true" : "false");
 }
 
-/* a setting's value as text ("true", "60", "1.5", "all"): 0 if there is no
-such setting */
-int config_text(const char *name, char *text, size_t size)
+/* a value as text ("true", "60", "1.5", "all") */
+static void config_value_text(long index, const struct config_value *value, char *text, size_t size)
 {
-	long index = config_setting_index(name);
-	const struct config_value *value;
-
-	if (index < 0)
-		return 0;
-	value = config_value(name, config_settings[index].type);
 	switch (config_settings[index].type)
 	{
 	case _config_boolean:
@@ -5302,6 +5380,19 @@ int config_text(const char *name, char *text, size_t size)
 		snprintf(text, size, "%s", value->string ? value->string : "");
 		break;
 	}
+}
+
+/* a setting's value as text ("true", "60", "1.5", "all"): 0 if there is no
+such setting */
+int config_text(const char *name, char *text, size_t size)
+{
+	long index = config_setting_index(name);
+	const struct config_value *value;
+
+	if (index < 0)
+		return 0;
+	value = config_value(name, config_settings[index].type);
+	config_value_text(index, value, text, size);
 	return 1;
 }
 
@@ -5414,7 +5505,7 @@ int config_reload(const char *prefix)
 	}
 	/* (each weapon's offsets: display.viewmodel_weapon) */
 	if (!strncmp(CONFIG_WEAPON_TABLE, prefix, length))
-		config_weapons_read(result.toptab);
+		config_weapons_read_global(result.toptab);
 #ifndef HALO_ANDROID
 	/* (what the run forces, forced again: a server started by --server
 	stays one whatever the file's server.enabled says, and its router asked
@@ -5462,8 +5553,13 @@ struct config_weapon
 	double values[CONFIG_WEAPON_VALUES];
 };
 
-static struct config_weapon *config_weapons;
-static int config_weapon_count;
+/* (config.toml's; a player profile's are its own: config_profile) */
+struct config_weapons
+{
+	struct config_weapon *list;
+	int count;
+};
+static struct config_weapons config_weapons;
 
 /* whether two tag paths are the same tag's: tags' paths are the same in
 any case, and a / is taken for the \ the maps write */
@@ -5481,34 +5577,36 @@ static int config_weapon_paths_same(const char *a, const char *b)
 	}
 }
 
-static int config_weapon_find(const char *path)
+static int config_weapon_find(const struct config_weapons *weapons, const char *path)
 {
 	int index;
 
-	for (index = 0; index < config_weapon_count; index++)
+	for (index = 0; index < weapons->count; index++)
 	{
-		if (config_weapon_paths_same(config_weapons[index].path, path))
+		if (config_weapon_paths_same(weapons->list[index].path, path))
 			return index;
 	}
 	return -1;
 }
 
-static void config_weapons_clear(void)
+static void config_weapons_clear(struct config_weapons *weapons)
 {
 	int index;
 
-	for (index = 0; index < config_weapon_count; index++)
-		free(config_weapons[index].path);
-	free(config_weapons);
-	config_weapons = NULL;
-	config_weapon_count = 0;
+	for (index = 0; index < weapons->count; index++)
+		free(weapons->list[index].path);
+	free(weapons->list);
+	weapons->list = NULL;
+	weapons->count = 0;
 }
 
-/* one weapon's values set (all 0: none kept); 0 if out of memory */
-static int config_weapon_store(const char *path, const double values[CONFIG_WEAPON_VALUES])
+/* one weapon's values set (all 0: none kept, unless keep_zero: a profile's,
+whose 0 stands in place of config.toml's); 0 if out of memory */
+static int config_weapon_store(struct config_weapons *weapons, const char *path,
+	const double values[CONFIG_WEAPON_VALUES], int keep_zero)
 {
-	int index = config_weapon_find(path);
-	int value, any = 0;
+	int index = config_weapon_find(weapons, path);
+	int value, any = keep_zero;
 
 	for (value = 0; value < CONFIG_WEAPON_VALUES; value++)
 		any |= values[value] != 0.0;
@@ -5516,44 +5614,46 @@ static int config_weapon_store(const char *path, const double values[CONFIG_WEAP
 	{
 		if (index >= 0)
 		{
-			free(config_weapons[index].path);
-			config_weapons[index] = config_weapons[--config_weapon_count];
+			free(weapons->list[index].path);
+			weapons->list[index] = weapons->list[--weapons->count];
 		}
 		return 1;
 	}
 	if (index < 0)
 	{
-		struct config_weapon *grown = realloc(config_weapons, sizeof(*grown) * (size_t)(config_weapon_count + 1));
+		struct config_weapon *grown = realloc(weapons->list, sizeof(*grown) * (size_t)(weapons->count + 1));
 		char *copy = strdup(path);
 
 		if (!grown || !copy)
 		{
 			free(copy);
 			if (grown)
-				config_weapons = grown;
+				weapons->list = grown;
 			return 0;
 		}
-		config_weapons = grown;
-		index = config_weapon_count++;
-		config_weapons[index].path = copy;
+		weapons->list = grown;
+		index = weapons->count++;
+		weapons->list[index].path = copy;
 	}
-	memcpy(config_weapons[index].values, values, sizeof(config_weapons[index].values));
+	memcpy(weapons->list[index].values, values, sizeof(weapons->list[index].values));
 	return 1;
 }
 
-/* the weapons' tables in the file (table, parsed): each number kept, any
-other value or key said in the log */
-static void config_weapons_read(toml_datum_t table)
+/* the weapons' tables in a file (table, parsed: config.toml's, or with
+keep_zero a profile's): each number kept, any other value or key said in
+the log */
+static void config_weapons_read(struct config_weapons *weapons_read, toml_datum_t table, int keep_zero)
 {
 	toml_datum_t weapons = toml_seek(table, CONFIG_WEAPON_TABLE);
 	int weapon;
 
-	config_weapons_clear();
+	config_weapons_clear(weapons_read);
 	if (weapons.type == TOML_UNKNOWN)
 		return;
 	if (weapons.type != TOML_TABLE)
 	{
-		platform_log("config.toml line %d: %s should be a table of weapons", weapons.lineno, CONFIG_WEAPON_TABLE);
+		platform_log("%s line %d: %s should be a table of weapons", config_file_read_now, weapons.lineno,
+			CONFIG_WEAPON_TABLE);
 		return;
 	}
 	for (weapon = 0; weapon < weapons.u.tab.size; weapon++)
@@ -5565,8 +5665,8 @@ static void config_weapons_read(toml_datum_t table)
 
 		if (entry.type != TOML_TABLE || !path[0] || strlen(path) > CONFIG_WEAPON_PATH_MAXIMUM)
 		{
-			platform_log("config.toml line %d: %s.\"%s\" should be a table (x, y, z, pitch, yaw, roll)",
-				entry.lineno, CONFIG_WEAPON_TABLE, path);
+			platform_log("%s line %d: %s.\"%s\" should be a table (x, y, z, pitch, yaw, roll)",
+				config_file_read_now, entry.lineno, CONFIG_WEAPON_TABLE, path);
 			continue;
 		}
 		for (key = 0; key < entry.u.tab.size; key++)
@@ -5578,18 +5678,24 @@ static void config_weapons_read(toml_datum_t table)
 				value++)
 				;
 			if (value == CONFIG_WEAPON_VALUES)
-				platform_log("config.toml line %d: %s is no weapon offset (x, y, z, pitch, yaw, roll)", datum.lineno,
-					entry.u.tab.key[key]);
+				platform_log("%s line %d: %s is no weapon offset (x, y, z, pitch, yaw, roll)", config_file_read_now,
+					datum.lineno, entry.u.tab.key[key]);
 			else if (datum.type == TOML_FP64)
 				values[value] = datum.u.fp64;
 			else if (datum.type == TOML_INT64)
 				values[value] = (double)datum.u.int64;
 			else
-				platform_log("config.toml line %d: %s should be a number; using 0", datum.lineno, entry.u.tab.key[key]);
+				platform_log("%s line %d: %s should be a number; using 0", config_file_read_now, datum.lineno,
+					entry.u.tab.key[key]);
 		}
 		/* (a path twice, as / and \: the later one's) */
-		config_weapon_store(path, values);
+		config_weapon_store(weapons_read, path, values, keep_zero);
 	}
+}
+
+static void config_weapons_read_global(toml_datum_t table)
+{
+	config_weapons_read(&config_weapons, table, 0);
 }
 
 int config_viewmodel_weapon(const char *path, double values[CONFIG_WEAPON_VALUES])
@@ -5598,9 +5704,9 @@ int config_viewmodel_weapon(const char *path, double values[CONFIG_WEAPON_VALUES
 
 	config_ensure_loaded();
 	pthread_mutex_lock(&config_lock);
-	index = path ? config_weapon_find(path) : -1;
+	index = path ? config_weapon_find(&config_weapons, path) : -1;
 	if (index >= 0)
-		memcpy(values, config_weapons[index].values, sizeof(config_weapons[index].values));
+		memcpy(values, config_weapons.list[index].values, sizeof(config_weapons.list[index].values));
 	else
 		memset(values, 0, sizeof(double) * CONFIG_WEAPON_VALUES);
 	pthread_mutex_unlock(&config_lock);
@@ -5748,7 +5854,7 @@ int config_viewmodel_weapon_write(const char *path, const double values[CONFIG_W
 	}
 	config_ensure_loaded();
 	pthread_mutex_lock(&config_lock);
-	if (!config_weapon_store(path, values))
+	if (!config_weapon_store(&config_weapons, path, values, 0))
 	{
 		pthread_mutex_unlock(&config_lock);
 		return 0;
@@ -5776,6 +5882,466 @@ int config_viewmodel_weapon_write(const char *path, const double values[CONFIG_W
 	pthread_mutex_unlock(&config_lock);
 	free(updated);
 	free(text);
+	return succeeded;
+}
+
+/* ---------- each player's own settings (_scope_player)
+
+A player profile's own values of the settings that are a player's are kept
+in its folder (beside its blam.sav: port/linux/game/player_settings.c
+names it), in settings.toml, with config.toml's sections and keys and only
+the values the profile was given:
+
+	[display]
+	fov = 100.0
+
+A local player's value is their profile's, else config.toml's
+(config_player_read); a setting's environment variable, and the menus'
+pictures' stock view (config_picture_view), still win over it. A profile is
+read once, as a local player takes it or Settings edits it, and kept
+(CONFIG_PROFILES of them: the local players' and a few more); a value
+written (config_profile_write) is written there too, and config_changes
+moves, so that what keeps a setting reads it again. */
+
+#define CONFIG_PROFILES 8
+#define CONFIG_PROFILE_FILE "settings.toml"
+#define CONFIG_LOCAL_PLAYERS 4
+/* (more than the settings that are a player's) */
+#define CONFIG_PROFILE_VALUES 160
+#define CONFIG_PROFILE_FOLDER_SIZE 1024
+#define CONFIG_PROFILE_HEAD \
+	"# This player profile's own settings: those of config.toml's that are each\n" \
+	"# player's, as Settings set them for this profile. One that is not here is\n" \
+	"# config.toml's.\n"
+
+struct config_profile_value
+{
+	long setting;
+	struct config_value value;
+};
+
+/* a profile's values: kept in place, and only added to while it is kept
+(config_profile_slot), so that a reader without the lock sees each whole */
+static struct config_profile
+{
+	/* "" unused */
+	char folder[CONFIG_PROFILE_FOLDER_SIZE];
+	struct config_profile_value values[CONFIG_PROFILE_VALUES];
+	int count;
+	/* each weapon's own offsets, the profile's (its 0s too, in place of
+	config.toml's: config_player_viewmodel_weapon) */
+	struct config_weapons weapons;
+	unsigned long used_at;
+} config_profiles[CONFIG_PROFILES];
+
+/* each local player's profile (config_profiles' index), -1 none */
+static int config_player_profiles[CONFIG_LOCAL_PLAYERS] = { -1, -1, -1, -1 };
+static unsigned long config_profile_clock;
+
+static long config_player_setting(const char *name)
+{
+	long index = config_setting_index(name);
+
+	return index >= 0 && config_settings[index].scope != _scope_machine ? index : -1;
+}
+
+int config_per_player(const char *name)
+{
+	return config_player_setting(name) >= 0;
+}
+
+int config_keyboard_setting(const char *name)
+{
+	long index = config_setting_index(name);
+
+	return index >= 0 && config_settings[index].scope == _scope_keyboard;
+}
+
+static void config_profile_path(const char *folder, char *path, size_t size)
+{
+	size_t length = strlen(folder);
+
+	snprintf(path, size, "%s%s" CONFIG_PROFILE_FILE, folder,
+		length && (folder[length - 1] == '/' || folder[length - 1] == '\\') ? "" : "/");
+}
+
+static struct config_value *config_profile_find(struct config_profile *profile, long setting)
+{
+	int index;
+
+	for (index = 0; index < profile->count; index++)
+	{
+		if (profile->values[index].setting == setting)
+			return &profile->values[index].value;
+	}
+	return NULL;
+}
+
+/* the keys of a profile's file that are no player's setting, said in the
+log (config.toml's are then) */
+static void config_profile_report(const char *path, toml_datum_t table)
+{
+	int section, key;
+
+	for (section = 0; section < table.u.tab.size; section++)
+	{
+		toml_datum_t keys = table.u.tab.value[section];
+
+		if (keys.type != TOML_TABLE)
+		{
+			platform_log("settings: %s line %d: %s is no setting of a player's", path, keys.lineno,
+				table.u.tab.key[section]);
+			continue;
+		}
+		for (key = 0; key < keys.u.tab.size; key++)
+		{
+			char name[128];
+
+			snprintf(name, sizeof(name), "%s.%s", table.u.tab.key[section], keys.u.tab.key[key]);
+			if (config_player_setting(name) < 0 && strcmp(name, CONFIG_WEAPON_TABLE))
+				platform_log("settings: %s line %d: %s is no setting of a player's; config.toml's is used", path,
+					keys.u.tab.value[key].lineno, name);
+		}
+	}
+}
+
+/* a profile's file read into a slot (with config_lock) */
+static void config_profile_read(struct config_profile *profile)
+{
+	char path[CONFIG_PROFILE_FOLDER_SIZE + 32];
+	size_t size = 0, index;
+	char *text;
+	toml_result_t result;
+
+	profile->count = 0;
+	config_weapons_clear(&profile->weapons);
+	config_profile_path(profile->folder, path, sizeof(path));
+	text = config_read_file(path, &size);
+	if (!text)
+		return;
+	result = toml_parse(text, (int)size);
+	if (!result.ok)
+	{
+		platform_log("settings: %s cannot be read (%s): config.toml's settings are used", path, result.errmsg);
+		toml_free(result);
+		free(text);
+		return;
+	}
+	config_file_read_now = path;
+	for (index = 0; index < NUMBER_OF_CONFIG_SETTINGS && profile->count < CONFIG_PROFILE_VALUES; index++)
+	{
+		struct config_profile_value *entry = &profile->values[profile->count];
+
+		if (config_settings[index].scope == _scope_machine || !(config_settings[index].platforms & CONFIG_PLATFORM) ||
+			config_profile_find(profile, (long)index))
+		{
+			continue;
+		}
+		memset(&entry->value, 0, sizeof(entry->value));
+		entry->setting = (long)index;
+		if (config_set_from_file(&entry->value, &config_settings[index], result.toptab))
+			profile->count++;
+	}
+	config_weapons_read(&profile->weapons, result.toptab, 1);
+	config_file_read_now = "config.toml";
+	config_profile_report(path, result.toptab);
+	toml_free(result);
+	free(text);
+}
+
+/* the profile of a folder, read if it is not kept (with config_lock): in a
+slot unused, else in the one used longest ago that no local player has;
+NULL if every one is a local player's */
+static struct config_profile *config_profile_slot(const char *folder)
+{
+	struct config_profile *found = NULL;
+	int slot, player;
+
+	if (!folder || !folder[0] || strlen(folder) >= CONFIG_PROFILE_FOLDER_SIZE)
+		return NULL;
+	for (slot = 0; slot < CONFIG_PROFILES && !found; slot++)
+	{
+		if (!strcmp(config_profiles[slot].folder, folder))
+			found = &config_profiles[slot];
+	}
+	for (slot = 0; slot < CONFIG_PROFILES && !found; slot++)
+	{
+		struct config_profile *profile = &config_profiles[slot];
+
+		for (player = 0; player < CONFIG_LOCAL_PLAYERS && config_player_profiles[player] != slot; player++)
+		{
+		}
+		if (player < CONFIG_LOCAL_PLAYERS)
+			continue;
+		if (!profile->folder[0])
+		{
+			found = profile;
+			break;
+		}
+		if (!found || profile->used_at < found->used_at)
+			found = profile;
+	}
+	if (!found)
+		return NULL;
+	if (strcmp(found->folder, folder))
+	{
+		snprintf(found->folder, sizeof(found->folder), "%s", folder);
+		config_profile_read(found);
+	}
+	found->used_at = ++config_profile_clock;
+	return found;
+}
+
+void config_player_profile(int local_player, const char *folder)
+{
+	struct config_profile *profile;
+	int slot;
+
+	if (local_player < 0 || local_player >= CONFIG_LOCAL_PLAYERS)
+		return;
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	/* (the slot freed first: a player's new profile may take it) */
+	config_player_profiles[local_player] = -1;
+	profile = config_profile_slot(folder);
+	slot = profile ? (int)(profile - config_profiles) : -1;
+	config_player_profiles[local_player] = slot;
+	config_change_count++;
+	pthread_mutex_unlock(&config_lock);
+	if (profile)
+		platform_log("settings: player %d's own settings: %d, in %s", local_player + 1, profile->count, folder);
+	else
+		platform_log("settings: player %d has no profile's settings: config.toml's", local_player + 1);
+}
+
+/* a local player's value: their profile's, else config.toml's as the game
+reads it; the setting's environment variable, the menus' pictures' view and
+a player without a profile have config.toml's */
+static const struct config_value *config_player_read(int local_player, const char *name, enum config_type type)
+{
+	const struct config_value *value = config_read(name, type);
+	struct config_value const *own;
+	long index;
+	int slot;
+
+	if (local_player < 0 || local_player >= CONFIG_LOCAL_PLAYERS || config_picture_viewing)
+		return value;
+	slot = config_player_profiles[local_player];
+	index = config_player_setting(name);
+	if (slot < 0 || index < 0 || config_pinned[index] || config_settings[index].type != type)
+		return value;
+	own = config_profile_find(&config_profiles[slot], index);
+	return own ? own : value;
+}
+
+int config_player_boolean(int local_player, const char *name)
+{
+	return config_player_read(local_player, name, _config_boolean)->boolean;
+}
+
+long config_player_integer(int local_player, const char *name)
+{
+	return config_player_read(local_player, name, _config_integer)->integer;
+}
+
+double config_player_real(int local_player, const char *name)
+{
+	return config_player_read(local_player, name, _config_real)->real;
+}
+
+const char *config_player_string(int local_player, const char *name)
+{
+	const char *string = config_player_read(local_player, name, _config_string)->string;
+
+	return string ? string : "";
+}
+
+int config_player_has(int local_player, const char *name)
+{
+	long index = config_player_setting(name);
+	int slot;
+
+	if (local_player < 0 || local_player >= CONFIG_LOCAL_PLAYERS || index < 0 || config_pinned[index])
+		return 0;
+	config_ensure_loaded();
+	slot = config_player_profiles[local_player];
+	return slot >= 0 && config_profile_find(&config_profiles[slot], index) != NULL;
+}
+
+int config_pinned_by_environment(const char *name)
+{
+	long index = config_setting_index(name);
+
+	config_ensure_loaded();
+	return index >= 0 && config_pinned[index];
+}
+
+int config_player_viewmodel_weapon(int local_player, const char *path, double values[CONFIG_WEAPON_VALUES])
+{
+	int slot, index = -1;
+
+	if (local_player < 0 || local_player >= CONFIG_LOCAL_PLAYERS)
+		return config_viewmodel_weapon(path, values);
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	slot = config_player_profiles[local_player];
+	if (slot >= 0 && path && !config_picture_viewing)
+		index = config_weapon_find(&config_profiles[slot].weapons, path);
+	if (index >= 0)
+		memcpy(values, config_profiles[slot].weapons.list[index].values, sizeof(double) * CONFIG_WEAPON_VALUES);
+	pthread_mutex_unlock(&config_lock);
+	if (index < 0)
+		return config_viewmodel_weapon(path, values);
+	return 1;
+}
+
+int config_profile_viewmodel_weapon(const char *folder, const char *path, double values[CONFIG_WEAPON_VALUES])
+{
+	struct config_profile *profile;
+	int index = -1;
+
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	profile = config_profile_slot(folder);
+	if (profile && path)
+		index = config_weapon_find(&profile->weapons, path);
+	if (index >= 0)
+		memcpy(values, profile->weapons.list[index].values, sizeof(double) * CONFIG_WEAPON_VALUES);
+	pthread_mutex_unlock(&config_lock);
+	return index >= 0;
+}
+
+int config_profile_viewmodel_weapon_write(const char *folder, const char *path,
+	const double values[CONFIG_WEAPON_VALUES])
+{
+	struct config_profile *profile;
+	char file[CONFIG_PROFILE_FOLDER_SIZE + 32];
+	size_t size = 0, length = path ? strlen(path) : 0;
+	char *text, *updated;
+	int succeeded = 0, value;
+
+	if (!length || length > CONFIG_WEAPON_PATH_MAXIMUM)
+		return 0;
+	for (value = 0; value < (int)length; value++)
+	{
+		if ((unsigned char)path[value] < 0x20 || path[value] == 0x7F)
+			return 0;
+	}
+	for (value = 0; value < CONFIG_WEAPON_VALUES; value++)
+	{
+		if (!(values[value] == values[value]))
+			return 0;
+	}
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	profile = config_profile_slot(folder);
+	if (!profile || !config_weapon_store(&profile->weapons, path, values, 1))
+	{
+		pthread_mutex_unlock(&config_lock);
+		return 0;
+	}
+	config_change_count++;
+	if (config_answer_only)
+	{
+		pthread_mutex_unlock(&config_lock);
+		return 1;
+	}
+	config_profile_path(folder, file, sizeof(file));
+	text = config_read_file(file, &size);
+	/* (a profile's table kept at 0 too: its 0 in place of config.toml's) */
+	updated = config_weapon_set_table(text ? text : CONFIG_PROFILE_HEAD, path, values);
+	if (updated)
+	{
+		toml_result_t check = toml_parse(updated, (int)strlen(updated));
+
+		if (check.ok)
+			succeeded = config_write_file(file, updated);
+		else
+			platform_log("settings: %s's offsets not written: %s would not read (%s)", path, file, check.errmsg);
+		toml_free(check);
+	}
+	pthread_mutex_unlock(&config_lock);
+	free(updated);
+	free(text);
+	return succeeded;
+}
+
+int config_profile_text(const char *folder, const char *name, char *text, size_t size)
+{
+	long index = config_player_setting(name);
+	struct config_profile *profile;
+	struct config_value const *own = NULL;
+
+	if (index < 0)
+		return 0;
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	profile = config_profile_slot(folder);
+	if (profile)
+		own = config_profile_find(profile, index);
+	if (own)
+		config_value_text(index, own, text, size);
+	pthread_mutex_unlock(&config_lock);
+	return own != NULL;
+}
+
+int config_profile_write(const char *folder, const char *name, const char *value)
+{
+	long index = config_player_setting(name);
+	const char *dot = strchr(name, '.');
+	struct config_profile *profile;
+	struct config_value *own;
+	char section[64], key[64], path[CONFIG_PROFILE_FOLDER_SIZE + 32], *line_text, *text, *updated = NULL;
+	size_t size = 0, line_size;
+	int succeeded = 0;
+
+	if (index < 0 || !dot || (size_t)(dot - name) >= sizeof(section) || strlen(dot + 1) >= sizeof(key) ||
+		strlen(value) > 256)
+	{
+		return 0;
+	}
+	line_size = strlen(dot + 1) + 6 * strlen(value) + 64;
+	line_text = malloc(line_size);
+	if (!line_text)
+		return 0;
+	config_ensure_loaded();
+	pthread_mutex_lock(&config_lock);
+	profile = config_profile_slot(folder);
+	own = profile ? config_profile_find(profile, index) : NULL;
+	if (profile && !own && profile->count < CONFIG_PROFILE_VALUES)
+	{
+		/* (whole before it is counted, for a reader without the lock) */
+		own = &profile->values[profile->count].value;
+		memset(own, 0, sizeof(*own));
+		profile->values[profile->count].setting = index;
+		config_set_from_text(own, config_settings[index].type, value);
+		__atomic_store_n(&profile->count, profile->count + 1, __ATOMIC_RELEASE);
+	}
+	else if (own)
+	{
+		config_set_from_text(own, config_settings[index].type, value);
+	}
+	if (own)
+	{
+		config_change_count++;
+		succeeded = 1;
+		if (!config_answer_only)
+		{
+			snprintf(section, sizeof(section), "%.*s", (int)(dot - name), name);
+			snprintf(key, sizeof(key), "%s", dot + 1);
+			config_value_line(index, own, key, line_text, line_size);
+			config_profile_path(folder, path, sizeof(path));
+			text = config_read_file(path, &size);
+			updated = config_set_line(text ? text : CONFIG_PROFILE_HEAD, section, key, line_text);
+			succeeded = updated && config_write_file(path, updated);
+			if (!succeeded)
+				platform_log("settings: cannot write %s", path);
+			free(text);
+		}
+	}
+	pthread_mutex_unlock(&config_lock);
+	free(updated);
+	free(line_text);
 	return succeeded;
 }
 

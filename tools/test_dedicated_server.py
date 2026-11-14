@@ -339,7 +339,7 @@ def test_rotation_moderation_and_shutdown(machines):
     # its machine's build, as the client told it (after its ready, reliably), and said once in the server's log
     _until(lambda: api.call("GET", "/api/players")[1]["players"][0].get("client"), 30, "the client's build", server)
     told = api.call("GET", "/api/players")[1]["players"][0]["client"]
-    assert told["version"].startswith("OpenH1 Linux | ") and isinstance(told["build"], int), told
+    assert told["version"].startswith("GOAT H1 Linux | ") and isinstance(told["build"], int), told
     assert told["flavor"] and re.fullmatch(r"([\w.-]+/[\w.-]+)?", told["repository"]), told
     assert told["mods"] == ["testmod 1.2"], told
     assert server.text().count("plays " + told["version"]) == 1, "the client's build not logged once"

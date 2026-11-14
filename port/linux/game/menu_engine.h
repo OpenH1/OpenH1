@@ -26,6 +26,9 @@ void menu_engine_screen_closed(struct widget_instance *screen);
 engine is drawing it now), for ui_widget.c to draw */
 boolean menu_engine_screen_draw(struct widget_instance *screen, rectangle2d *clip, point2d offset, boolean focus,
 	boolean nifty);
+/* whether the engine runs the screen (a generated or hand-written screen,
+laid out for the menus' 640 by 480) */
+boolean menu_engine_screen_owned(struct widget_instance const *screen);
 /* an event for the screen taken by the engine (*deleted: the screen is gone
 after it): FALSE if the screen is not the engine's */
 boolean menu_engine_screen_event(struct widget_instance *screen, struct event_record *event, boolean *deleted);
@@ -103,6 +106,10 @@ tall layout's) where the engine runs it, else the model's first (NULL: no
 model) */
 struct halo_menu_model_geometry;
 struct halo_menu_model_geometry const *menu_engine_settings_geometry(struct widget_instance *widget);
+/* where a geometry's rows or panel end (its rows_bottom or panel_bottom):
+the tall layout's (a geometry that scrolls) the footer's lift higher on a
+touchscreen (ui_widget_port_foot_lift), the footer raised there */
+long menu_engine_geometry_bottom(struct halo_menu_model_geometry const *geometry, long bottom);
 
 /* ---------- Settings' search, the engine's alone (menu_search.c; the menus'
 functions' settings_search_*) */
@@ -135,6 +142,10 @@ void menu_screen_closed(struct widget_instance *screen);
 /* before the screen is drawn: made again if its file was read again, its
 focused item's hint shown */
 void menu_screen_frame(struct widget_instance *screen);
+/* a widget of a hand-written screen about to be drawn (at offset, its
+parent's place), shown or not: what the screen draws in its place in the
+widgets' order (its <spartan>'s Spartans' view, in the picture's) */
+void menu_screen_widget_drawing(struct widget_instance const *widget, point2d offset);
 /* B or Back on the screen: its back action run (TRUE), else FALSE for the
 engine to take the event */
 boolean menu_screen_back(struct widget_instance *screen, struct event_record *event, boolean *deleted);
@@ -147,7 +158,22 @@ own), a card and its parts scaled to fill their room; *bounds comes in as
 the definition's and goes out as the box it is drawn in. FALSE for a widget
 drawn as its definition has it */
 boolean menu_screen_item_picture(struct widget_instance const *widget, long *bitmap_tag, rectangle2d *bounds);
+/* whether a hand-written screen's picture is shrunk whole to the box it is
+drawn in (what its widget's own size shows of it), not cut to it: the
+original picture in a tall panel's <spartan> line, smaller than the
+picture */
+boolean menu_screen_picture_stretched(struct widget_instance const *widget);
+/* the screen a pause menu opens as (name: the map's pause screen's tag):
+under the menu engine, the hand-written pause menu that takes its place,
+else name */
+char const *menu_screen_pause_name(char const *name);
 /* "port screen do", an item's A: its action run */
 boolean menu_screen_do(struct widget_instance *item, struct event_record *event, boolean *deleted);
+/* "port screen key", a button bar prompt's A (a click, a tap): its key
+pressed (accept: the item chosen's action) */
+boolean menu_screen_key(struct widget_instance *prompt, struct event_record *event, boolean *deleted, short controller);
+/* "port screen left", "port screen right" (step -1, 1): left or right on a
+tall screen's row (its table's left or right) or panel's choice */
+boolean menu_screen_step(struct widget_instance *widget, struct event_record *event, boolean *deleted, short step);
 
 #endif

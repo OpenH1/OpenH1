@@ -24,7 +24,9 @@ network_host_game.c's, by the host's own ways: this file only shows it.
   game's), Password (typed: a public internet game's, at once), Lock teams,
   Allow votekick, Listing (an internet game's), Max players (left and
   right: never fewer than are in it), Allow OpenCE players (an OpenH1
-  game's).
+  game's), Lobby text chat and Lobby voice chat (network.lobby_text_chat,
+  network.voice_lobby: on or off for everyone, the host's settings reaching
+  every machine as the chat's and the voice's do).
 - MAPS: the gametype (left and right: first CURRENT, the game's own with
   its score, time and rules, then the gametypes), then the multiplayer maps, the
   Xbox's and Custom Edition's; for the map chosen the panel's PLAY NOW
@@ -116,6 +118,11 @@ enum
 	_host_game_listing,
 	_host_game_maximum_players,
 	_host_game_opence,
+	/* the lobby's chats: its text (network.lobby_text_chat, network_chat.c)
+	and its voice (network.voice_lobby, network_voice.c), on or off for
+	everyone in it, the host's settings reaching each machine as they do */
+	_host_game_lobby_text_chat,
+	_host_game_lobby_voice_chat,
 	NUMBER_OF_HOST_GAME_ROWS,
 	MAXIMUM_HOST_GAME_ROWS = NUMBER_OF_HOST_GAME_ROWS,
 };
@@ -135,6 +142,9 @@ enum
 	_host_button_mute_day,
 	_host_button_unmute,
 	_host_button_cancel,
+	/* (co-op's: BRING TO ME and GO TO, the player's _host_controls_bring and
+	_go_to, chosen after it, as a ban's lengths are) */
+	_host_button_teleport,
 	/* (a map's) */
 	_host_button_map_now,
 	_host_button_map_after,
@@ -355,7 +365,7 @@ static wchar_t const *host_tag_name(short tag)
 	case _host_controls_tag_bot:
 		return L"BOT";
 	case _host_controls_tag_openh1:
-		return L"OPENH1";
+		return L"GOAT H1";
 	case _host_controls_tag_opence:
 		return L"OPENCE";
 	default:
@@ -510,6 +520,13 @@ static boolean host_move(struct host_controls_player const *player)
 	if (host_remote())
 		return host_ask(_network_admin_move_team, player, 0, NULL);
 	return network_host_game_move_player(player);
+}
+
+/* (co-op's host: never an admin's, whose actions have neither) */
+static boolean host_teleport(struct host_controls_player const *player, boolean go_to)
+{
+	return !host_remote() && player->player_index != NONE &&
+		network_host_controls_teleport(player->player_index, go_to);
 }
 
 /* ---- the game's rows */
@@ -769,6 +786,18 @@ static void host_game_row_text(short row, wchar_t *label, wchar_t *value, wchar_
 		usnprintf(value, size - 1, network_host_controls_opence_joins() ? L"ON" : L"OFF");
 		usnprintf(help, size - 1, L"Players of OpenCE may join from now on, playing at 30 ticks. Those in "
 			L"the game stay.");
+		break;
+	case _host_game_lobby_text_chat:
+		usnprintf(label, size - 1, L"LOBBY TEXT CHAT");
+		usnprintf(value, size - 1, config_boolean("network.lobby_text_chat") ? L"ON" : L"OFF");
+		usnprintf(help, size - 1, L"Everyone in the lobby can type to everyone, before and after a game. "
+			L"Changes at once, for everyone.");
+		break;
+	case _host_game_lobby_voice_chat:
+		usnprintf(label, size - 1, L"LOBBY VOICE CHAT");
+		usnprintf(value, size - 1, config_boolean("network.voice_lobby") ? L"ON" : L"OFF");
+		usnprintf(help, size - 1, L"Everyone in the lobby can hear everyone, before and after a game. "
+			L"Changes at once, for everyone.");
 		break;
 	default:
 		break;
@@ -1031,6 +1060,17 @@ static void host_game_row_change(struct widget_instance *row_widget, short row, 
 	case _host_game_opence:
 		network_host_controls_set_opence_joins(!network_host_controls_opence_joins());
 		break;
+	/* (written to config.toml, which the host's chat and voice read again
+	at once and tell every machine: network_chat.c, network_voice.c) */
+	case _host_game_lobby_text_chat:
+	case _host_game_lobby_voice_chat:
+	{
+		char const *setting = row == _host_game_lobby_text_chat ? "network.lobby_text_chat" : "network.voice_lobby";
+
+		if (!config_write(setting, config_boolean(setting) ? "false" : "true"))
+			platform_log("menus: could not write %s to config.toml", setting);
+		break;
+	}
 	default:
 		break;
 	}
@@ -1819,12 +1859,25 @@ static short host_buttons_of(struct host_controls_player const *player, short ch
 			buttons[shown++] = _host_button_cancel;
 			break;
 		}
+		if (host_menu.choosing == _host_button_teleport &&
+			(player->actions & (FLAG(_host_controls_bring) | FLAG(_host_controls_go_to))))
+		{
+			if (TEST_FLAG(player->actions, _host_controls_bring))
+				buttons[shown++] = _host_controls_bring;
+			if (TEST_FLAG(player->actions, _host_controls_go_to))
+				buttons[shown++] = _host_controls_go_to;
+			buttons[shown++] = _host_button_cancel;
+			break;
+		}
 		for (index = 0; index < NUMBEROF(order); index++)
 		{
 			if (TEST_FLAG(player->actions, order[index]))
 				buttons[shown++] = order[index] == _host_controls_mute && host_muted(player) ?
 					_host_button_unmute : order[index];
 		}
+		/* (co-op's, which has no teams to move between: a fourth button) */
+		if (player->actions & (FLAG(_host_controls_bring) | FLAG(_host_controls_go_to)))
+			buttons[shown++] = _host_button_teleport;
 		break;
 	case _host_tab_maps:
 		if (!host_chosen_map())
@@ -1896,6 +1949,15 @@ static void host_button_text(short action, struct host_controls_player const *pl
 		break;
 	case _host_button_unmute:
 		usnprintf(text, size - 1, L"UNMUTE");
+		break;
+	case _host_button_teleport:
+		usnprintf(text, size - 1, L"TELEPORT...");
+		break;
+	case _host_controls_bring:
+		usnprintf(text, size - 1, L"BRING TO ME");
+		break;
+	case _host_controls_go_to:
+		usnprintf(text, size - 1, L"GO TO %s", player ? player->name : L"");
 		break;
 	case _host_button_unban:
 		usnprintf(text, size - 1, L"UNBAN");
@@ -2033,11 +2095,11 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 		else if (player->ping != NONE)
 		{
 			usnprintf(where, NUMBEROF(where) - 1, L"%s%s%ld ms", player->tag == _host_controls_tag_opence ?
-				L"OpenCE \x00B7 " : player->tag == _host_controls_tag_openh1 ? L"OpenH1 \x00B7 " : L"",
+				L"OpenCE \x00B7 " : player->tag == _host_controls_tag_openh1 ? L"GOAT H1 \x00B7 " : L"",
 				L"", player->ping);
 		}
 		else if (player->tag == _host_controls_tag_opence || player->tag == _host_controls_tag_openh1)
-			usnprintf(where, NUMBEROF(where) - 1, player->tag == _host_controls_tag_opence ? L"OpenCE" : L"OpenH1");
+			usnprintf(where, NUMBEROF(where) - 1, player->tag == _host_controls_tag_opence ? L"OpenCE" : L"GOAT H1");
 		if (host_game_teams() && player->team != NONE)
 		{
 			size_t length = ustrlen(where);
@@ -2049,11 +2111,13 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 			usnprintf(status, NUMBEROF(status) - 1, L"For how long? They can't join until then.");
 		else if (host_menu.choosing == _host_controls_mute)
 			usnprintf(status, NUMBEROF(status) - 1, L"For how long? No chat or voice.");
+		else if (host_menu.choosing == _host_button_teleport)
+			usnprintf(status, NUMBEROF(status) - 1, L"Bring them beside you, or go to them.");
 		else if (!lobby && game_engine_running() && game_engine_has_teams() &&
 			!TEST_FLAG(player->actions, _host_controls_move_team))
 		{
 			usnprintf(status, NUMBEROF(status) - 1, (host_remote() ? host_flag(_network_admin_flag_standard) :
-				network_standard_hosting()) ? L"Players move teams only when everyone is on OpenH1." :
+				network_standard_hosting()) ? L"Players move teams only when everyone is on GOAT H1." :
 				L"Players can't move teams in a Legacy game.");
 		}
 		break;
@@ -2746,6 +2810,21 @@ static boolean host_controls_action(struct widget_instance *button)
 		host_menu.choosing = NONE;
 		host_focus_buttons(button->parent);
 		ui_play_audio_feedback_sound(SOUND_CURSOR);
+		return TRUE;
+	case _host_button_teleport:
+		if (!player)
+			break;
+		host_menu.choosing = action;
+		host_focus_buttons(button->parent);
+		ui_play_audio_feedback_sound(SOUND_CURSOR);
+		return TRUE;
+	case _host_controls_bring:
+	case _host_controls_go_to:
+		if (!player || !host_teleport(player, action == _host_controls_go_to))
+			break;
+		host_menu.choosing = NONE;
+		host_notice(action == _host_controls_bring ? L"%s was brought to you." : L"You went to %s.", name);
+		ui_play_audio_feedback_sound(SOUND_FORWARD);
 		return TRUE;
 	case _host_controls_move_team:
 		if (!player || !host_move(player))

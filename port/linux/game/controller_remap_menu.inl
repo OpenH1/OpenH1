@@ -1,5 +1,7 @@
 /* Settings > Controls > Controller > Button Remapping (tools/port_settings.py's
- * BUTTON_REMAPPING page): each player's layout, input.controller_p1 to p4,
+ * BUTTON_REMAPPING page): each player's layout, their profile's own
+ * (input.controller: player_settings.c) or their port's (input.controller_p1
+ * to p4, a player's without a profile, and the older versions'),
  * a group of actions at a time. The page's rows are the player's
  * (op_remap_player), the group's (op_remap_group) and an action's each
  * (op_pad_1 to op_pad_<REMAP_ROWS>), whose names and buttons this file
@@ -142,7 +144,9 @@ static boolean pad_editor_event(struct widget_instance *widget, char const *name
     return TRUE;
 }
 
-/* the page's OK ("port settings keep"): every player's layout written */
+/* the page's OK ("port settings keep"): every player's layout written, a
+player's with a profile into their profile (input.controller), another's
+as the port's (input.controller_p<n>) */
 static boolean pad_editor_save(struct widget_instance *screen)
 {
     boolean result = TRUE;
@@ -153,9 +157,14 @@ static boolean pad_editor_save(struct widget_instance *screen)
     for (i = 0; i < 4; i++)
     {
         char text[CONTROLLER_REMAP_TEXT] = {0};
+        char folder[1024];
         if (pad_editor.custom[i]) controller_remap_format(pad_editor.buttons[i], text, sizeof(text));
-        if (strcmp(text, config_string(controller_remap_setting(i))) &&
-            !config_write(controller_remap_setting(i), text)) result = FALSE;
+        if (!strcmp(text, controller_remap_text(i))) continue;
+        if (player_settings_profile_folder(player_ui_get_active_player_profile_index(i), folder, sizeof(folder)))
+        {
+            if (!config_profile_write(folder, "input.controller", text)) result = FALSE;
+        }
+        else if (!config_write(controller_remap_setting(i), text)) result = FALSE;
     }
     return result;
 }

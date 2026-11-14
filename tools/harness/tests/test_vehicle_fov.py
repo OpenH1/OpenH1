@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run  # noqa: E402
+from harness import CHECK_FAILED, build, enum_with, function, mutated, player_settings_slots, read, run  # noqa: E402
 
 CASES = ["seat_default", "seat_match", "seat_number", "third_person_seat", "first_person_seat", "turret_exit",
-         "passenger_climbing_in", "passenger_camera", "seat_change", "split_screen",
+         "passenger_climbing_in", "passenger_camera", "seat_change", "split_screen", "players",
          "leaving_third_person", "match_exit", "entering", "turned_back", "respawn", "scoped_in_seat", "dead",
          "neutral", "scripted", "wider_with_panini", "past_the_widest", "zoomed_reticle_size", "unzooming"]
 CONTROLS = [
@@ -22,9 +22,20 @@ CONTROLS = [
     ("\t\trequested_tangent = vehicle_tangent;", "\t\trequested_tangent = foot_tangent;", "seat_default"),
     ("\t\trequested_tangent = vehicle_tangent;", "\t\trequested_tangent = foot_tangent;", "seat_number"),
     # "match" read as "default"
-    ("\t\t\tvehicle_tangent = foot_tangent;", "\t\t\tvehicle_tangent = 0.0f;", "seat_match"),
+    ("\t\t\tplayers[slot].vehicle_tangent = players[slot].foot_tangent;",
+     "\t\t\tplayers[slot].vehicle_tangent = 0.0f;", "seat_match"),
     # a number unread
-    ("\t\t\tvehicle_tangent = fov_tangent(degrees);", "\t\t\tvehicle_tangent = 0.0f;", "seat_number"),
+    ("\t\t\tplayers[slot].vehicle_tangent = fov_tangent(local_player_index, degrees);",
+     "\t\t\tplayers[slot].vehicle_tangent = 0.0f;", "seat_number"),
+    # (#894) one field of view kept for every local player: player 2's own unseen
+    ("short slot = PLAYER_SETTINGS_SLOT(local_player_index);\n\tunsigned long changes = config_changes();\n\n"
+     "\tif (!players[slot].initialized || players[slot].read_at != changes)\n\t{\n\t\tchar const *vehicle",
+     "short slot = 0;\n\tunsigned long changes = config_changes();\n\n"
+     "\tif (!players[slot].initialized || players[slot].read_at != changes)\n\t{\n\t\tchar const *vehicle",
+     "players"),
+    # every player's at config.toml's (player 1's profile's for all would be the same fault)
+    ('double foot = config_player_real(local_player_index, "display.fov");',
+     'double foot = config_player_real(NONE, "display.fov");', "players"),
     # (#775) every seat display.vehicle_fov's, a passenger's seen from the head too (as before)
     ("\tif (unit->object.parent_object_index == NONE)\n\t\treturn FALSE;\n",
      "\tif (unit->object.parent_object_index == NONE)\n\t\treturn FALSE;\n\treturn TRUE;\n", "first_person_seat"),
@@ -109,7 +120,7 @@ def generated(fault=None):
         read("port/linux/include/zoom_fov.h"),
         world,
     ])
-    return (("config.inc", config), ("under_test.inc", text))
+    return (("config.inc", config), ("under_test.inc", player_settings_slots() + text))
 
 
 @pytest.mark.parametrize("case", CASES)

@@ -177,7 +177,12 @@ touchscreen's wide screens (where the menus are laid out for touch: the
 `anchor_right` move the widget (and what is in it) to the screen's left or
 right edge, by as much as the screen is wider than the menus' 640 on that
 side; `stretch` draws its picture wider by both sides' width, from its left
-(a panel that reaches from the menus' middle to the right edge). And
+(a panel that reaches from the menus' middle to the right edge); `foot` moves
+the widget (and what is in it) up by the tall layout's footer's lift (16
+units, `tools/port_settings.py`'s `TALL_FOOT_LIFT`), above a phone's safe area
+at the screen's foot, and `above_foot` makes it that much shorter (a panel that
+reaches down to the footer; its picture there the menus' `<picture>_touch`,
+which a look's picture is on a touchscreen wherever the menus have one). And
 everywhere, `keep_ends`: the widget's picture drawn at the widget's width
 with its ends as they are, its middle stretched or shortened (a tab laid out
 narrower than its picture).

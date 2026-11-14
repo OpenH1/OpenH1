@@ -49,9 +49,40 @@ static char const *config_string(char const *name) {return settings[name[strlen(
 static int config_write(char const *name,char const *value) {
  strcpy(settings[name[strlen(name)-1]-'1'],value); revision++; return 1;
 }
+/* each local player's profile's own layout (input.controller), while
+profile_has: in place of the port's */
+static char profile_layouts[4][512];
+static int profile_has[4];
+static int config_player_has(int local,char const *name) {(void)name;return local>=0&&local<4&&profile_has[local];}
+static char const *config_player_string(int local,char const *name) {(void)name;return profile_layouts[local];}
+static int config_pinned_by_environment(char const *name) {(void)name;return 0;}
 '''
 POLICY = (source('port/linux/include/controller_buttons.h') +
           source('port/linux/include/controller_remap.h') + source('port/linux/src/controller_remap.c'))
+
+
+def test_profile_layout_in_place_of_the_port(tmp_path):
+    """a player whose profile has a layout of its own (input.controller) plays with it, the port's
+    input.controller_p<n> left as it is; a player without one has the port's, as an older version's"""
+    run_c(tmp_path, COMMON + POLICY + r'''
+int main(void) {
+ unsigned char a[CONTROLLER_REMAP_ACTIONS],b[CONTROLLER_REMAP_ACTIONS]; char text[512];
+ controller_remap_defaults(a);controller_remap_assign(a,PAD_JUMP,1);controller_remap_format(a,text,sizeof(text));
+ config_write("input.controller_p2",text);
+ assert(controller_remap_read(1,b) && b[PAD_JUMP]==1);
+ controller_remap_defaults(a);controller_remap_assign(a,PAD_JUMP,2);controller_remap_format(a,text,sizeof(text));
+ strcpy(profile_layouts[1],text);profile_has[1]=1;revision++;
+ assert(controller_remap_read(1,b) && b[PAD_JUMP]==2);
+ assert(!strcmp(controller_remap_text(1),text));
+ /* (a profile's own empty: its preset, the port's custom one not used) */
+ profile_layouts[1][0]=0;revision++;
+ assert(!controller_remap_read(1,b));
+ profile_has[1]=0;revision++;
+ assert(controller_remap_read(1,b) && b[PAD_JUMP]==1);
+ assert(!controller_remap_read(0,b));
+ return 0;
+}
+''')
 
 
 def test_policy_migration_unbound_replace_and_independent_ports(tmp_path):
@@ -460,6 +491,16 @@ int controller_remap_capture_poll(int *button){int r=capture_result;*button=capt
 void controller_remap_profile(short port,unsigned char *b){
  static unsigned char const normal[10]={0,4,2,3,1,5,6,7,14,15};controller_remap_defaults(b);memcpy(b,normal,10);
 }
+/* (each port's player's profile: none until active_profiles has one; its
+folder "0" to "3", its own layout profile_layouts') */
+static long active_profiles[4]={NONE,NONE,NONE,NONE};
+static long player_ui_get_active_player_profile_index(short local){return active_profiles[local];}
+static int player_settings_profile_folder(long index,char *folder,unsigned long size){
+ if(index==NONE)return 0;snprintf(folder,size,"%ld",index);return 1;
+}
+static int config_profile_write(char const *folder,char const *name,char const *value){
+ int local=atoi(folder);(void)name;strcpy(profile_layouts[local],value);profile_has[local]=1;revision++;return 1;
+}
 ''' + source('port/linux/game/controller_remap_menu.inl').replace('->parameters.text_box.text', '->text_box.text') + r'''
 int main(void) {
  unsigned char b[CONTROLLER_REMAP_ACTIONS];
@@ -492,6 +533,16 @@ int main(void) {
  pad_editor_event(&row,"port controller bind");capture_button=13;capture_result=1;
  pad_editor_update(&screen);pad_editor_save(&screen);
  assert(controller_remap_read(1,b) && b[PAD_CAMERA_CYCLE]==13);
+ /* (a player with a profile: their layout written into it, the port's
+ left as it is) */
+ {
+  char port_layout[512];
+  strcpy(port_layout,settings[1]);active_profiles[1]=1;
+  pad_editor.shown_group=0;row.name="op_pad_1";
+  pad_editor_event(&row,"port controller clear");pad_editor_save(&screen);
+  assert(profile_has[1] && !strcmp(settings[1],port_layout));
+  assert(controller_remap_read(1,b) && b[0]==255);
+ }
  return 0;
 }
 ''')
@@ -657,7 +708,7 @@ def test_chat_owner_identity_and_per_port_hold_over(tmp_path):
 #define csmemset memset
 #define DATUM_INDEX_TO_ABSOLUTE_INDEX(p) ((p)&65535)
 typedef int boolean;
-static struct {boolean active,physical,report,chosen;short channel,controller;long player;char text[256];} chat_input;
+static struct {boolean active,physical,report,chosen,lobby;short channel,controller,lobby_slot;long player;char text[256];} chat_input;
 /* the channel chosen last: player 2's the vehicle's, the others' everyone's (network_chat.c's own are chat_logic's) */
 #define config_string(name) "all,all,vehicle"
 static int game_engine_has_teams(void){return 1;}

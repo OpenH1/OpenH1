@@ -42,7 +42,7 @@ DEFAULT_BUNDLE_ID = "com.openh1.openh1"
 # the scheme of the game's links (port/linux/src/p2p.h's P2P_LINK_SCHEME), as the macOS app's
 URL_SCHEME = "openh1"
 # what the README says of the project (tools/macos_app.py's)
-COPYRIGHT = ("OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox "
+COPYRIGHT = ("GOAT H1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox "
              "Game Studios, Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft "
              "Corporation. No game data is included: you need your own copy of the game.")
 

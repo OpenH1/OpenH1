@@ -27,6 +27,6 @@
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
 	<strings name="main_menu/crash/crash_prompt">
-		<string text="OpenH1 closed unexpectedly last time. Report it? A report is saved, and its GitHub issue opens for you to send."/>
+		<string text="GOAT H1 closed unexpectedly last time. Report it? A report is saved, and its GitHub issue opens for you to send."/>
 	</strings>
 </menus>

@@ -3,6 +3,7 @@
 <model>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/audio_settings_screen" picture="main_menu/parts/background_tall">
 		<at widget="main_menu/settings/header_settings" x="0" y="0"/>
+		<at widget="main_menu/settings/profile" x="0" y="0"/>
 		<at widget="main_menu/settings/tabs/tab_prompt_previous" x="24" y="46"/>
 		<at widget="main_menu/settings/tabs/tab_prompt_next" x="586" y="46"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/options_menu" x="0" y="0"/>
@@ -26,7 +27,7 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/tabs" x="0" y="46"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/tabs_search" x="0" y="46"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/button_bar" role="buttons" type="column_list" box="0 0 640 28">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/button_bar" role="buttons" type="column_list" box="0 0 640 28" place="foot">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/button_defaults" x="24" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/button_ok" x="358" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/button_cancel" x="488" y="1"/>
