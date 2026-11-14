@@ -115,7 +115,8 @@ NEGATIVE_CONTROLS = {
     # (the maintainer's report: a co-op host's pause menu had no HOST CONTROLS)
     "coop-host-without-them": (("\telse if (!view->local && view->host_controls_screen)",
                                 "\telse if (!view->coop && !view->local && view->host_controls_screen)"), "pause"),
-    "coop-client-has-them": (("\tif (!view->host)\n\t\treturn rows;", ""), "pause"),
+    "coop-client-has-them": (("\tif (!view->host || !view->first_player)\n\t\treturn rows;",
+                              "\tif (!view->first_player)\n\t\treturn rows;"), "pause"),
     "coop-end-game": (("\telse if (!view->coop)\n", "\telse\n"), "pause"),
     "coop-no-friendly-fire": (("\tif (view->coop)\n\t\tSET_FLAG(rows, _host_controls_pause_friendly_fire, TRUE);",
                                ""), "pause"),
