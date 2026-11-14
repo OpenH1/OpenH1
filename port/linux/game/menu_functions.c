@@ -1968,6 +1968,15 @@ static struct widget_instance *screen_of(struct widget_instance *widget)
 	return widget;
 }
 
+/* whether the widget's screen is its machine's first local player's, whose
+alone the host's rows of the pause menu are (HOST CONTROLS, END GAME,
+CHAPTERS: a split screen's player 1; network_host_controls_local_player),
+the map's screens being every player's alike */
+static boolean host_rows_player(struct widget_instance *widget)
+{
+	return widget && network_host_controls_local_player(screen_of(widget)->local_player_index);
+}
+
 /* "port settings save" (OK): those changed written, and applied */
 static boolean setting_changed_save(struct widget_instance *spinner, struct pc_menu_setting *setting)
 {
@@ -12766,10 +12775,11 @@ static void training_update(struct widget_instance *list)
 
 /* "port pause end game" (the in-game pause menu's END GAME, the host's:
 menu_tags.c's pause_patch): the game ends as its time limit would, its
-players staying for the next (the carnage report, then the host's PICK GAME) */
-static boolean pause_end_game(void)
+players staying for the next (the carnage report, then the host's PICK GAME);
+the host's first local player's alone (host_rows_player) */
+static boolean pause_end_game(struct widget_instance *widget)
 {
-	if (!global_network_game_server_get() || !game_engine_running())
+	if (!global_network_game_server_get() || !game_engine_running() || !host_rows_player(widget))
 		return campaign_fail();
 	game_engine_end_game();
 	return TRUE;
@@ -14631,7 +14641,7 @@ boolean pc_menu_event_function_invoke(
 		}
 		else if (!strcmp(name, "port pause end game"))
 		{
-			return pause_end_game();
+			return pause_end_game(widget);
 		}
 		else if (!strcmp(name, "port coop friendly fire"))
 		{
@@ -14774,7 +14784,13 @@ boolean pc_menu_event_function_invoke(
 		}
 		else if (!strcmp(name, "port training open"))
 		{
-			/* (the pause menu's CHAPTERS: its screen opened by the button) */
+			/* (the pause menu's CHAPTERS: its screen opened by the button,
+			the host's first local player's alone) */
+			if (!host_rows_player(widget))
+			{
+				ui_play_audio_feedback_sound(SOUND_ERROR);
+				return FALSE;
+			}
 		}
 		else if (!strcmp(name, "port update now"))
 		{
@@ -14825,7 +14841,7 @@ boolean pc_menu_event_function_invoke(
 		/* (Host Controls: host_controls_menu.inc) */
 		else if (!strcmp(name, "port host open"))
 		{
-			return host_controls_open();
+			return host_controls_open(widget);
 		}
 		else if (!strcmp(name, "port host init"))
 		{
