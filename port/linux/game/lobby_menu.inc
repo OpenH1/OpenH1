@@ -61,6 +61,7 @@ enum
 	_lobby_tag_party,
 	_lobby_tag_openh1,
 	_lobby_tag_opence,
+	_lobby_tag_split,
 	NUMBER_OF_LOBBY_TAGS
 };
 
@@ -82,6 +83,9 @@ struct lobby_board_entry
 	boolean host;
 	boolean bot;
 	boolean party;
+	/* a machine's player past its first (split screen's: P2 to P4), the host's
+	machine's too, whose first alone is the host */
+	boolean split;
 	/* _lobby_kind_* */
 	short kind;
 };
@@ -119,7 +123,7 @@ struct lobby_board_controls
 
 static wchar_t const *const lobby_tag_words[NUMBER_OF_LOBBY_TAGS] =
 {
-	L"", L"HOST", L"BOT", L"PARTY", L"GOAT H1", L"OPENCE",
+	L"", L"HOST", L"BOT", L"PARTY", L"GOAT H1", L"OPENCE", L"SPLIT SCREEN",
 };
 
 static struct
@@ -158,6 +162,8 @@ static short lobby_board_tag(struct lobby_board_entry const *entry)
 		return _lobby_tag_bot;
 	if (entry->host)
 		return _lobby_tag_host;
+	if (entry->split)
+		return _lobby_tag_split;
 	if (entry->kind == _lobby_kind_opence)
 		return _lobby_tag_opence;
 	if (entry->party)
@@ -165,6 +171,30 @@ static short lobby_board_tag(struct lobby_board_entry const *entry)
 	if (entry->kind == _lobby_kind_openh1)
 		return _lobby_tag_openh1;
 	return _lobby_tag_none;
+}
+
+/* each machine's players past its first (by their controllers: split
+screen's P2 to P4) marked, and none of them the host: the host is its
+machine's first player alone, on the host's machine and on a player's */
+static void lobby_board_mark_split(struct lobby_board_entry *entries, long const *machines, short const *controllers,
+	short count)
+{
+	short index, other;
+
+	for (index = 0; index < count; index++)
+	{
+		entries[index].split = FALSE;
+		for (other = 0; other < count && !entries[index].bot; other++)
+		{
+			if (other != index && !entries[other].bot && machines[other] == machines[index] &&
+				(controllers[other] < controllers[index] || (controllers[other] == controllers[index] && other < index)))
+			{
+				entries[index].split = TRUE;
+			}
+		}
+		if (entries[index].split)
+			entries[index].host = FALSE;
+	}
 }
 
 /* a player's place in its column: the host first, the party's members
@@ -643,6 +673,17 @@ static void lobby_board_model_make(struct lobby_board_model *model, short rows)
 			entry->kind = _lobby_kind_openh1;
 		model->own_player |= entry->own;
 	}
+	{
+		long machines[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+		short controllers[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+
+		for (index = 0; index < count; index++)
+		{
+			machines[index] = model->players[index]->machine_index;
+			controllers[index] = (short)model->players[index]->controller_index;
+		}
+		lobby_board_mark_split(model->entries, machines, controllers, count);
+	}
 	model->count = count;
 	lobby_player_count = count;
 	if (game)
@@ -849,6 +890,10 @@ static void lobby_board_update(struct widget_instance *list)
 		if (teams)
 			usnprintf(text, NUMBEROF(text) - 1, layout.counts[column] == 1 ? L"1 PLAYER" : L"%d PLAYERS",
 				layout.counts[column]);
+		/* (an offline game's: its players alone, as its band says; the
+		server's most is the bots' room, no limit of its people) */
+		else if (game && global_network_game_server_get() && network_game_is_splitscreen_local())
+			usnprintf(text, NUMBEROF(text) - 1, count == 1 ? L"1 PLAYER" : L"%d PLAYERS", count);
 		else
 			usnprintf(text, NUMBEROF(text) - 1, game ? L"%d OF %d" : L"", count, game ? game->maximum_players : 0);
 		text[NUMBEROF(text) - 1] = 0;
@@ -1044,12 +1089,14 @@ static boolean lobby_board_team(struct widget_instance *widget, short controller
 /* "port lobby start" (START GAME, A or Start on the players, Start on the
 panel's controls): the host's game starts, at once (the host's own faster:
 network_game_server_game_start_request_event) once every machine has the
-map */
-static boolean lobby_board_start(void)
+map; by one of this machine's players alone (FALSE for another controller,
+which its START joins: "port lobby join", pc_menu_lobby_start) */
+static boolean lobby_board_start(short controller)
 {
 	void *client = global_network_game_client_get();
 
-	if (!global_network_game_server_get() || !client || !lobby_local_player_count())
+	if (!global_network_game_server_get() || !client || !lobby_local_player_count() ||
+		!lobby_controller_playing(controller))
 		return FALSE;
 	if (!network_game_client_request_start_time_change(client, TRUE))
 		return campaign_fail();
@@ -1063,7 +1110,7 @@ static boolean lobby_board_click(struct widget_instance *widget, short controlle
 	short x, y;
 
 	if (!ui_widget_port_take_click(&x, &y))
-		return lobby_board_start();
+		return lobby_board_start(controller);
 	if (!blue || !blue->visible)
 		return TRUE;
 	return lobby_board_team(widget, controller,
@@ -1772,6 +1819,15 @@ static void lobby_screen_cell(short index, char const *column, int focused, stru
 		short letter;
 
 		ustrncpy(text, lobby_tag_words[lobby_board_tag(entry)], NUMBEROF(text) - 1);
+		/* (SPLIT where SPLIT SCREEN would be cut short) */
+		if (lobby_board_tag(entry) == _lobby_tag_split)
+		{
+			static char const split[] = "SPLIT";
+
+			for (letter = 0; split[letter]; letter++)
+				cell->fallback[letter] = (unsigned short)split[letter];
+			cell->fallback[letter] = 0;
+		}
 		if (entry->bot)
 		{
 			/* (BOT alone where BOT and the skill would be cut short) */
@@ -1853,6 +1909,8 @@ int pc_menu_lobby_value(char const *name, char *value, unsigned long size)
 
 		usnprintf(text, NUMBEROF(text) - 1, count == 1 ? L"1 PLAYER" : L"%d PLAYERS", count);
 	}
+	else if (!strcmp(name, "lobby.blue.count") && model->game && model->local)
+		usnprintf(text, NUMBEROF(text) - 1, model->count == 1 ? L"1 PLAYER" : L"%d PLAYERS", model->count);
 	else if (!strcmp(name, "lobby.blue.count") && model->game)
 		usnprintf(text, NUMBEROF(text) - 1, L"%d OF %d", model->count, model->game->maximum_players);
 	else if (!strcmp(name, "lobby.red.tone"))
@@ -2016,7 +2074,7 @@ int pc_menu_lobby_action(struct widget_instance *widget, struct event_record *ev
 		short rows = MAX(model->layout.row_count, 1);
 
 		if (!ui_widget_port_take_click(&x, &y))
-			return lobby_board_start();
+			return lobby_board_start(controller);
 		if (!model->teams || row == NONE)
 			return TRUE;
 		return lobby_board_team(widget, controller, (short)(row / rows == 1 ? 1 : 0));

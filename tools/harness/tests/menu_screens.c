@@ -1000,6 +1000,27 @@ int main(int argc, char **argv)
 			"the browser's CO-OP tab does not open co-op's screen");
 		menu_screen_free(&screen);
 	}
+	else if (!strcmp(name, "add_player"))
+	{
+		static char const *const columns[] = { "color", "controller", "profile", "state" };
+		struct menu_screen_block const *done;
+		int index, table_index;
+
+		/* (Add Player: the four controllers' rows, its back and Start the
+		screen's own (those joining let go of; brought in), DONE in the
+		panel once all are ready) */
+		CHECK(read_text(add_player_xml, &screen, problem), "Add Player's file is refused: %s", problem);
+		CHECK(!strcmp(screen.name, "add_player") && !strcmp(screen.back, "add player back") &&
+			!strcmp(screen.start, "add player done"), "Add Player's name, back or start");
+		table_index = kind_first(&screen, MENU_SCREEN_TABLE);
+		CHECK(table_index >= 0 && !strcmp(screen.blocks[table_index].source, "add.players"), "Add Player's table");
+		for (index = 0; index < 4; index++)
+			CHECK(block_of(&screen, columns[index]) != NULL, "no %s column", columns[index]);
+		CHECK(block_of(&screen, "color")->cell == MENU_SCREEN_CELL_SWATCH, "the color's column");
+		done = &screen.blocks[kind_first(&screen, MENU_SCREEN_BUTTON)];
+		CHECK(!strcmp(done->action, "add player done") && !strcmp(done->condition, "add.done"), "DONE");
+		menu_screen_free(&screen);
+	}
 	else
 	{
 		fprintf(stderr, "no case %s\n", name);

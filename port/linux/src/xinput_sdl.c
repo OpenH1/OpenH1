@@ -1722,7 +1722,9 @@ and stick_right (the left stick pushed sideways), screenshot
 (the Screenshot key's capture, once), or wait (none), separated by spaces
 or commas; two or more joined by + ("back+x") hold the first through the
 second and press the others half way through it; "hold:<button>" holds it
-the whole second (one after another, held on: the menus' repeat). A script
+the whole second (one after another, held on: the menus' repeat); one
+after "p<n>:" ("p2:start") is played on controller n (2 to 4: another
+player's, connected for the script) rather than the first. A script
 that starts with "ready" waits for the menus' screen to be up
 (platform_test_menu_start, menu_tour.c's) and counts its seconds from then:
 tools/menu_parity.py's, whose runs share the computer */
@@ -1794,7 +1796,35 @@ int platform_test_menu_done(void)
 	return platform_test_menu_step() >= count;
 }
 
-static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
+/* the ports past the first that the menu script plays (p<n>:), a bit each */
+static unsigned int test_input_menu_ports;
+
+/* whether a token of the menu script is another controller's, "p<n>:" */
+static int test_input_menu_port_token(const char *token, size_t length)
+{
+	return length > 3 && token[0] == 'p' && token[1] >= '2' && token[1] <= '0' + PORT_COUNT && token[2] == ':';
+}
+
+/* (the menu script's controllers: each "p<n>:" token's port) */
+static void test_input_menu_ports_read(void)
+{
+	const char *token = test_input_menu;
+
+	for (;;)
+	{
+		size_t length;
+
+		token += strspn(token, " ,");
+		length = strcspn(token, " ,");
+		if (!length)
+			break;
+		if (test_input_menu_port_token(token, length))
+			test_input_menu_ports |= 1U << (token[1] - '1');
+		token += length;
+	}
+}
+
+static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad, int port)
 {
 	static const struct
 	{
@@ -1842,6 +1872,16 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 		step--;
 		token += length;
 	}
+	/* (another controller's, "p<n>:": played on that port alone) */
+	if (test_input_menu_port_token(token, length))
+	{
+		if (token[1] - '1' != port)
+			return;
+		token += 3;
+		length -= 3;
+	}
+	else if (port)
+		return;
 	/* (Save Report's, as its key asks: one in its second) */
 	if (length == 6 && !strncmp(token, "report", 6))
 	{
@@ -2515,6 +2555,7 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 				memmove(test_input_menu, test_input_menu + 5, strlen(test_input_menu + 5) + 1);
 				test_input_menu_waiting = 1;
 			}
+			test_input_menu_ports_read();
 		}
 		else if (!strncmp(setting, "bot:", 4))
 			seed = atoi(setting + 4);
@@ -2547,7 +2588,7 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 	}
 	if (test_input_menu[0])
 	{
-		test_input_menu_gamepad(pad);
+		test_input_menu_gamepad(pad, 0);
 		return;
 	}
 	if (seed < 0)
@@ -3503,7 +3544,7 @@ static DWORD connected_gamepads(void)
 	for (port = 1; port < PORT_COUNT; port++)
 	{
 		/* (and the controllers the test script plays: p<n>) */
-		if (port_gamepad(gamepads, count, port) || (test_script_ports & (1U << port)))
+		if (port_gamepad(gamepads, count, port) || ((test_script_ports | test_input_menu_ports) & (1U << port)))
 			mask |= 1UL << port;
 	}
 	return mask;
@@ -3789,6 +3830,9 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 	/* (a controller the test script plays: p<n>) */
 	else if (test_script_ports & (1U << port))
 		test_script_port_gamepad(port, &state->Gamepad);
+	/* (or the menu script: p<n>:) */
+	else if (test_input_menu_ports & (1U << port))
+		test_input_menu_gamepad(&state->Gamepad, port);
 	if (captured) memset(&state->Gamepad, 0, sizeof(state->Gamepad));
 	/* (the port's gyroscope, and its right stick as the flick stick) */
 	{
