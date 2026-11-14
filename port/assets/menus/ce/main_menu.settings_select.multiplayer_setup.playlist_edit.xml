@@ -38,7 +38,7 @@
 		<on event="start" run="mp profile save changes" open="error/warning_saving_file_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/settings_select/multiplayer_setup/playlist_edit/playlist_edit_ext_desc_pic" controller="1" left="290" top="80" width="284" height="208" bitmap="main_menu/settings_select/multiplayer_setup/playlist_edit/gametype_options" source="tools/ce_menus.py widget_xml ui\shell\main_menu\settings_select\multiplayer_setup\playlist_edit\playlist_edit_ext_desc_pic">
+	<widget name="main_menu/settings_select/multiplayer_setup/playlist_edit/playlist_edit_ext_desc_pic" controller="1" left="307" top="82" width="256" height="190" bitmap="main_menu/settings_select/multiplayer_setup/playlist_edit/game_type_select/rules_options" source="tools/ce_menus.py widget_xml ui\shell\main_menu\settings_select\multiplayer_setup\playlist_edit\playlist_edit_ext_desc_pic + port_settings.WIDGET_PATCHES">
 	</widget>
 	<widget name="main_menu/settings_select/multiplayer_setup/playlist_edit/playlist_edit_ext_desc_text" type="text" controller="1" left="294" top="276" width="321" height="124" string_list="main_menu/settings_select/multiplayer_setup/playlist_edit/playlist_edit_list_extended_dsc_text" font="ui\large_ui" color="#FF2896FF" source="tools/ce_menus.py widget_xml ui\shell\main_menu\settings_select\multiplayer_setup\playlist_edit\playlist_edit_ext_desc_text">
 	</widget>
