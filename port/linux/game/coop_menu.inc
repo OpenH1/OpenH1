@@ -70,6 +70,13 @@ static wchar_t const *const coop_fix_labels[NUMBER_OF_COOP_FIXES] =
 	L"", L"TURN ON INTERNET PLAY", L"SHOW PUBLIC GAMES", L"RETRY", L"SHOW ME ONLINE", L"HOST CO-OP",
 };
 
+/* (the co-op list's, under its words for none: as short as its button,
+the words over it saying what) */
+static wchar_t const *const coop_fix_short_labels[NUMBER_OF_COOP_FIXES] =
+{
+	L"", L"TURN IT ON", L"SHOW THEM", L"RETRY", L"SHOW ME ONLINE", L"HOST CO-OP",
+};
+
 static struct
 {
 	/* HOST's Choose Mission and Choose Difficulty (their PLAY: WHO CAN
@@ -525,7 +532,7 @@ static boolean coop_join_value(char const *name, struct browser_row const *row, 
 	{
 		wchar_t words[SETTINGS_PANEL_TEXT_LENGTH];
 
-		ustrncpy(text, coop_fix_labels[coop_join_problem(words, NUMBEROF(words))], size - 1);
+		ustrncpy(text, coop_fix_short_labels[coop_join_problem(words, NUMBEROF(words))], size - 1);
 	}
 	text[size - 1] = 0;
 	return text[0] != 0;

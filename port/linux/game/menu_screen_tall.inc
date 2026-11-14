@@ -2467,6 +2467,20 @@ static void tall_rows_frame(struct screen_tall *tall, struct widget_instance *sc
 		bar->disabled = !shown;
 		if (!shown && tall->body->focused_child == bar)
 			tall->body->focused_child = NULL;
+		/* (its words again, a binding's that may change: the co-op list's
+		fix, which follows why it is empty) */
+		if (shown && tall->table_button.widget && tall->table_button.block->label &&
+			strchr(tall->table_button.block->label, '{'))
+		{
+			char label[MENU_SCREEN_MAXIMUM_TEXT];
+			char text[MENU_SCREEN_MAXIMUM_TEXT];
+			boolean touch = ui_widget_port_touch_menus() != 0;
+
+			tall_text(tall, tall->table_button.block->label, label, sizeof(label));
+			snprintf(text, sizeof(text), touch ? "%s%s" : "%s %s", touch ? "" :
+				tall_key_picture(tall->table_button.block->key), label);
+			tall_text_set(tall->table_button.widget, text);
+		}
 		if (bar->child)
 			bar->child->animation.current_frame_index = (short)(tall->body->focused_child == bar);
 	}

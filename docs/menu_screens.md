@@ -227,7 +227,7 @@ item uses the next of its `<hint>`s. The bindings are listed in
 | `{browser.search.server}`, `{browser.search.map}`, `{browser.search.any}` | The searches' words (set as they are typed) |
 | `{browser.panel.title}` ... `{browser.panel.status}` | The chosen game's name (or the list's title), where (map and mode), kind (GOAT H1, LEGACY) and its `tone`, tick rate, OPENCE CAN JOIN, players, ping, and its status line |
 | `{browser.searched}`, `{browser.joinable}`, `{browser.server}`, `{browser.link}`, `{browser.filtered}` | (for `if`s) the searches hide every game; a game to join is chosen; the server browser's list; Join by Link's; a list filtered and searched (not Join by Link's) |
-| `{browser.fix}` | The co-op list's: its empty list's fix's words (`TURN ON INTERNET PLAY`, `RETRY`, `SHOW PUBLIC GAMES`, `HOST CO-OP`); none while it lists a game, or elsewhere |
+| `{browser.fix}` | The co-op list's: its empty list's fix's words (`TURN IT ON`, `RETRY`, `SHOW THEM`, `HOST CO-OP`; refilled each frame); none while it lists a game, or elsewhere |
 | `{coop.listing}`, `{coop.link}`, `{coop.problem}`, `{coop.fix}` | A network co-op game's host's lobby: who can join and see it (`FRIENDS CAN JOIN: 3 friends online see it.`), the invite link (its start), what keeps people from finding it in plain words (`Internet play is off, so only players on your network can join.`) and its fix's words; none for anyone else |
 | `{pause.friendly_fire}` | Network co-op's FRIENDLY FIRE row's words, `FRIENDLY FIRE ON` or `OFF` (this machine's choice); none elsewhere |
 | `{pause.host_controls}`, `{pause.end_game}`, `{pause.chapters}` | (for `if`s) the pause menu's HOST CONTROLS (a network game's host's), END GAME (the host of a game of this machine alone) and CHAPTERS (Basic Training's), as `menu_tags.c` adds them to the map's |
@@ -518,8 +518,8 @@ band, three cards as the Campaign screen's, and the bar:
   its host, mission, difficulty (the listing's
   gametype's end, `Co-op Heroic`), players and ping. With none, the list
   says why in plain words, with its fix in a button under the words
-  (`{browser.fix}`, `coop fix`): `Internet play is off` (TURN ON INTERNET
-  PLAY), `Can't reach the game list` (RETRY), `No friends are hosting co-op
+  (`{browser.fix}`, `coop fix`): `Internet play is off` (TURN IT ON),
+  `Can't reach the game list` (RETRY), `No friends are hosting co-op
   right now, and there are no public co-op games` (HOST CO-OP). JOIN BY LINK
   (Y) opens Join by Link, which joins an invite link copied at once. An
   invite accepted (a link opened, a friend's, Discord's) goes to its game
