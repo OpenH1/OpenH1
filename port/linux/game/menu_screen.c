@@ -413,7 +413,7 @@ static char const *const screen_binding_names[] =
 	"lobby.card.party", "lobby.card.note", "lobby.card.facts", "lobby.card.friend",
 	"lobby.card.mutable", "lobby.card.mute", "lobby.card.kick", "lobby.friends", "lobby.friends.count",
 	"lobby.friend", "lobby.friend.where", "lobby.friends.said", "lobby.map.picture", "lobby.description",
-	"lobby.where", "lobby.lineup", "pause.friendly_fire", "pause.host_controls", "pause.end_game",
+	"lobby.where", "lobby.lineup", "lobby.lineup.names", "pause.friendly_fire", "pause.host_controls", "pause.end_game",
 	"pause.chapters",
 };
 
@@ -1727,7 +1727,7 @@ static void screen_spartan_frame(struct screen_open *open, long focused)
 			menu_spartan_place((short)(spartan->first + place), color,
 				(real)block->box_x + (real)block->box_width * ((real)place + 0.5f) / (real)places,
 				(real)(block->box_y + block->box_height),
-				(real)block->box_height / (real)(!lineup && places > 2 ? 2 : 1));
+				(real)block->box_height / (real)(!lineup && places > 2 ? 2 : 1), lineup);
 			drawn |= place == 0;
 		}
 		if (spartan->picture && !lineup)
